@@ -8,6 +8,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/ai"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/exec"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/file"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/history"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/node"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/playbook"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
@@ -52,6 +53,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(playbook.NewPlaybookCmd())
 	rootCmd.AddCommand(settings.NewSettingsCmd())
 	rootCmd.AddCommand(ai.NewAICmd())
+	rootCmd.AddCommand(history.NewHistoryCmd())
 
 	// 添加版本信息
 	rootCmd.SetVersionTemplate(fmt.Sprintf(`owl version: %s

@@ -250,36 +250,49 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 	}
 
 	lastMsg := messages[len(messages)-1]
+	input := lastMsg.Content
 
-	requirement := strings.ToLower(lastMsg.Content)
-
-	if strings.Contains(requirement, "query") || strings.Contains(requirement, "list") || strings.Contains(requirement, "show") ||
-		strings.Contains(requirement, "查询") || strings.Contains(requirement, "查看") || strings.Contains(requirement, "列出") {
-		if strings.Contains(requirement, "node") || strings.Contains(requirement, "节点") {
-			return a.handleQueryNodes(lastMsg.Content)
-		}
+	nodes := a.nodeMgr.List()
+	nodeNames := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		nodeNames = append(nodeNames, n.Name)
 	}
 
-	if strings.Contains(requirement, "generate") || strings.Contains(requirement, "create") ||
-		strings.Contains(requirement, "生成") || strings.Contains(requirement, "创建") {
-		if strings.Contains(requirement, "playbook") || strings.Contains(requirement, "剧本") {
-			return a.handleGeneratePlaybook(lastMsg.Content)
-		}
+	classifier := NewIntentClassifier()
+	intentResult := classifier.Classify(input)
+
+	formatter := NewResponseFormatter()
+	extractor := NewParamExtractor(nodeNames)
+	validator := NewValidator()
+
+	if intentResult.Type == IntentUncertain || intentResult.Confidence < 30 {
+		return formatter.FormatUncertainHelp(), nil
 	}
 
-	if strings.Contains(requirement, "execute") || strings.Contains(requirement, "run") ||
-		strings.Contains(requirement, "执行") || strings.Contains(requirement, "运行") {
-		if strings.Contains(requirement, "command") || strings.Contains(requirement, "命令") || strings.Contains(requirement, "shell") {
-			return a.handleExecuteCommand(lastMsg.Content)
-		}
+	params := extractor.ExtractParams(intentResult.Type, input)
+
+	if err := validator.ValidateParams(intentResult.Type, params); err != nil {
+		return "", fmt.Errorf("参数验证失败：%w", err)
 	}
 
-	if strings.Contains(requirement, "transfer") || strings.Contains(requirement, "upload") || strings.Contains(requirement, "download") ||
-		strings.Contains(requirement, "传输") || strings.Contains(requirement, "上传") || strings.Contains(requirement, "下载") {
-		return a.handleTransferFile(lastMsg.Content)
+	var toolCallJSON string
+	switch intentResult.Type {
+	case IntentQueryNodes:
+		toolCallJSON = a.buildToolCall("query_nodes", params)
+	case IntentExecuteCmd:
+		toolCallJSON = a.buildToolCall("execute_command", params)
+	case IntentGeneratePlaybook:
+		toolCallJSON = a.buildToolCall("generate_playbook", params)
+	case IntentTransferFile:
+		toolCallJSON = a.buildToolCall("transfer_file", params)
 	}
 
-	return a.handleGeneralQuestion(lastMsg.Content)
+	return toolCallJSON, nil
+}
+
+func (a *Agent) buildToolCall(toolName string, params map[string]interface{}) string {
+	paramsJSON, _ := json.Marshal(params)
+	return fmt.Sprintf("```json\n{\"tool_calls\": [{\"name\": \"%s\", \"arguments\": %s}]}\n```", toolName, string(paramsJSON))
 }
 
 func (a *Agent) handleQueryNodes(content string) (string, error) {

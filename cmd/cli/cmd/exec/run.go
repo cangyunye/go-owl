@@ -9,6 +9,8 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/common/model"
+	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logger"
 )
 
 // execFlags
@@ -63,6 +65,14 @@ func NewRunCmd() *cobra.Command {
 func runExecRun(cmd *cobra.Command, args []string) {
 	command := args[0]
 	store := common.GetNodeStore()
+	
+	// 初始化日志和历史数据库
+	logger.Init(nil)
+	_, err := history.NewDB(history.DefaultConfig())
+	if err != nil {
+		fmt.Printf("Warning: Failed to initialize history DB: %v\n", err)
+	}
+	defer logger.Sync()
 
 	// 获取目标节点
 	targetNodes := selectTargetNodes(store)

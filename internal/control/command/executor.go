@@ -12,6 +12,8 @@ import (
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/cangyunye/go-owl/internal/control/task"
+	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logger"
 )
 
 type CommandExecutor interface {
@@ -83,6 +85,20 @@ func (e *commandExecutor) Execute(tk *task.Task, nodeMgr node.Manager) error {
 		return fmt.Errorf("invalid task payload type")
 	}
 
+	// 记录操作开始
+	logger.Info("Starting command execution",
+		logger.WithTaskID(tk.ID),
+		logger.WithOperation("command"),
+	)
+	history.RecordOperation(&history.Operation{
+		TaskID:  tk.ID,
+		OpType:  "command",
+		Command: commandPayload.Command,
+		Targets: tk.Targets,
+		Status:  "running",
+		CreatedAt: time.Now(),
+	})
+
 	timeout := commandPayload.Timeout
 	if timeout == 0 {
 		timeout = 5 * time.Minute
@@ -127,9 +143,55 @@ func (e *commandExecutor) Execute(tk *task.Task, nodeMgr node.Manager) error {
 			EndTime:   time.Now(),
 		}
 		tk.SetResult(result.NodeID, taskResult)
+
+		// 记录命令执行历史
+		errorMsg := ""
+		if result.Error != nil {
+			errorMsg = result.Error.Error()
+		}
+		duration := taskResult.EndTime.Sub(taskResult.StartTime)
+		history.RecordCommandExecution(&history.CommandExecution{
+			TaskID:     tk.ID,
+			NodeID:     result.NodeID,
+			Command:    commandPayload.Command,
+			ExitCode:   result.ExitCode,
+			Stdout:     truncateString(result.Output, 4096),
+			Stderr:     errorMsg,
+			DurationMs: duration.Milliseconds(),
+			Success:    result.ExitCode == 0,
+			CreatedAt:  time.Now(),
+		})
 	}
 
+	// 更新操作状态
+	finalStatus := "completed"
+	if len(tk.Results) > 0 && tk.FailureCount() > 0 {
+		finalStatus = "partial_failure"
+		if tk.SuccessCount() == 0 {
+			finalStatus = "failed"
+		}
+	}
+	logger.Info("Command execution completed",
+		logger.WithTaskID(tk.ID),
+		logger.WithOperation("command"),
+	)
+	history.RecordOperation(&history.Operation{
+		TaskID:  tk.ID,
+		OpType:  "command",
+		Command: commandPayload.Command,
+		Targets: tk.Targets,
+		Status:  finalStatus,
+		CreatedAt: time.Now(),
+	})
+
 	return nil
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 func (e *commandExecutor) ExecuteOnNode(nodeID string, command string, timeout time.Duration) (*task.TaskResult, error) {

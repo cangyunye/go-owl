@@ -136,7 +136,7 @@ func runTransfer(cmd *cobra.Command, args []string) {
 		fmt.Printf("\r[%s] %.0f%% (%d/%d nodes)", bar, percent, progress, total)
 	}
 
-	fmt.Println("\n")
+	fmt.Println()
 
 	// 显示传输结果
 	fmt.Println("Transfer complete!")
