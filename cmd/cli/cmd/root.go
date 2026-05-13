@@ -11,7 +11,9 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/history"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/node"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/playbook"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/session"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
+	internalhistory "github.com/cangyunye/go-owl/internal/history"
 
 	"github.com/spf13/cobra"
 )
@@ -24,6 +26,9 @@ var (
 
 // Execute 执行根命令
 func Execute() error {
+	// 初始化历史记录数据库
+	internalhistory.NewDB(internalhistory.DefaultConfig())
+
 	rootCmd := NewRootCmd()
 	return rootCmd.Execute()
 }
@@ -54,6 +59,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(settings.NewSettingsCmd())
 	rootCmd.AddCommand(ai.NewAICmd())
 	rootCmd.AddCommand(history.NewHistoryCmd())
+	rootCmd.AddCommand(session.NewCmd())
 
 	// 添加版本信息
 	rootCmd.SetVersionTemplate(fmt.Sprintf(`owl version: %s

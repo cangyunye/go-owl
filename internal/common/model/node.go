@@ -19,6 +19,7 @@ type Node struct {
 	Name      string            `json:"name"`
 	Address   string            `json:"address"`
 	Port      int               `json:"port"`
+	User      string            `json:"user"`
 	Status    NodeStatus        `json:"status"`
 	Groups    []string          `json:"groups"`
 	Labels    map[string]string `json:"labels"`
@@ -27,13 +28,14 @@ type Node struct {
 	UpdatedAt time.Time         `json:"updated_at"`
 }
 
-func NewNode(id, name, address string, port int) *Node {
+func NewNode(id, name, address string, port int, user string) *Node {
 	now := time.Now()
 	return &Node{
 		ID:        id,
 		Name:      name,
 		Address:   address,
 		Port:      port,
+		User:      user,
 		Status:    NodeStatusOffline,
 		Groups:    make([]string, 0),
 		Labels:    make(map[string]string),
@@ -137,6 +139,7 @@ func (n *Node) Clone() *Node {
 		Name:      n.Name,
 		Address:   n.Address,
 		Port:      n.Port,
+		User:      n.User,
 		Status:    n.Status,
 		Groups:    make([]string, len(n.Groups)),
 		Labels:    make(map[string]string),

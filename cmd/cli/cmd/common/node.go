@@ -26,6 +26,7 @@ type NodeInfo struct {
 	Name      string            `json:"name"`
 	Address   string            `json:"address"`
 	Port      int               `json:"port"`
+	User      string            `json:"user"`
 	Status    string            `json:"status"`
 	Groups    []string          `json:"groups"`
 	Labels    map[string]string `json:"labels"`
@@ -221,6 +222,7 @@ var (
 	addName    string
 	addAddress string
 	addPort    int
+	addUser    string
 	addGroups  string
 	addLabels  []string
 )
@@ -262,6 +264,7 @@ func RunAddNode(args []string) {
 		Name:      addName,
 		Address:   addAddress,
 		Port:      addPort,
+		User:      addUser,
 		Status:    "offline",
 		Groups:    groups,
 		Labels:    labels,

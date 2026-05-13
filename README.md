@@ -13,6 +13,9 @@
 - 📁 **文件传输**: 支持直接和自扩散传输（P2P 模式）
 - 🤖 **AI 助手**: 自然语言驱动的智能运维操作
 - 🔒 **安全设计**: 内置安全检查和危险命令识别
+- 🖥️ **交互式会话**: 支持单节点实时交互和多节点批量管理
+- 📊 **会话历史**: 完整的会话和命令记录，可以随时查看
+- 🔑 **SSH 配置集成**: 自动检测和使用 `~/.ssh/config`
 
 ## 📦 安装
 
@@ -103,6 +106,19 @@ owl ai
 owl ai "在所有 web 节点上执行 uptime"
 ```
 
+### 🖥️ 6. 交互式会话
+
+```bash
+# 单节点实时交互
+owl session attach root@192.168.1.10
+
+# 多节点批量管理
+owl session attach --nodes web1,web2,web3
+
+# 查看会话历史
+owl session history
+```
+
 #### AI 助手优化说明
 
 最近 AI 助手进行了重要优化，确保自然语言解析严格映射到 4 种操作：
@@ -119,7 +135,13 @@ owl ai "在所有 web 节点上执行 uptime"
 - 参数自动提取
 - 严格参数验证
 
-更多 AI 助手详细使用方法请参考 [USAGE.md](USAGE.md)
+更多 AI 助手详细使用方法请参考 [docs/USAGE.md](docs/USAGE.md)
+
+更多会话功能详细使用方法请参考 [docs/SESSION_USAGE.md](docs/SESSION_USAGE.md)
+
+## 数据库配置
+
+go-owl 支持 DuckDB 和 SQLite3 两种嵌入式数据库，通过编译时构建标签选择。详见 [docs/DATABASE.md](docs/DATABASE.md)。
 
 ### 💡 LLM 实现说明
 

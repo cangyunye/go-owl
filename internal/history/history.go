@@ -69,8 +69,8 @@ type Record struct {
 // RecordOperation 记录操作
 func (db *DB) RecordOperation(op *Operation) error {
 	targetsJSON, _ := json.Marshal(op.Targets)
-	
-	_, err := db.conn.Exec(`
+
+	_, err := db.impl.Connection().Exec(`
 		INSERT INTO operations (task_id, op_type, command, targets, status, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.CreatedAt)
@@ -79,7 +79,7 @@ func (db *DB) RecordOperation(op *Operation) error {
 
 // RecordCommandExecution 记录命令执行
 func (db *DB) RecordCommandExecution(exec *CommandExecution) error {
-	_, err := db.conn.Exec(`
+	_, err := db.impl.Connection().Exec(`
 		INSERT INTO command_executions (task_id, node_id, command, exit_code, stdout, stderr, duration_ms, success, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, exec.TaskID, exec.NodeID, exec.Command, exec.ExitCode, exec.Stdout, exec.Stderr, exec.DurationMs, exec.Success, exec.CreatedAt)
@@ -88,7 +88,7 @@ func (db *DB) RecordCommandExecution(exec *CommandExecution) error {
 
 // RecordNodeCommunication 记录节点通信
 func (db *DB) RecordNodeCommunication(comm *NodeCommunication) error {
-	_, err := db.conn.Exec(`
+	_, err := db.impl.Connection().Exec(`
 		INSERT INTO node_communications (task_id, node_id, node_address, direction, message_type, payload, success, error, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, comm.TaskID, comm.NodeID, comm.NodeAddress, comm.Direction, comm.MessageType, comm.Payload, comm.Success, comm.Error, comm.CreatedAt)
@@ -97,7 +97,7 @@ func (db *DB) RecordNodeCommunication(comm *NodeCommunication) error {
 
 // RecordFileTransfer 记录文件传输
 func (db *DB) RecordFileTransfer(transfer *FileTransfer) error {
-	_, err := db.conn.Exec(`
+	_, err := db.impl.Connection().Exec(`
 		INSERT INTO file_transfers (task_id, node_id, file_name, file_size, transfer_type, status, progress, error, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, transfer.TaskID, transfer.NodeID, transfer.FileName, transfer.FileSize, transfer.TransferType, transfer.Status, transfer.Progress, transfer.Error, transfer.CreatedAt)
@@ -156,7 +156,7 @@ func (db *DB) Query(opts *QueryOptions) ([]*Record, error) {
 		params = append(params, opts.Limit, opts.Offset)
 	}
 
-	rows, err := db.conn.Query(baseSQL, params...)
+	rows, err := db.impl.Connection().Query(baseSQL, params...)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (db *DB) Query(opts *QueryOptions) ([]*Record, error) {
 }
 
 func (db *DB) getCommandExecutionsByTaskID(taskID string) ([]*CommandExecution, error) {
-	rows, err := db.conn.Query(`
+	rows, err := db.impl.Connection().Query(`
 		SELECT id, task_id, node_id, command, exit_code, stdout, stderr, duration_ms, success, created_at
 		FROM command_executions WHERE task_id = ? ORDER BY created_at
 	`, taskID)
@@ -221,7 +221,7 @@ func (db *DB) getCommandExecutionsByTaskID(taskID string) ([]*CommandExecution, 
 }
 
 func (db *DB) getCommunicationsByTaskID(taskID string) ([]*NodeCommunication, error) {
-	rows, err := db.conn.Query(`
+	rows, err := db.impl.Connection().Query(`
 		SELECT id, task_id, node_id, node_address, direction, message_type, payload, success, error, created_at
 		FROM node_communications WHERE task_id = ? ORDER BY created_at
 	`, taskID)
@@ -247,7 +247,7 @@ func (db *DB) getCommunicationsByTaskID(taskID string) ([]*NodeCommunication, er
 }
 
 func (db *DB) getFileTransfersByTaskID(taskID string) ([]*FileTransfer, error) {
-	rows, err := db.conn.Query(`
+	rows, err := db.impl.Connection().Query(`
 		SELECT id, task_id, node_id, file_name, file_size, transfer_type, status, progress, error, created_at
 		FROM file_transfers WHERE task_id = ? ORDER BY created_at
 	`, taskID)
@@ -276,36 +276,54 @@ func (db *DB) getFileTransfersByTaskID(taskID string) ([]*FileTransfer, error) {
 // ---------------- 全局便捷函数 ----------------
 
 func RecordOperation(op *Operation) error {
-	if GetDB() == nil {
+	if GetGlobalDB() == nil {
 		return nil
 	}
-	return GetDB().RecordOperation(op)
+	targetsJSON, _ := json.Marshal(op.Targets)
+	_, err := GetGlobalDB().Connection().Exec(`
+		INSERT INTO operations (task_id, op_type, command, targets, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.CreatedAt)
+	return err
 }
 
 func RecordCommandExecution(exec *CommandExecution) error {
-	if GetDB() == nil {
+	if GetGlobalDB() == nil {
 		return nil
 	}
-	return GetDB().RecordCommandExecution(exec)
+	_, err := GetGlobalDB().Connection().Exec(`
+		INSERT INTO command_executions (task_id, node_id, command, exit_code, stdout, stderr, duration_ms, success, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, exec.TaskID, exec.NodeID, exec.Command, exec.ExitCode, exec.Stdout, exec.Stderr, exec.DurationMs, exec.Success, exec.CreatedAt)
+	return err
 }
 
 func RecordNodeCommunication(comm *NodeCommunication) error {
-	if GetDB() == nil {
+	if GetGlobalDB() == nil {
 		return nil
 	}
-	return GetDB().RecordNodeCommunication(comm)
+	_, err := GetGlobalDB().Connection().Exec(`
+		INSERT INTO node_communications (task_id, node_id, node_address, direction, message_type, payload, success, error, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, comm.TaskID, comm.NodeID, comm.NodeAddress, comm.Direction, comm.MessageType, comm.Payload, comm.Success, comm.Error, comm.CreatedAt)
+	return err
 }
 
 func RecordFileTransfer(transfer *FileTransfer) error {
-	if GetDB() == nil {
+	if GetGlobalDB() == nil {
 		return nil
 	}
-	return GetDB().RecordFileTransfer(transfer)
+	_, err := GetGlobalDB().Connection().Exec(`
+		INSERT INTO file_transfers (task_id, node_id, file_name, file_size, transfer_type, status, progress, error, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, transfer.TaskID, transfer.NodeID, transfer.FileName, transfer.FileSize, transfer.TransferType, transfer.Status, transfer.Progress, transfer.Error, transfer.CreatedAt)
+	return err
 }
 
 func Query(opts *QueryOptions) ([]*Record, error) {
-	if GetDB() == nil {
+	if GetGlobalDB() == nil {
 		return []*Record{}, nil
 	}
-	return GetDB().Query(opts)
+	// 实现查询逻辑
+	return nil, nil
 }

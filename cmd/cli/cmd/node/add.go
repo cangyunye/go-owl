@@ -15,6 +15,7 @@ var (
 	addName      string
 	addAddress   string
 	addPort      int
+	addUser      string
 	addGroups    string
 	addLabels    []string
 )
@@ -40,6 +41,8 @@ func NewAddCmd() *cobra.Command {
 		"节点地址 IP (必需)")
 	addCmd.Flags().IntVarP(&addPort, "port", "p", 8080,
 		"节点端口 (默认: 8080)")
+	addCmd.Flags().StringVarP(&addUser, "user", "u", "",
+		"SSH 用户 (默认: 当前用户)")
 	addCmd.Flags().StringVar(&addGroups, "groups", "",
 		"分组列表 (逗号分隔)")
 	addCmd.Flags().StringSliceVarP(&addLabels, "label", "l", nil,
@@ -87,6 +90,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 		Name:      addName,
 		Address:   addAddress,
 		Port:      addPort,
+		User:      addUser,
 		Status:    "offline", // 新添加节点默认离线
 		Groups:    groups,
 		Labels:    labels,
