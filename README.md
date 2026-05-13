@@ -2,7 +2,7 @@
 
 ## 🦉 项目简介
 
-**go-owl**（分布式运维工具箱，为你带来智能运维而生。
+**go-owl** 是一款智能 Linux 分布式运维工具，为你带来智能运维体验。
 
 ## ✨ 特性
 
@@ -21,10 +21,17 @@
 
 ### 从源码构建
 
+项目支持 **DuckDB**（默认）和 **SQLite3** 两种数据库，可根据环境选择：
+
 ```bash
 git clone https://github.com/cangyunye/go-owl.git
 cd go-owl
-go build -o owl ./cmd/cli/main.go
+
+# 使用 DuckDB 构建（默认）
+go build -o owl-duckdb ./cmd/cli/main.go
+
+# 使用 SQLite3 构建（适用于不支持 DuckDB 的环境）
+go build -tags sqlite3 -o owl-sqlite3 ./cmd/cli/main.go
 ```
 
 或者直接运行：
@@ -33,20 +40,25 @@ go build -o owl ./cmd/cli/main.go
 go install github.com/cangyunye/go-owl/cmd/cli@latest
 ```
 
+> **提示**：如果编译 DuckDB 版本遇到问题，可以切换到 SQLite3 版本。
+
 ## 🎉 快速开始
 
 ### 🐣 1. 节点管理
 
 ```bash
-# 添加节点
-owl node add --name web1 --address 192.168.1.10 --port 22
-owl node add --name db1 --address 192.168.1.20 --port 22
+# 添加节点（指定用户名）
+owl node add --name web1 --address 192.168.1.10 --port 22 --user root
+owl node add --name db1 --address 192.168.1.20 --port 22 --user admin
 
 # 查看所有节点
 owl node list
 
 # 添加分组和标签
 owl node group add web1 --nodes web1,web2
+
+# 删除节点
+owl node remove web1
 ```
 
 ### 📊 2. 批量执行命令
@@ -60,6 +72,9 @@ owl exec --nodes web1,web2 --command "df -h"
 
 # 按分组执行
 owl exec --group web --command "systemctl status nginx"
+
+# 执行脚本
+owl exec --nodes web1 --script ./deploy.sh
 ```
 
 ### 📜 3. 剧本执行
@@ -84,6 +99,10 @@ owl exec --group web --command "systemctl status nginx"
 
 ```bash
 owl playbook run deploy.yml
+
+# 其他剧本命令
+owl playbook list       # 列出所有剧本
+owl playbook validate   # 验证剧本语法
 ```
 
 ### 📁 4. 文件传输
@@ -94,6 +113,9 @@ owl file upload app.tar.gz --nodes web1,web2 --dest /opt/app/
 
 # 自扩散传输（多节点时自动使用）
 owl file transfer app.tar.gz --nodes web1,web2,web3,web4,web5 --dest /opt/app/
+
+# 下载文件
+owl file download --nodes web1 --source /var/log/app.log --dest ./logs/
 ```
 
 ### 🤖 5. AI 助手
@@ -104,6 +126,9 @@ owl ai
 
 # 单次查询
 owl ai "在所有 web 节点上执行 uptime"
+
+# 指定提供商
+owl ai --provider openai --model gpt-4o "查看数据库状态"
 ```
 
 ### 🖥️ 6. 交互式会话
@@ -112,70 +137,59 @@ owl ai "在所有 web 节点上执行 uptime"
 # 单节点实时交互
 owl session attach root@192.168.1.10
 
+# 指定 SSH 密钥
+owl session attach --key ~/.ssh/id_rsa web1
+
 # 多节点批量管理
 owl session attach --nodes web1,web2,web3
 
 # 查看会话历史
 owl session history
+
+# 查看特定会话详情
+owl session history --session-id sess-abc123
+
+# 列出所有会话
+owl session list
 ```
 
-#### AI 助手优化说明
+> 会话功能支持自动检测 `~/.ssh/config`，优先使用密钥认证。
 
-最近 AI 助手进行了重要优化，确保自然语言解析严格映射到 4 种操作：
+### ⚙️ 7. 设置管理
 
-1. **查询节点信息** - 查看节点状态、分组、标签
-2. **执行命令** - 在指定节点上运行 shell 命令  
-3. **生成并执行剧本** - 自动化部署操作
-4. **传输文件** - 向节点分发文件
+```bash
+# 查看当前设置
+owl settings show
 
-#### 智能意图识别
+# 更新设置
+owl settings set ai.provider openai
+owl settings set ai.model gpt-4o
 
-- 无法确定意图时，提供友好帮助
-- 关键词精准识别
-- 参数自动提取
-- 严格参数验证
+# 重置设置
+owl settings reset
+```
 
-更多 AI 助手详细使用方法请参考 [docs/USAGE.md](docs/USAGE.md)
+## 🔧 高级配置
 
-更多会话功能详细使用方法请参考 [docs/SESSION_USAGE.md](docs/SESSION_USAGE.md)
+### SSH 配置集成
 
-## 数据库配置
+会话功能支持自动读取 `~/.ssh/config`：
 
-go-owl 支持 DuckDB 和 SQLite3 两种嵌入式数据库，通过编译时构建标签选择。详见 [docs/DATABASE.md](docs/DATABASE.md)。
+```bash
+# Host myserver
+#     HostName 192.168.1.100
+#     User ubuntu
+#     IdentityFile ~/.ssh/id_rsa
 
-### 💡 LLM 实现说明
-
-本项目的 AI 模块采用**自定义轻量级实现**，未使用第三方 AI 框架（如 cloudwego/eino），原因如下：
-
-**为什么不使用 cloudwego/eino？**
-
-- **依赖冲突**：eino 库与其他依赖项存在版本兼容性问题
-- **构建复杂性**：引入额外的框架会增加项目构建和依赖管理的复杂度
-- **功能匹配**：项目仅需基础的 LLM 调用功能，无需完整的 AI Agent 框架能力
-
-**自定义实现的优势：**
-
-- ✅ **零外部依赖**：避免版本冲突，确保项目稳定构建
-- ✅ **功能精简**：只实现必要的 LLM 调用接口
-- ✅ **易于维护**：代码结构清晰，调试和扩展简单
-- ✅ **完全可控**：无隐藏依赖，便于排查问题
-
-**支持的 LLM 提供商：**
-
-- OpenAI (GPT 系列)
-- Anthropic (Claude 系列)
-- Qwen (阿里通义千问)
-- DeepSeek
-
-所有提供商均通过统一的接口调用，支持流式输出和上下文管理。
-
-## 🔧 使用示例
+owl session attach myserver  # 自动使用配置的用户和密钥
+```
 
 ### 配置文件
 
 配置文件默认位置：`~/.owl/config.yml`
 
-#### 1. OpenAI
+#### AI 配置示例
+
 ```yaml
 ai:
   provider: openai
@@ -185,50 +199,43 @@ ai:
   timeout: 120
 ```
 
-#### 2. Anthropic
-```yaml
-ai:
-  provider: anthropic
-  model: claude-3-opus-20240229
-  api-key: your-anthropic-api-key
-  timeout: 120
-```
+**支持的 LLM 提供商：**
+- OpenAI (GPT 系列)
+- Anthropic (Claude 系列)
+- Qwen (阿里通义千问)
+- DeepSeek
 
-#### 3. Qwen (阿里通义千问)
-```yaml
-ai:
-  provider: qwen
-  model: qwen-turbo
-  api-key: your-dashscope-api-key
-  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  timeout: 120
-```
+#### 环境变量配置
 
-#### 4. DeepSeek
-```yaml
-ai:
-  provider: deepseek
-  model: deepseek-chat
-  api-key: your-deepseek-api-key
-  base-url: https://api.deepseek.com
-  timeout: 120
-```
-
-**或使用环境变量**：
 ```bash
 export OWL_API_KEY=your-api-key
 export OWL_BASE_URL=https://your-proxy-endpoint
 owl ai --provider openai --model gpt-4o
 ```
 
-## 架构图 (O
 ## 📚 详细文档
 
-- [节点管理]
-- [命令执行]
-- [剧本编写]
-- [文件传输]
-- [AI 助手]
+更多详细使用说明请参考：
+
+- [docs/USAGE.md](docs/USAGE.md) - 通用使用指南
+- [docs/SESSION_USAGE.md](docs/SESSION_USAGE.md) - 交互式会话功能指南
+- [docs/SSH_USAGE.md](docs/SSH_USAGE.md) - SSH 配置和使用说明
+- [docs/DATABASE.md](docs/DATABASE.md) - 数据库配置说明
+- [docs/implementation_design.md](docs/implementation_design.md) - 架构设计文档
+
+## 💡 架构设计
+
+```
+┌─────────────────────────────────────────────────────┐
+│                      owl CLI                        │
+├─────────────────────────────────────────────────────┤
+│  node  │  exec  │  playbook  │  file  │  session  │
+├────────┼────────┼────────────┼────────┼───────────┤
+│                  SSH Connection Pool                │
+├─────────────────────────────────────────────────────┤
+│              History Database (DuckDB/SQLite3)     │
+└─────────────────────────────────────────────────────┘
+```
 
 ## 🤝 贡献
 

@@ -10,6 +10,7 @@
 - [SESSION_USAGE.md](SESSION_USAGE.md) - 交互式会话功能使用指南
 - [SSH_USAGE.md](SSH_USAGE.md) - SSH 配置和使用说明
 - [DATABASE.md](DATABASE.md) - 数据库配置说明
+- [API_NODE_SOURCE.md](API_NODE_SOURCE.md) - API 节点源集成指南
 
 ### 设计文档
 
@@ -41,7 +42,17 @@
 2. 支持 DuckDB（默认）和 SQLite3
 3. 使用 `sqlite3` 构建标签切换数据库
 
+### API 节点源
+1. 阅读 [API_NODE_SOURCE.md](API_NODE_SOURCE.md)
+2. 配置环境变量 `OWL_API_ENDPOINT` 和 `OWL_API_KEY`
+3. 实现与 CMDB 等外部系统集成
+
 ## 🔧 高级功能
+
+### API 节点源集成
+- 参见 [API_NODE_SOURCE.md](API_NODE_SOURCE.md)
+- 支持从外部 API 获取节点信息
+- 优先级：API > 本地数据库 > SSH 配置
 
 ### AI 助手优化
 - 参见 [AI_OPTIMIZATION_PLAN.md](AI_OPTIMIZATION_PLAN.md)
