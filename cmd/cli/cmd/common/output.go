@@ -92,9 +92,9 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 	}
 
 	// 表头
-	fmt.Printf("%-10s %-15s %-18s %-6s %-10s %-20s %-15s\n",
-		"ID", "Name", "Address", "Port", "Status", "Groups", "Labels")
-	fmt.Println(strings.Repeat("-", 100))
+	fmt.Printf("%-10s %-15s %-20s %-10s %-10s %-20s %-15s\n",
+		"ID", "Name", "Address", "User", "Status", "Groups", "Labels")
+	fmt.Println(strings.Repeat("-", 110))
 
 	// 表格数据
 	for _, n := range nodes {
@@ -108,6 +108,13 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 			labels = "-"
 		}
 
+		user := n.User
+		if user == "" {
+			user = "-"
+		}
+
+		address := fmt.Sprintf("%s:%d", n.Address, n.Port)
+
 		status := string(n.Status)
 		if f.Color {
 			switch n.Status {
@@ -120,8 +127,8 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 			}
 		}
 
-		fmt.Printf("%-10s %-15s %-18s %-6d %-10s %-20s %-15s\n",
-			n.ID, n.Name, n.Address, n.Port, status, truncate(groups, 20), truncate(labels, 15))
+		fmt.Printf("%-10s %-15s %-20s %-10s %-10s %-20s %-15s\n",
+			n.ID, truncate(n.Name, 15), truncate(address, 20), user, status, truncate(groups, 20), truncate(labels, 15))
 	}
 	fmt.Printf("\nTotal: %d nodes\n", len(nodes))
 }
@@ -132,6 +139,9 @@ func (f *OutputFormatter) printNodeDetail(node *model.Node) {
 	fmt.Println("----------------------------------------------")
 	fmt.Printf("  ID:       %s\n", node.ID)
 	fmt.Printf("  Address:  %s:%d\n", node.Address, node.Port)
+	if node.User != "" {
+		fmt.Printf("  User:     %s\n", node.User)
+	}
 	fmt.Printf("  Status:   %s\n", node.Status)
 
 	groups := strings.Join(node.Groups, ", ")

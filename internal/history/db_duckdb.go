@@ -56,7 +56,7 @@ func (d *DuckDB) Connection() *sql.DB {
 func (d *DuckDB) InitSchema() error {
 	schemas := []string{
 		`CREATE TABLE IF NOT EXISTS operations (
-			id BIGINT PRIMARY KEY AUTOINCREMENT,
+			id BIGINT PRIMARY KEY,
 			task_id VARCHAR,
 			op_type VARCHAR,
 			command VARCHAR,
@@ -69,7 +69,7 @@ func (d *DuckDB) InitSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_operations_created_at ON operations (created_at);`,
 
 		`CREATE TABLE IF NOT EXISTS node_communications (
-			id BIGINT PRIMARY KEY AUTOINCREMENT,
+			id BIGINT PRIMARY KEY,
 			task_id VARCHAR,
 			node_id VARCHAR,
 			node_address VARCHAR,
@@ -85,7 +85,7 @@ func (d *DuckDB) InitSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_communications_created_at ON node_communications (created_at);`,
 
 		`CREATE TABLE IF NOT EXISTS command_executions (
-			id BIGINT PRIMARY KEY AUTOINCREMENT,
+			id BIGINT PRIMARY KEY,
 			task_id VARCHAR,
 			node_id VARCHAR,
 			command VARCHAR,
@@ -101,7 +101,7 @@ func (d *DuckDB) InitSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_executions_created_at ON command_executions (created_at);`,
 
 		`CREATE TABLE IF NOT EXISTS file_transfers (
-			id BIGINT PRIMARY KEY AUTOINCREMENT,
+			id BIGINT PRIMARY KEY,
 			task_id VARCHAR,
 			node_id VARCHAR,
 			file_name VARCHAR,
@@ -131,7 +131,7 @@ func (d *DuckDB) InitSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions (created_at);`,
 
 		`CREATE TABLE IF NOT EXISTS session_commands (
-			id BIGINT PRIMARY KEY AUTOINCREMENT,
+			id BIGINT PRIMARY KEY,
 			session_id VARCHAR,
 			command VARCHAR,
 			targets JSON,

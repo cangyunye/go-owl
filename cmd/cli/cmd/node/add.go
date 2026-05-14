@@ -31,9 +31,19 @@ func NewAddCmd() *cobra.Command {
 		Long: `添加一个新节点到管理列表。
 
 示例：
-  owl node add node1 --name web-server-1 --address 192.168.1.10 --port 8080
-  owl node add node2 --name db-server-1 --address 192.168.1.20 --port 8080 \
-    --groups web,database --labels env=prod,region=us-east`,
+  # 基本用法
+  owl node add node1 --name web-server-1 --address 192.168.1.10
+
+  # 指定端口和用户
+  owl node add node2 --name db-server-1 --address 192.168.1.20 --port 22 --user admin
+
+  # 添加分组和多标签
+  owl node add node3 --name app-server --address 192.168.1.30 \
+    --groups web,production --labels env=prod,appname=owl,region=us-east
+
+  # 使用 SSH 密钥认证
+  owl node add node4 --name remote-server --address 192.168.1.40 \
+    --ssh-key ~/.ssh/id_rsa --labels env=staging,tier=backend`,
 		Args: cobra.ExactArgs(1),
 		Run:  runAdd,
 	}
@@ -42,8 +52,8 @@ func NewAddCmd() *cobra.Command {
 		"节点名称 (必需)")
 	addCmd.Flags().StringVarP(&addAddress, "address", "a", "",
 		"节点地址 IP (必需)")
-	addCmd.Flags().IntVarP(&addPort, "port", "p", 8080,
-		"节点端口 (默认: 8080)")
+	addCmd.Flags().IntVarP(&addPort, "port", "p", 22,
+		"节点端口 (默认: 22)")
 	addCmd.Flags().StringVarP(&addUser, "user", "u", "",
 		"SSH 用户 (默认: 当前用户)")
 	addCmd.Flags().StringVar(&addPassword, "password", "",
@@ -54,8 +64,10 @@ func NewAddCmd() *cobra.Command {
 		"跳板机地址")
 	addCmd.Flags().StringVar(&addGroups, "groups", "",
 		"分组列表 (逗号分隔)")
-	addCmd.Flags().StringSliceVarP(&addLabels, "label", "l", nil,
+	addCmd.Flags().StringSliceVarP(&addLabels, "labels", "l", nil,
 		"标签 (格式: key=value)")
+	addCmd.Flags().StringSliceVar(&addLabels, "label", nil,
+		"标签 (格式: key=value) (alias)")
 
 	_ = addCmd.MarkFlagRequired("name")
 	_ = addCmd.MarkFlagRequired("address")

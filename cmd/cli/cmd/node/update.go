@@ -30,10 +30,19 @@ func NewUpdateCmd() *cobra.Command {
 		Long: `更新已存在节点的信息，支持部分字段更新。
 
 示例：
+  # 更新节点名称
   owl node update node1 --name new-name
+
+  # 更新认证信息
   owl node update node1 --password "new-password"
+
+  # 更新连接信息
   owl node update node1 --address 10.0.0.1 --port 2222
-  owl node update node1 --groups web,prod --labels env=prod
+
+  # 更新分组和多标签
+  owl node update node1 --groups web,prod --labels env=prod,appname=owl,tier=backend
+
+  # 更新状态
   owl node update node1 --status online`,
 		Args: cobra.ExactArgs(1),
 		Run:  runUpdate,
@@ -55,8 +64,10 @@ func NewUpdateCmd() *cobra.Command {
 		"跳板机地址")
 	updateCmd.Flags().StringVar(&updateGroups, "groups", "",
 		"分组列表 (逗号分隔)")
-	updateCmd.Flags().StringSliceVarP(&updateLabels, "label", "l", nil,
+	updateCmd.Flags().StringSliceVarP(&updateLabels, "labels", "l", nil,
 		"标签 (格式: key=value)")
+	updateCmd.Flags().StringSliceVar(&updateLabels, "label", nil,
+		"标签 (格式: key=value) (alias)")
 	updateCmd.Flags().StringVar(&updateStatus, "status", "",
 		"节点状态 (online/offline)")
 

@@ -113,7 +113,13 @@ func prepareNodeConfigs(nodeIDs []string) ([]*session.NodeConfig, error) {
 		config := parseNodeID(nodeID)
 
 		if nodeInfo, err := getNodeInfo(nodeID); err == nil {
-			if config.User == "" && nodeInfo.User != "" {
+			if nodeInfo.Address != "" {
+				config.Address = nodeInfo.Address
+			}
+			if nodeInfo.Port > 0 {
+				config.Port = nodeInfo.Port
+			}
+			if nodeInfo.User != "" {
 				config.User = nodeInfo.User
 			}
 			if nodeInfo.Password != "" {
@@ -142,7 +148,7 @@ func prepareNodeConfigs(nodeIDs []string) ([]*session.NodeConfig, error) {
 			if config.User == "" && sshConfig.User != "" {
 				config.User = sshConfig.User
 			}
-			if config.Port == 22 && sshConfig.Port > 0 {
+			if sshConfig.Port > 0 {
 				config.Port = sshConfig.Port
 			}
 			if sshConfig.HostName != "" {
