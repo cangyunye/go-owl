@@ -65,7 +65,7 @@ func NewRunCmd() *cobra.Command {
 func runExecRun(cmd *cobra.Command, args []string) {
 	command := args[0]
 	store := common.GetNodeStore()
-	
+
 	// 初始化日志和历史数据库
 	logger.Init(nil)
 	_, err := history.NewDB(history.DefaultConfig())

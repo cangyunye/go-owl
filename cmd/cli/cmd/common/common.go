@@ -19,10 +19,10 @@ const (
 
 // NodeSelector 节点选择器
 type NodeSelector struct {
-	Nodes   []string // 节点ID列表
-	Groups  []string // 分组列表
-	Labels  []string // 标签列表
-	Status  model.NodeStatus // 节点状态
+	Nodes  []string         // 节点ID列表
+	Groups []string         // 分组列表
+	Labels []string         // 标签列表
+	Status model.NodeStatus // 节点状态
 }
 
 // ParseLabels 解析标签字符串 "key=value,key2=value2"

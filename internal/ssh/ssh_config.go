@@ -10,10 +10,10 @@ import (
 
 // SSHConfig SSH 配置条目
 type SSHConfig struct {
-	Host        string
-	HostName    string
-	User        string
-	Port        int
+	Host         string
+	HostName     string
+	User         string
+	Port         int
 	IdentityFile string
 	ProxyCommand string
 	ForwardAgent bool

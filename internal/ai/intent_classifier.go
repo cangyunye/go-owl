@@ -7,11 +7,11 @@ import (
 type IntentType string
 
 const (
-	IntentQueryNodes    IntentType = "query_nodes"
-	IntentExecuteCmd    IntentType = "execute_command"
+	IntentQueryNodes       IntentType = "query_nodes"
+	IntentExecuteCmd       IntentType = "execute_command"
 	IntentGeneratePlaybook IntentType = "generate_playbook"
-	IntentTransferFile   IntentType = "transfer_file"
-	IntentUncertain     IntentType = "uncertain"
+	IntentTransferFile     IntentType = "transfer_file"
+	IntentUncertain        IntentType = "uncertain"
 )
 
 type IntentResult struct {

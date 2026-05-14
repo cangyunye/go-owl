@@ -16,18 +16,18 @@ import (
 )
 
 var (
-	taskID     string
-	nodeID      string
+	taskID       string
+	nodeID       string
 	opType       string
-	status        string
-	lastDuration   string
-	startTimeStr  string
-	endTimeStr    string
+	status       string
+	lastDuration string
+	startTimeStr string
+	endTimeStr   string
 	limit        int
 	offset       int
-	format         string
-	outputFile  string
-	verbose     bool
+	format       string
+	outputFile   string
+	verbose      bool
 )
 
 // NewHistoryCmd 创建history子命令
@@ -55,7 +55,7 @@ func NewHistoryCmd() *cobra.Command {
 	historyCmd.Flags().StringVar(&lastDuration, "last", "", "相对时间 (如 1h, 24h, 7d)")
 	historyCmd.Flags().IntVar(&limit, "limit", 50, "结果数量限制 (默认 50，最大 1000)")
 	historyCmd.Flags().IntVar(&offset, "offset", 0, "偏移量 (分页)")
-	
+
 	// 输出参数
 	historyCmd.Flags().StringVar(&format, "format", "table", "输出格式 (table, json, yaml)")
 	historyCmd.Flags().StringVar(&outputFile, "output", "", "输出到文件")
@@ -76,9 +76,9 @@ func runHistory(cmd *cobra.Command, args []string) {
 
 	// 解析查询条件
 	opts := &history.QueryOptions{
-		TaskID:  taskID,
-		Limit:   limit,
-		Offset:  offset,
+		TaskID: taskID,
+		Limit:  limit,
+		Offset: offset,
 	}
 
 	// 解析时间条件

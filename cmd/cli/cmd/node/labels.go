@@ -111,9 +111,9 @@ func runLabelsRemove(cmd *cobra.Command, args []string) {
 // NewLabelsShowCmd 显示标签
 func NewLabelsShowCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <node-id>",
-		Short: "显示节点的所有标签",
-		Args:  cobra.ExactArgs(1),
+		Use:   "show <node-id> [key]",
+		Short: "显示节点的所有标签，或指定标签",
+		Args:  cobra.RangeArgs(1, 2),
 		Run:   runLabelsShow,
 	}
 }
@@ -126,6 +126,16 @@ func runLabelsShow(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+
+	if len(args) == 2 {
+		key := args[1]
+		if value, ok := node.Labels[key]; ok {
+			fmt.Printf("%s=%s\n", key, value)
+		} else {
+			fmt.Printf("Label '%s' not found on node '%s'\n", key, nodeID)
+		}
+		return
 	}
 
 	fmt.Printf("Labels for node '%s':\n", nodeID)

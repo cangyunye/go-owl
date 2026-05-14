@@ -18,26 +18,26 @@ type Playbook struct {
 }
 
 type PlaybookTask struct {
-	Name         string                 `yaml:"name"`
-	Action       string                 `yaml:"action"`
-	Args         map[string]interface{} `yaml:"args"`
-	When         string                 `yaml:"when"`
-	WithItems    []interface{}         `yaml:"with_items"`
-	LoopVar      string                 `yaml:"loop_control"`
-	IgnoreErrors bool                   `yaml:"ignore_errors"`
-	AnyErrorsFatal bool                `yaml:"any_errors_fatal"`
-	Tags         []string               `yaml:"tags"`
-	Register     string                 `yaml:"register"`
-	ChangedWhen  string                 `yaml:"changed_when"`
-	FailedWhen   string                 `yaml:"failed_when"`
+	Name           string                 `yaml:"name"`
+	Action         string                 `yaml:"action"`
+	Args           map[string]interface{} `yaml:"args"`
+	When           string                 `yaml:"when"`
+	WithItems      []interface{}          `yaml:"with_items"`
+	LoopVar        string                 `yaml:"loop_control"`
+	IgnoreErrors   bool                   `yaml:"ignore_errors"`
+	AnyErrorsFatal bool                   `yaml:"any_errors_fatal"`
+	Tags           []string               `yaml:"tags"`
+	Register       string                 `yaml:"register"`
+	ChangedWhen    string                 `yaml:"changed_when"`
+	FailedWhen     string                 `yaml:"failed_when"`
 }
 
 type ParsedPlaybook struct {
-	Raw        *Playbook
-	Variables  map[string]interface{}
-	Tasks      []*ParsedTask
-	PreTasks   []*ParsedTask
-	PostTasks  []*ParsedTask
+	Raw       *Playbook
+	Variables map[string]interface{}
+	Tasks     []*ParsedTask
+	PreTasks  []*ParsedTask
+	PostTasks []*ParsedTask
 }
 
 type ParsedTask struct {
@@ -61,12 +61,12 @@ type Loop struct {
 }
 
 type TaskOptions struct {
-	IgnoreErrors    bool
-	AnyErrorsFatal  bool
-	Tags            []string
-	Register        string
-	ChangedWhen     string
-	FailedWhen      string
+	IgnoreErrors   bool
+	AnyErrorsFatal bool
+	Tags           []string
+	Register       string
+	ChangedWhen    string
+	FailedWhen     string
 }
 
 type Parser struct {
@@ -128,9 +128,9 @@ func (p *Parser) Parse(content string) (*ParsedPlaybook, error) {
 
 func (p *Parser) parseTask(raw *PlaybookTask) (*ParsedTask, error) {
 	task := &ParsedTask{
-		Raw:   raw,
-		Name:  raw.Name,
-		Args:  raw.Args,
+		Raw:  raw,
+		Name: raw.Name,
+		Args: raw.Args,
 		Options: TaskOptions{
 			IgnoreErrors:   raw.IgnoreErrors,
 			AnyErrorsFatal: raw.AnyErrorsFatal,

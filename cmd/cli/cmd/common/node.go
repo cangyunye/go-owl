@@ -22,16 +22,19 @@ type NodeStore interface {
 
 // NodeInfo 节点信息
 type NodeInfo struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Address   string            `json:"address"`
-	Port      int               `json:"port"`
-	User      string            `json:"user"`
-	Status    string            `json:"status"`
-	Groups    []string          `json:"groups"`
-	Labels    map[string]string `json:"labels"`
-	CreatedAt string            `json:"created_at"`
-	UpdatedAt string            `json:"updated_at"`
+	ID        string            `json:"id" yaml:"id"`
+	Name      string            `json:"name" yaml:"name"`
+	Address   string            `json:"address" yaml:"address"`
+	Port      int               `json:"port" yaml:"port"`
+	User      string            `json:"user" yaml:"user"`
+	Password  string            `json:"password,omitempty" yaml:"password,omitempty"`
+	SSHKey    string            `json:"ssh_key,omitempty" yaml:"ssh_key,omitempty"`
+	Status    string            `json:"status" yaml:"status"`
+	Groups    []string          `json:"groups" yaml:"groups"`
+	Labels    map[string]string `json:"labels" yaml:"labels"`
+	ProxyJump string            `json:"proxy_jump,omitempty" yaml:"proxy_jump,omitempty"`
+	CreatedAt string            `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	UpdatedAt string            `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // InMemoryNodeStore 内存节点存储（支持文件持久化）
@@ -219,12 +222,14 @@ func GetNodeStore() NodeStore {
 // Node manager commands
 
 var (
-	addName    string
-	addAddress string
-	addPort    int
-	addUser    string
-	addGroups  string
-	addLabels  []string
+	addName     string
+	addAddress  string
+	addPort     int
+	addUser     string
+	addPassword string
+	addSSHKey   string
+	addGroups   string
+	addLabels   []string
 )
 
 // RunAddNode 添加节点
@@ -265,6 +270,8 @@ func RunAddNode(args []string) {
 		Address:   addAddress,
 		Port:      addPort,
 		User:      addUser,
+		Password:  addPassword,
+		SSHKey:    addSSHKey,
 		Status:    "offline",
 		Groups:    groups,
 		Labels:    labels,

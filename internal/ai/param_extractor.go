@@ -128,11 +128,11 @@ func (e *ParamExtractor) extractCommand(input string) string {
 	inputLower := strings.ToLower(input)
 
 	commonCommands := map[string]string{
-		"uptime":         "uptime",
-		"df -h":         "df -h",
-		"free -m":       "free -m",
-		"ps aux":        "ps aux",
-		"systemctl":     "systemctl status",
+		"uptime":    "uptime",
+		"df -h":     "df -h",
+		"free -m":   "free -m",
+		"ps aux":    "ps aux",
+		"systemctl": "systemctl status",
 	}
 
 	for cmd, fullCmd := range commonCommands {

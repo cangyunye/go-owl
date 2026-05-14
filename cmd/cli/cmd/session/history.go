@@ -13,10 +13,10 @@ var _ = time.Now()
 
 var (
 	historySessionID string
-	historyNode     string
-	historyLast     string
-	historyVerbose  bool
-	historyLimit    int
+	historyNode      string
+	historyLast      string
+	historyVerbose   bool
+	historyLimit     int
 )
 
 func NewHistoryCmd() *cobra.Command {

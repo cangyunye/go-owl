@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/internal/history"
-	"golang.org/x/crypto/ssh"
+	gossh "golang.org/x/crypto/ssh"
 )
 
 // SessionMode 会话模式
@@ -51,11 +51,14 @@ type Session struct {
 
 // NodeConfig 节点配置
 type NodeConfig struct {
-	ID      string
-	Address string
-	Port    int
-	User    string
-	Auth    []ssh.AuthMethod
+	ID        string
+	Address   string
+	Port      int
+	User      string
+	Password  string
+	SSHKey    string
+	ProxyJump string
+	Auth      []gossh.AuthMethod
 }
 
 // NewSession 创建新会话

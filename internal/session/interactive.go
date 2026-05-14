@@ -10,8 +10,8 @@ import (
 
 // InteractiveLoop 交互循环
 type InteractiveLoop struct {
-	session      *Session
-	parser       *CommandParser
+	session        *Session
+	parser         *CommandParser
 	commandTimeout time.Duration
 }
 
@@ -56,7 +56,7 @@ func (l *InteractiveLoop) Run() error {
 // printPrompt 显示提示符
 func (l *InteractiveLoop) printPrompt() {
 	stats := l.session.GetConnectionStats()
-	
+
 	switch l.session.Mode {
 	case SessionModeSingle:
 		if len(stats.NodeIDs) > 0 {

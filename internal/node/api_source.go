@@ -64,7 +64,7 @@ type NodeListResponse struct {
 func initAPIConfig() {
 	apiEndpoint = os.Getenv("OWL_API_ENDPOINT")
 	apiToken = os.Getenv("OWL_API_TOKEN")
-	
+
 	timeoutStr := os.Getenv("OWL_API_TIMEOUT")
 	if timeoutStr == "" {
 		apiTimeout = 30 * time.Second
@@ -183,7 +183,7 @@ func (s *APINodeSource) ListNodes(opts *ListOptions) ([]*APINode, error) {
 	for i := range listResp.Items {
 		listResp.Items[i].cachedAt = now
 		nodes = append(nodes, &listResp.Items[i])
-		
+
 		s.cacheMu.Lock()
 		s.cache[listResp.Items[i].ID] = &listResp.Items[i]
 		if listResp.Items[i].Name != "" {
@@ -228,7 +228,7 @@ func (s *APINodeSource) GetNode(idOrName string) (*APINode, error) {
 	}
 
 	node.cachedAt = time.Now()
-	
+
 	s.cacheMu.Lock()
 	s.cache[node.ID] = &node
 	if node.Name != "" {

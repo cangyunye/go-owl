@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	DefaultFanOutK        = 3
-	DefaultMaxDepth      = 10
-	DefaultThreshold     = 5
+	DefaultFanOutK           = 3
+	DefaultMaxDepth          = 10
+	DefaultThreshold         = 5
 	DefaultChunkSizeTransfer = 64 * 1024
 )
 
@@ -21,11 +21,11 @@ type TreeNode struct {
 }
 
 type DiffusionTree struct {
-	Root       string
-	Nodes      map[string]*TreeNode
-	FanOutK    int
-	MaxDepth   int
-	Threshold  int
+	Root      string
+	Nodes     map[string]*TreeNode
+	FanOutK   int
+	MaxDepth  int
+	Threshold int
 }
 
 type TreeBuilder interface {
@@ -220,10 +220,10 @@ func (t *DiffusionTree) GetSubTree(nodeID string) *DiffusionTree {
 	}
 
 	subTree := &DiffusionTree{
-		Root:   nodeID,
-		Nodes:  make(map[string]*TreeNode),
-		FanOutK: t.FanOutK,
-		MaxDepth: t.MaxDepth,
+		Root:      nodeID,
+		Nodes:     make(map[string]*TreeNode),
+		FanOutK:   t.FanOutK,
+		MaxDepth:  t.MaxDepth,
 		Threshold: t.Threshold,
 	}
 

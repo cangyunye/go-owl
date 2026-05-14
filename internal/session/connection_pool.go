@@ -86,14 +86,14 @@ func (p *SSHConnectionPool) createConnection(nodeID, address string, port int, u
 	}
 
 	addr := fmt.Sprintf("%s:%d", address, port)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), p.config.ConnectTimeout)
 	defer cancel()
 
 	// 使用 DialContext 支持超时
 	var client *ssh.Client
 	var err error
-	
+
 	done := make(chan struct{})
 	go func() {
 		client, err = ssh.Dial("tcp", addr, config)
@@ -245,9 +245,9 @@ func (c *SSHConnection) GetLastActive() time.Time {
 
 // ConnectionStats 连接统计
 type ConnectionStats struct {
-	TotalConnections int
+	TotalConnections  int
 	ActiveConnections int
-	NodeIDs          []string
+	NodeIDs           []string
 }
 
 // GetStats 获取连接池统计
@@ -257,7 +257,7 @@ func (p *SSHConnectionPool) GetStats() *ConnectionStats {
 
 	stats := &ConnectionStats{
 		TotalConnections: len(p.connections),
-		NodeIDs:         make([]string, 0, len(p.connections)),
+		NodeIDs:          make([]string, 0, len(p.connections)),
 	}
 
 	for nodeID, conn := range p.connections {

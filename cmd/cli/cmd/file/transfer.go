@@ -11,14 +11,14 @@ import (
 
 // transferFlags
 var (
-	transferNodes        string
-	transferAllNodes     bool
-	transferGroup        string
-	transferLabel        []string
-	transferDest         string
-	transferSourceCount  int
-	transferFanOut       int
-	transferThreshold    int
+	transferNodes       string
+	transferAllNodes    bool
+	transferGroup       string
+	transferLabel       []string
+	transferDest        string
+	transferSourceCount int
+	transferFanOut      int
+	transferThreshold   int
 )
 
 // NewTransferCmd 创建扩散传输命令

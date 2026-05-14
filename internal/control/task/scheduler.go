@@ -20,11 +20,11 @@ const (
 type TaskStatus string
 
 const (
-	TaskStatusPending    TaskStatus = "pending"
-	TaskStatusRunning    TaskStatus = "running"
-	TaskStatusCompleted  TaskStatus = "completed"
-	TaskStatusFailed     TaskStatus = "failed"
-	TaskStatusCancelled  TaskStatus = "cancelled"
+	TaskStatusPending   TaskStatus = "pending"
+	TaskStatusRunning   TaskStatus = "running"
+	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusFailed    TaskStatus = "failed"
+	TaskStatusCancelled TaskStatus = "cancelled"
 )
 
 type TaskResult struct {
@@ -39,19 +39,19 @@ type TaskResult struct {
 type TaskPayload interface{}
 
 type CommandPayload struct {
-	Command   string
-	Timeout   time.Duration
-	EnvVars   map[string]string
-	WorkDir   string
+	Command string
+	Timeout time.Duration
+	EnvVars map[string]string
+	WorkDir string
 }
 
 type ScriptPayload struct {
 	ScriptContent string
-	ScriptName   string
-	Args         []string
-	Timeout      time.Duration
-	EnvVars      map[string]string
-	WorkDir      string
+	ScriptName    string
+	Args          []string
+	Timeout       time.Duration
+	EnvVars       map[string]string
+	WorkDir       string
 }
 
 type PlaybookPayload struct {
@@ -231,9 +231,9 @@ type Scheduler interface {
 }
 
 type scheduler struct {
-	store  TaskStore
-	mu     sync.Mutex
-	idGen  func() string
+	store TaskStore
+	mu    sync.Mutex
+	idGen func() string
 }
 
 func NewScheduler(store TaskStore) Scheduler {
@@ -322,7 +322,9 @@ func (s *scheduler) DispatchTask(id string, dispatcher func(*Task) error) error 
 }
 
 type TaskExecutor interface {
-	Execute(task *Task, nodeManager interface{ GetByID(string) (*model.Node, error) }) error
+	Execute(task *Task, nodeManager interface {
+		GetByID(string) (*model.Node, error)
+	}) error
 }
 
 type ParallelismPolicy int
@@ -334,17 +336,17 @@ const (
 )
 
 type ExecutionOptions struct {
-	Parallelism    int
-	Policy         ParallelismPolicy
-	FailureMode    string
+	Parallelism     int
+	Policy          ParallelismPolicy
+	FailureMode     string
 	ContinueOnError bool
 }
 
 func DefaultExecutionOptions() *ExecutionOptions {
 	return &ExecutionOptions{
-		Parallelism:    10,
-		Policy:         ParallelismAll,
-		FailureMode:    "stop",
+		Parallelism:     10,
+		Policy:          ParallelismAll,
+		FailureMode:     "stop",
 		ContinueOnError: false,
 	}
 }

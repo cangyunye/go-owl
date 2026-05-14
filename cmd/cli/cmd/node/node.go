@@ -15,7 +15,10 @@ func NewNodeCmd() *cobra.Command {
 
 - list: 列出节点
 - add: 添加节点
+- update: 更新节点
 - remove: 删除节点
+- import: 从文件导入节点
+- export: 导出节点到文件
 - status: 查看节点状态
 - groups: 管理节点分组
 - labels: 管理节点标签`,
@@ -24,7 +27,10 @@ func NewNodeCmd() *cobra.Command {
 	// 添加子命令
 	nodeCmd.AddCommand(NewListCmd())
 	nodeCmd.AddCommand(NewAddCmd())
+	nodeCmd.AddCommand(NewUpdateCmd())
 	nodeCmd.AddCommand(NewRemoveCmd())
+	nodeCmd.AddCommand(NewImportCmd())
+	nodeCmd.AddCommand(NewExportCmd())
 	nodeCmd.AddCommand(NewStatusCmd())
 	nodeCmd.AddCommand(NewGroupsCmd())
 	nodeCmd.AddCommand(NewLabelsCmd())

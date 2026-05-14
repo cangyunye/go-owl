@@ -15,32 +15,32 @@ var (
 
 // Config 日志配置
 type Config struct {
-	Level         string // 日志级别: debug, info, warn, error
-	Console       bool   // 是否输出到控制台
-	ConsoleLevel  string // 控制台日志级别
-	File          bool   // 是否输出到文件
-	FilePath      string // 日志文件路径
-	MaxSize       int    // 单个日志文件最大大小(MB)
-	MaxBackups    int    // 保留的备份文件数量
-	MaxAge        int    // 保留天数
-	Compress      bool   // 是否压缩
+	Level        string // 日志级别: debug, info, warn, error
+	Console      bool   // 是否输出到控制台
+	ConsoleLevel string // 控制台日志级别
+	File         bool   // 是否输出到文件
+	FilePath     string // 日志文件路径
+	MaxSize      int    // 单个日志文件最大大小(MB)
+	MaxBackups   int    // 保留的备份文件数量
+	MaxAge       int    // 保留天数
+	Compress     bool   // 是否压缩
 }
 
 // DefaultConfig 默认配置
 func DefaultConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
 	logPath := filepath.Join(homeDir, ".owl", "logs", "owl.log")
-	
+
 	return &Config{
-		Level:         "info",
-		Console:       true,
-		ConsoleLevel:  "info",
-		File:          true,
-		FilePath:      logPath,
-		MaxSize:       100,
-		MaxBackups:    10,
-		MaxAge:        30,
-		Compress:      true,
+		Level:        "info",
+		Console:      true,
+		ConsoleLevel: "info",
+		File:         true,
+		FilePath:     logPath,
+		MaxSize:      100,
+		MaxBackups:   10,
+		MaxAge:       30,
+		Compress:     true,
 	}
 }
 
@@ -55,7 +55,7 @@ func Init(config *Config) error {
 	// 文件输出
 	if config.File {
 		ensureLogDir(config.FilePath)
-		
+
 		fileWriter := &lumberjack.Logger{
 			Filename:   config.FilePath,
 			MaxSize:    config.MaxSize,

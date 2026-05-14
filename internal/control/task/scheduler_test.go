@@ -462,9 +462,9 @@ func TestCommandPayload(t *testing.T) {
 func TestScriptPayload(t *testing.T) {
 	payload := &ScriptPayload{
 		ScriptContent: "#!/bin/bash\necho hello",
-		ScriptName:   "test.sh",
-		Args:         []string{"arg1", "arg2"},
-		Timeout:      60 * time.Second,
+		ScriptName:    "test.sh",
+		Args:          []string{"arg1", "arg2"},
+		Timeout:       60 * time.Second,
 	}
 
 	if payload.ScriptName != "test.sh" {

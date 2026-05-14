@@ -27,14 +27,20 @@
 2. 尝试添加节点并执行命令
 3. 使用 AI 助手进行自然语言运维
 
+### 节点管理
+1. 使用 `owl node add` 添加节点
+2. 使用 `owl node update` 更新节点
+3. 使用 `owl node list` 查看节点
+4. 使用 `owl node import/export` 批量管理节点
+
 ### 会话功能
 1. 阅读 [SESSION_USAGE.md](SESSION_USAGE.md)
 2. 了解单节点和多节点会话模式
 3. 使用 `session history` 查看历史记录
 
 ### SSH 配置
-1. 查看 [SSH_CONFIG.md](SSH_CONFIG.md) 了解配置解析
-2. 参考 [SSH_USAGE.md](SSH_USAGE.md) 进行配置
+1. 查看 [SSH_USAGE.md](SSH_USAGE.md) 了解配置解析
+2. 参考 [SSH_CONFIG.md](SSH_CONFIG.md) 进行配置
 3. 会话功能会自动使用 `~/.ssh/config`
 
 ### 数据库
@@ -44,10 +50,15 @@
 
 ### API 节点源
 1. 阅读 [API_NODE_SOURCE.md](API_NODE_SOURCE.md)
-2. 配置环境变量 `OWL_API_ENDPOINT` 和 `OWL_API_KEY`
+2. 配置环境变量 `OWL_API_ENDPOINT` 和 `OWL_API_TOKEN`
 3. 实现与 CMDB 等外部系统集成
 
 ## 🔧 高级功能
+
+### 节点导入导出
+- 支持 YAML 和 JSON 格式
+- 筛选功能：按节点 ID、分组、标签筛选
+- 导入选项：覆盖、跳过、预览
 
 ### API 节点源集成
 - 参见 [API_NODE_SOURCE.md](API_NODE_SOURCE.md)

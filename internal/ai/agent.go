@@ -10,8 +10,8 @@ import (
 	"text/template"
 	"time"
 
-	aitools "github.com/cangyunye/go-owl/internal/ai/tools"
 	aiPrompts "github.com/cangyunye/go-owl/internal/ai/prompts"
+	aitools "github.com/cangyunye/go-owl/internal/ai/tools"
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/cangyunye/go-owl/internal/control/playbook"
@@ -211,7 +211,7 @@ func (a *Agent) parseToolCalls(response string) []ToolCall {
 
 	var parsed struct {
 		ToolCalls []struct {
-			Name string `json:"name"`
+			Name string                 `json:"name"`
 			Args map[string]interface{} `json:"arguments"`
 		} `json:"tool_calls"`
 	}
@@ -469,10 +469,10 @@ func (a *Agent) stringsToJSON(strs []string) string {
 }
 
 type Session struct {
-	agent    *Agent
-	messages []Message
-	history  []string
-	createdAt time.Time
+	agent      *Agent
+	messages   []Message
+	history    []string
+	createdAt  time.Time
 	lastActive time.Time
 }
 

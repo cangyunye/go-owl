@@ -20,16 +20,16 @@ type Session struct {
 
 // SessionCommand 会话命令记录
 type SessionCommand struct {
-	ID         int64      `json:"id"`
-	SessionID  string     `json:"session_id"`
-	Command    string     `json:"command"`
-	NodeID     string     `json:"node_id"`
-	Targets    []string   `json:"targets,omitempty"`
-	ExitCode   int        `json:"exit_code"`
-	Output     string     `json:"output,omitempty"`
-	Error      string     `json:"error,omitempty"`
-	Duration   int64      `json:"duration_ms"`
-	ExecutedAt time.Time  `json:"executed_at"`
+	ID         int64     `json:"id"`
+	SessionID  string    `json:"session_id"`
+	Command    string    `json:"command"`
+	NodeID     string    `json:"node_id"`
+	Targets    []string  `json:"targets,omitempty"`
+	ExitCode   int       `json:"exit_code"`
+	Output     string    `json:"output,omitempty"`
+	Error      string    `json:"error,omitempty"`
+	Duration   int64     `json:"duration_ms"`
+	ExecutedAt time.Time `json:"executed_at"`
 }
 
 // RecordSession 记录会话开始

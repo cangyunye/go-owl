@@ -18,116 +18,119 @@ GO := go
 # 编译标志
 LDFLAGS := -ldflags "-s -w"
 
-# 颜色定义
+# 颜色定义 - 使用 printf 避免 macOS echo -e 问题
 BOLD := \033[1m
 GREEN := \033[32m
 YELLOW := \033[33m
 BLUE := \033[34m
 NC := \033[0m
 
+# 跨平台打印函数
+print = @printf "$(1)\n"
+
 ## help: 显示帮助信息
 help:
-	@echo ""
-	@echo "$(BOLD)$(BLUE)go-owl 构建工具$(NC)"
-	@echo ""
-	@echo "用法: make $(GREEN)<目标>$(NC)"
-	@echo ""
-	@echo "$(BOLD)可用目标:$(NC)"
-	@echo ""
-	@echo "  $(GREEN)build$(NC)           构建默认版本（DuckDB）"
-	@echo "  $(GREEN)build-duckdb$(NC)    使用 DuckDB 构建"
-	@echo "  $(GREEN)build-sqlite3$(NC)   使用 SQLite3 构建"
-	@echo "  $(GREEN)all$(NC)             构建所有版本"
-	@echo "  $(GREEN)clean$(NC)          清理构建产物"
-	@echo "  $(GREEN)install$(NC)        安装到 ~/.local/bin"
-	@echo "  $(GREEN)test$(NC)           运行测试"
-	@echo "  $(GREEN)fmt$(NC)            格式化代码"
-	@echo "  $(GREEN)lint$(NC)           代码检查"
-	@echo ""
-	@echo "$(BOLD)示例:$(NC)"
-	@echo ""
-	@echo "  make build-duckdb      # 构建 DuckDB 版本"
-	@echo "  make build-sqlite3     # 构建 SQLite3 版本"
-	@echo "  make all               # 构建所有版本"
-	@echo "  make clean             # 清理"
-	@echo ""
+	@printf ""
+	@printf "$(BOLD)$(BLUE)go-owl 构建工具$(NC)\n"
+	@printf ""
+	@printf "用法: make $(GREEN)<目标>$(NC)\n"
+	@printf ""
+	@printf "$(BOLD)可用目标:$(NC)\n"
+	@printf ""
+	@printf "  $(GREEN)build$(NC)           构建默认版本（DuckDB）\n"
+	@printf "  $(GREEN)build-duckdb$(NC)    使用 DuckDB 构建\n"
+	@printf "  $(GREEN)build-sqlite3$(NC)   使用 SQLite3 构建\n"
+	@printf "  $(GREEN)all$(NC)             构建所有版本\n"
+	@printf "  $(GREEN)clean$(NC)          清理构建产物\n"
+	@printf "  $(GREEN)install$(NC)        安装到 ~/.local/bin\n"
+	@printf "  $(GREEN)test$(NC)           运行测试\n"
+	@printf "  $(GREEN)fmt$(NC)            格式化代码\n"
+	@printf "  $(GREEN)lint$(NC)           代码检查\n"
+	@printf ""
+	@printf "$(BOLD)示例:$(NC)\n"
+	@printf ""
+	@printf "  make build-duckdb      # 构建 DuckDB 版本\n"
+	@printf "  make build-sqlite3     # 构建 SQLite3 版本\n"
+	@printf "  make all               # 构建所有版本\n"
+	@printf "  make clean             # 清理\n"
+	@printf ""
 
 ## build: 构建默认版本（DuckDB）
 build: build-duckdb
 
 ## build-duckdb: 使用 DuckDB 构建（默认）
 build-duckdb:
-	@echo "$(BOLD)$(BLUE)==>$(NC) 使用 DuckDB 构建..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 使用 DuckDB 构建...\n"
 	@$(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(DUCKDB_BINARY) $(MAIN_PATH)
-	@echo "$(BOLD)$(GREEN)✓$(NC) 构建完成: $(DUCKDB_BINARY)"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 构建完成: $(DUCKDB_BINARY)\n"
 
 ## build-sqlite3: 使用 SQLite3 构建
 build-sqlite3:
-	@echo "$(BOLD)$(BLUE)==>$(NC) 使用 SQLite3 构建..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 使用 SQLite3 构建...\n"
 	@$(GO) build -tags sqlite3 $(LDFLAGS) -o $(BUILD_DIR)/$(SQLITE3_BINARY) $(MAIN_PATH)
-	@echo "$(BOLD)$(GREEN)✓$(NC) 构建完成: $(SQLITE3_BINARY)"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 构建完成: $(SQLITE3_BINARY)\n"
 
 ## all: 构建所有版本
 all: build-duckdb build-sqlite3
-	@echo ""
-	@echo "$(BOLD)$(GREEN)✓$(NC) 所有版本构建完成！"
+	@printf ""
+	@printf "$(BOLD)$(GREEN)✓$(NC) 所有版本构建完成！\n"
 	@ls -lh $(DUCKDB_BINARY) $(SQLITE3_BINARY) 2>/dev/null | awk '{print "  " $$9 ": " $$5}'
 
 ## clean: 清理构建产物
 clean:
-	@echo "$(BOLD)$(YELLOW)==>$(NC) 清理构建产物..."
+	@printf "$(BOLD)$(YELLOW)==>$(NC) 清理构建产物...\n"
 	@rm -f $(BUILD_DIR)/$(BINARY_NAME) $(BUILD_DIR)/$(DUCKDB_BINARY) $(BUILD_DIR)/$(SQLITE3_BINARY)
-	@echo "$(BOLD)$(GREEN)✓$(NC) 清理完成"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 清理完成\n"
 
 ## install: 安装到 ~/.local/bin
 install: build-duckdb
-	@echo "$(BOLD)$(BLUE)==>$(NC) 安装到 ~/.local/bin..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 安装到 ~/.local/bin...\n"
 	@mkdir -p ~/.local/bin
 	@cp $(BUILD_DIR)/$(DUCKDB_BINARY) ~/.local/bin/$(BINARY_NAME)
-	@echo "$(BOLD)$(GREEN)✓$(NC) 安装完成: ~/.local/bin/$(BINARY_NAME)"
-	@echo "$(BOLD)$(YELLOW)提示:$(NC) 请确保 ~/.local/bin 在您的 PATH 中"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 安装完成: ~/.local/bin/$(BINARY_NAME)\n"
+	@printf "$(BOLD)$(YELLOW)提示:$(NC) 请确保 ~/.local/bin 在您的 PATH 中\n"
 
 ## install-duckdb: 安装 DuckDB 版本
 install-duckdb: build-duckdb
-	@echo "$(BOLD)$(BLUE)==>$(NC) 安装 DuckDB 版本..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 安装 DuckDB 版本...\n"
 	@mkdir -p ~/.local/bin
 	@cp $(BUILD_DIR)/$(DUCKDB_BINARY) ~/.local/bin/$(BINARY_NAME)
-	@echo "$(BOLD)$(GREEN)✓$(NC) 安装完成: ~/.local/bin/$(BINARY_NAME) (DuckDB)"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 安装完成: ~/.local/bin/$(BINARY_NAME) (DuckDB)\n"
 
 ## install-sqlite3: 安装 SQLite3 版本
 install-sqlite3: build-sqlite3
-	@echo "$(BOLD)$(BLUE)==>$(NC) 安装 SQLite3 版本..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 安装 SQLite3 版本...\n"
 	@mkdir -p ~/.local/bin
 	@cp $(BUILD_DIR)/$(SQLITE3_BINARY) ~/.local/bin/$(BINARY_NAME)
-	@echo "$(BOLD)$(GREEN)✓$(NC) 安装完成: ~/.local/bin/$(BINARY_NAME) (SQLite3)"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 安装完成: ~/.local/bin/$(BINARY_NAME) (SQLite3)\n"
 
 ## test: 运行测试
 test:
-	@echo "$(BOLD)$(BLUE)==>$(NC) 运行测试..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 运行测试...\n"
 	@$(GO) test -v ./...
 
 ## test-cover: 运行测试并生成覆盖率报告
 test-cover:
-	@echo "$(BOLD)$(BLUE)==>$(NC) 运行测试（覆盖率）..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 运行测试（覆盖率）...\n"
 	@$(GO) test -v -coverprofile=coverage.out ./...
 	@$(GO) tool cover -html=coverage.out -o coverage.html
-	@echo "$(BOLD)$(GREEN)✓$(NC) 覆盖率报告: coverage.html"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 覆盖率报告: coverage.html\n"
 
 ## fmt: 格式化代码
 fmt:
-	@echo "$(BOLD)$(BLUE)==>$(NC) 格式化代码..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 格式化代码...\n"
 	@$(GO) fmt ./...
-	@echo "$(BOLD)$(GREEN)✓$(NC) 格式化完成"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 格式化完成\n"
 
 ## lint: 代码检查
 lint:
-	@echo "$(BOLD)$(BLUE)==>$(NC) 代码检查..."
-	@which golangci-lint > /dev/null || (echo "$(BOLD)$(YELLOW)警告:$(NC) golangci-lint 未安装，跳过..." && exit 0)
+	@printf "$(BOLD)$(BLUE)==>$(NC) 代码检查...\n"
+	@which golangci-lint > /dev/null || (printf "$(BOLD)$(YELLOW)警告:$(NC) golangci-lint 未安装，跳过...\n" && exit 0)
 	@golangci-lint run ./...
 
 ## vet: 代码诊断
 vet:
-	@echo "$(BOLD)$(BLUE)==>$(NC) 运行 go vet..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 运行 go vet...\n"
 	@$(GO) vet ./...
 
 ## run: 运行程序
@@ -136,22 +139,22 @@ run:
 
 ## deps: 下载依赖
 deps:
-	@echo "$(BOLD)$(BLUE)==>$(NC) 下载依赖..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 下载依赖...\n"
 	@$(GO) mod download
 	@$(GO) mod tidy
-	@echo "$(BOLD)$(GREEN)✓$(NC) 依赖下载完成"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 依赖下载完成\n"
 
 ## init: 初始化项目
 init: deps
-	@echo "$(BOLD)$(BLUE)==>$(NC) 初始化项目..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 初始化项目...\n"
 	@$(GO) generate ./...
-	@echo "$(BOLD)$(GREEN)✓$(NC) 项目初始化完成"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 项目初始化完成\n"
 
 ## build-debug: 调试版本构建
 build-debug:
-	@echo "$(BOLD)$(BLUE)==>$(NC) 构建调试版本..."
+	@printf "$(BOLD)$(BLUE)==>$(NC) 构建调试版本...\n"
 	@$(GO) build -gcflags="all=-N -l" -o $(BUILD_DIR)/$(BINARY_NAME)-debug $(MAIN_PATH)
-	@echo "$(BOLD)$(GREEN)✓$(NC) 调试版本构建完成: $(BINARY_NAME)-debug"
+	@printf "$(BOLD)$(GREEN)✓$(NC) 调试版本构建完成: $(BINARY_NAME)-debug\n"
 
 ## version: 显示版本信息
 version:

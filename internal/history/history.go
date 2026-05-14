@@ -18,30 +18,30 @@ type Operation struct {
 
 // NodeCommunication 节点通信记录
 type NodeCommunication struct {
-	ID           int64
-	TaskID       string
-	NodeID       string
-	NodeAddress  string
-	Direction    string
-	MessageType  string
-	Payload      string
-	Success      bool
-	Error        string
-	CreatedAt    time.Time
+	ID          int64
+	TaskID      string
+	NodeID      string
+	NodeAddress string
+	Direction   string
+	MessageType string
+	Payload     string
+	Success     bool
+	Error       string
+	CreatedAt   time.Time
 }
 
 // CommandExecution 命令执行记录
 type CommandExecution struct {
-	ID          int64
-	TaskID      string
-	NodeID      string
-	Command     string
-	ExitCode    int
-	Stdout      string
-	Stderr      string
-	DurationMs  int64
-	Success     bool
-	CreatedAt   time.Time
+	ID         int64
+	TaskID     string
+	NodeID     string
+	Command    string
+	ExitCode   int
+	Stdout     string
+	Stderr     string
+	DurationMs int64
+	Success    bool
+	CreatedAt  time.Time
 }
 
 // FileTransfer 文件传输记录
@@ -60,10 +60,10 @@ type FileTransfer struct {
 
 // Record 统一记录结构
 type Record struct {
-	Operation          *Operation
-	CommandExecutions  []*CommandExecution
-	Communications     []*NodeCommunication
-	Transfers          []*FileTransfer
+	Operation         *Operation
+	CommandExecutions []*CommandExecution
+	Communications    []*NodeCommunication
+	Transfers         []*FileTransfer
 }
 
 // RecordOperation 记录操作
@@ -106,14 +106,14 @@ func (db *DB) RecordFileTransfer(transfer *FileTransfer) error {
 
 // QueryOptions 查询选项
 type QueryOptions struct {
-	TaskID     string
-	NodeID     string
-	OpType     string
-	Status     string
-	StartTime  time.Time
-	EndTime    time.Time
-	Limit      int
-	Offset     int
+	TaskID    string
+	NodeID    string
+	OpType    string
+	Status    string
+	StartTime time.Time
+	EndTime   time.Time
+	Limit     int
+	Offset    int
 }
 
 // Query 查询历史记录
@@ -174,7 +174,7 @@ func (db *DB) Query(opts *QueryOptions) ([]*Record, error) {
 		}
 
 		json.Unmarshal(targetsJSON, &op.Targets)
-		
+
 		record := &Record{Operation: &op}
 		records = append(records, record)
 	}

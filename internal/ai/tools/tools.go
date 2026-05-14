@@ -116,11 +116,11 @@ func (t *QueryNodesTool) countOnline(nodes []*model.Node) int {
 }
 
 type nodeInfo struct {
-	Name    string   `json:"name"`
-	Address string   `json:"address"`
-	Port    int      `json:"port"`
-	Status  string   `json:"status"`
-	Groups  []string `json:"groups"`
+	Name    string            `json:"name"`
+	Address string            `json:"address"`
+	Port    int               `json:"port"`
+	Status  string            `json:"status"`
+	Groups  []string          `json:"groups"`
 	Labels  map[string]string `json:"labels"`
 }
 

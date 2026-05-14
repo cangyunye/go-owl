@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/session"
 	"github.com/cangyunye/go-owl/internal/ssh"
 	"github.com/spf13/cobra"
@@ -103,55 +104,56 @@ func runAttach(cmd *cobra.Command, args []string) error {
 func prepareNodeConfigs(nodeIDs []string) ([]*session.NodeConfig, error) {
 	var configs []*session.NodeConfig
 
-	// 加载 SSH 配置
 	configManager, err := getSSHConfigManager()
 	if err != nil {
 		return nil, err
 	}
 
 	for _, nodeID := range nodeIDs {
-		// 解析节点 ID
 		config := parseNodeID(nodeID)
 
-		// 从 SSH config 中查找配置
+		if nodeInfo, err := getNodeInfo(nodeID); err == nil {
+			if config.User == "" && nodeInfo.User != "" {
+				config.User = nodeInfo.User
+			}
+			if nodeInfo.Password != "" {
+				config.Password = nodeInfo.Password
+			}
+			if nodeInfo.SSHKey != "" {
+				config.SSHKey = nodeInfo.SSHKey
+			}
+			if nodeInfo.ProxyJump != "" {
+				config.ProxyJump = nodeInfo.ProxyJump
+			}
+		}
+
 		var sshConfig *ssh.SSHConfig
 		if configManager != nil {
-			// 优先按节点ID匹配
 			if cfg := configManager.GetConfig(nodeID); cfg != nil {
 				sshConfig = cfg
 			} else if cfg := configManager.GetConfig(config.Address); cfg != nil {
-				// 按地址匹配
 				sshConfig = cfg
 			}
 		}
 
-		// 应用 SSH config 配置
 		if sshConfig != nil {
 			fmt.Printf("找到 SSH 配置: %s -> %s\n", nodeID, sshConfig.HostName)
 
-			// 用户优先级：节点配置 > SSH config
 			if config.User == "" && sshConfig.User != "" {
 				config.User = sshConfig.User
 			}
-
-			// 端口优先级：节点配置 > SSH config
 			if config.Port == 22 && sshConfig.Port > 0 {
 				config.Port = sshConfig.Port
 			}
-
-			// 地址
 			if sshConfig.HostName != "" {
 				config.Address = sshConfig.HostName
 			}
-
-			// 设置密钥文件
-			if sshConfig.IdentityFile != "" {
-				attachKeyFile = sshConfig.IdentityFile
+			if config.SSHKey == "" && sshConfig.IdentityFile != "" {
+				config.SSHKey = sshConfig.IdentityFile
 			}
 		}
 
-		// 获取认证方法（优先使用密钥认证）
-		authMethods, err := getAuthMethodsWithConfig(sshConfig)
+		authMethods, err := getAuthMethodsWithConfig(sshConfig, config.Password, config.SSHKey)
 		if err != nil {
 			return nil, err
 		}
@@ -161,6 +163,11 @@ func prepareNodeConfigs(nodeIDs []string) ([]*session.NodeConfig, error) {
 	}
 
 	return configs, nil
+}
+
+func getNodeInfo(nodeID string) (*common.NodeInfo, error) {
+	store := common.GetNodeStore()
+	return store.Get(nodeID)
 }
 
 // getSSHConfigManager 获取 SSH 配置管理器
@@ -186,7 +193,7 @@ func parseNodeID(nodeID string) *session.NodeConfig {
 	if len(parts) == 2 {
 		config.User = parts[0]
 		hostPort := parts[1]
-		
+
 		hostParts := strings.Split(hostPort, ":")
 		config.Address = hostParts[0]
 		if len(hostParts) == 2 {
@@ -199,14 +206,26 @@ func parseNodeID(nodeID string) *session.NodeConfig {
 
 // getAuthMethods 获取认证方法
 func getAuthMethods() ([]gossh.AuthMethod, error) {
-	return getAuthMethodsWithConfig(nil)
+	return getAuthMethodsWithConfig(nil, "", "")
 }
 
 // getAuthMethodsWithConfig 根据 SSH 配置获取认证方法
-func getAuthMethodsWithConfig(sshConfig *ssh.SSHConfig) ([]gossh.AuthMethod, error) {
+func getAuthMethodsWithConfig(sshConfig *ssh.SSHConfig, password, sshKey string) ([]gossh.AuthMethod, error) {
 	var authMethods []gossh.AuthMethod
 
-	// 1. 尝试 SSH config 中的密钥文件
+	if password != "" {
+		authMethods = append(authMethods, gossh.Password(password))
+	}
+
+	if sshKey != "" {
+		if _, err := os.Stat(sshKey); err == nil {
+			auth, err := publicKeyAuth(sshKey)
+			if err == nil {
+				authMethods = append(authMethods, auth)
+			}
+		}
+	}
+
 	if sshConfig != nil && sshConfig.IdentityFile != "" {
 		if _, err := os.Stat(sshConfig.IdentityFile); err == nil {
 			auth, err := publicKeyAuth(sshConfig.IdentityFile)
@@ -216,36 +235,25 @@ func getAuthMethodsWithConfig(sshConfig *ssh.SSHConfig) ([]gossh.AuthMethod, err
 		}
 	}
 
-	// 2. 尝试指定的密钥文件
-	if attachKeyFile != "" {
-		auth, err := publicKeyAuth(attachKeyFile)
+	if sshKey == "" && (sshConfig == nil || sshConfig.IdentityFile == "") {
+		home, err := os.UserHomeDir()
 		if err == nil {
-			authMethods = append(authMethods, auth)
-		}
-	}
+			defaultKeys := []string{
+				filepath.Join(home, ".ssh", "id_rsa"),
+				filepath.Join(home, ".ssh", "id_ed25519"),
+				filepath.Join(home, ".ssh", "id_ecdsa"),
+			}
 
-	// 3. 尝试默认密钥文件
-	home, err := os.UserHomeDir()
-	if err == nil {
-		defaultKeys := []string{
-			filepath.Join(home, ".ssh", "id_rsa"),
-			filepath.Join(home, ".ssh", "id_ed25519"),
-			filepath.Join(home, ".ssh", "id_ecdsa"),
-		}
-
-		for _, keyFile := range defaultKeys {
-			if _, err := os.Stat(keyFile); err == nil {
-				auth, err := publicKeyAuth(keyFile)
-				if err == nil {
-					authMethods = append(authMethods, auth)
+			for _, keyFile := range defaultKeys {
+				if _, err := os.Stat(keyFile); err == nil {
+					auth, err := publicKeyAuth(keyFile)
+					if err == nil {
+						authMethods = append(authMethods, auth)
+						break
+					}
 				}
 			}
 		}
-	}
-
-	// 4. 尝试 SSH Agent
-	if auth := sshAgentAuth(); auth != nil {
-		authMethods = append(authMethods, auth)
 	}
 
 	if len(authMethods) == 0 {

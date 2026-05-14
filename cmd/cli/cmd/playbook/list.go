@@ -55,9 +55,9 @@ func runPlaybookList(cmd *cobra.Command, args []string) {
 		}
 		if !info.IsDir() && (strings.HasSuffix(path, ".yml") || strings.HasSuffix(path, ".yaml")) {
 			playbooks = append(playbooks, PlaybookInfo{
-				Name:    info.Name(),
-				Path:    path,
-				Size:    info.Size(),
+				Name: info.Name(),
+				Path: path,
+				Size: info.Size(),
 			})
 		}
 		return nil

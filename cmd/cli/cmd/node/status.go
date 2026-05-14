@@ -12,7 +12,7 @@ import (
 // statusFlags
 var (
 	statusAll     bool
-	statusFormat string
+	statusFormat  string
 	statusNoColor bool
 )
 

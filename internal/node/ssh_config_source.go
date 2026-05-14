@@ -24,12 +24,12 @@ type SSHHost struct {
 func NewSSHConfigSource() *SSHConfigSource {
 	homeDir, _ := os.UserHomeDir()
 	configPath := filepath.Join(homeDir, ".ssh", "config")
-	
+
 	s := &SSHConfigSource{
 		configPath: configPath,
 		hosts:      make(map[string]*SSHHost),
 	}
-	
+
 	s.parseConfig()
 	return s
 }

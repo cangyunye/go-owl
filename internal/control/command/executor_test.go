@@ -13,8 +13,8 @@ import (
 type MockNodeExecutor struct {
 	Results map[string]struct {
 		ExitCode int
-		Output  string
-		Err     error
+		Output   string
+		Err      error
 	}
 }
 

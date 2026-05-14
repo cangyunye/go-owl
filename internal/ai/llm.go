@@ -42,8 +42,8 @@ func NewOpenAIClient(config *Config) *OpenAIClient {
 
 // OpenAIRequest 是 OpenAI API 请求结构体
 type OpenAIRequest struct {
-	Model    string     `json:"model"`
-	Messages []Message  `json:"messages"`
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
 }
 
 // OpenAIResponse 是 OpenAI API 响应结构体
@@ -128,9 +128,9 @@ func NewAnthropicClient(config *Config) *AnthropicClient {
 
 // AnthropicRequest 是 Anthropic API 请求结构体
 type AnthropicRequest struct {
-	Model     string  `json:"model"`
-	MaxTokens int     `json:"max_tokens"`
-	System    string  `json:"system,omitempty"`
+	Model     string `json:"model"`
+	MaxTokens int    `json:"max_tokens"`
+	System    string `json:"system,omitempty"`
 	Messages  []struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
@@ -241,13 +241,13 @@ func CreateLLMClient(config *Config) (LLMClient, error) {
 			config.AI.BaseURL = "https://api.openai.com/v1"
 		}
 		return NewOpenAIClient(config), nil
-	
+
 	case "anthropic":
 		if config.AI.Model == "" {
 			config.AI.Model = "claude-3-opus-20240229"
 		}
 		return NewAnthropicClient(config), nil
-	
+
 	case "qwen", "dashscope":
 		if config.AI.BaseURL == "" {
 			config.AI.BaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -256,7 +256,7 @@ func CreateLLMClient(config *Config) (LLMClient, error) {
 			config.AI.Model = "qwen-turbo"
 		}
 		return NewOpenAIClient(config), nil
-	
+
 	case "deepseek":
 		if config.AI.BaseURL == "" {
 			config.AI.BaseURL = "https://api.deepseek.com"
@@ -265,10 +265,10 @@ func CreateLLMClient(config *Config) (LLMClient, error) {
 			config.AI.Model = "deepseek-chat"
 		}
 		return NewOpenAIClient(config), nil
-	
+
 	case "":
 		return NewOpenAIClient(config), nil
-	
+
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", config.AI.Provider)
 	}

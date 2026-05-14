@@ -10,17 +10,17 @@ import (
 )
 
 type Config struct {
-	AI       AIConfig       `yaml:"ai"`
-	Prompts  PromptsConfig  `yaml:"prompts"`
-	Safety   SafetyConfig   `yaml:"safety"`
+	AI      AIConfig      `yaml:"ai"`
+	Prompts PromptsConfig `yaml:"prompts"`
+	Safety  SafetyConfig  `yaml:"safety"`
 }
 
 type AIConfig struct {
-	Provider  string `yaml:"provider"`  // openai, anthropic, dashscope
-	Model     string `yaml:"model"`     // gpt-4o, claude-3, qwen-turbo
-	APIKey    string `yaml:"api_key"`
-	BaseURL   string `yaml:"base_url"`
-	Timeout   int    `yaml:"timeout"` // seconds
+	Provider string `yaml:"provider"` // openai, anthropic, dashscope
+	Model    string `yaml:"model"`    // gpt-4o, claude-3, qwen-turbo
+	APIKey   string `yaml:"api_key"`
+	BaseURL  string `yaml:"base_url"`
+	Timeout  int    `yaml:"timeout"` // seconds
 }
 
 type PromptsConfig struct {
@@ -31,8 +31,8 @@ type PromptsConfig struct {
 }
 
 type SafetyConfig struct {
-	ConfirmDangerous  bool     `yaml:"confirm_dangerous"`
-	AllowedCommands   []string `yaml:"allowed_commands"`
+	ConfirmDangerous bool     `yaml:"confirm_dangerous"`
+	AllowedCommands  []string `yaml:"allowed_commands"`
 	BlockedCommands  []string `yaml:"blocked_commands"`
 }
 
@@ -42,14 +42,14 @@ func DefaultConfig() *Config {
 		apiKey = os.Getenv("OPENAI_API_KEY")
 	}
 	baseURL := os.Getenv("OWL_BASE_URL")
-	
+
 	return &Config{
 		AI: AIConfig{
 			Provider: "openai",
-			Model:   "gpt-4o",
-			APIKey:  apiKey,
-			BaseURL: baseURL,
-			Timeout: 120,
+			Model:    "gpt-4o",
+			APIKey:   apiKey,
+			BaseURL:  baseURL,
+			Timeout:  120,
 		},
 		Prompts: PromptsConfig{
 			System:   "system.md",

@@ -16,6 +16,7 @@
 - 🖥️ **交互式会话**: 支持单节点实时交互和多节点批量管理
 - 📊 **会话历史**: 完整的会话和命令记录，可以随时查看
 - 🔑 **SSH 配置集成**: 自动检测和使用 `~/.ssh/config`
+- 📥 **节点导入导出**: 支持 YAML/JSON 格式批量管理节点
 
 ## 📦 安装
 
@@ -34,10 +35,12 @@ go build -o owl-duckdb ./cmd/cli/main.go
 go build -tags sqlite3 -o owl-sqlite3 ./cmd/cli/main.go
 ```
 
-或者直接运行：
+或者使用 Makefile：
 
 ```bash
-go install github.com/cangyunye/go-owl/cmd/cli@latest
+make build-duckdb    # DuckDB 版本
+make build-sqlite3   # SQLite3 版本
+make all             # 构建所有版本
 ```
 
 > **提示**：如果编译 DuckDB 版本遇到问题，可以切换到 SQLite3 版本。
@@ -47,37 +50,82 @@ go install github.com/cangyunye/go-owl/cmd/cli@latest
 ### 🐣 1. 节点管理
 
 ```bash
-# 添加节点（指定用户名）
-owl node add --name web1 --address 192.168.1.10 --port 22 --user root
-owl node add --name db1 --address 192.168.1.20 --port 22 --user admin
+# 添加节点（指定用户名、密码或密钥）
+owl node add node1 --name web1 --address 192.168.1.10 --port 22 --user root --password "secret"
+owl node add node2 --name web2 --address 192.168.1.11 --port 22 --user root --ssh-key ~/.ssh/id_rsa
 
 # 查看所有节点
 owl node list
+
+# 按分组查看
+owl node list --group web
+
+# 按标签查看
+owl node list --labels env=prod
+
+# 更新节点信息
+owl node update node1 --name new-name --password "new-password"
+owl node update node1 --address 10.0.0.1 --port 2222
 
 # 添加分组和标签
 owl node group add web1 --nodes web1,web2
 
 # 删除节点
-owl node remove web1
+owl node remove node1
 ```
 
-### 📊 2. 批量执行命令
+### 📥 2. 节点导入导出
+
+```bash
+# 生成节点模板
+owl node import --template > nodes.yaml
+owl node import --template --format json > nodes.json
+
+# 导出所有节点到文件
+owl node export -f nodes.yaml
+
+# 按节点 ID 筛选导出
+owl node export --nodes node1,node2 -f filtered.yaml
+
+# 按分组筛选导出
+owl node export --groups web,production -f web-nodes.yaml
+
+# 按标签筛选导出
+owl node export --labels env=prod -f prod-nodes.yaml
+
+# 组合筛选（同时满足所有条件）
+owl node export --groups web --labels env=prod -f web-prod.yaml
+
+# 从文件导入节点
+owl node import -f nodes.yaml
+
+# 导入时覆盖已存在的节点
+owl node import -f nodes.yaml --overwrite
+
+# 导入时跳过已存在的节点
+owl node import -f nodes.yaml --skip-existing
+
+# 预览导入结果（不实际导入）
+owl node import -f nodes.yaml --dry-run
+```
+
+### 📊 3. 批量执行命令
 
 ```bash
 # 在所有节点执行命令
 owl exec --command "uptime"
 
 # 在指定节点执行
-owl exec --nodes web1,web2 --command "df -h"
+owl exec --nodes node1,node2 --command "df -h"
 
 # 按分组执行
 owl exec --group web --command "systemctl status nginx"
 
 # 执行脚本
-owl exec --nodes web1 --script ./deploy.sh
+owl exec --nodes node1 --script ./deploy.sh
 ```
 
-### 📜 3. 剧本执行
+### 📜 4. 剧本执行
 
 编写一个 YAML 剧本：
 
@@ -105,20 +153,20 @@ owl playbook list       # 列出所有剧本
 owl playbook validate   # 验证剧本语法
 ```
 
-### 📁 4. 文件传输
+### 📁 5. 文件传输
 
 ```bash
 # 简单上传
-owl file upload app.tar.gz --nodes web1,web2 --dest /opt/app/
+owl file upload app.tar.gz --nodes node1,node2 --dest /opt/app/
 
 # 自扩散传输（多节点时自动使用）
-owl file transfer app.tar.gz --nodes web1,web2,web3,web4,web5 --dest /opt/app/
+owl file transfer app.tar.gz --nodes node1,node2,node3,node4,node5 --dest /opt/app/
 
 # 下载文件
-owl file download --nodes web1 --source /var/log/app.log --dest ./logs/
+owl file download --nodes node1 --source /var/log/app.log --dest ./logs/
 ```
 
-### 🤖 5. AI 助手
+### 🤖 6. AI 助手
 
 ```bash
 # 交互式模式
@@ -131,17 +179,17 @@ owl ai "在所有 web 节点上执行 uptime"
 owl ai --provider openai --model gpt-4o "查看数据库状态"
 ```
 
-### 🖥️ 6. 交互式会话
+### 🖥️ 7. 交互式会话
 
 ```bash
 # 单节点实时交互
 owl session attach root@192.168.1.10
 
 # 指定 SSH 密钥
-owl session attach --key ~/.ssh/id_rsa web1
+owl session attach --key ~/.ssh/id_rsa node1
 
 # 多节点批量管理
-owl session attach --nodes web1,web2,web3
+owl session attach --nodes node1,node2,node3
 
 # 查看会话历史
 owl session history
@@ -153,9 +201,9 @@ owl session history --session-id sess-abc123
 owl session list
 ```
 
-> 会话功能支持自动检测 `~/.ssh/config`，优先使用密钥认证。
+> 会话功能支持自动读取 `~/.ssh/config`，优先使用密钥认证。
 
-### ⚙️ 7. 设置管理
+### ⚙️ 8. 设置管理
 
 ```bash
 # 查看当前设置
@@ -176,6 +224,7 @@ owl settings reset
 会话功能支持自动读取 `~/.ssh/config`：
 
 ```bash
+# ~/.ssh/config 示例
 # Host myserver
 #     HostName 192.168.1.100
 #     User ubuntu
@@ -208,7 +257,7 @@ ai:
 #### 环境变量配置
 
 ```bash
-export OWL_API_KEY=your-api-key
+export OWL_API_TOKEN=your-api-key
 export OWL_BASE_URL=https://your-proxy-endpoint
 owl ai --provider openai --model gpt-4o
 ```

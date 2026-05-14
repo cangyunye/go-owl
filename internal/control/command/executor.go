@@ -91,11 +91,11 @@ func (e *commandExecutor) Execute(tk *task.Task, nodeMgr node.Manager) error {
 		logger.WithOperation("command"),
 	)
 	history.RecordOperation(&history.Operation{
-		TaskID:  tk.ID,
-		OpType:  "command",
-		Command: commandPayload.Command,
-		Targets: tk.Targets,
-		Status:  "running",
+		TaskID:    tk.ID,
+		OpType:    "command",
+		Command:   commandPayload.Command,
+		Targets:   tk.Targets,
+		Status:    "running",
 		CreatedAt: time.Now(),
 	})
 
@@ -176,11 +176,11 @@ func (e *commandExecutor) Execute(tk *task.Task, nodeMgr node.Manager) error {
 		logger.WithOperation("command"),
 	)
 	history.RecordOperation(&history.Operation{
-		TaskID:  tk.ID,
-		OpType:  "command",
-		Command: commandPayload.Command,
-		Targets: tk.Targets,
-		Status:  finalStatus,
+		TaskID:    tk.ID,
+		OpType:    "command",
+		Command:   commandPayload.Command,
+		Targets:   tk.Targets,
+		Status:    finalStatus,
 		CreatedAt: time.Now(),
 	})
 

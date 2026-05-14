@@ -33,36 +33,36 @@ type NodeDiffusionStatus struct {
 }
 
 type DiffusionTransfer struct {
-	TaskID          string
-	FileName        string
-	FileSize        int64
-	FileHash        string
-	SourcePath      string
-	DestPath        string
-	Tree            *DiffusionTree
-	NodeStatuses    map[string]*NodeDiffusionStatus
-	Status          DiffusionTransferStatus
-	FanOutK         int
-	Threshold       int
-	Error           string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	CompletedAt     *time.Time
+	TaskID       string
+	FileName     string
+	FileSize     int64
+	FileHash     string
+	SourcePath   string
+	DestPath     string
+	Tree         *DiffusionTree
+	NodeStatuses map[string]*NodeDiffusionStatus
+	Status       DiffusionTransferStatus
+	FanOutK      int
+	Threshold    int
+	Error        string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	CompletedAt  *time.Time
 }
 
 func NewDiffusionTransfer(taskID, fileName, sourcePath, destPath string, fileSize int64, fileHash string, tree *DiffusionTree) *DiffusionTransfer {
 	return &DiffusionTransfer{
-		TaskID:        taskID,
-		FileName:      fileName,
-		FileSize:      fileSize,
-		FileHash:      fileHash,
-		SourcePath:    sourcePath,
-		DestPath:      destPath,
-		Tree:          tree,
-		NodeStatuses:  make(map[string]*NodeDiffusionStatus),
-		Status:        DiffusionStatusPending,
-		FanOutK:       tree.FanOutK,
-		Threshold:     tree.Threshold,
+		TaskID:       taskID,
+		FileName:     fileName,
+		FileSize:     fileSize,
+		FileHash:     fileHash,
+		SourcePath:   sourcePath,
+		DestPath:     destPath,
+		Tree:         tree,
+		NodeStatuses: make(map[string]*NodeDiffusionStatus),
+		Status:       DiffusionStatusPending,
+		FanOutK:      tree.FanOutK,
+		Threshold:    tree.Threshold,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -304,16 +304,16 @@ func (s *SubTransferTask) IsCompleted() bool {
 }
 
 type DiffusionScheduler struct {
-	mu         sync.RWMutex
-	transfers  map[string]*DiffusionTransfer
-	subTasks   map[string]*SubTransferTask
+	mu          sync.RWMutex
+	transfers   map[string]*DiffusionTransfer
+	subTasks    map[string]*SubTransferTask
 	treeBuilder TreeBuilder
 }
 
 func NewDiffusionScheduler() *DiffusionScheduler {
 	return &DiffusionScheduler{
-		transfers:  make(map[string]*DiffusionTransfer),
-		subTasks:   make(map[string]*SubTransferTask),
+		transfers:   make(map[string]*DiffusionTransfer),
+		subTasks:    make(map[string]*SubTransferTask),
 		treeBuilder: NewTreeBuilder(DefaultFanOutK, DefaultMaxDepth, DefaultThreshold),
 	}
 }
@@ -430,30 +430,30 @@ func (s *DiffusionScheduler) GetTransferReport(taskID string) (*TransferReport, 
 	}
 
 	report := &TransferReport{
-		TaskID:           taskID,
-		FileName:         transfer.FileName,
-		FileSize:         transfer.FileSize,
-		TotalNodes:       len(transfer.NodeStatuses),
-		SuccessCount:     transfer.GetSuccessCount(),
-		FailureCount:     transfer.GetFailureCount(),
-		OverallProgress:   transfer.GetOverallProgress(),
-		Status:           string(transfer.Status),
-		UseDiffusion:     transfer.ShouldUseDiffusion(),
-		CreatedAt:        transfer.CreatedAt,
-		CompletedAt:       transfer.CompletedAt,
-		NodeReports:       make([]NodeReport, 0),
+		TaskID:          taskID,
+		FileName:        transfer.FileName,
+		FileSize:        transfer.FileSize,
+		TotalNodes:      len(transfer.NodeStatuses),
+		SuccessCount:    transfer.GetSuccessCount(),
+		FailureCount:    transfer.GetFailureCount(),
+		OverallProgress: transfer.GetOverallProgress(),
+		Status:          string(transfer.Status),
+		UseDiffusion:    transfer.ShouldUseDiffusion(),
+		CreatedAt:       transfer.CreatedAt,
+		CompletedAt:     transfer.CompletedAt,
+		NodeReports:     make([]NodeReport, 0),
 	}
 
 	for nodeID, status := range transfer.NodeStatuses {
 		report.NodeReports = append(report.NodeReports, NodeReport{
-			NodeID:     nodeID,
-			ParentID:   status.ParentID,
-			IsSource:   status.IsSource,
-			Status:     string(status.Status),
-			Progress:   status.Progress,
-			Error:      status.Error,
-			StartTime:  status.StartTime,
-			EndTime:    status.EndTime,
+			NodeID:    nodeID,
+			ParentID:  status.ParentID,
+			IsSource:  status.IsSource,
+			Status:    string(status.Status),
+			Progress:  status.Progress,
+			Error:     status.Error,
+			StartTime: status.StartTime,
+			EndTime:   status.EndTime,
 		})
 	}
 
@@ -476,14 +476,14 @@ type TransferReport struct {
 }
 
 type NodeReport struct {
-	NodeID     string
-	ParentID   string
-	IsSource   bool
-	Status     string
-	Progress   float64
-	Error      string
-	StartTime  time.Time
-	EndTime    *time.Time
+	NodeID    string
+	ParentID  string
+	IsSource  bool
+	Status    string
+	Progress  float64
+	Error     string
+	StartTime time.Time
+	EndTime   *time.Time
 }
 
 func calculateChunks(fileSize, chunkSize int64) int64 {

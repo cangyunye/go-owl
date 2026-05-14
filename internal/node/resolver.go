@@ -6,12 +6,12 @@ import (
 )
 
 type NodeResolver struct {
-	apiSource    *APINodeSource
-	localSource  *LocalSource
-	sshConfig    *SSHConfigSource
-	cache        map[string]*ResolvedNode
-	cacheMu      sync.RWMutex
-	preferAPI    bool
+	apiSource   *APINodeSource
+	localSource *LocalSource
+	sshConfig   *SSHConfigSource
+	cache       map[string]*ResolvedNode
+	cacheMu     sync.RWMutex
+	preferAPI   bool
 }
 
 type ResolvedNode struct {
@@ -134,14 +134,14 @@ func (r *NodeResolver) resolveFromSSHConfig(name string) (*ResolvedNode, error) 
 	}
 
 	node := &ResolvedNode{
-		ID:          sshNode.Name,
-		Name:        sshNode.Name,
-		Address:     sshNode.HostName,
-		Port:        sshNode.Port,
-		User:        sshNode.User,
-		SSHKey:      sshNode.IdentityFile,
-		ProxyJump:   sshNode.ProxyJump,
-		Source:      "ssh-config",
+		ID:        sshNode.Name,
+		Name:      sshNode.Name,
+		Address:   sshNode.HostName,
+		Port:      sshNode.Port,
+		User:      sshNode.User,
+		SSHKey:    sshNode.IdentityFile,
+		ProxyJump: sshNode.ProxyJump,
+		Source:    "ssh-config",
 	}
 
 	r.cacheMu.Lock()

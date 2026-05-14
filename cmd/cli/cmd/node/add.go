@@ -16,6 +16,9 @@ var (
 	addAddress   string
 	addPort      int
 	addUser      string
+	addPassword  string
+	addSSHKey    string
+	addProxyJump string
 	addGroups    string
 	addLabels    []string
 )
@@ -43,6 +46,12 @@ func NewAddCmd() *cobra.Command {
 		"节点端口 (默认: 8080)")
 	addCmd.Flags().StringVarP(&addUser, "user", "u", "",
 		"SSH 用户 (默认: 当前用户)")
+	addCmd.Flags().StringVar(&addPassword, "password", "",
+		"SSH 密码")
+	addCmd.Flags().StringVar(&addSSHKey, "ssh-key", "",
+		"SSH 私钥文件路径")
+	addCmd.Flags().StringVar(&addProxyJump, "proxy-jump", "",
+		"跳板机地址")
 	addCmd.Flags().StringVar(&addGroups, "groups", "",
 		"分组列表 (逗号分隔)")
 	addCmd.Flags().StringSliceVarP(&addLabels, "label", "l", nil,
@@ -91,6 +100,9 @@ func runAdd(cmd *cobra.Command, args []string) {
 		Address:   addAddress,
 		Port:      addPort,
 		User:      addUser,
+		Password:  addPassword,
+		SSHKey:    addSSHKey,
+		ProxyJump: addProxyJump,
 		Status:    "offline", // 新添加节点默认离线
 		Groups:    groups,
 		Labels:    labels,
@@ -108,8 +120,20 @@ func runAdd(cmd *cobra.Command, args []string) {
 	store.Save()
 
 	fmt.Printf("✓ Node '%s' added successfully\n", nodeID)
-	fmt.Printf("  Name:    %s\n", node.Name)
-	fmt.Printf("  Address: %s:%d\n", node.Address, node.Port)
+	fmt.Printf("  Name:       %s\n", node.Name)
+	fmt.Printf("  Address:    %s:%d\n", node.Address, node.Port)
+	if node.User != "" {
+		fmt.Printf("  User:       %s\n", node.User)
+	}
+	if node.Password != "" {
+		fmt.Printf("  Password:   [已设置]\n")
+	}
+	if node.SSHKey != "" {
+		fmt.Printf("  SSH Key:    %s\n", node.SSHKey)
+	}
+	if node.ProxyJump != "" {
+		fmt.Printf("  ProxyJump:  %s\n", node.ProxyJump)
+	}
 	if len(node.Groups) > 0 {
 		fmt.Printf("  Groups:  %s\n", joinStrings(node.Groups, ", "))
 	}

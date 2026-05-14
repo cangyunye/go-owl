@@ -12,10 +12,10 @@ type MockExecutor struct{}
 
 func (m *MockExecutor) Execute(playbook *ParsedPlaybook, targets []*model.Node, extraVars map[string]interface{}) (*PlaybookExecution, error) {
 	return &PlaybookExecution{
-		ID:       fmt.Sprintf("mock-exec-%d", time.Now().UnixNano()),
-		Status:   ExecutionStatusCompleted,
-		Results:  make(map[string][]*TaskResult),
-		Vars:     make(map[string]interface{}),
+		ID:      fmt.Sprintf("mock-exec-%d", time.Now().UnixNano()),
+		Status:  ExecutionStatusCompleted,
+		Results: make(map[string][]*TaskResult),
+		Vars:    make(map[string]interface{}),
 	}, nil
 }
 
@@ -60,11 +60,11 @@ func TestPlaybookExecution(t *testing.T) {
 
 func TestTaskResult(t *testing.T) {
 	result := &TaskResult{
-		TaskName: "test task",
-		NodeID:   "node-1",
-		Action:   "command",
-		ExitCode: 0,
-		Output:   "success",
+		TaskName:  "test task",
+		NodeID:    "node-1",
+		Action:    "command",
+		ExitCode:  0,
+		Output:    "success",
 		StartTime: time.Now(),
 		EndTime:   time.Now(),
 	}
@@ -224,7 +224,7 @@ func TestParallelExecutor_GetExecution(t *testing.T) {
 	executor := NewParallelExecutor(mockExec, 1)
 
 	execID, _ := executor.ExecuteAsync(nil, nil, nil)
-	
+
 	time.Sleep(10 * time.Millisecond)
 	exec, ok := executor.GetExecution(execID)
 	if !ok {
@@ -265,9 +265,9 @@ func TestTaskContext(t *testing.T) {
 		Task: &ParsedTask{
 			Name: "test task",
 		},
-		NodeID: "node-1",
-		Item:   "item1",
-		Vars:   map[string]interface{}{"key": "value"},
+		NodeID:            "node-1",
+		Item:              "item1",
+		Vars:              map[string]interface{}{"key": "value"},
 		RegisteredResults: make(map[string]interface{}),
 	}
 
@@ -332,8 +332,8 @@ func TestExecutor_ExecuteTask(t *testing.T) {
 	executor := NewExecutor(mockNodeMgr, nil, nil, nil)
 
 	exec := &PlaybookExecution{
-		ID:    "exec-1",
-		Vars:  make(map[string]interface{}),
+		ID:      "exec-1",
+		Vars:    make(map[string]interface{}),
 		Results: make(map[string][]*TaskResult),
 		TargetNodes: []*model.Node{
 			{ID: "node-1"},
@@ -436,7 +436,7 @@ func TestPlaybookExecutor_executeTaskInternal_WithLoop(t *testing.T) {
 		TargetNodes: []*model.Node{
 			{ID: "node-1"},
 		},
-		Vars: map[string]interface{}{},
+		Vars:    map[string]interface{}{},
 		Results: make(map[string][]*TaskResult),
 	}
 

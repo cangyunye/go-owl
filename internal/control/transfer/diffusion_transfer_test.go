@@ -8,9 +8,9 @@ import (
 
 func TestNewDiffusionTransfer(t *testing.T) {
 	tree := &DiffusionTree{
-		Root:       "control",
-		FanOutK:    3,
-		Threshold:  5,
+		Root:      "control",
+		FanOutK:   3,
+		Threshold: 5,
 		Nodes:     make(map[string]*TreeNode),
 	}
 
@@ -44,8 +44,8 @@ func TestDiffusionTransfer_InitializeStatuses(t *testing.T) {
 		FanOutK: 3,
 		Nodes: map[string]*TreeNode{
 			"control": {ID: "control", Children: []string{"node-1", "node-2"}},
-			"node-1": {ID: "node-1", ParentID: "control", Children: []string{}},
-			"node-2": {ID: "node-2", ParentID: "control", Children: []string{}},
+			"node-1":  {ID: "node-1", ParentID: "control", Children: []string{}},
+			"node-2":  {ID: "node-2", ParentID: "control", Children: []string{}},
 		},
 	}
 
@@ -485,9 +485,9 @@ func TestDiffusionScheduler_GetTransferReport(t *testing.T) {
 
 func TestCalculateChunks(t *testing.T) {
 	tests := []struct {
-		fileSize   int64
-		chunkSize  int64
-		expected   int64
+		fileSize  int64
+		chunkSize int64
+		expected  int64
 	}{
 		{1024, 256, 4},
 		{1000, 256, 4},

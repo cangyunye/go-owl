@@ -14,12 +14,12 @@ go-owl 支持通过外部 API 获取节点连接信息，实现与 CMDB、资产
 export OWL_API_ENDPOINT="https://cmdb.example.com/api/v1/nodes"
 ```
 
-### OWL_API_KEY
+### OWL_API_TOKEN
 
 指定 API 认证密钥，用于请求鉴权。
 
 ```bash
-export OWL_API_KEY="your-api-key-here"
+export OWL_API_TOKEN="your-api-key-here"
 ```
 
 ### OWL_API_TIMEOUT
@@ -53,7 +53,7 @@ export OWL_API_TIMEOUT="60"
 ```http
 GET /api/v1/nodes HTTP/1.1
 Host: cmdb.example.com
-Authorization: Bearer {OWL_API_KEY}
+Authorization: Bearer {OWL_API_TOKEN}
 Content-Type: application/json
 ```
 
@@ -111,7 +111,7 @@ Content-Type: application/json
 ```http
 GET /api/v1/nodes/{node_id} HTTP/1.1
 Host: cmdb.example.com
-Authorization: Bearer {OWL_API_KEY}
+Authorization: Bearer {OWL_API_TOKEN}
 Content-Type: application/json
 ```
 
@@ -150,7 +150,7 @@ Content-Type: application/json
 ```http
 GET /api/v1/nodes?name=web-server-01 HTTP/1.1
 Host: cmdb.example.com
-Authorization: Bearer {OWL_API_KEY}
+Authorization: Bearer {OWL_API_TOKEN}
 Content-Type: application/json
 ```
 
@@ -199,19 +199,19 @@ type NodeListResponse struct {
 ### Bearer Token（推荐）
 
 ```http
-Authorization: Bearer {OWL_API_KEY}
+Authorization: Bearer {OWL_API_TOKEN}
 ```
 
 ### API Key Header
 
 ```http
-X-API-Key: {OWL_API_KEY}
+X-API-Key: {OWL_API_TOKEN}
 ```
 
 ### Query Parameter
 
 ```http
-GET /api/v1/nodes?api_key={OWL_API_KEY}
+GET /api/v1/nodes?api_key={OWL_API_TOKEN}
 ```
 
 ## 错误处理

@@ -15,10 +15,10 @@ type ExecutionStatus string
 
 const (
 	ExecutionStatusPending   ExecutionStatus = "pending"
-	ExecutionStatusRunning  ExecutionStatus = "running"
+	ExecutionStatusRunning   ExecutionStatus = "running"
 	ExecutionStatusCompleted ExecutionStatus = "completed"
-	ExecutionStatusFailed   ExecutionStatus = "failed"
-	ExecutionStatusAborted  ExecutionStatus = "aborted"
+	ExecutionStatusFailed    ExecutionStatus = "failed"
+	ExecutionStatusAborted   ExecutionStatus = "aborted"
 )
 
 type TaskResult struct {
@@ -37,12 +37,12 @@ type PlaybookExecution struct {
 	ID          string
 	Playbook    *ParsedPlaybook
 	TargetNodes []*model.Node
-	Status     ExecutionStatus
-	Results    map[string][]*TaskResult
-	Vars       map[string]interface{}
-	Error      string
-	StartTime  time.Time
-	EndTime    *time.Time
+	Status      ExecutionStatus
+	Results     map[string][]*TaskResult
+	Vars        map[string]interface{}
+	Error       string
+	StartTime   time.Time
+	EndTime     *time.Time
 }
 
 type Executor interface {
@@ -81,9 +81,9 @@ func NewDefaultActionRunner(cmdExec command.CommandExecutor) *defaultActionRunne
 
 func (r *defaultActionRunner) RunAction(action string, args map[string]interface{}, nodeID string, vars map[string]interface{}) (*TaskResult, error) {
 	result := &TaskResult{
-		TaskName: action,
-		NodeID:   nodeID,
-		Action:   action,
+		TaskName:  action,
+		NodeID:    nodeID,
+		Action:    action,
 		StartTime: time.Now(),
 	}
 
