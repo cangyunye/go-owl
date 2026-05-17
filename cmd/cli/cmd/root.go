@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/ai"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/async"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/exec"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/file"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/history"
@@ -61,6 +62,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(ai.NewAICmd())
 	rootCmd.AddCommand(history.NewHistoryCmd())
 	rootCmd.AddCommand(session.NewCmd())
+	rootCmd.AddCommand(async.NewAsyncCmd())
 	rootCmd.AddCommand(tui.NewTuiCmd())
 
 	// 添加版本信息

@@ -9,20 +9,32 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cangyunye/go-owl/internal/control/async"
 	"github.com/cangyunye/go-owl/internal/control/command"
 	"github.com/cangyunye/go-owl/internal/node"
+	"github.com/cangyunye/go-owl/internal/ssh"
 )
 
 var (
-	execNodes    string
-	execGroup    string
-	execLabel    []string
-	execStatus   string
-	execTimeout  time.Duration
-	execAsync    bool
-	execFormat   string
-	execNoColor  bool
-	execParallel bool
+	execNodes              string
+	execGroup              string
+	execLabel              []string
+	execStatus             string
+	execTimeout            time.Duration
+	execConnectTimeout     time.Duration
+	execCommandTimeout     time.Duration
+	execRetry              int
+	execRetryInterval      time.Duration
+	execRetryMaxInterval   time.Duration
+	execNoRetry            bool
+	execAsync              bool
+	execAsyncTimeout       time.Duration
+	execAsyncPollInterval  time.Duration
+	execAsyncMaxPollCount  int
+	execAsyncRemoteDir     string
+	execFormat             string
+	execNoColor            bool
+	execParallel           bool
 )
 
 func NewRunCmd() *cobra.Command {
@@ -32,9 +44,16 @@ func NewRunCmd() *cobra.Command {
 		Long: `在指定节点上执行 Shell 命令，自动管理连接。
 
 示例：
-  owl exec run "uptime" --nodes node1,node2
+  owl exec run uptime --nodes node1,node2
   owl exec run "df -h" --group web
-  owl exec run "service nginx restart" --timeout 60s`,
+  owl exec run "systemctl status nginx" --label env=prod
+  owl exec run uptime --status online
+  owl exec run "sleep 30" --timeout 10s
+  owl exec run "uptime" --output json
+  owl exec run "df -h" --output detail
+  owl exec run "sleep 5" --connect-timeout 5s --command-timeout 30s
+  owl exec run "curl api.example.com" --retry 3 --retry-interval 2s
+  owl exec run "long-running-script.sh" --async`,
 		Args: cobra.ExactArgs(1),
 		Run:  runExecRun,
 	}
@@ -48,11 +67,31 @@ func NewRunCmd() *cobra.Command {
 	runCmd.Flags().StringVar(&execStatus, "status", "",
 		"按状态选择节点: online, offline")
 	runCmd.Flags().DurationVar(&execTimeout, "timeout", 60*time.Second,
+		"命令执行超时时间 (已废弃，推荐使用 --connect-timeout 和 --command-timeout)")
+	runCmd.Flags().DurationVar(&execConnectTimeout, "connect-timeout", 10*time.Second,
+		"SSH 连接超时时间")
+	runCmd.Flags().DurationVar(&execCommandTimeout, "command-timeout", 30*time.Second,
 		"命令执行超时时间")
 	runCmd.Flags().BoolVar(&execParallel, "parallel", true,
 		"并行执行")
+	runCmd.Flags().IntVar(&execRetry, "retry", 3,
+		"最大重试次数")
+	runCmd.Flags().DurationVar(&execRetryInterval, "retry-interval", 1*time.Second,
+		"初始重试间隔")
+	runCmd.Flags().DurationVar(&execRetryMaxInterval, "retry-max-interval", 30*time.Second,
+		"最大重试间隔")
+	runCmd.Flags().BoolVar(&execNoRetry, "no-retry", false,
+		"禁用重试")
 	runCmd.Flags().BoolVar(&execAsync, "async", false,
-		"异步执行，不等待结果")
+		"异步执行")
+	runCmd.Flags().DurationVar(&execAsyncTimeout, "async-timeout", 1*time.Hour,
+		"异步任务超时时间")
+	runCmd.Flags().DurationVar(&execAsyncPollInterval, "async-poll-interval", 10*time.Second,
+		"异步任务轮询间隔 (0 表示 fire-and-forget)")
+	runCmd.Flags().IntVar(&execAsyncMaxPollCount, "async-max-poll-count", 3600,
+		"异步任务最大轮询次数")
+	runCmd.Flags().StringVar(&execAsyncRemoteDir, "async-remote-dir", "/tmp/owl",
+		"异步任务远程工作目录")
 	runCmd.Flags().StringVarP(&execFormat, "output", "o", "simple",
 		"输出格式: simple, detail, json")
 	runCmd.Flags().BoolVar(&execNoColor, "no-color", false,
@@ -123,7 +162,46 @@ func runExecRun(cmd *cobra.Command, args []string) {
 
 	opts := &command.ExecuteOptions{
 		Parallel: execParallel,
-		Timeout:  execTimeout,
+	}
+
+	if execConnectTimeout > 0 || execCommandTimeout > 0 {
+		opts.TimeoutConfig = &ssh.TimeoutConfig{
+			ConnectTimeout: execConnectTimeout,
+			CommandTimeout: execCommandTimeout,
+		}
+	} else if execTimeout > 0 {
+		opts.Timeout = execTimeout
+	}
+
+	if !execNoRetry && execRetry > 0 {
+		opts.RetryConfig = &command.RetryConfig{
+			MaxRetries:    execRetry,
+			InitialInterval: execRetryInterval,
+			MaxInterval:   execRetryMaxInterval,
+		}
+	}
+
+	if execAsync {
+		asyncOpts := &async.AsyncOptions{
+			Timeout:      execAsyncTimeout,
+			PollInterval: execAsyncPollInterval,
+			MaxPollCount: execAsyncMaxPollCount,
+			RemoteBaseDir: execAsyncRemoteDir,
+		}
+
+		tasks, err := executor.RunAsync(ctx, targetNodeIDs, execmd, asyncOpts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 启动异步任务失败: %v\n", err)
+			os.Exit(1)
+		}
+
+		for _, task := range tasks {
+			fmt.Printf("🔄 [%s] 异步任务已启动 - ID: %s\n", task.NodeID, task.ID)
+			if task.Error != nil {
+				fmt.Printf("   错误: %v\n", task.Error)
+			}
+		}
+		return
 	}
 
 	results := executor.Run(ctx, targetNodeIDs, execmd, opts)

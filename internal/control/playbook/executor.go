@@ -9,16 +9,17 @@ import (
 	"github.com/cangyunye/go-owl/internal/control/command"
 	"github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/cangyunye/go-owl/internal/control/task"
+	"github.com/cangyunye/go-owl/internal/ssh"
 )
 
 type ExecutionStatus string
 
 const (
 	ExecutionStatusPending   ExecutionStatus = "pending"
-	ExecutionStatusRunning   ExecutionStatus = "running"
+	ExecutionStatusRunning  ExecutionStatus = "running"
 	ExecutionStatusCompleted ExecutionStatus = "completed"
-	ExecutionStatusFailed    ExecutionStatus = "failed"
-	ExecutionStatusAborted   ExecutionStatus = "aborted"
+	ExecutionStatusFailed   ExecutionStatus = "failed"
+	ExecutionStatusAborted  ExecutionStatus = "aborted"
 )
 
 type TaskResult struct {
@@ -45,6 +46,11 @@ type PlaybookExecution struct {
 	EndTime     *time.Time
 }
 
+type PlaybookOptions struct {
+	TimeoutConfig *ssh.TimeoutConfig
+	RetryConfig   *command.RetryConfig
+}
+
 type Executor interface {
 	Execute(playbook *ParsedPlaybook, targets []*model.Node, extraVars map[string]interface{}) (*PlaybookExecution, error)
 	ExecuteTask(exec *PlaybookExecution, task *ParsedTask) ([]*TaskResult, error)
@@ -56,6 +62,7 @@ type playbookExecutor struct {
 	cmdExec   command.CommandExecutor
 	taskSched task.Scheduler
 	runner    ActionRunner
+	options   *PlaybookOptions
 }
 
 func NewExecutor(nodeMgr node.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, runner ActionRunner) Executor {
@@ -67,19 +74,34 @@ func NewExecutor(nodeMgr node.Manager, cmdExec command.CommandExecutor, taskSche
 	}
 }
 
+func NewExecutorWithOptions(nodeMgr node.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, runner ActionRunner, opts *PlaybookOptions) Executor {
+	return &playbookExecutor{
+		nodeMgr:   nodeMgr,
+		cmdExec:   cmdExec,
+		taskSched: taskSched,
+		runner:    runner,
+		options:   opts,
+	}
+}
+
 type ActionRunner interface {
-	RunAction(action string, args map[string]interface{}, nodeID string, vars map[string]interface{}) (*TaskResult, error)
+	RunAction(action string, args map[string]interface{}, nodeID string, vars map[string]interface{}, actionOpts *ActionOptions) (*TaskResult, error)
 }
 
 type defaultActionRunner struct {
 	cmdExec command.CommandExecutor
+	opts    *PlaybookOptions
 }
 
 func NewDefaultActionRunner(cmdExec command.CommandExecutor) *defaultActionRunner {
 	return &defaultActionRunner{cmdExec: cmdExec}
 }
 
-func (r *defaultActionRunner) RunAction(action string, args map[string]interface{}, nodeID string, vars map[string]interface{}) (*TaskResult, error) {
+func NewDefaultActionRunnerWithOptions(cmdExec command.CommandExecutor, opts *PlaybookOptions) *defaultActionRunner {
+	return &defaultActionRunner{cmdExec: cmdExec, opts: opts}
+}
+
+func (r *defaultActionRunner) RunAction(action string, args map[string]interface{}, nodeID string, vars map[string]interface{}, actionOpts *ActionOptions) (*TaskResult, error) {
 	result := &TaskResult{
 		TaskName:  action,
 		NodeID:    nodeID,
@@ -98,12 +120,20 @@ func (r *defaultActionRunner) RunAction(action string, args map[string]interface
 		cmd = fmt.Sprintf("echo 'Action: %s, Args: %v'", action, args)
 	}
 
+	mergedOpts := MergeActionOptions(actionOpts, r.getGlobalDefaults())
+
 	if r.cmdExec != nil {
-		taskResult, err := r.cmdExec.ExecuteOnNode(nodeID, cmd, 5*time.Minute)
+		timeout := mergedOpts.GetTimeout()
+		taskResult, err := r.cmdExec.ExecuteOnNode(nodeID, cmd, timeout)
 		if err != nil {
-			result.Error = err
-			result.EndTime = time.Now()
-			return result, err
+			if mergedOpts.ShouldRetry() {
+				taskResult, err = r.executeWithRetry(nodeID, cmd, timeout, mergedOpts.GetRetryConfig())
+			}
+			if err != nil {
+				result.Error = err
+				result.EndTime = time.Now()
+				return result, err
+			}
 		}
 		result.ExitCode = taskResult.ExitCode
 		result.Output = taskResult.Output
@@ -115,6 +145,60 @@ func (r *defaultActionRunner) RunAction(action string, args map[string]interface
 	result.EndTime = time.Now()
 
 	return result, nil
+}
+
+func (r *defaultActionRunner) getTimeout() time.Duration {
+	if r.opts != nil && r.opts.TimeoutConfig != nil {
+		return r.opts.TimeoutConfig.CommandTimeout
+	}
+	return 5 * time.Minute
+}
+
+func (r *defaultActionRunner) getGlobalDefaults() *PlaybookDefaults {
+	if r.opts == nil {
+		return DefaultPlaybookDefaults()
+	}
+	return &PlaybookDefaults{
+		TimeoutConfig: r.opts.TimeoutConfig,
+		RetryConfig:   r.opts.RetryConfig,
+	}
+}
+
+func (r *defaultActionRunner) executeWithRetry(nodeID, cmd string, timeout time.Duration, retryConfig *command.RetryConfig) (*task.TaskResult, error) {
+	maxRetries := retryConfig.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = 3
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		result, err := r.cmdExec.ExecuteOnNode(nodeID, cmd, timeout)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+
+		if attempt < maxRetries && command.IsRetryable(err, retryConfig) {
+			interval := r.calculateRetryInterval(attempt, retryConfig)
+			time.Sleep(interval)
+			continue
+		}
+		break
+	}
+
+	return nil, lastErr
+}
+
+func (r *defaultActionRunner) calculateRetryInterval(attempt int, config *command.RetryConfig) time.Duration {
+	interval := config.InitialInterval
+	for i := 0; i < attempt; i++ {
+		interval *= 2
+		if interval > config.MaxInterval {
+			interval = config.MaxInterval
+			break
+		}
+	}
+	return interval
 }
 
 type TaskContext struct {
@@ -266,10 +350,10 @@ func (e *playbookExecutor) executeTaskForNode(exec *PlaybookExecution, task *Par
 	}
 
 	if e.runner == nil {
-		e.runner = NewDefaultActionRunner(e.cmdExec)
+		e.runner = NewDefaultActionRunnerWithOptions(e.cmdExec, e.options)
 	}
 
-	result, err := e.runner.RunAction(task.Action, task.Args, nodeID, taskVars)
+	result, err := e.runner.RunAction(task.Action, task.Args, nodeID, taskVars, task.ActionOpts)
 	result.TaskName = task.Name
 
 	if err != nil && task.Options.FailedWhen != "" {

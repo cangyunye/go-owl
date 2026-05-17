@@ -2,55 +2,54 @@ package node
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
-	"golang.org/x/crypto/ssh"
 )
 
+var checkAll bool
 var checkTimeout time.Duration
 var checkWorkers int
 var checkUpdateStatus bool
-var checkAll bool
 
-type checkResult struct {
-	node     *common.NodeInfo
-	reachable bool
-	err      error
-}
-
-// NewCheckCmd 创建节点 Check 命令
+// NewCheckCmd 创建 check 命令
 func NewCheckCmd() *cobra.Command {
 	checkCmd := &cobra.Command{
-		Use:   "check",
-		Short: "检查节点 SSH 连接状态",
-		Long: `通过 SSH 连接测试节点是否可达，并可选择性地更新节点状态
-
-会尝试 SSH 连接每个节点，连接成功则更新 Status 为 'online'，
-连接失败则更新为 'offline'。
-
-示例：
+		Use:   "check [node_id...]",
+		Short: "检查节点 SSH 连通性",
+		Long:  `检查一个或多个节点的 SSH 连通性，并可选择性地更新状态。`,
+		Example: `# 检查单个节点
   owl node check node1
+
+  # 检查多个节点
   owl node check node1 node2 node3
+
+  # 检查所有节点
   owl node check --all
-  owl node check --all --update`,
+
+  # 检查并更新节点状态
+  owl node check --all --update
+
+  # 调整并发数和超时时间
+  owl node check --all --update --workers 10 --timeout 30s`,
 		Run: func(cmd *cobra.Command, args []string) {
 			runCheck(args)
 		},
 	}
 
-	checkCmd.Flags().DurationVarP(&checkTimeout, "timeout", "t", 10*time.Second, "SSH 连接超时时间")
-	checkCmd.Flags().BoolVarP(&checkUpdateStatus, "update", "u", false, "更新节点状态")
 	checkCmd.Flags().BoolVar(&checkAll, "all", false, "检查所有节点")
-	checkCmd.Flags().IntVarP(&checkWorkers, "workers", "w", 5, "并发检查的工作协程数")
+	checkCmd.Flags().DurationVarP(&checkTimeout, "timeout", "t", 10*time.Second, "每个检查的超时时间")
+	checkCmd.Flags().IntVarP(&checkWorkers, "workers", "w", 5, "并发工作协程数")
+	checkCmd.Flags().BoolVarP(&checkUpdateStatus, "update", "u", false, "检查后更新节点状态")
 
 	return checkCmd
 }
 
-func runCheck(args []string) {
+func runCheck(nodeIDs []string) {
 	store := common.GetNodeStore()
 
 	var nodes []*common.NodeInfo
@@ -62,47 +61,66 @@ func runCheck(args []string) {
 			fmt.Fprintf(os.Stderr, "获取节点列表失败: %v\n", err)
 			os.Exit(1)
 		}
-	} else if len(args) > 0 {
-		for _, nodeID := range args {
-			node, err := store.Get(nodeID)
+	} else if len(nodeIDs) > 0 {
+		for _, id := range nodeIDs {
+			node, err := store.Get(id)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "警告: 节点 '%s' 不存在，跳过\n", nodeID)
+				fmt.Fprintf(os.Stderr, "警告: 节点 '%s' 未找到，跳过\n", id)
 				continue
 			}
 			nodes = append(nodes, node)
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "错误: 请指定要检查的节点或使用 --all")
-		fmt.Fprintln(os.Stderr, "使用 'owl node check --help' 查看帮助")
+		fmt.Fprintln(os.Stderr, "错误: 请指定节点 ID 或使用 --all")
+		fmt.Fprintln(os.Stderr, "使用 'owl node check --help' 获取更多信息")
 		os.Exit(1)
 	}
 
 	if len(nodes) == 0 {
-		fmt.Println("没有可检查的节点")
+		fmt.Println("没有节点需要检查")
 		return
 	}
 
+	statusText := ""
 	if checkUpdateStatus {
-		fmt.Printf("开始 SSH 连接检查 %d 个节点 (超时: %s, 并发: %d)...\n\n", len(nodes), checkTimeout, checkWorkers)
-	} else {
-		fmt.Printf("开始 SSH 连接检查 %d 个节点 (超时: %s, 并发: %d, 不更新状态)...\n\n", len(nodes), checkTimeout, checkWorkers)
+		statusText = " (将更新状态)"
+	}
+	fmt.Printf("正在检查 %d 个节点... (超时: %s, 并发: %d)%s\n\n", 
+		len(nodes), checkTimeout, checkWorkers, statusText)
+
+	type result struct {
+		node    *common.NodeInfo
+		success bool
+		err     error
 	}
 
-	resultChan := make(chan checkResult, len(nodes))
+	resultChan := make(chan result, len(nodes))
 	var wg sync.WaitGroup
 
-	// 控制并发数
+	// 使用信号量控制并发数
 	semaphore := make(chan struct{}, checkWorkers)
 
 	for _, node := range nodes {
 		wg.Add(1)
 		go func(n *common.NodeInfo) {
 			defer wg.Done()
-			semaphore <- struct{}{}        // 获取信号量
-			defer func() { <-semaphore }() // 释放信号量
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
 
-			result := checkSSHConnection(n)
-			resultChan <- result
+			// 尝试 TCP 连接到 SSH 端口
+			address := fmt.Sprintf("%s:%d", n.Address, n.Port)
+			conn, err := net.DialTimeout("tcp", address, checkTimeout)
+
+			r := result{node: n}
+			if err == nil {
+				conn.Close()
+				r.success = true
+			} else {
+				r.success = false
+				r.err = err
+			}
+
+			resultChan <- r
 		}(node)
 	}
 
@@ -115,96 +133,44 @@ func runCheck(args []string) {
 	online := 0
 	offline := 0
 
-	for result := range resultChan {
-		if result.reachable {
-			fmt.Printf("✓ %s (%s:%d): 在线\n", result.node.ID, result.node.Address, result.node.Port)
+	for r := range resultChan {
+		if r.success {
+			fmt.Printf("  ✓ %s (%s:%d) - 在线", r.node.ID, r.node.Address, r.node.Port)
 			online++
+			if checkUpdateStatus {
+				r.node.Status = "online"
+				if err := store.Update(r.node); err != nil {
+					fmt.Printf(" [更新失败: %v]", err)
+				} else {
+					fmt.Printf(" [状态已更新]")
+				}
+			}
+			fmt.Println()
 		} else {
-			fmt.Printf("✗ %s (%s:%d): 离线 - %v\n", result.node.ID, result.node.Address, result.node.Port, result.err)
+			fmt.Printf("  ✗ %s (%s:%d) - 离线", r.node.ID, r.node.Address, r.node.Port)
 			offline++
-		}
-
-		// 如果需要更新状态
-		if checkUpdateStatus {
-			status := "offline"
-			if result.reachable {
-				status = "online"
+			if checkUpdateStatus {
+				r.node.Status = "offline"
+				if err := store.Update(r.node); err != nil {
+					fmt.Printf(" [更新失败: %v]", err)
+				} else {
+					fmt.Printf(" [状态已更新]")
+				}
 			}
-
-			updatedNode := *result.node
-			updatedNode.Status = status
-
-			if err := store.Update(&updatedNode); err != nil {
-				fmt.Fprintf(os.Stderr, "  更新节点 %s 状态失败: %v\n", result.node.ID, err)
-			} else {
-				fmt.Printf("  → 状态已更新为: %s\n", status)
-			}
+			fmt.Printf(" - %v\n", r.err)
 		}
 	}
 
-	fmt.Printf("\n统计: %d 在线, %d 离线, 总计 %d\n", online, offline, len(nodes))
+	fmt.Printf("\n总结: %d 在线, %d 离线, 共 %d\n", online, offline, len(nodes))
 
-	if checkUpdateStatus && (online > 0 || offline > 0) {
+	if checkUpdateStatus {
 		// 保存更改
 		if inMemStore, ok := store.(*common.InMemoryNodeStore); ok {
 			if err := inMemStore.Save(); err != nil {
 				fmt.Fprintf(os.Stderr, "保存节点状态失败: %v\n", err)
 			} else {
-				fmt.Println("节点状态已保存")
+				fmt.Println("节点状态保存成功")
 			}
 		}
 	}
-
-	if offline > 0 {
-		os.Exit(1)
-	}
-}
-
-func checkSSHConnection(node *common.NodeInfo) checkResult {
-	result := checkResult{node: node}
-
-	// 构建 SSH 客户端配置
-	config := &ssh.ClientConfig{
-		User:            node.User,
-		Timeout:         checkTimeout,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-	}
-
-	// 根据认证方式配置
-	if node.Password != "" {
-		config.Auth = append(config.Auth, ssh.Password(node.Password))
-	}
-	if node.SSHKey != "" {
-		signer, err := getSSHKeySigner(node.SSHKey)
-		if err == nil {
-			config.Auth = append(config.Auth, ssh.PublicKeys(signer))
-		}
-	}
-
-	// 尝试连接
-	addr := fmt.Sprintf("%s:%d", node.Address, node.Port)
-	client, err := ssh.Dial("tcp", addr, config)
-	if err != nil {
-		result.reachable = false
-		result.err = err
-		return result
-	}
-	defer client.Close()
-
-	result.reachable = true
-	return result
-}
-
-func getSSHKeySigner(keyPath string) (ssh.Signer, error) {
-	key, err := os.ReadFile(keyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return nil, err
-	}
-
-	return signer, nil
 }

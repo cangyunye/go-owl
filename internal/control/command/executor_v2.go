@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cangyunye/go-owl/internal/control/async"
 	"github.com/cangyunye/go-owl/internal/node"
 	"github.com/cangyunye/go-owl/internal/ssh"
 )
@@ -31,10 +32,12 @@ type CommandResult struct {
 }
 
 type ExecuteOptions struct {
-	Parallel   bool
-	Timeout    time.Duration
-	WorkingDir string
-	Env        map[string]string
+	Parallel      bool
+	Timeout       time.Duration
+	TimeoutConfig *ssh.TimeoutConfig
+	RetryConfig   *RetryConfig
+	WorkingDir    string
+	Env           map[string]string
 }
 
 func (e *Executor) Run(ctx context.Context, nodeIDs []string, command string, opts *ExecuteOptions) []CommandResult {
@@ -45,10 +48,34 @@ func (e *Executor) Run(ctx context.Context, nodeIDs []string, command string, op
 		}
 	}
 
+	if opts.RetryConfig != nil {
+		return e.runWithRetry(ctx, nodeIDs, command, opts)
+	}
+
 	if opts.Parallel {
 		return e.runParallel(ctx, nodeIDs, command, opts)
 	}
 	return e.runSequential(ctx, nodeIDs, command, opts)
+}
+
+func (e *Executor) runWithRetry(ctx context.Context, nodeIDs []string, command string, opts *ExecuteOptions) []CommandResult {
+	retryExecutor := NewRetryExecutor(e, opts.RetryConfig)
+
+	if opts.Parallel {
+		retryResults := retryExecutor.RunParallelWithRetry(ctx, nodeIDs, command, opts)
+		results := make([]CommandResult, len(retryResults))
+		for i, r := range retryResults {
+			results[i] = r.CommandResult
+		}
+		return results
+	}
+
+	retryResults := retryExecutor.RunWithRetry(ctx, nodeIDs, command, opts)
+	results := make([]CommandResult, len(retryResults))
+	for i, r := range retryResults {
+		results[i] = r.CommandResult
+	}
+	return results
 }
 
 func (e *Executor) runParallel(ctx context.Context, nodeIDs []string, command string, opts *ExecuteOptions) []CommandResult {
@@ -101,24 +128,31 @@ func (e *Executor) runOnNode(ctx context.Context, nodeID, command string, opts *
 	}
 	defer e.pool.Put(nodeID)
 
-	timeout := opts.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
-	}
-
 	fullCommand := command
 	if opts.WorkingDir != "" {
 		fullCommand = fmt.Sprintf("cd %s && %s", opts.WorkingDir, command)
 	}
 
-	exitCode, output, err := executor.Execute(fullCommand, timeout)
+	var exitCode int
+	var output string
+	var execErr error
 
-	if err != nil {
+	if opts.TimeoutConfig != nil {
+		exitCode, output, execErr = executor.ExecuteWithConfig(fullCommand, opts.TimeoutConfig)
+	} else {
+		timeout := opts.Timeout
+		if timeout == 0 {
+			timeout = 30 * time.Second
+		}
+		exitCode, output, execErr = executor.Execute(fullCommand, timeout)
+	}
+
+	if execErr != nil {
 		return CommandResult{
 			NodeID:   nodeID,
 			Output:   output,
 			ExitCode: exitCode,
-			Error:    err,
+			Error:    execErr,
 			Success:  false,
 		}
 	}
@@ -136,4 +170,39 @@ func (e *Executor) Close() {
 	if e.pool != nil {
 		e.pool.Close()
 	}
+}
+
+// RunAsync 异步执行命令
+func (e *Executor) RunAsync(ctx context.Context, nodeIDs []string, command string, asyncOpts *async.AsyncOptions) ([]*async.AsyncTask, error) {
+	if asyncOpts == nil {
+		asyncOpts = &async.AsyncOptions{
+			Timeout:      1 * time.Hour,
+			PollInterval: 10 * time.Second,
+			MaxPollCount: 3600,
+		}
+	}
+
+	manager := async.NewAsyncTaskManager(asyncOpts)
+	tasks := make([]*async.AsyncTask, len(nodeIDs))
+	var wg sync.WaitGroup
+	wg.Add(len(nodeIDs))
+
+	for i, nodeID := range nodeIDs {
+		go func(idx int, id string) {
+			defer wg.Done()
+			task, err := manager.StartAsync(ctx, id, command, asyncOpts)
+			if err != nil {
+				tasks[idx] = &async.AsyncTask{
+					NodeID: id,
+					Status: async.AsyncTaskStatusFailed,
+					Error:  err,
+				}
+				return
+			}
+			tasks[idx] = task
+		}(i, nodeID)
+	}
+
+	wg.Wait()
+	return tasks, nil
 }

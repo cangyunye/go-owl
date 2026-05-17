@@ -29,9 +29,12 @@ func NewPlaybookCmd() *cobra.Command {
 
 示例：
   owl exec playbook site.yml
-  owl exec playbook site.yml --tags nginx,mysql
-  owl exec playbook site.yml --extra-vars "version=1.2.3"
-  owl exec playbook site.yml --check --diff`,
+  owl exec playbook deploy.yml --nodes web-01,web-02
+  owl exec playbook deploy.yml --group web
+  owl exec playbook deploy.yml --tags nginx,mysql
+  owl exec playbook deploy.yml --extra-vars "version=v1.2.3,env=prod"
+  owl exec playbook site.yml --check
+  owl exec playbook site.yml --diff`,
 		Args: cobra.ExactArgs(1),
 		Run:  runPlaybook,
 	}

@@ -3,22 +3,30 @@ package playbook
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/control/command"
+	"github.com/cangyunye/go-owl/internal/ssh"
 )
 
 // playbookRunFlags
 var (
-	pbRunNodes     string
-	pbRunGroup     string
-	pbRunLabel     []string
-	pbRunTags      string
-	pbRunSkipTags  string
-	pbRunExtraVars []string
-	pbRunCheck     bool
-	pbRunDiff      bool
+	pbRunNodes                   string
+	pbRunGroup                   string
+	pbRunLabel                   []string
+	pbRunTags                    string
+	pbRunSkipTags                string
+	pbRunExtraVars               []string
+	pbRunCheck                   bool
+	pbRunDiff                    bool
+	pbRunDefaultConnectTimeout   time.Duration
+	pbRunDefaultCommandTimeout   time.Duration
+	pbRunDefaultRetry            int
+	pbRunDefaultRetryInterval    time.Duration
+	pbRunDefaultRetryMaxInterval time.Duration
 )
 
 // NewPlaybookRunCmd 创建剧本执行命令
@@ -53,6 +61,16 @@ func NewPlaybookRunCmd() *cobra.Command {
 		"检查模式（不实际执行）")
 	runCmd.Flags().BoolVar(&pbRunDiff, "diff", false,
 		"显示变更差异")
+	runCmd.Flags().DurationVar(&pbRunDefaultConnectTimeout, "default-connect-timeout", 10*time.Second,
+		"全局默认 SSH 连接超时时间")
+	runCmd.Flags().DurationVar(&pbRunDefaultCommandTimeout, "default-command-timeout", 5*time.Minute,
+		"全局默认命令执行超时时间")
+	runCmd.Flags().IntVar(&pbRunDefaultRetry, "default-retry", 0,
+		"全局默认最大重试次数")
+	runCmd.Flags().DurationVar(&pbRunDefaultRetryInterval, "default-retry-interval", 1*time.Second,
+		"全局默认初始重试间隔")
+	runCmd.Flags().DurationVar(&pbRunDefaultRetryMaxInterval, "default-retry-max-interval", 30*time.Second,
+		"全局默认最大重试间隔")
 
 	return runCmd
 }
@@ -88,6 +106,25 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 	}
 	if pbRunDiff {
 		fmt.Println("Mode: DIFF (showing changes)")
+	}
+
+	// 显示超时配置
+	if pbRunDefaultConnectTimeout > 0 || pbRunDefaultCommandTimeout > 0 {
+		timeoutCfg := &ssh.TimeoutConfig{
+			ConnectTimeout: pbRunDefaultConnectTimeout,
+			CommandTimeout: pbRunDefaultCommandTimeout,
+		}
+		fmt.Printf("Timeout: connect=%v, command=%v\n", timeoutCfg.ConnectTimeout, timeoutCfg.CommandTimeout)
+	}
+
+	// 显示重试配置
+	if pbRunDefaultRetry > 0 {
+		retryCfg := &command.RetryConfig{
+			MaxRetries:      pbRunDefaultRetry,
+			InitialInterval: pbRunDefaultRetryInterval,
+			MaxInterval:     pbRunDefaultRetryMaxInterval,
+		}
+		fmt.Printf("Retry: max=%d, interval=%v, max-interval=%v\n", retryCfg.MaxRetries, retryCfg.InitialInterval, retryCfg.MaxInterval)
 	}
 
 	// 检查剧本文件

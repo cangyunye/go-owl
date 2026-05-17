@@ -211,6 +211,151 @@ tasks:
 	}
 }
 
+func TestParser_ParseTaskWithTimeout(t *testing.T) {
+	parser := NewParser()
+
+	content := `
+name: Test Playbook
+hosts:
+  - web
+tasks:
+  - name: long running task
+    action: command
+    args:
+      cmd: sleep 300
+    timeout:
+      connect: 5s
+      command: 10m
+`
+
+	parsed, err := parser.Parse(content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	task := parsed.Tasks[0]
+	if task.ActionOpts == nil {
+		t.Fatal("expected ActionOpts to be parsed")
+	}
+	if task.ActionOpts.Timeout == nil {
+		t.Fatal("expected Timeout to be parsed")
+	}
+	if task.ActionOpts.Timeout.Connect != 5*1e9 {
+		t.Errorf("expected Connect timeout 5s, got %v", task.ActionOpts.Timeout.Connect)
+	}
+	if task.ActionOpts.Timeout.Command != 600*1e9 {
+		t.Errorf("expected Command timeout 10m, got %v", task.ActionOpts.Timeout.Command)
+	}
+}
+
+func TestParser_ParseTaskWithRetry(t *testing.T) {
+	parser := NewParser()
+
+	content := `
+name: Test Playbook
+hosts:
+  - web
+tasks:
+  - name: retry task
+    action: command
+    args:
+      cmd: curl http://api.example.com
+    retry:
+      max: 3
+      interval: 2s
+      max_interval: 30s
+`
+
+	parsed, err := parser.Parse(content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	task := parsed.Tasks[0]
+	if task.ActionOpts == nil {
+		t.Fatal("expected ActionOpts to be parsed")
+	}
+	if task.ActionOpts.Retry == nil {
+		t.Fatal("expected Retry to be parsed")
+	}
+	if task.ActionOpts.Retry.Max != 3 {
+		t.Errorf("expected max retries 3, got %d", task.ActionOpts.Retry.Max)
+	}
+	if task.ActionOpts.Retry.Interval != 2*1e9 {
+		t.Errorf("expected interval 2s, got %v", task.ActionOpts.Retry.Interval)
+	}
+	if task.ActionOpts.Retry.MaxInterval != 30*1e9 {
+		t.Errorf("expected max interval 30s, got %v", task.ActionOpts.Retry.MaxInterval)
+	}
+}
+
+func TestParser_ParseTaskWithTimeoutAndRetry(t *testing.T) {
+	parser := NewParser()
+
+	content := `
+name: Test Playbook
+hosts:
+  - web
+tasks:
+  - name: complex task
+    action: shell
+    args:
+      command: long-running-script.sh
+    timeout:
+      command: 5m
+    retry:
+      max: 5
+      interval: 1s
+`
+
+	parsed, err := parser.Parse(content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	task := parsed.Tasks[0]
+	if task.ActionOpts == nil {
+		t.Fatal("expected ActionOpts to be parsed")
+	}
+	if task.ActionOpts.Timeout == nil {
+		t.Fatal("expected Timeout to be parsed")
+	}
+	if task.ActionOpts.Retry == nil {
+		t.Fatal("expected Retry to be parsed")
+	}
+	if task.ActionOpts.Timeout.Command != 300*1e9 {
+		t.Errorf("expected Command timeout 5m, got %v", task.ActionOpts.Timeout.Command)
+	}
+	if task.ActionOpts.Retry.Max != 5 {
+		t.Errorf("expected max retries 5, got %d", task.ActionOpts.Retry.Max)
+	}
+}
+
+func TestParser_ParseTaskWithoutTimeoutOrRetry(t *testing.T) {
+	parser := NewParser()
+
+	content := `
+name: Test Playbook
+hosts:
+  - web
+tasks:
+  - name: simple task
+    action: debug
+    args:
+      msg: hello
+`
+
+	parsed, err := parser.Parse(content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	task := parsed.Tasks[0]
+	if task.ActionOpts != nil {
+		t.Error("expected ActionOpts to be nil for simple task")
+	}
+}
+
 func TestParser_extractAction(t *testing.T) {
 	parser := NewParser()
 

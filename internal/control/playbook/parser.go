@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -30,6 +31,19 @@ type PlaybookTask struct {
 	Register       string                 `yaml:"register"`
 	ChangedWhen    string                 `yaml:"changed_when"`
 	FailedWhen     string                 `yaml:"failed_when"`
+	Timeout        *TimeoutConfigYAML     `yaml:"timeout"`
+	Retry          *RetryConfigYAML        `yaml:"retry"`
+}
+
+type TimeoutConfigYAML struct {
+	Connect string `yaml:"connect"`
+	Command string `yaml:"command"`
+}
+
+type RetryConfigYAML struct {
+	Max         int    `yaml:"max"`
+	Interval    string `yaml:"interval"`
+	MaxInterval string `yaml:"max_interval"`
 }
 
 type ParsedPlaybook struct {
@@ -48,6 +62,7 @@ type ParsedTask struct {
 	Condition *Condition
 	Loop      *Loop
 	Options   TaskOptions
+	ActionOpts *ActionOptions
 }
 
 type Condition struct {
@@ -160,7 +175,49 @@ func (p *Parser) parseTask(raw *PlaybookTask) (*ParsedTask, error) {
 		}
 	}
 
+	task.ActionOpts = p.parseActionOptions(raw)
+
 	return task, nil
+}
+
+func (p *Parser) parseActionOptions(raw *PlaybookTask) *ActionOptions {
+	opts := &ActionOptions{}
+
+	if raw.Timeout != nil {
+		opts.Timeout = &TimeoutOption{}
+		if raw.Timeout.Connect != "" {
+			if d, err := time.ParseDuration(raw.Timeout.Connect); err == nil {
+				opts.Timeout.Connect = d
+			}
+		}
+		if raw.Timeout.Command != "" {
+			if d, err := time.ParseDuration(raw.Timeout.Command); err == nil {
+				opts.Timeout.Command = d
+			}
+		}
+	}
+
+	if raw.Retry != nil && raw.Retry.Max > 0 {
+		opts.Retry = &RetryOption{
+			Max: raw.Retry.Max,
+		}
+		if raw.Retry.Interval != "" {
+			if d, err := time.ParseDuration(raw.Retry.Interval); err == nil {
+				opts.Retry.Interval = d
+			}
+		}
+		if raw.Retry.MaxInterval != "" {
+			if d, err := time.ParseDuration(raw.Retry.MaxInterval); err == nil {
+				opts.Retry.MaxInterval = d
+			}
+		}
+	}
+
+	if opts.Timeout == nil && opts.Retry == nil {
+		return nil
+	}
+
+	return opts
 }
 
 func (p *Parser) extractAction(action string) string {

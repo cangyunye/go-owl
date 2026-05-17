@@ -461,7 +461,7 @@ func TestPlaybookExecutor_executeTaskInternal_WithLoop(t *testing.T) {
 func TestDefaultActionRunner_RunAction(t *testing.T) {
 	t.Run("with cmd arg", func(t *testing.T) {
 		runner := NewDefaultActionRunner(nil)
-		result, err := runner.RunAction("command", map[string]interface{}{"cmd": "echo hello"}, "node-1", nil)
+		result, err := runner.RunAction("command", map[string]interface{}{"cmd": "echo hello"}, "node-1", nil, nil)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -472,7 +472,7 @@ func TestDefaultActionRunner_RunAction(t *testing.T) {
 
 	t.Run("with command arg", func(t *testing.T) {
 		runner := NewDefaultActionRunner(nil)
-		result, err := runner.RunAction("shell", map[string]interface{}{"command": "ls"}, "node-1", nil)
+		result, err := runner.RunAction("shell", map[string]interface{}{"command": "ls"}, "node-1", nil, nil)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -483,7 +483,7 @@ func TestDefaultActionRunner_RunAction(t *testing.T) {
 
 	t.Run("with script arg", func(t *testing.T) {
 		runner := NewDefaultActionRunner(nil)
-		result, err := runner.RunAction("script", map[string]interface{}{"script": "/tmp/test.sh"}, "node-1", nil)
+		result, err := runner.RunAction("script", map[string]interface{}{"script": "/tmp/test.sh"}, "node-1", nil, nil)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}

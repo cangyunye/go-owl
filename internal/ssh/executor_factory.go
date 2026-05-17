@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -83,9 +84,77 @@ func (e *RemoteNodeExecutorWithInfo) Execute(command string, timeout time.Durati
 	return 0, output, nil
 }
 
+// ExecuteWithConfig 执行命令（带超时配置）
+func (e *RemoteNodeExecutorWithInfo) ExecuteWithConfig(command string, config *TimeoutConfig) (int, string, error) {
+	if config == nil {
+		config = &TimeoutConfig{
+			ConnectTimeout: 10 * time.Second,
+			CommandTimeout: 30 * time.Second,
+		}
+	}
+
+	// 设置 SSH 参数（使用 ConnectTimeout）
+	args := []string{
+		"-o", fmt.Sprintf("ConnectTimeout=%d", int(config.ConnectTimeout.Seconds())),
+		"-o", "BatchMode=yes",
+		"-o", "StrictHostKeyChecking=no",
+	}
+
+	// 构建完整命令
+	sshArgs := e.connInfo.BuildSSHCommand(command)
+	args = append(args, sshArgs...)
+
+	// 执行命令，总超时 = ConnectTimeout + CommandTimeout
+	totalTimeout := config.ConnectTimeout + config.CommandTimeout
+	ctx, cancel := context.WithTimeout(context.Background(), totalTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "ssh", args...)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	output := stdout.String()
+	if stderr.Len() > 0 {
+		output += "\n" + stderr.String()
+	}
+
+	// 解析超时类型
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode(), output, nil
+		}
+
+		if ctx.Err() == context.DeadlineExceeded {
+			errMsg := output
+			if strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "connect") {
+				return -1, output, &TimeoutError{
+					Type:    TimeoutConnect,
+					NodeID:  e.connInfo.Address,
+					Timeout: config.ConnectTimeout,
+					Cause:   err,
+				}
+			}
+			return -1, output, &TimeoutError{
+				Type:    TimeoutCommand,
+				NodeID:  e.connInfo.Address,
+				Timeout: config.CommandTimeout,
+				Cause:   err,
+			}
+		}
+
+		return -1, output, err
+	}
+
+	return 0, output, nil
+}
+
 // NodeExecutor 节点执行器接口
 type NodeExecutor interface {
 	Execute(command string, timeout time.Duration) (int, string, error)
+	ExecuteWithConfig(command string, config *TimeoutConfig) (int, string, error)
 }
 
 // LocalNodeExecutor 本地节点执行器
@@ -109,6 +178,55 @@ func (e *LocalNodeExecutor) Execute(command string, timeout time.Duration) (int,
 
 	if ctx.Err() == context.DeadlineExceeded {
 		return -1, output, fmt.Errorf("command timed out after %v", timeout)
+	}
+
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode(), output, nil
+		}
+		return -1, output, err
+	}
+
+	return 0, output, nil
+}
+
+// ExecuteWithConfig 执行命令（带超时配置）
+func (e *LocalNodeExecutor) ExecuteWithConfig(command string, config *TimeoutConfig) (int, string, error) {
+	if config == nil {
+		config = &TimeoutConfig{
+			ConnectTimeout: 0,
+			CommandTimeout: 30 * time.Second,
+		}
+	}
+
+	// 本地执行没有连接超时，直接使用命令超时
+	timeout := config.CommandTimeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	output := stdout.String()
+	if stderr.Len() > 0 {
+		output += "\n" + stderr.String()
+	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return -1, output, &TimeoutError{
+			Type:    TimeoutCommand,
+			NodeID:  "localhost",
+			Timeout: timeout,
+			Cause:   ctx.Err(),
+		}
 	}
 
 	if err != nil {

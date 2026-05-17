@@ -19,9 +19,10 @@ func NewScriptCmd() *cobra.Command {
 支持本地脚本文件和 URL 远程脚本。
 
 示例：
-  owl exec script deploy.sh --nodes node1,node2
+  owl exec script deploy.sh --nodes web-01,web-02
   owl exec script ./scripts/install.sh --group web --dest /tmp
-  owl exec script https://example.com/setup.sh --args "--env prod"`,
+  owl exec script https://example.com/setup.sh --args "--env prod"
+  owl exec script backup.sh --label env=prod --timeout 10m`,
 		Args: cobra.ExactArgs(1),
 		Run:  runScript,
 	}
