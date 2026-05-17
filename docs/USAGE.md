@@ -66,6 +66,15 @@ AI 助手只能帮助您执行以下 4 种操作：
 > 复制文件到 web1
 ```
 
+### 节点状态检查示例
+
+```
+> 检查所有节点的连通性
+> ping 一下 node1
+> 更新所有节点的状态
+> 哪些节点在线
+```
+
 ### 不确定意图的响应
 
 如果 AI 助手无法确定您的意图，它会提供帮助信息：
@@ -146,5 +155,8 @@ ai:
 ## 📚 相关文档
 
 - [README.md](README.md) - 项目主文档
+- [USAGE.md](USAGE.md) - 使用指南
 - [AI_OPTIMIZATION_PLAN.md](AI_OPTIMIZATION_PLAN.md) - AI 优化详细计划
 - [LOGGING_PLAN.md](LOGGING_PLAN.md) - 日志系统文档
+
+```

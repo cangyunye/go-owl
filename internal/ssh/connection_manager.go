@@ -3,6 +3,7 @@ package ssh
 import (
 	"fmt"
 	"os/user"
+	"strings"
 )
 
 // ConnectionInfo 连接信息
@@ -122,6 +123,43 @@ func (ci *ConnectionInfo) BuildSSHCommand(command string) []string {
 	args = append(args, command)
 
 	return args
+}
+
+// BuildRsyncCommand 构建 rsync 命令参数（使用相同的认证信息）
+func (ci *ConnectionInfo) BuildRsyncCommand(isDownload bool, localPath, remotePath string, otherArgs []string) []string {
+	user := ci.GetUser()
+	address := ci.Address
+
+	// 构建 rsh 参数（指定 rsync 使用的 ssh 命令和认证选项）
+	rshArgs := []string{"ssh"}
+	rshArgs = append(rshArgs, "-o", "StrictHostKeyChecking=no")
+	rshArgs = append(rshArgs, "-o", "UserKnownHostsFile=/dev/null")
+	rshArgs = append(rshArgs, "-o", "LogLevel=ERROR")
+
+	if ci.Port > 0 && ci.Port != 22 {
+		rshArgs = append(rshArgs, "-p", fmt.Sprintf("%d", ci.Port))
+	}
+	if ci.KeyFile != "" {
+		rshArgs = append(rshArgs, "-i", ci.KeyFile)
+	}
+	rshFlag := fmt.Sprintf("--rsh=%s", strings.Join(rshArgs, " "))
+
+	// 构建完整 rsync 命令
+	rsyncArgs := make([]string, 0)
+	rsyncArgs = append(rsyncArgs, otherArgs...)
+	rsyncArgs = append(rsyncArgs, rshFlag)
+
+	if isDownload {
+		// 下载: remote -> local
+		rsyncArgs = append(rsyncArgs, fmt.Sprintf("%s@%s:%s", user, address, remotePath))
+		rsyncArgs = append(rsyncArgs, localPath)
+	} else {
+		// 上传: local -> remote
+		rsyncArgs = append(rsyncArgs, localPath)
+		rsyncArgs = append(rsyncArgs, fmt.Sprintf("%s@%s:%s", user, address, remotePath))
+	}
+
+	return rsyncArgs
 }
 
 // osUserHomeDir 获取用户目录

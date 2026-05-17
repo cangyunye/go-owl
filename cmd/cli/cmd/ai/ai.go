@@ -47,15 +47,86 @@ func NewAICmd() *cobra.Command {
 	aiCmd.Flags().StringVar(&aiProvider, "provider", "openai",
 		"AI 提供商: openai, anthropic, dashscope")
 	aiCmd.Flags().StringVar(&aiAPIKey, "api-key", "",
-		"API Key（也可通过环境变量 OWL_API_KEY 设置）")
+		"API Key (也可通过环境变量 OWL_API_KEY 设置)")
 	aiCmd.Flags().StringVar(&aiBaseURL, "base-url", "",
-		"API Base URL（用于代理或自定义端点，也可通过环境变量 OWL_BASE_URL 设置）")
+		"API Base URL (用于代理或自定义端点，也可通过环境变量 OWL_BASE_URL 设置)")
 	aiCmd.Flags().IntVar(&aiTimeout, "timeout", 120,
-		"请求超时时间（秒）")
+		"请求超时时间 (秒)")
 	aiCmd.Flags().StringVar(&aiSession, "session", "",
-		"会话 ID（用于恢复会话）")
+		"会话 ID (用于恢复会话)")
+
+	aiCmd.AddCommand(NewModelsCmd())
 
 	return aiCmd
+}
+
+func NewModelsCmd() *cobra.Command {
+	modelsCmd := &cobra.Command{
+		Use:   "models",
+		Short: "列出可用的 AI 模型",
+		Long: `从 API 获取并列出可用的 AI 模型列表。
+
+示例：
+  owl ai models
+  owl ai models --provider openai --api-key sk-xxx`,
+		Run: func(cmd *cobra.Command, args []string) {
+			ctx := context.Background()
+
+			config := &ai.Config{
+				AI: ai.AIConfig{
+					Provider: aiProvider,
+					Model:    "gpt-4o",
+					APIKey:   getAPIKey(),
+					BaseURL:  getBaseURL(),
+					Timeout:  aiTimeout,
+				},
+			}
+
+			if config.AI.APIKey == "" {
+				fmt.Fprintf(os.Stderr, "错误: 请提供 API Key (使用 --api-key 参数或设置 OWL_API_KEY 环境变量)\n")
+				os.Exit(1)
+			}
+
+			if aiProvider != "openai" && aiProvider != "qwen" && aiProvider != "dashscope" && aiProvider != "deepseek" && aiProvider != "" {
+				fmt.Fprintf(os.Stderr, "错误: %s 提供商不支持模型列表 API\n", aiProvider)
+				os.Exit(1)
+			}
+
+			fmt.Println("正在获取可用模型列表...")
+			fmt.Println()
+
+			client := ai.NewOpenAIClient(config)
+			models, err := client.ListModels(ctx)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "错误: 获取模型列表失败: %v\n", err)
+				os.Exit(1)
+			}
+
+			if len(models) == 0 {
+				fmt.Println("未找到可用模型")
+				return
+			}
+
+			fmt.Println("可用模型:")
+			fmt.Println()
+			for _, m := range models {
+				fmt.Printf("  • %s\n", m)
+			}
+			fmt.Println()
+			fmt.Printf("共找到 %d 个模型\n", len(models))
+		},
+	}
+
+	modelsCmd.Flags().StringVar(&aiProvider, "provider", "openai",
+		"AI 提供商: openai, anthropic, dashscope")
+	modelsCmd.Flags().StringVar(&aiAPIKey, "api-key", "",
+		"API Key (也可通过环境变量 OWL_API_KEY 设置)")
+	modelsCmd.Flags().StringVar(&aiBaseURL, "base-url", "",
+		"API Base URL (用于代理或自定义端点，也可通过环境变量 OWL_BASE_URL 设置)")
+	modelsCmd.Flags().IntVar(&aiTimeout, "timeout", 30,
+		"请求超时时间 (秒)")
+
+	return modelsCmd
 }
 
 func runAI(cmd *cobra.Command, args []string) {
@@ -216,7 +287,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("  \033[90mhelp\033[0m         - 显示此帮助信息")
 	fmt.Println("  \033[90mquit/exit\033[0m   - 退出程序")
-	fmt.Println("  \033[90m!command\033[0m    - 执行直接命令（如 !node list）")
+	fmt.Println("  \033[90m!command\033[0m    - 执行直接命令 (如 !node list)")
 	fmt.Println()
 	fmt.Println("\033[33m示例：\033[0m")
 	fmt.Println()

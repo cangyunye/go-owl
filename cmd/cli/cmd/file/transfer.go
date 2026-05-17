@@ -209,6 +209,24 @@ func generateProgressBar(percent float64, width int) string {
 	return result
 }
 
+func containsNodeIDList(list []string, s string) bool {
+	for _, item := range list {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func splitLabelEq(s string) []string {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '=' {
+			return []string{s[:i], s[i+1:]}
+		}
+	}
+	return []string{s}
+}
+
 func minInt(a, b int) int {
 	if a < b {
 		return a

@@ -1,43 +1,40 @@
 package exec
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
-	"github.com/cangyunye/go-owl/internal/common/model"
-	"github.com/cangyunye/go-owl/internal/history"
-	"github.com/cangyunye/go-owl/internal/logger"
+	"github.com/cangyunye/go-owl/internal/control/command"
+	"github.com/cangyunye/go-owl/internal/node"
 )
 
-// execFlags
 var (
-	execNodes   string
-	execGroup   string
-	execLabel   []string
-	execStatus  string
-	execTimeout time.Duration
-	execAsync   bool
-	execFormat  string
-	execNoColor bool
+	execNodes    string
+	execGroup    string
+	execLabel    []string
+	execStatus   string
+	execTimeout  time.Duration
+	execAsync    bool
+	execFormat   string
+	execNoColor  bool
+	execParallel bool
 )
 
-// NewRunCmd 创建执行命令子命令
 func NewRunCmd() *cobra.Command {
 	runCmd := &cobra.Command{
 		Use:   "run <command>",
 		Short: "执行 Shell 命令",
-		Long: `在指定节点上执行 Shell 命令。
+		Long: `在指定节点上执行 Shell 命令，自动管理连接。
 
 示例：
-  owl exec run "uptime"                           # 在所有节点执行
-  owl exec run "uptime" --nodes node1,node2      # 指定节点
-  owl exec run "uptime" --group web              # 按分组执行
-  owl exec run "df -h" --timeout 30s             # 超时设置
-  owl exec run "service nginx restart" --async    # 异步执行`,
+  owl exec run "uptime" --nodes node1,node2
+  owl exec run "df -h" --group web
+  owl exec run "service nginx restart" --timeout 60s`,
 		Args: cobra.ExactArgs(1),
 		Run:  runExecRun,
 	}
@@ -52,6 +49,8 @@ func NewRunCmd() *cobra.Command {
 		"按状态选择节点: online, offline")
 	runCmd.Flags().DurationVar(&execTimeout, "timeout", 60*time.Second,
 		"命令执行超时时间")
+	runCmd.Flags().BoolVar(&execParallel, "parallel", true,
+		"并行执行")
 	runCmd.Flags().BoolVar(&execAsync, "async", false,
 		"异步执行，不等待结果")
 	runCmd.Flags().StringVarP(&execFormat, "output", "o", "simple",
@@ -63,144 +62,169 @@ func NewRunCmd() *cobra.Command {
 }
 
 func runExecRun(cmd *cobra.Command, args []string) {
-	command := args[0]
-	store := common.GetNodeStore()
+	execmd := args[0]
 
-	// 初始化日志和历史数据库
-	logger.Init(nil)
-	_, err := history.NewDB(history.DefaultConfig())
-	if err != nil {
-		fmt.Printf("Warning: Failed to initialize history DB: %v\n", err)
+	nodeResolver := node.NewNodeResolver()
+
+	var targetNodeIDs []string
+
+	if execNodes != "" {
+		targetNodeIDs = parseNodeList(execNodes)
+	} else if execGroup != "" {
+		nodes, err := nodeResolver.ListNodes(&node.ListOptions{
+			Group: execGroup,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
+			os.Exit(1)
+		}
+		for _, n := range nodes {
+			targetNodeIDs = append(targetNodeIDs, n.ID)
+		}
+	} else if len(execLabel) > 0 {
+		nodes, err := nodeResolver.ListNodes(&node.ListOptions{
+			Label: execLabel[0],
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
+			os.Exit(1)
+		}
+		for _, n := range nodes {
+			targetNodeIDs = append(targetNodeIDs, n.ID)
+		}
+	} else {
+		nodes, err := nodeResolver.ListNodes(&node.ListOptions{})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
+			os.Exit(1)
+		}
+		for _, n := range nodes {
+			targetNodeIDs = append(targetNodeIDs, n.ID)
+		}
 	}
-	defer logger.Sync()
 
-	// 获取目标节点
-	targetNodes := selectTargetNodes(store)
-	if len(targetNodes) == 0 {
-		fmt.Println("No target nodes found.")
+	if len(targetNodeIDs) == 0 {
+		fmt.Println("未找到目标节点")
 		return
 	}
 
-	// 执行命令
-	results := executeCommandOnNodes(command, targetNodes, execTimeout, execAsync)
+	fmt.Printf("🔧 命令: %s\n", execmd)
+	fmt.Printf("🎯 节点: %d 个\n", len(targetNodeIDs))
+	if execParallel {
+		fmt.Println("⚡ 模式: 并行执行")
+	}
+	fmt.Println()
 
-	// 转换为 model.Node 格式输出
-	formatter := common.NewOutputFormatter(execFormat, !execNoColor)
-	modelResults := toModelResults(results)
-	formatter.FormatTaskResults(modelResults)
-}
+	executor := command.NewExecutor(nodeResolver)
+	defer executor.Close()
 
-func selectTargetNodes(store common.NodeStore) []*common.NodeInfo {
-	var result []*common.NodeInfo
-	allNodes, _ := store.List()
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout*time.Duration(len(targetNodeIDs)))
+	defer cancel()
 
-	for _, n := range allNodes {
-		// 按节点 ID 过滤
-		if execNodes != "" {
-			nodeIDs := common.ParseNodeList(execNodes)
-			if !containsString(nodeIDs, n.ID) {
-				continue
-			}
-		}
-
-		// 按分组过滤
-		if execGroup != "" {
-			if !containsString(n.Groups, execGroup) {
-				continue
-			}
-		}
-
-		// 按标签过滤
-		if len(execLabel) > 0 {
-			match := true
-			for _, label := range execLabel {
-				parts := strings.Split(label, "=")
-				if len(parts) != 2 {
-					continue
-				}
-				key, value := parts[0], parts[1]
-				if v, ok := n.Labels[key]; !ok || v != value {
-					match = false
-					break
-				}
-			}
-			if !match {
-				continue
-			}
-		}
-
-		// 按状态过滤
-		if execStatus != "" {
-			if strings.ToLower(n.Status) != strings.ToLower(execStatus) {
-				continue
-			}
-		}
-
-		result = append(result, n)
+	opts := &command.ExecuteOptions{
+		Parallel: execParallel,
+		Timeout:  execTimeout,
 	}
 
+	results := executor.Run(ctx, targetNodeIDs, execmd, opts)
+
+	success := 0
+	failed := 0
+
+	for _, result := range results {
+		if execFormat == "json" {
+			fmt.Printf(`{"node":"%s","success":%v,"output":"%s","exit_code":%d}`+"\n",
+				result.NodeID, result.Success, escapeJSON(result.Output), result.ExitCode)
+		} else if execFormat == "detail" {
+			fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+			fmt.Printf("节点: %s\n", result.NodeID)
+			if result.Success {
+				fmt.Printf("状态: ✅ 成功 (exit code: %d)\n", result.ExitCode)
+			} else {
+				fmt.Printf("状态: ❌ 失败\n")
+				if result.Error != nil {
+					fmt.Printf("错误: %v\n", result.Error)
+				}
+			}
+			fmt.Printf("\n输出:\n%s\n", result.Output)
+		} else {
+			if result.Success {
+				fmt.Printf("✅ [%s] 成功\n", result.NodeID)
+				if result.Output != "" {
+					for _, line := range strings.Split(result.Output, "\n") {
+						fmt.Printf("   %s\n", line)
+					}
+				}
+				success++
+			} else {
+				fmt.Printf("❌ [%s] 失败", result.NodeID)
+				if result.Error != nil {
+					fmt.Printf(": %v", result.Error)
+				}
+				fmt.Println()
+				failed++
+			}
+		}
+	}
+
+	if execFormat != "json" {
+		fmt.Printf("\n📊 总结: %d 成功, %d 失败\n", success, failed)
+	}
+
+	if failed > 0 {
+		os.Exit(1)
+	}
+}
+
+func parseNodeList(s string) []string {
+	var result []string
+	current := ""
+	for _, c := range s {
+		if c == ',' {
+			if current != "" {
+				result = append(result, current)
+				current = ""
+			}
+		} else {
+			current += string(c)
+		}
+	}
+	if current != "" {
+		result = append(result, current)
+	}
 	return result
 }
 
-func containsString(list []string, s string) bool {
-	for _, item := range list {
-		if item == s {
-			return true
-		}
-	}
-	return false
-}
-
-// executeCommandOnNodes 在多个节点上执行命令
-// 这里使用模拟实现，实际会调用 gRPC 服务
-func executeCommandOnNodes(command string, nodes []*common.NodeInfo, timeout time.Duration, async bool) map[string]*common.NodeInfo {
-	results := make(map[string]*common.NodeInfo)
-
-	for _, n := range nodes {
-		// 模拟命令执行
-		if async {
-			go simulateAsyncExec(n.ID, command)
-			results[n.ID] = n
-		} else {
-			// 同步执行
-			if n.Status == "online" {
-				fmt.Printf("[%s] Executing: %s\n", n.ID, command)
-				// 模拟执行
-				time.Sleep(100 * time.Millisecond)
-				results[n.ID] = n
-			} else {
-				fmt.Printf("[%s] Node offline, skipping\n", n.ID)
-				results[n.ID] = nil
+func parseLabels(labels []string) map[string]string {
+	result := make(map[string]string)
+	for _, label := range labels {
+		for i := 0; i < len(label); i++ {
+			if label[i] == '=' {
+				result[label[:i]] = label[i+1:]
+				break
 			}
 		}
 	}
-
-	return results
+	return result
 }
 
-func simulateAsyncExec(nodeID, command string) {
-	// 模拟异步执行
-	fmt.Printf("[%s] Async execution started: %s\n", nodeID, command)
-	time.Sleep(500 * time.Millisecond)
-	fmt.Printf("[%s] Async execution completed\n", nodeID)
-}
-
-func toModelResults(results map[string]*common.NodeInfo) map[string]*model.Node {
-	modelResults := make(map[string]*model.Node)
-	for k, v := range results {
-		if v != nil {
-			modelResults[k] = &model.Node{
-				ID:      v.ID,
-				Name:    v.Name,
-				Address: v.Address,
-				Port:    v.Port,
-				Status:  model.NodeStatus(v.Status),
-				Groups:  v.Groups,
-				Labels:  v.Labels,
-			}
-		} else {
-			modelResults[k] = nil
+func escapeJSON(s string) string {
+	var result strings.Builder
+	for _, c := range s {
+		switch c {
+		case '"':
+			result.WriteString(`\"`)
+		case '\\':
+			result.WriteString(`\\`)
+		case '\n':
+			result.WriteString(`\n`)
+		case '\r':
+			result.WriteString(`\r`)
+		case '\t':
+			result.WriteString(`\t`)
+		default:
+			result.WriteRune(c)
 		}
 	}
-	return modelResults
+	return result.String()
 }

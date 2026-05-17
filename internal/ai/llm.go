@@ -40,6 +40,48 @@ func NewOpenAIClient(config *Config) *OpenAIClient {
 	}
 }
 
+// ListModels 从 API 获取可用模型列表
+func (c *OpenAIClient) ListModels(ctx context.Context) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET",
+		c.baseURL+"/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp ModelsResponse
+		if json.Unmarshal(respBody, &errorResp) == nil && errorResp.Error != nil {
+			return nil, fmt.Errorf("API error: %s", errorResp.Error.Message)
+		}
+		return nil, fmt.Errorf("API error, status: %d, body: %s", resp.StatusCode, string(respBody))
+	}
+
+	var modelsResp ModelsResponse
+	if err := json.Unmarshal(respBody, &modelsResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	var models = make([]string, 0, len(modelsResp.Data))
+	for _, m := range modelsResp.Data {
+		models = append(models, m.ID)
+	}
+
+	return models, nil
+}
+
 // OpenAIRequest 是 OpenAI API 请求结构体
 type OpenAIRequest struct {
 	Model    string    `json:"model"`
@@ -51,6 +93,19 @@ type OpenAIResponse struct {
 	Choices []struct {
 		Message Message `json:"message"`
 	} `json:"choices"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// ModelsResponse 是模型列表 API 响应结构体
+type ModelsResponse struct {
+	Data []struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		Created int64  `json:"created"`
+		Owner   string `json:"owner"`
+	} `json:"data"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`

@@ -43,253 +43,176 @@ make build-sqlite3   # SQLite3 版本
 make all             # 构建所有版本
 ```
 
-> **提示**：如果编译 DuckDB 版本遇到问题，可以切换到 SQLite3 版本。
-
 ## 🎉 快速开始
 
 ### 🐣 1. 节点管理
 
-```bash
-# 添加节点（指定用户名、密码或密钥）
-owl node add node1 --name web1 --address 192.168.1.10 --port 22 --user root --password "secret"
-owl node add node2 --name web2 --address 192.168.1.11 --port 22 --user root --ssh-key ~/.ssh/id_rsa
+添加第一个节点：
 
-# 查看所有节点
+```bash
+owl node add web-01 \
+  --name "Web Server 1" \
+  --address 192.168.1.10 \
+  --user root \
+  --group web \
+  --label env=prod
+```
+
+查看节点列表：
+
+```bash
 owl node list
-
-# 按分组查看
-owl node list --group web
-
-# 按标签查看
-owl node list --labels env=prod
-
-# 更新节点信息
-owl node update node1 --name new-name --password "new-password"
-owl node update node1 --address 10.0.0.1 --port 2222
-
-# 添加分组和标签
-owl node group add web1 --nodes web1,web2
-
-# 删除节点
-owl node remove node1
 ```
 
-### 📥 2. 节点导入导出
+### ⚡ 2. 批量执行命令
+
+在所有节点执行命令：
 
 ```bash
-# 生成节点模板
-owl node import --template > nodes.yaml
-owl node import --template --format json > nodes.json
-
-# 导出所有节点到文件
-owl node export -f nodes.yaml
-
-# 按节点 ID 筛选导出
-owl node export --nodes node1,node2 -f filtered.yaml
-
-# 按分组筛选导出
-owl node export --groups web,production -f web-nodes.yaml
-
-# 按标签筛选导出
-owl node export --labels env=prod -f prod-nodes.yaml
-
-# 组合筛选（同时满足所有条件）
-owl node export --groups web --labels env=prod -f web-prod.yaml
-
-# 从文件导入节点
-owl node import -f nodes.yaml
-
-# 导入时覆盖已存在的节点
-owl node import -f nodes.yaml --overwrite
-
-# 导入时跳过已存在的节点
-owl node import -f nodes.yaml --skip-existing
-
-# 预览导入结果（不实际导入）
-owl node import -f nodes.yaml --dry-run
+owl exec run "uptime" --group web
 ```
 
-### 📊 3. 批量执行命令
+指定节点执行：
 
 ```bash
-# 在所有节点执行命令
-owl exec --command "uptime"
-
-# 在指定节点执行
-owl exec --nodes node1,node2 --command "df -h"
-
-# 按分组执行
-owl exec --group web --command "systemctl status nginx"
-
-# 执行脚本
-owl exec --nodes node1 --script ./deploy.sh
+owl exec run "df -h" --nodes web-01,web-02
 ```
 
-### 📜 4. 剧本执行
+### 📁 3. 文件传输
 
-编写一个 YAML 剧本：
-
-```yaml
-# deploy.yml
-- name: 部署应用
-  hosts: web
-  become: yes
-  tasks:
-    - name: 安装依赖
-      shell: apt-get install -y nginx
-    - name: 启动服务
-      systemd:
-        name: nginx
-        state: started
-```
-
-执行剧本：
+上传文件到节点：
 
 ```bash
-owl playbook run deploy.yml
-
-# 其他剧本命令
-owl playbook list       # 列出所有剧本
-owl playbook validate   # 验证剧本语法
+owl file upload app.tar.gz --nodes web-01,web-02 --dest /opt/
 ```
 
-### 📁 5. 文件传输
+从节点下载文件：
 
 ```bash
-# 简单上传
-owl file upload app.tar.gz --nodes node1,node2 --dest /opt/app/
-
-# 自扩散传输（多节点时自动使用）
-owl file transfer app.tar.gz --nodes node1,node2,node3,node4,node5 --dest /opt/app/
-
-# 下载文件
-owl file download --nodes node1 --source /var/log/app.log --dest ./logs/
+owl file download /var/log/app.log --node web-01 --dest ./logs/
 ```
 
-### 🤖 6. AI 助手
+### 🖥️ 4. 交互式会话
+
+连接节点进行交互操作：
 
 ```bash
-# 交互式模式
-owl ai
-
-# 单次查询
-owl ai "在所有 web 节点上执行 uptime"
-
-# 指定提供商
-owl ai --provider openai --model gpt-4o "查看数据库状态"
+owl session attach web-01
 ```
 
-### 🖥️ 7. 交互式会话
+## 📚 命令文档
+
+每个命令都有详细的使用说明和测试用例：
+
+| 命令 | 文档 | 说明 |
+|------|------|------|
+| **节点管理** | [NODE.md](docs/commands/NODE.md) | 节点的增删改查、分组、标签 |
+| **命令执行** | [EXEC.md](docs/commands/EXEC.md) | 批量命令执行、剧本、脚本 |
+| **文件传输** | [FILE.md](docs/commands/FILE.md) | 上传、下载、扩散传输 |
+| **交互会话** | [SESSION.md](docs/commands/SESSION.md) | 实时 SSH 会话管理 |
+| **剧本管理** | [PLAYBOOK.md](docs/commands/PLAYBOOK.md) | Ansible-like 剧本编排 |
+| **系统设置** | [SETTINGS.md](docs/commands/SETTINGS.md) | 配置管理和目标配置 |
+| **AI 助手** | [AI.md](docs/commands/AI.md) | 智能运维辅助 |
+| **历史记录** | [HISTORY.md](docs/commands/HISTORY.md) | 执行历史查看 |
+
+## 🛠️ 使用示例
+
+### 添加多个节点
 
 ```bash
-# 单节点实时交互
-owl session attach root@192.168.1.10
+# 添加 web 服务器
+owl node add web-01 --name web1 --address 192.168.1.10 --user root --group web
+owl node add web-02 --name web2 --address 192.168.1.11 --user root --group web
 
-# 指定 SSH 密钥
-owl session attach --key ~/.ssh/id_rsa node1
+# 添加数据库服务器
+owl node add db-01 --name db1 --address 192.168.1.20 --user admin --group db
 
-# 多节点批量管理
-owl session attach --nodes node1,node2,node3
-
-# 查看会话历史
-owl session history
-
-# 查看特定会话详情
-owl session history --session-id sess-abc123
-
-# 列出所有会话
-owl session list
+# 按标签分组
+owl node labels add web-01 --labels env=prod,tier=frontend
 ```
 
-> 会话功能支持自动读取 `~/.ssh/config`，优先使用密钥认证。
-
-### ⚙️ 8. 设置管理
+### 批量运维操作
 
 ```bash
-# 查看当前设置
-owl settings show
+# 所有 web 节点执行命令
+owl exec run "systemctl status nginx" --group web
 
-# 更新设置
-owl settings set ai.provider openai
-owl settings set ai.model gpt-4o
+# 按标签筛选
+owl exec run "free -h" --label env=prod
 
-# 重置设置
-owl settings reset
+# 部署应用
+owl file upload ./app.tar.gz --nodes web-01,web-02 --dest /opt/app/
+owl exec run "systemctl restart myapp" --nodes web-01,web-02
 ```
 
-## 🔧 高级配置
-
-### SSH 配置集成
-
-会话功能支持自动读取 `~/.ssh/config`：
+### 剧本编排
 
 ```bash
-# ~/.ssh/config 示例
-# Host myserver
-#     HostName 192.168.1.100
-#     User ubuntu
-#     IdentityFile ~/.ssh/id_rsa
+# 列出可用剧本
+owl playbook list
 
-owl session attach myserver  # 自动使用配置的用户和密钥
+# 执行部署剧本
+owl playbook run deploy-app --vars version=v1.2.0 --nodes web-01
+
+# 查看剧本详情
+owl playbook info deploy-app
 ```
 
-### 配置文件
+### AI 助手
 
-配置文件默认位置：`~/.owl/config.yml`
+```bash
+# 智能问答
+owl ai chat "如何优化 Nginx 性能"
 
-#### AI 配置示例
+# 命令解释
+owl ai explain "find . -type f -mtime +30 -exec rm {} \;"
+
+# 智能建议
+owl ai suggest "服务器负载很高"
+```
+
+## 📂 项目结构
+
+```
+go-owl/
+├── cmd/cli/cmd/        # CLI 命令实现
+│   ├── node/          # 节点管理
+│   ├── exec/          # 命令执行
+│   ├── file/          # 文件传输
+│   ├── session/       # 会话管理
+│   ├── playbook/      # 剧本管理
+│   ├── settings/      # 设置管理
+│   ├── ai/           # AI 助手
+│   └── history/      # 历史记录
+├── internal/          # 内部包
+│   ├── node/         # 节点解析
+│   ├── ssh/          # SSH 连接
+│   ├── control/      # 控制层
+│   ├── ai/           # AI 模块
+│   └── session/      # 会话管理
+└── docs/             # 文档
+    └── commands/     # 命令文档
+```
+
+## ⚙️ 配置
+
+配置文件位于 `~/.owl/config.yaml`：
 
 ```yaml
 ai:
   provider: openai
   model: gpt-4o
-  api-key: your-openai-api-key
-  base-url: https://api.openai.com/v1
-  timeout: 120
-```
+  api_key: ${OWL_API_KEY}
 
-**支持的 LLM 提供商：**
-- OpenAI (GPT 系列)
-- Anthropic (Claude 系列)
-- Qwen (阿里通义千问)
-- DeepSeek
-
-#### 环境变量配置
-
-```bash
-export OWL_API_TOKEN=your-api-key
-export OWL_BASE_URL=https://your-proxy-endpoint
-owl ai --provider openai --model gpt-4o
-```
-
-## 📚 详细文档
-
-更多详细使用说明请参考：
-
-- [docs/USAGE.md](docs/USAGE.md) - 通用使用指南
-- [docs/SESSION_USAGE.md](docs/SESSION_USAGE.md) - 交互式会话功能指南
-- [docs/SSH_USAGE.md](docs/SSH_USAGE.md) - SSH 配置和使用说明
-- [docs/DATABASE.md](docs/DATABASE.md) - 数据库配置说明
-- [docs/implementation_design.md](docs/implementation_design.md) - 架构设计文档
-
-## 💡 架构设计
-
-```
-┌─────────────────────────────────────────────────────┐
-│                      owl CLI                        │
-├─────────────────────────────────────────────────────┤
-│  node  │  exec  │  playbook  │  file  │  session  │
-├────────┼────────┼────────────┼────────┼───────────┤
-│                  SSH Connection Pool                │
-├─────────────────────────────────────────────────────┤
-│              History Database (DuckDB/SQLite3)     │
-└─────────────────────────────────────────────────────┘
+ssh:
+  port: 22
+  timeout: 30s
 ```
 
 ## 🤝 贡献
 
-欢迎任何形式的贡献！
+欢迎提交 Issue 和 Pull Request！
 
-## 📄 许可证
+## 📄 许可
 
-本项目采用 **MIT License** 开源许可证，详见 [LICENSE](LICENSE) 文件。
+MIT License

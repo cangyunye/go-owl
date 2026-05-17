@@ -47,8 +47,8 @@ type InMemoryNodeStore struct {
 // 全局单例存储
 var globalStore *InMemoryNodeStore
 
-// getConfigDir 获取配置目录
-func getConfigDir() string {
+// GetConfigDir 获取配置目录
+func GetConfigDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "/tmp"
@@ -60,7 +60,7 @@ func getConfigDir() string {
 
 // init 初始化全局存储
 func init() {
-	dataFile := filepath.Join(getConfigDir(), "nodes.json")
+	dataFile := filepath.Join(GetConfigDir(), "nodes.json")
 	globalStore = &InMemoryNodeStore{
 		nodes:    make(map[string]*NodeInfo),
 		dataFile: dataFile,
@@ -74,7 +74,7 @@ func init() {
 
 // NewInMemoryNodeStore 创建内存节点存储
 func NewInMemoryNodeStore() *InMemoryNodeStore {
-	dataFile := filepath.Join(getConfigDir(), "nodes.json")
+	dataFile := filepath.Join(GetConfigDir(), "nodes.json")
 	store := &InMemoryNodeStore{
 		nodes:    make(map[string]*NodeInfo),
 		dataFile: dataFile,
@@ -84,44 +84,9 @@ func NewInMemoryNodeStore() *InMemoryNodeStore {
 }
 
 func (s *InMemoryNodeStore) initSampleData() {
-	s.Lock()
-	defer s.Unlock()
-	s.nodes["node1"] = &NodeInfo{
-		ID:      "node1",
-		Name:    "web-server-1",
-		Address: "192.168.1.10",
-		Port:    8080,
-		Status:  "online",
-		Groups:  []string{"web", "production"},
-		Labels:  map[string]string{"env": "prod", "region": "us-east"},
-	}
-	s.nodes["node2"] = &NodeInfo{
-		ID:      "node2",
-		Name:    "web-server-2",
-		Address: "192.168.1.11",
-		Port:    8080,
-		Status:  "online",
-		Groups:  []string{"web", "production"},
-		Labels:  map[string]string{"env": "prod", "region": "us-west"},
-	}
-	s.nodes["node3"] = &NodeInfo{
-		ID:      "node3",
-		Name:    "db-server-1",
-		Address: "192.168.1.20",
-		Port:    8080,
-		Status:  "online",
-		Groups:  []string{"database"},
-		Labels:  map[string]string{"env": "prod", "type": "mysql"},
-	}
-	s.nodes["node4"] = &NodeInfo{
-		ID:      "node4",
-		Name:    "cache-server-1",
-		Address: "192.168.1.30",
-		Port:    8080,
-		Status:  "offline",
-		Groups:  []string{"cache"},
-		Labels:  map[string]string{"env": "staging"},
-	}
+	// 空实现，不再自动加载示例节点
+	// 示例节点将通过 'owl node sample' 命令生成
+	// 如果没有节点，直接使用空映射即可
 }
 
 // Load 从文件加载数据

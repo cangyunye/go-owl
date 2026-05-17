@@ -21,7 +21,8 @@ func NewNodeCmd() *cobra.Command {
 - export: 导出节点到文件
 - status: 查看节点状态
 - groups: 管理节点分组
-- labels: 管理节点标签`,
+- labels: 管理节点标签
+- sample: 生成示例节点配置文件`,
 	}
 
 	// 添加子命令
@@ -34,6 +35,9 @@ func NewNodeCmd() *cobra.Command {
 	nodeCmd.AddCommand(NewStatusCmd())
 	nodeCmd.AddCommand(NewGroupsCmd())
 	nodeCmd.AddCommand(NewLabelsCmd())
+	nodeCmd.AddCommand(NewSampleCmd())
+	nodeCmd.AddCommand(NewPingCmd())
+	nodeCmd.AddCommand(NewCheckCmd())
 
 	return nodeCmd
 }

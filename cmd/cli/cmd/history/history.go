@@ -30,7 +30,6 @@ var (
 	verbose      bool
 )
 
-// NewHistoryCmd 创建history子命令
 func NewHistoryCmd() *cobra.Command {
 	historyCmd := &cobra.Command{
 		Use:   "history",
@@ -45,7 +44,6 @@ func NewHistoryCmd() *cobra.Command {
 		Run: runHistory,
 	}
 
-	// 查询参数
 	historyCmd.Flags().StringVar(&taskID, "task-id", "", "按任务ID筛选")
 	historyCmd.Flags().StringVar(&nodeID, "node-id", "", "按节点ID筛选")
 	historyCmd.Flags().StringVar(&opType, "op-type", "", "按操作类型筛选 (command, file_transfer, playbook, node_manage)")
@@ -56,16 +54,69 @@ func NewHistoryCmd() *cobra.Command {
 	historyCmd.Flags().IntVar(&limit, "limit", 50, "结果数量限制 (默认 50，最大 1000)")
 	historyCmd.Flags().IntVar(&offset, "offset", 0, "偏移量 (分页)")
 
-	// 输出参数
 	historyCmd.Flags().StringVar(&format, "format", "table", "输出格式 (table, json, yaml)")
 	historyCmd.Flags().StringVar(&outputFile, "output", "", "输出到文件")
 	historyCmd.Flags().BoolVar(&verbose, "verbose", false, "显示详细信息")
 
+	historyCmd.AddCommand(NewCleanCmd())
+
 	return historyCmd
 }
 
+func NewCleanCmd() *cobra.Command {
+	var retentionDays int
+	var force bool
+
+	cleanCmd := &cobra.Command{
+		Use:   "clean",
+		Short: "清理过期的历史记录",
+		Long: `清理指定天数之前的历史记录，释放数据库空间。
+
+示例：
+  owl history clean --days 30
+  owl history clean --days 7 --force`,
+		Run: func(cmd *cobra.Command, args []string) {
+			logger.Init(nil)
+			_, err := history.NewDB(history.DefaultConfig())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to initialize history DB: %v\n", err)
+				os.Exit(1)
+			}
+			defer logger.Sync()
+
+			if retentionDays <= 0 {
+				fmt.Fprintf(os.Stderr, "Retention days must be greater than 0\n")
+				os.Exit(1)
+			}
+
+			if !force {
+				fmt.Printf("This will delete all history records older than %d days.\n", retentionDays)
+				fmt.Print("Are you sure? (y/N): ")
+				var confirm string
+				fmt.Scanln(&confirm)
+				if confirm != "y" && confirm != "Y" {
+					fmt.Println("Operation cancelled.")
+					return
+				}
+			}
+
+			fmt.Printf("Cleaning up history older than %d days...\n", retentionDays)
+			err = history.Cleanup(retentionDays)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Cleanup failed: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("Cleanup completed successfully!")
+		},
+	}
+
+	cleanCmd.Flags().IntVar(&retentionDays, "days", 30, "保留天数，清理早于此天数的记录 (默认 30)")
+	cleanCmd.Flags().BoolVar(&force, "force", false, "跳过确认，直接清理")
+
+	return cleanCmd
+}
+
 func runHistory(cmd *cobra.Command, args []string) {
-	// 初始化日志和历史数据库
 	logger.Init(nil)
 	_, err := history.NewDB(history.DefaultConfig())
 	if err != nil {
@@ -74,14 +125,12 @@ func runHistory(cmd *cobra.Command, args []string) {
 	}
 	defer logger.Sync()
 
-	// 解析查询条件
 	opts := &history.QueryOptions{
 		TaskID: taskID,
 		Limit:  limit,
 		Offset: offset,
 	}
 
-	// 解析时间条件
 	last, err := parseDuration(lastDuration)
 	if err == nil && last > 0 {
 		opts.StartTime = time.Now().Add(-last)
@@ -98,14 +147,12 @@ func runHistory(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// 执行查询
 	records, err := history.Query(opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Query failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 输出结果
 	w := cmd.OutOrStdout()
 	if outputFile != "" {
 		f, err := os.Create(outputFile)

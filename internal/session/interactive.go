@@ -71,10 +71,14 @@ func (l *InteractiveLoop) printPrompt() {
 
 // handleCommand 处理命令
 func (l *InteractiveLoop) handleCommand(input string) bool {
-	// 解析命令
+	// 检查是否以 "/" 开头（程序级命令）
+	if strings.HasPrefix(input, "/") {
+		return l.handleLocalCommand(input)
+	}
+
+	// 原有的内置命令（兼容没有 "/" 前缀的情况）
 	command, _ := l.parser.ParseCommand(input)
 
-	// 处理内置命令
 	switch command {
 	case "exit", "quit":
 		return true
@@ -98,6 +102,69 @@ func (l *InteractiveLoop) handleCommand(input string) bool {
 	}
 
 	return false
+}
+
+// handleLocalCommand 处理本地程序级命令（以 / 开头）
+func (l *InteractiveLoop) handleLocalCommand(input string) bool {
+	command := strings.TrimSpace(input)
+	if !strings.HasPrefix(command, "/") {
+		return false
+	}
+
+	// 去除 "/" 前缀
+	command = strings.TrimPrefix(command, "/")
+
+	// 解析参数
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return false
+	}
+
+	cmd := strings.ToLower(parts[0])
+	args := ""
+	if len(parts) > 1 {
+		args = strings.Join(parts[1:], " ")
+	}
+
+	switch cmd {
+	case "exit", "quit":
+		return true
+	case "help", "?":
+		l.printHelp()
+		return false
+	case "history", "hist":
+		l.printHistory()
+		return false
+	case "nodes", "node":
+		l.printNodes()
+		return false
+	case "clear", "cls":
+		l.clearScreen()
+		return false
+	case "broadcast":
+		l.toggleBroadcast()
+		return false
+	case "status":
+		l.printStatus()
+		return false
+	case "attach":
+		if args != "" {
+			fmt.Printf("→ 切换到节点: %s\n", args)
+		} else {
+			fmt.Println("用法: /attach <node-id>")
+		}
+		return false
+	case "exec":
+		fmt.Println("→ 使用 /exec <command> 在所有节点执行命令")
+		if args != "" {
+			l.executeRemoteCommand(args)
+		}
+		return false
+	default:
+		fmt.Printf("未知命令: /%s\n", cmd)
+		fmt.Println("输入 /help 查看可用命令")
+		return false
+	}
 }
 
 // executeRemoteCommand 执行远程命令
@@ -201,15 +268,27 @@ func (l *InteractiveLoop) printResultSummary(results []CommandResult) {
 
 // printHelp 显示帮助
 func (l *InteractiveLoop) printHelp() {
-	fmt.Println("可用命令:")
-	fmt.Println("  help     - 显示帮助信息")
-	fmt.Println("  history  - 显示命令历史")
-	fmt.Println("  nodes    - 显示当前连接的节点")
-	fmt.Println("  clear    - 清屏")
-	fmt.Println("  exit     - 优雅退出会话")
+	fmt.Println("─────────────────────────────────────")
+	fmt.Println("owl session attach - 帮助信息")
+	fmt.Println("─────────────────────────────────────")
 	fmt.Println()
-	fmt.Println("远程命令:")
-	fmt.Println("  输入任何 shell 命令将在远程节点执行")
+	fmt.Println("📌 程序命令（以 / 开头）:")
+	fmt.Println("  /help, /?     显示帮助")
+	fmt.Println("  /exit, /quit   退出会话")
+	fmt.Println("  /history       显示命令历史")
+	fmt.Println("  /nodes         显示当前节点")
+	fmt.Println("  /status        显示连接状态")
+	fmt.Println("  /clear, /cls   清屏")
+	fmt.Println("  /broadcast     切换广播模式")
+	fmt.Println("  /attach <id>   切换节点")
+	fmt.Println("  /exec <cmd>    执行远程命令")
+	fmt.Println()
+	fmt.Println("📡 远程命令:")
+	fmt.Println("  不带 / 的命令将发送到远程节点执行")
+	fmt.Println("  例如: uptime, ls -la, df -h")
+	fmt.Println()
+	fmt.Println("💡 提示: 以 / 开头的命令在本地执行")
+	fmt.Println("        其他命令发送到 SSH 会话执行")
 	fmt.Println()
 }
 
@@ -238,6 +317,32 @@ func (l *InteractiveLoop) printNodes() {
 // clearScreen 清屏
 func (l *InteractiveLoop) clearScreen() {
 	fmt.Print("\033[2J\033[H")
+}
+
+// toggleBroadcast 切换广播模式
+func (l *InteractiveLoop) toggleBroadcast() {
+	fmt.Println("广播模式切换: 在多节点模式下，将命令发送到所有节点")
+}
+
+// printStatus 显示连接状态
+func (l *InteractiveLoop) printStatus() {
+	stats := l.session.GetConnectionStats()
+	fmt.Println("─────────────────────────────────────")
+	fmt.Println("连接状态")
+	fmt.Println("─────────────────────────────────────")
+	fmt.Printf("会话 ID:   %s\n", l.session.ID)
+	fmt.Printf("会话模式:  %s\n", l.session.Mode)
+	fmt.Printf("连接节点:  %d\n", len(stats.NodeIDs))
+	fmt.Printf("活跃连接:  %d\n", stats.ActiveConnections)
+	fmt.Println()
+
+	if len(stats.NodeIDs) > 0 {
+		fmt.Println("节点列表:")
+		for _, nodeID := range stats.NodeIDs {
+			fmt.Printf("  - %s\n", nodeID)
+		}
+	}
+	fmt.Println()
 }
 
 // truncateString 截断字符串

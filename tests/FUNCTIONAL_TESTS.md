@@ -111,14 +111,18 @@ owl node add internal-server \
 ```bash
 owl node list
 
-# 预期输出
-ID       | Name            | Address          | Port | User      | Status
----------|-----------------|------------------|------|-----------|--------
-node1    | Web Server 01   | 192.168.1.10     | 22   | root      | offline
-node2    | DB Server 01    | 192.168.1.20     | 22   | postgres  | offline
-node3    | Cache Server 01 | 192.168.1.30     | 2222 | redis     | offline
-node4    | App Server 01   | 192.168.1.40     | 22   | admin     | offline
+# 预期输出（包含 User 列）
+ID         Name            Address              User       Status     Groups               Labels
+--------------------------------------------------------------------------------------------------------------
+node1      Web Server 01   192.168.1.10:22     root       offline    -                    -
+node2      DB Server 01    192.168.1.20:22     postgres   offline    -                    -
+node3      Cache Server 01 192.168.1.30:2222   redis      offline    -                    -
+node4      App Server 01   192.168.1.40:22     admin      offline    web,production       env=prod,...
+
+Total: 4 nodes
 ```
+
+**注意**：`Address` 列显示格式为 `地址:端口`，`User` 列显示 SSH 用户
 
 #### 按分组筛选
 
@@ -333,23 +337,119 @@ owl node remove node3
 ✓ 删除节点 node3
 ```
 
+### 1.8 Ping 节点检查可达性
+
+#### Ping 单个节点
+
+```bash
+owl node ping node1
+
+# 预期输出
+开始 Ping 1 个节点 (超时: 3s)...
+
+✓ node1 (192.168.1.10): 可达 - 12ms
+
+统计: 1 可达, 0 不可达, 总计 1
+```
+
+#### Ping 多个节点
+
+```bash
+owl node ping node1 node2 node3
+
+# 预期输出
+开始 Ping 3 个节点 (超时: 3s)...
+
+✓ node1 (192.168.1.10): 可达 - 12ms
+✓ node2 (192.168.1.20): 可达 - 15ms
+✗ node3 (192.168.1.30): 不可达 - dial tcp: lookup 192.168.1.30: no such host
+
+统计: 2 可达, 1 不可达, 总计 3
+```
+
+#### Ping 所有节点
+
+```bash
+owl node ping --all
+
+# 预期输出
+开始 Ping 4 个节点 (超时: 3s)...
+
+✓ node1 (192.168.1.10): 可达 - 12ms
+✓ node2 (192.168.1.20): 可达 - 15ms
+✓ node3 (192.168.1.30): 可达 - 18ms
+✓ node4 (192.168.1.40): 可达 - 20ms
+
+统计: 4 可达, 0 不可达, 总计 4
+```
+
+### 1.9 Check 节点 SSH 连接
+
+#### Check 单个节点
+
+```bash
+owl node check node1
+
+# 预期输出
+开始 SSH 连接检查 1 个节点 (超时: 10s, 并发: 5, 不更新状态)...
+
+✓ node1 (192.168.1.10:22): 在线
+
+统计: 1 在线, 0 离线, 总计 1
+```
+
+#### Check 所有节点并更新状态
+
+```bash
+owl node check --all --update
+
+# 预期输出
+开始 SSH 连接检查 4 个节点 (超时: 10s, 并发: 5)...
+
+✓ node1 (192.168.1.10:22): 在线
+  → 状态已更新为: online
+✓ node2 (192.168.1.20:22): 在线
+  → 状态已更新为: online
+✗ node3 (192.168.1.30:2222): 离线 - dial tcp 192.168.1.30:2222: connection refused
+  → 状态已更新为: offline
+✓ node4 (192.168.1.40:22): 在线
+  → 状态已更新为: online
+
+统计: 3 在线, 1 离线, 总计 4
+节点状态已保存
+```
+
+#### Check 并发控制
+
+```bash
+owl node check --all --workers 10 --timeout 30s
+
+# 预期输出
+开始 SSH 连接检查 4 个节点 (超时: 30s, 并发: 10)...
+
+...
+```
+
 ---
 
 ## 二、交互式会话
 
 ### 2.1 连接单节点
 
-#### 基本连接
+#### 基本连接（按节点 ID）
 
 ```bash
 owl session attach node1
 
 # 预期输出
 正在连接到 1 个节点...
+找到节点配置: node1 -> 192.168.1.10:22 (user: root)
 [连接成功]
 Welcome to Ubuntu 22.04 LTS
 root@node1:~#
 ```
+
+**重要**：连接时必须使用节点 ID（如 `node1`），系统会从配置读取 Address、Port、User 等信息
 
 #### 指定用户连接
 
@@ -738,25 +838,29 @@ ID | Name | Address | Port | User | Status
 | 2 | 节点管理 | 添加节点（密钥认证） | [ ] |
 | 3 | 节点管理 | 添加节点（非标准端口） | [ ] |
 | 4 | 节点管理 | 添加节点（跳板机） | [ ] |
-| 5 | 节点管理 | 列出节点 | [ ] |
+| 5 | 节点管理 | 列出节点（显示 User 列） | [ ] |
 | 6 | 节点管理 | 按分组/标签筛选 | [ ] |
 | 7 | 节点管理 | 更新节点 | [ ] |
 | 8 | 节点管理 | 分组管理 | [ ] |
 | 9 | 节点管理 | 标签管理 | [ ] |
 | 10 | 节点管理 | 导入导出 | [ ] |
 | 11 | 节点管理 | 删除节点 | [ ] |
-| 12 | 会话管理 | 单节点连接 | [ ] |
-| 13 | 会话管理 | 多节点连接 | [ ] |
-| 14 | 会话管理 | 会话历史 | [ ] |
-| 15 | 命令执行 | 单节点命令 | [ ] |
-| 16 | 命令执行 | 多节点命令 | [ ] |
-| 17 | 命令执行 | 按分组执行 | [ ] |
-| 18 | 剧本管理 | 验证剧本 | [ ] |
-| 19 | 剧本管理 | 执行剧本 | [ ] |
-| 20 | 文件传输 | 上传下载 | [ ] |
-| 21 | 设置管理 | 查看/更新/重置 | [ ] |
-| 22 | AI 助手 | 交互模式 | [ ] |
-| 23 | 历史记录 | 查看历史 | [ ] |
+| 12 | 节点管理 | Ping 节点检查可达性 | [ ] |
+| 13 | 节点管理 | Check SSH 连接并更新状态 | [ ] |
+| 14 | 会话管理 | 单节点连接（Bug-001 验证） | [ ] |
+| 15 | 会话管理 | 多节点连接 | [ ] |
+| 16 | 会话管理 | 会话历史 | [ ] |
+| 17 | 命令执行 | 单节点命令 | [ ] |
+| 18 | 命令执行 | 多节点命令 | [ ] |
+| 19 | 命令执行 | 按分组执行 | [ ] |
+| 20 | 剧本管理 | 验证剧本 | [ ] |
+| 21 | 剧本管理 | 执行剧本 | [ ] |
+| 22 | 文件传输 | 上传下载 | [ ] |
+| 23 | 设置管理 | 查看/更新/重置 | [ ] |
+| 24 | AI 助手 | 交互模式 | [ ] |
+| 25 | 历史记录 | 查看历史 | [ ] |
+| 26 | Bug 修复 | --labels 多标签参数 | [ ] |
+| 27 | Bug 修复 | node status 显示 User | [ ] |
 
 ---
 
@@ -773,5 +877,124 @@ ID | Name | Address | Port | User | Status
 |------|----------|----------|
 | 连接失败 | SSH 密钥权限不对 | `chmod 600 ~/.ssh/id_rsa` |
 | 连接失败 | 端口不正确 | 检查节点配置 `owl node list` |
+| 连接失败 | 使用 hostname 作为 node ID | 必须使用节点 ID，不能用 hostname |
 | 命令执行超时 | 节点无响应 | 检查网络和节点状态 |
 | 剧本执行失败 | YAML 格式错误 | 使用 `owl playbook validate` 验证 |
+
+---
+
+## Bug 修复验证
+
+本章节记录重要 Bug 修复，确保相关功能正常工作。
+
+### Bug-001: session attach 未读取节点配置的 Address
+
+**问题描述**：`owl session attach <node-id>` 命令尝试使用 node ID 作为地址连接，导致 "dial tcp: lookup xxx: no such host" 错误
+
+**修复文件**：`cmd/cli/cmd/session/attach.go`
+
+**修复内容**：
+```go
+// 修复前：未读取 nodeInfo.Address
+if nodeInfo.Port > 0 {
+    config.Port = nodeInfo.Port
+}
+
+// 修复后：添加 Address 读取
+if nodeInfo.Address != "" {
+    config.Address = nodeInfo.Address
+}
+if nodeInfo.Port > 0 {
+    config.Port = nodeInfo.Port
+}
+if nodeInfo.User != "" {
+    config.User = nodeInfo.User
+}
+```
+
+**验证步骤**：
+```bash
+# 1. 添加带 Address 的节点
+owl node add mac --name "Mac Mini" --address 192.168.64.1 --user vigil
+
+# 2. 确认节点信息正确
+owl node list
+# 应显示: mac | Mac Mini | 192.168.64.1:22 | vigil | ...
+
+# 3. 连接节点（使用 node ID）
+owl session attach mac
+# 应正确连接到 192.168.64.1:22，而不是 "mac"
+```
+
+### Bug-002: node list/status 未显示 User 列
+
+**问题描述**：节点列表和详情命令不显示 SSH 用户信息
+
+**修复文件**：
+- `cmd/cli/cmd/node/list.go` - 添加 User 字段到 toModelNodes/toModelNode
+- `cmd/cli/cmd/common/output.go` - printTable 添加 User 列，printNodeDetail 添加 User 信息
+
+**修复内容**：
+```go
+// list.go
+result[i] = &model.Node{
+    ID:      n.ID,
+    Name:    n.Name,
+    Address: n.Address,
+    Port:    n.Port,
+    User:    n.User,  // 新增
+    Status:  model.NodeStatus(n.Status),
+    Groups:  n.Groups,
+    Labels:  n.Labels,
+}
+
+// output.go - printTable
+fmt.Printf("%-10s %-15s %-20s %-10s %-10s %-20s %-15s\n",
+    "ID", "Name", "Address", "User", "Status", "Groups", "Labels")
+
+// output.go - printNodeDetail
+if node.User != "" {
+    fmt.Printf("  User:     %s\n", node.User)
+}
+```
+
+**验证步骤**：
+```bash
+# 1. 添加带用户的节点
+owl node add test --name "Test" --address 192.168.1.1 --user admin
+
+# 2. 查看列表（应显示 User 列）
+owl node list
+# 应显示: test | Test | 192.168.1.1:22 | admin | ...
+
+# 3. 查看详情（应显示 User）
+owl node status test
+# 应显示: User: admin
+```
+
+### Bug-003: --labels 参数名不统一
+
+**问题描述**：帮助示例使用 `--labels`，实际参数是 `--label`
+
+**修复文件**：
+- `cmd/cli/cmd/node/add.go`
+- `cmd/cli/cmd/node/update.go`
+
+**修复内容**：添加 `--labels` 为主要参数，`--label` 作为别名
+```go
+addCmd.Flags().StringSliceVarP(&addLabels, "labels", "l", nil,
+    "标签 (格式: key=value)")
+addCmd.Flags().StringSliceVar(&addLabels, "label", nil,
+    "标签 (格式: key=value) (alias)")
+```
+
+**验证步骤**：
+```bash
+# 两种写法都支持
+owl node add n1 --name t --address 1.1.1.1 --labels env=prod,app=owl
+owl node add n2 --name t --address 1.1.1.2 --label env=prod,app=owl
+
+# 查看帮助示例
+owl node add --help
+# 应显示: --labels env=prod,appname=owl,region=us-east
+```

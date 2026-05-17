@@ -324,6 +324,13 @@ func Query(opts *QueryOptions) ([]*Record, error) {
 	if GetGlobalDB() == nil {
 		return []*Record{}, nil
 	}
-	// 实现查询逻辑
-	return nil, nil
+	return GetDB().Query(opts)
+}
+
+// Cleanup 清理过期的历史记录
+func Cleanup(retentionDays int) error {
+	if GetGlobalDB() == nil {
+		return nil
+	}
+	return GetGlobalDB().Cleanup(retentionDays)
 }

@@ -32,6 +32,8 @@
 2. 使用 `owl node update` 更新节点
 3. 使用 `owl node list` 查看节点
 4. 使用 `owl node import/export` 批量管理节点
+5. 使用 `owl node ping` 检查节点可达性
+6. 使用 `owl node check` 检查 SSH 连接并更新状态
 
 ### 会话功能
 1. 阅读 [SESSION_USAGE.md](SESSION_USAGE.md)

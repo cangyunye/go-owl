@@ -1,33 +1,44 @@
 package file
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/control/transfer"
+	"github.com/cangyunye/go-owl/internal/node"
 )
 
-// downloadFlags
 var (
-	downloadNodes  string
-	downloadGroup  string
-	downloadLabel  []string
-	downloadDest   string
-	downloadSource string
+	downloadNodes       string
+	downloadGroup       string
+	downloadLabel       []string
+	downloadDest        string
+	downloadSource      string
+	downloadParallel    bool
+	downloadSubdir      bool
+	downloadNameFormat  string
+	downloadResume      bool
 )
 
-// NewDownloadCmd 创建下载命令
 func NewDownloadCmd() *cobra.Command {
 	downloadCmd := &cobra.Command{
 		Use:   "download <remote-file>",
 		Short: "从节点下载文件",
-		Long: `从远程节点下载文件到本地。
+		Long: `从远程节点下载文件到本地，支持断点续传。
+
+支持断点续传：
+- 自动检测远程节点是否支持 rsync
+- 支持则使用 rsync（支持断点续传）
+- 不支持则回退到 scp
 
 示例：
-  owl file download /var/log/app.log --node node1 --dest ./logs/
-  owl file download /tmp/*.log --nodes node1,node2 --dest ./logs/`,
+  owl file download /var/log/app.log --nodes node1 --dest ./logs/
+  owl file download /tmp/data.json --group web --dest ./data/
+  owl file download /var/log/app.log --nodes node1,node2 --dest ./logs/ --subdir
+  owl file download /var/log/app.log --nodes node1,node2 --dest ./logs/ --name-format "{node}-{file}"`,
 		Args: cobra.ExactArgs(1),
 		Run:  runDownload,
 	}
@@ -42,112 +53,121 @@ func NewDownloadCmd() *cobra.Command {
 		"本地目标目录")
 	downloadCmd.Flags().StringVar(&downloadSource, "node", "",
 		"指定源节点 (单节点下载)")
+	downloadCmd.Flags().BoolVar(&downloadParallel, "parallel", true,
+		"并行从多个节点下载")
+	downloadCmd.Flags().BoolVar(&downloadSubdir, "subdir", false,
+		"为每个节点创建子目录")
+	downloadCmd.Flags().StringVar(&downloadNameFormat, "name-format", "",
+		"文件命名格式 (支持 {node} 和 {file} 占位符)")
+	downloadCmd.Flags().BoolVar(&downloadResume, "resume", true,
+		"启用断点续传（rsync 优先）")
 
 	return downloadCmd
 }
 
 func runDownload(cmd *cobra.Command, args []string) {
 	remoteFile := args[0]
-	store := common.GetNodeStore()
 
-	// 如果指定了单节点下载
+	nodeResolver := node.NewNodeResolver()
+
+	var targetNodeIDs []string
+
 	if downloadSource != "" {
-		nodeInfo, err := store.Get(downloadSource)
+		targetNodeIDs = []string{downloadSource}
+	} else if downloadNodes != "" {
+		targetNodeIDs = parseNodeList(downloadNodes)
+	} else if downloadGroup != "" {
+		nodes, err := nodeResolver.ListNodes(&node.ListOptions{
+			Group: downloadGroup,
+		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
 			os.Exit(1)
 		}
-
-		if nodeInfo.Status != "online" {
-			fmt.Fprintf(os.Stderr, "Error: node %s is offline\n", downloadSource)
+		for _, n := range nodes {
+			targetNodeIDs = append(targetNodeIDs, n.ID)
+		}
+	} else if len(downloadLabel) > 0 {
+		nodes, err := nodeResolver.ListNodes(&node.ListOptions{
+			Label: downloadLabel[0],
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
 			os.Exit(1)
 		}
-
-		fileName := getFileNameFromPath(remoteFile)
-		fmt.Printf("Downloading %s from %s...\n", remoteFile, downloadSource)
-		fmt.Printf("Saving to %s/%s\n", downloadDest, fileName)
-
-		// 模拟下载
-		fmt.Printf("[%s] OK: Downloaded %s\n", downloadSource, remoteFile)
-		return
+		for _, n := range nodes {
+			targetNodeIDs = append(targetNodeIDs, n.ID)
+		}
 	}
 
-	// 多节点下载
-	targetNodes := selectDownloadTargetNodes(store)
-	if len(targetNodes) == 0 {
-		fmt.Println("No target nodes found.")
-		return
-	}
-
-	// 检查目标目录
-	if err := os.MkdirAll(downloadDest, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating directory: %v\n", err)
+	if len(targetNodeIDs) == 0 {
+		fmt.Fprintln(os.Stderr, "错误: 请指定 --nodes, --group, --label 或 --node")
 		os.Exit(1)
 	}
 
-	// 显示下载信息
-	fmt.Printf("Remote file: %s\n", remoteFile)
-	fmt.Printf("Local destination: %s\n", downloadDest)
-	fmt.Printf("Source: %d nodes\n", len(targetNodes))
-	fmt.Println("\nDownloading...")
+	if err := os.MkdirAll(downloadDest, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "错误: 创建目录失败: %v\n", err)
+		os.Exit(1)
+	}
 
-	// 模拟下载
+	fmt.Printf("📥 源文件: %s\n", remoteFile)
+	fmt.Printf("🎯 节点: %d 个\n", len(targetNodeIDs))
+	fmt.Printf("💾 保存到: %s\n", downloadDest)
+	if downloadParallel {
+		fmt.Println("⚡ 模式: 并行下载")
+	} else {
+		fmt.Println("⚡ 模式: 串行下载")
+	}
+	if downloadSubdir {
+		fmt.Println("📁 组织: 按节点创建子目录")
+	}
+	if downloadNameFormat != "" {
+		fmt.Printf("📝 命名: %s\n", downloadNameFormat)
+	}
+	if downloadResume {
+		fmt.Println("🔄 断点续传: 已启用")
+	} else {
+		fmt.Println("🔄 断点续传: 已禁用")
+	}
+	fmt.Println("\n正在下载...")
+
+	manager := transfer.NewTransferManager(nodeResolver)
+	defer manager.Close()
+
+	ctx := context.Background()
+	opts := &transfer.DownloadOptions{
+		Parallel:   downloadParallel,
+		Subdir:     downloadSubdir,
+		NameFormat: downloadNameFormat,
+		Resume:     downloadResume,
+	}
+
+	results := manager.Download(ctx, targetNodeIDs, remoteFile, downloadDest, opts)
+
 	success := 0
 	failed := 0
-	for _, n := range targetNodes {
-		if n.Status == "online" {
-			fileName := getFileNameFromPath(remoteFile)
-			fmt.Printf("[%s] OK: Downloaded %s\n", n.ID, fileName)
-			success++
-		} else {
-			fmt.Printf("[%s] FAIL: Node offline\n", n.ID)
+
+	for _, result := range results {
+		if result.Error != nil {
+			fmt.Printf("❌ [%s] 失败: %v\n", result.NodeID, result.Error)
 			failed++
+		} else {
+			method := "scp"
+			if result.Method == "rsync" {
+				method = "rsync"
+				if result.Speed != "" && result.Speed != "N/A" {
+					fmt.Printf("✅ [%s] 成功 [%s, %s]: %s\n", result.NodeID, method, result.Speed, result.Path)
+					success++
+					continue
+				}
+			}
+			fmt.Printf("✅ [%s] 成功 [%s]: %s\n", result.NodeID, method, result.Path)
+			success++
 		}
 	}
 
-	fmt.Printf("\nSummary: %d succeeded, %d failed\n", success, failed)
+	fmt.Printf("\n📊 总结: %d 成功, %d 失败\n", success, failed)
 	if failed > 0 {
 		os.Exit(1)
 	}
-}
-
-func selectDownloadTargetNodes(store common.NodeStore) []*common.NodeInfo {
-	var result []*common.NodeInfo
-	allNodes, _ := store.List()
-
-	for _, n := range allNodes {
-		if downloadNodes != "" {
-			nodeIDs := common.ParseNodeList(downloadNodes)
-			if !containsNodeIDList(nodeIDs, n.ID) {
-				continue
-			}
-		}
-
-		if downloadGroup != "" {
-			if !containsNodeIDList(n.Groups, downloadGroup) {
-				continue
-			}
-		}
-
-		if len(downloadLabel) > 0 {
-			match := true
-			for _, label := range downloadLabel {
-				parts := splitLabelEq(label)
-				if len(parts) == 2 {
-					key, value := parts[0], parts[1]
-					if v, ok := n.Labels[key]; !ok || v != value {
-						match = false
-						break
-					}
-				}
-			}
-			if !match {
-				continue
-			}
-		}
-
-		result = append(result, n)
-	}
-
-	return result
 }
