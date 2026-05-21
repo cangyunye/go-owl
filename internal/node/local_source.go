@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/cangyunye/go-owl/internal/logger"
 )
 
 type LocalSource struct {
@@ -25,24 +27,34 @@ type LocalNode struct {
 	SSHPassword string
 }
 
-func NewLocalSource() *LocalSource {
+func NewLocalSource() (*LocalSource, error) {
 	s := &LocalSource{
 		nodes: make(map[string]*LocalNode),
 	}
-	s.loadFromFile()
-	return s
+	if err := s.loadFromFile(); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
-func (s *LocalSource) loadFromFile() {
+func (s *LocalSource) loadFromFile() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return
+		return fmt.Errorf("获取用户主目录失败: %w", err)
 	}
 	dataFile := filepath.Join(home, ".owl", "nodes.json")
 
 	data, err := os.ReadFile(dataFile)
 	if err != nil {
-		return
+		// 如果文件不存在，这是正常的，返回空列表
+		if os.IsNotExist(err) {
+			logger.Debug("Nodes file does not exist, starting with empty node list",
+				logger.WithOperation("node_load"),
+				logger.WithField("file", dataFile))
+			return nil
+		}
+		// 其他读取错误才返回错误
+		return fmt.Errorf("读取节点文件 %s 失败: %w", dataFile, err)
 	}
 
 	var nodes []*struct {
@@ -57,7 +69,7 @@ func (s *LocalSource) loadFromFile() {
 		Labels   map[string]string `json:"labels"`
 	}
 	if err := json.Unmarshal(data, &nodes); err != nil {
-		return
+		return fmt.Errorf("解析节点文件 %s 失败: %w", dataFile, err)
 	}
 
 	s.mu.Lock()
@@ -79,6 +91,11 @@ func (s *LocalSource) loadFromFile() {
 			s.nodes[n.Name] = localNode
 		}
 	}
+	logger.Info("Loaded nodes from file", 
+		logger.WithOperation("node_load"),
+		logger.WithField("count", len(nodes)))
+	
+	return nil
 }
 
 func (s *LocalSource) GetNode(idOrName string) (*LocalNode, error) {
@@ -102,8 +119,14 @@ func (s *LocalSource) ListNodes(opts *ListOptions) ([]*LocalNode, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	seen := make(map[string]bool)
 	nodes := make([]*LocalNode, 0, len(s.nodes))
 	for _, node := range s.nodes {
+		if seen[node.ID] {
+			continue
+		}
+		seen[node.ID] = true
+		
 		if opts != nil {
 			if opts.Name != "" && node.Name != opts.Name {
 				continue
@@ -141,7 +164,10 @@ func (s *LocalSource) AddNode(node *LocalNode) error {
 	if node.Name != "" && node.Name != node.ID {
 		s.nodes[node.Name] = node
 	}
-
+	logger.Info("Node added", 
+		logger.WithOperation("node_add"),
+		logger.WithField("node_id", node.ID),
+		logger.WithField("node_name", node.Name))
 	return nil
 }
 
@@ -151,14 +177,19 @@ func (s *LocalSource) RemoveNode(idOrName string) error {
 
 	node, ok := s.nodes[idOrName]
 	if !ok {
-		return fmt.Errorf("节点不存在: %s", idOrName)
+		logger.Warn("Attempted to remove non-existent node", 
+			logger.WithOperation("node_remove"),
+			logger.WithField("node_id", idOrName))
+		return fmt.Errorf("node not found: %s", idOrName)
 	}
 
 	delete(s.nodes, node.ID)
 	if node.Name != "" {
 		delete(s.nodes, node.Name)
 	}
-
+	logger.Info("Node removed", 
+		logger.WithOperation("node_remove"),
+		logger.WithField("node_id", node.ID))
 	return nil
 }
 

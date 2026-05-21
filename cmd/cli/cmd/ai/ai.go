@@ -11,6 +11,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/ai"
+	"github.com/cangyunye/go-owl/internal/control/playbook"
 )
 
 var (
@@ -56,6 +57,7 @@ func NewAICmd() *cobra.Command {
 		"会话 ID (用于恢复会话)")
 
 	aiCmd.AddCommand(NewModelsCmd())
+	aiCmd.AddCommand(NewConfigCmd())
 
 	return aiCmd
 }
@@ -141,6 +143,8 @@ func runAI(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	playbookParser := playbook.NewParser()
+
 	config := &ai.Config{
 		AI: ai.AIConfig{
 			Provider: aiProvider,
@@ -151,7 +155,7 @@ func runAI(cmd *cobra.Command, args []string) {
 		},
 	}
 
-	agent, err := ai.NewAgent(config, nodeMgr)
+	agent, err := ai.NewAgent(config, nodeMgr, playbookParser)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize Eino LLM: %v, using fallback mode\n", err)
 	}

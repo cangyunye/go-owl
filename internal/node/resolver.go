@@ -3,6 +3,8 @@ package node
 import (
 	"fmt"
 	"sync"
+
+	"github.com/cangyunye/go-owl/internal/logger"
 )
 
 type NodeResolver struct {
@@ -29,9 +31,19 @@ type ResolvedNode struct {
 }
 
 func NewNodeResolver() *NodeResolver {
+	localSource, err := NewLocalSource()
+	if err != nil {
+		logger.Warn("Failed to load local nodes, starting with empty node list",
+			logger.WithOperation("node_resolver_init"),
+			logger.WithError(err))
+		localSource = &LocalSource{
+			nodes: make(map[string]*LocalNode),
+		}
+	}
+
 	return &NodeResolver{
 		apiSource:   GetAPINodeSource(),
-		localSource: NewLocalSource(),
+		localSource: localSource,
 		sshConfig:   NewSSHConfigSource(),
 		cache:       make(map[string]*ResolvedNode),
 		preferAPI:   IsAPIEnabled(),

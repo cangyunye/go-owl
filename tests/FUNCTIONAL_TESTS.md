@@ -184,16 +184,16 @@ owl node update node4 \
 #### 添加分组
 
 ```bash
-owl node group add production --nodes node1,node2
+owl node groups add node1 production
 
 # 预期输出
-✓ 添加分组 production，包含节点: node1, node2
+✓ 添加分组 production，包含节点: node1
 ```
 
 #### 列出所有分组
 
 ```bash
-owl node groups
+owl node groups list
 
 # 预期输出
 分组名称         | 包含节点数
@@ -208,13 +208,12 @@ database        | 1
 #### 设置标签
 
 ```bash
-owl node labels set node1 env=production region=us-west version=2.0
+owl node labels set node1 env=prod region=us-west
 
 # 预期输出
 Labels updated for node 'node1'
-env: production
+env: prod
 region: us-west
-version: 2.0
 ```
 
 #### 显示所有标签
@@ -224,10 +223,8 @@ owl node labels show node1
 
 # 预期输出
 Labels for node 'node1':
-  env: production
-  region: us-west
-  version: 2.0
   env: prod
+  region: us-west
 ```
 
 #### 显示指定标签
@@ -236,16 +233,16 @@ Labels for node 'node1':
 owl node labels show node1 env
 
 # 预期输出
-env=production
+env=prod
 ```
 
 #### 删除标签
 
 ```bash
-owl node labels remove node1 version
+owl node labels remove node1 region
 
 # 预期输出
-Label 'version' removed from node 'node1'
+Label 'region' removed from node 'node1'
 ```
 
 ### 1.6 节点导入导出
@@ -540,7 +537,7 @@ exit
 ### 3.1 单节点命令执行
 
 ```bash
-owl exec --nodes node1 --command "uptime"
+owl exec run --nodes node1 -- uptime
 
 # 预期输出
 [node1] 执行: uptime
@@ -551,7 +548,7 @@ owl exec --nodes node1 --command "uptime"
 ### 3.2 多节点命令执行
 
 ```bash
-owl exec --nodes node1,node2 --command "df -h"
+owl exec run --nodes node1,node2 -- df -h
 
 # 预期输出
 [node1] 结果:
@@ -565,7 +562,7 @@ Filesystem      Size  Used Avail Use% /dev/sda1       200G   80G  120G  40% /
 ### 3.3 按分组执行
 
 ```bash
-owl exec --group web --command "systemctl status nginx"
+owl exec run --group web -- systemctl status nginx
 
 # 预期输出
 [node1] 执行: systemctl status nginx
@@ -578,7 +575,7 @@ owl exec --group web --command "systemctl status nginx"
 ### 3.4 执行脚本
 
 ```bash
-owl exec --nodes node1 --script ./deploy.sh
+owl exec script ./deploy.sh --nodes node1
 
 # 预期输出
 [node1] 上传脚本: ./deploy.sh
@@ -707,32 +704,46 @@ owl file transfer app.tar.gz --nodes node1,node2,node3,node4,node5 --dest /opt/a
 owl settings show
 
 # 预期输出
-AI 配置:
-  Provider: openai
-  Model: gpt-4o
-  API Key: ************
+Current Settings:
+=================
 
-其他设置:
-  默认超时: 30m
-  日志级别: info
+Server:
+  Address: localhost:8080
+  Timeout: 30s
+
+Output:
+  Format: table
+  Color:  true
+
+Diffusion:
+  Fan-out:      3
+  Max depth:    10
+  Source count: 2
+
+Defaults:
+  Timeout: 60s
+  Groups:  (none)
+  Labels:  (none)
 ```
 
 ### 6.2 更新设置
 
 ```bash
-owl settings set ai.model gpt-4-turbo
+owl settings set output.format json
 
 # 预期输出
-✓ 设置已更新: ai.model = gpt-4-turbo
+✓ output.format set to 'json'
 ```
 
-### 6.3 重置设置
+### 6.3 设置默认目标
 
 ```bash
-owl settings reset
+owl settings target --group web
 
 # 预期输出
-✓ 设置已重置为默认值
+Default Target Settings:
+=========================
+  Group: web
 ```
 
 ---
@@ -790,7 +801,71 @@ owl history
 
 ---
 
-## 九、清理测试数据
+## 十、异步任务管理
+
+### 10.1 列出异步任务
+
+```bash
+owl async list
+
+# 预期输出
+没有正在运行的异步任务
+```
+
+### 10.2 异步执行命令
+
+```bash
+owl exec run --nodes node1 --async -- sleep 10
+
+# 预期输出
+任务已提交，ID: async-xxx
+使用 owl async status async-xxx 查看状态
+```
+
+### 10.3 查看任务状态
+
+```bash
+owl async status async-xxx
+
+# 预期输出
+任务 ID: async-xxx
+节点: node1
+命令: sleep 10
+状态: running
+启动时间: 2024-01-15 10:00:00
+```
+
+### 10.4 等待任务完成
+
+```bash
+owl async wait async-xxx
+
+# 预期输出
+等待任务 async-xxx 完成...
+任务 async-xxx 完成，状态: completed
+```
+
+### 10.5 取消任务
+
+```bash
+owl async cancel async-xxx
+
+# 预期输出
+任务 async-xxx 已取消
+```
+
+### 10.6 清理已完成任务
+
+```bash
+owl async cleanup
+
+# 预期输出
+已清理已完成的任务
+```
+
+---
+
+## 十一、清理测试数据
 
 ### 9.1 退出会话
 
@@ -801,7 +876,6 @@ exit
 # 或在新终端
 owl session list
 # 找到需要关闭的会话 ID
-owl session detach <session-id>
 ```
 
 ### 9.2 删除节点
@@ -841,26 +915,34 @@ ID | Name | Address | Port | User | Status
 | 5 | 节点管理 | 列出节点（显示 User 列） | [ ] |
 | 6 | 节点管理 | 按分组/标签筛选 | [ ] |
 | 7 | 节点管理 | 更新节点 | [ ] |
-| 8 | 节点管理 | 分组管理 | [ ] |
-| 9 | 节点管理 | 标签管理 | [ ] |
-| 10 | 节点管理 | 导入导出 | [ ] |
+| 8 | 节点管理 | 分组管理 (groups add/list) | [ ] |
+| 9 | 节点管理 | 标签管理 (labels set/show/remove) | [ ] |
+| 10 | 节点管理 | 导入导出 (import/export) | [ ] |
 | 11 | 节点管理 | 删除节点 | [ ] |
 | 12 | 节点管理 | Ping 节点检查可达性 | [ ] |
 | 13 | 节点管理 | Check SSH 连接并更新状态 | [ ] |
 | 14 | 会话管理 | 单节点连接（Bug-001 验证） | [ ] |
 | 15 | 会话管理 | 多节点连接 | [ ] |
-| 16 | 会话管理 | 会话历史 | [ ] |
-| 17 | 命令执行 | 单节点命令 | [ ] |
+| 16 | 会话管理 | 会话历史 (session history) | [ ] |
+| 17 | 命令执行 | 单节点命令 (exec run) | [ ] |
 | 18 | 命令执行 | 多节点命令 | [ ] |
 | 19 | 命令执行 | 按分组执行 | [ ] |
-| 20 | 剧本管理 | 验证剧本 | [ ] |
-| 21 | 剧本管理 | 执行剧本 | [ ] |
-| 22 | 文件传输 | 上传下载 | [ ] |
-| 23 | 设置管理 | 查看/更新/重置 | [ ] |
-| 24 | AI 助手 | 交互模式 | [ ] |
-| 25 | 历史记录 | 查看历史 | [ ] |
-| 26 | Bug 修复 | --labels 多标签参数 | [ ] |
-| 27 | Bug 修复 | node status 显示 User | [ ] |
+| 20 | 命令执行 | 执行脚本 (exec script) | [ ] |
+| 21 | 剧本管理 | 验证剧本 | [ ] |
+| 22 | 剧本管理 | 执行剧本 | [ ] |
+| 23 | 文件传输 | 上传下载 (file upload/download) | [ ] |
+| 24 | 文件传输 | 扩散传输 (file transfer) | [ ] |
+| 25 | 设置管理 | 查看/更新设置 (settings show/set) | [ ] |
+| 26 | 设置管理 | 默认目标配置 (settings target) | [ ] |
+| 27 | AI 助手 | 交互模式 (owl ai) | [ ] |
+| 28 | AI 助手 | 模型列表 (owl ai models) | [ ] |
+| 29 | 历史记录 | 查看历史 (history) | [ ] |
+| 30 | 历史记录 | 清理历史 (history clean) | [ ] |
+| 31 | 异步任务 | 异步执行 (--async) | [ ] |
+| 32 | 异步任务 | 查看任务状态 (async status) | [ ] |
+| 33 | 异步任务 | 等待任务完成 (async wait) | [ ] |
+| 34 | Bug 修复 | --labels 多标签参数 | [ ] |
+| 35 | Bug 修复 | node status 显示 User | [ ] |
 
 ---
 

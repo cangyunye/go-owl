@@ -184,3 +184,13 @@ func Sync() {
 		globalLogger.Sync()
 	}
 }
+
+// WithField 添加通用字段添加函数
+func WithField(key string, value interface{}) zap.Field {
+	return zap.Any(key, value)
+}
+
+// WithError 添加错误字段
+func WithError(err error) zap.Field {
+	return zap.Error(err)
+}

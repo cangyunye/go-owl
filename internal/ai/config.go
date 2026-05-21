@@ -98,6 +98,32 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+func SaveConfig(path string, cfg *Config) error {
+	if err := createConfigDir(path); err != nil {
+		return err
+	}
+	
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	
+	return os.WriteFile(path, data, 0600)
+}
+
+func getConfigPath() string {
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		home = "/tmp"
+	}
+	return filepath.Join(home, ".owl", "config.yaml")
+}
+
+func createConfigDir(path string) error {
+	dir := filepath.Dir(path)
+	return os.MkdirAll(dir, 0755)
+}
+
 func GetPromptPath(name string) string {
 	home, _ := os.UserHomeDir()
 	owlDir := filepath.Join(home, ".owl", "prompts")

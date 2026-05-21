@@ -11,7 +11,6 @@ import (
 	"time"
 
 	aiPrompts "github.com/cangyunye/go-owl/internal/ai/prompts"
-	aitools "github.com/cangyunye/go-owl/internal/ai/tools"
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/cangyunye/go-owl/internal/control/playbook"
@@ -20,7 +19,7 @@ import (
 type Agent struct {
 	config         *Config
 	nodeMgr        node.Manager
-	registry       *aitools.ToolRegistry
+	registry       *ToolRegistry
 	playbookParser *playbook.Parser
 	chatModel      ChatModel
 	systemPrompt   string
@@ -42,23 +41,23 @@ func (f ChatModelFunc) Generate(ctx context.Context, messages []Message) (string
 	return f(ctx, messages)
 }
 
-func NewAgent(cfg *Config, nodeMgr node.Manager) (*Agent, error) {
-	registry := aitools.NewToolRegistry()
-	registry.Register(aitools.NewQueryNodesTool(nodeMgr))
-	registry.Register(aitools.NewExecuteCommandTool(nodeMgr))
-	registry.Register(aitools.NewGeneratePlaybookTool(nodeMgr))
-	registry.Register(aitools.NewTransferFileTool(nodeMgr))
+func NewAgent(config *Config, nodeMgr node.Manager, playbookParser *playbook.Parser) (*Agent, error) {
+	registry := NewToolRegistry()
+	registry.Register(NewQueryNodesTool(nodeMgr))
+	registry.Register(NewExecuteCommandTool(nodeMgr))
+	registry.Register(NewGeneratePlaybookTool(nodeMgr))
+	registry.Register(NewTransferFileTool(nodeMgr))
 
 	agent := &Agent{
-		config:         cfg,
+		config:         config,
 		nodeMgr:        nodeMgr,
 		registry:       registry,
-		playbookParser: playbook.NewParser(),
+		playbookParser: playbookParser,
 		systemPrompt:   aiPrompts.SystemPrompt,
 	}
 
-	if cfg.AI.APIKey != "" && cfg.AI.Model != "" {
-		llmClient, err := CreateLLMClient(cfg)
+	if config.AI.APIKey != "" && config.AI.Model != "" {
+		llmClient, err := CreateLLMClient(config)
 		if err == nil {
 			agent.chatModel = llmClient
 		} else {
@@ -236,6 +235,10 @@ func (a *Agent) executeToolCall(ctx context.Context, call ToolCall) (string, err
 		return "", fmt.Errorf("未知工具: %s", call.Name)
 	}
 
+	if err := tool.Validate(call.Arguments); err != nil {
+		return "", fmt.Errorf("参数验证失败: %w", err)
+	}
+
 	result, err := tool.Execute(ctx, call.Arguments)
 	if err != nil {
 		return "", err
@@ -336,17 +339,13 @@ func (a *Agent) handleQueryNodes(content string) (string, error) {
 }
 
 func (a *Agent) handleGeneratePlaybook(content string) (string, error) {
-	var sb strings.Builder
-
-	if strings.Contains(strings.ToLower(content), "nginx") || strings.Contains(strings.ToLower(content), "安装") {
-		sb.WriteString("```json\n")
-		sb.WriteString(`{"tool_calls": [{"name": "generate_playbook", "arguments": {"requirement": "`)
-		sb.WriteString(content)
-		sb.WriteString(`"}}]}`)
-		sb.WriteString("\n```")
+	if !strings.Contains(strings.ToLower(content), "nginx") && !strings.Contains(strings.ToLower(content), "安装") {
+		return "", nil
 	}
-
-	return sb.String(), nil
+	params := map[string]interface{}{
+		"requirement": content,
+	}
+	return a.buildToolCall("generate_playbook", params), nil
 }
 
 func (a *Agent) handleExecuteCommand(content string) (string, error) {
@@ -354,19 +353,13 @@ func (a *Agent) handleExecuteCommand(content string) (string, error) {
 	if command == "" {
 		command = "uptime"
 	}
-
-	nodes := a.nodeMgr.List()
-	var targets []string
-	for _, n := range nodes {
-		targets = append(targets, n.Name)
+	targets := a.getAllNodeNames()
+	params := map[string]interface{}{
+		"targets": targets,
+		"command": command,
+		"timeout": 60,
 	}
-
-	var sb strings.Builder
-	sb.WriteString("```json\n")
-	sb.WriteString(fmt.Sprintf(`{"tool_calls": [{"name": "execute_command", "arguments": {"targets": %s, "command": "%s", "timeout": 60}}]}`, a.stringsToJSON(targets), command))
-	sb.WriteString("\n```")
-
-	return sb.String(), nil
+	return a.buildToolCall("execute_command", params), nil
 }
 
 func (a *Agent) handleTransferFile(content string) (string, error) {
@@ -374,29 +367,31 @@ func (a *Agent) handleTransferFile(content string) (string, error) {
 	if sourceFile == "" {
 		return "Please specify the file path to transfer", nil
 	}
-
 	destDir := "/tmp"
 	if strings.Contains(content, "/opt") {
 		destDir = "/opt"
 	}
-
-	nodes := a.nodeMgr.List()
-	var targets []string
-	for _, n := range nodes {
-		targets = append(targets, n.Name)
-	}
-
+	targets := a.getAllNodeNames()
 	mode := "direct"
-	if len(nodes) >= 5 {
+	if len(targets) >= 5 {
 		mode = "diffusion"
 	}
+	params := map[string]interface{}{
+		"source_file": sourceFile,
+		"targets":    targets,
+		"dest_dir":   destDir,
+		"mode":        mode,
+	}
+	return a.buildToolCall("transfer_file", params), nil
+}
 
-	var sb strings.Builder
-	sb.WriteString("```json\n")
-	sb.WriteString(fmt.Sprintf(`{"tool_calls": [{"name": "transfer_file", "arguments": {"source_file": "%s", "targets": %s, "dest_dir": "%s", "mode": "%s"}}]}`, sourceFile, a.stringsToJSON(targets), destDir, mode))
-	sb.WriteString("\n```")
-
-	return sb.String(), nil
+func (a *Agent) getAllNodeNames() []string {
+	nodes := a.nodeMgr.List()
+	names := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		names = append(names, n.Name)
+	}
+	return names
 }
 
 func (a *Agent) handleGeneralQuestion(content string) (string, error) {

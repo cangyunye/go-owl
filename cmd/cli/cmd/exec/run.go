@@ -210,6 +210,13 @@ func runExecRun(cmd *cobra.Command, args []string) {
 	failed := 0
 
 	for _, result := range results {
+		// 首先更新计数器（无论输出格式如何）
+		if result.Success {
+			success++
+		} else {
+			failed++
+		}
+
 		if execFormat == "json" {
 			fmt.Printf(`{"node":"%s","success":%v,"output":"%s","exit_code":%d}`+"\n",
 				result.NodeID, result.Success, escapeJSON(result.Output), result.ExitCode)
@@ -233,14 +240,12 @@ func runExecRun(cmd *cobra.Command, args []string) {
 						fmt.Printf("   %s\n", line)
 					}
 				}
-				success++
 			} else {
 				fmt.Printf("❌ [%s] 失败", result.NodeID)
 				if result.Error != nil {
 					fmt.Printf(": %v", result.Error)
 				}
 				fmt.Println()
-				failed++
 			}
 		}
 	}
