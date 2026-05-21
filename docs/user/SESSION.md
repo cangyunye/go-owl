@@ -9,7 +9,7 @@
 ```
 owl session - 交互式会话
 ├── owl session attach - 连接会话
-├── owl session list    - 列出会话
+├── owl session list   - 列出会话
 └── owl session history - 会话历史
 ```
 
@@ -86,15 +86,6 @@ owl session attach web-01 web-02 web-03 --mode multi
 [user@web-01 ~]$ uptime
  10:30:00 up 100 days,  1 user,  load average: 0.15, 0.20, 0.15
 
-[user@web-01 ~]$ /status
-─────────────────────────────────────
-连接状态
-─────────────────────────────────────
-会话 ID:   sess-abc123
-会话模式:  single
-连接节点:  1
-活跃连接:  1
-
 [user@web-01 ~]$ /exit
 ```
 
@@ -129,26 +120,38 @@ owl session list
 
 ```bash
 owl session history
+owl session history <session-id>
 owl session history --node web-01
-owl session history --limit 50
+owl session history --last 50
 ```
 
 ### 参数说明
 
 | 参数 | 说明 |
 |------|------|
+| `<session-id>` | 会话 ID |
 | `--node` | 按节点筛选 |
-| `--limit` | 限制显示数量 |
-| `--format` | 输出格式（table/json） |
+| `--last` | 最近 N 条 |
+| `--verbose` | 显示详细信息 |
 
 ### 示例输出
 
 ```
-  时间                节点      命令              状态    耗时
- ───────────────────────────────────────────────────────────────
-  2024-01-15 10:30   web-01    uptime            成功    0.5s
-  2024-01-15 10:28   web-02    df -h             成功    0.8s
-  2024-01-15 10:25   web-01    systemctl restart  成功    2.1s
+会话历史 - web-01
+─────────────────────────────────────
+
+会话 ID: sess-abc123
+开始时间: 2024-01-15 10:00:00
+结束时间: 2024-01-15 10:30:00
+命令数:   15
+状态:     正常结束
+
+最近命令:
+  10:15  uptime
+  10:18  cd /opt
+  10:20  ls -la
+  10:25  systemctl restart nginx
+  10:30  exit
 ```
 
 ---

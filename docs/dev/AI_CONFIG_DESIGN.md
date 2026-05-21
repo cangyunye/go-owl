@@ -329,16 +329,13 @@ ai:
 
 ```bash
 # 使用默认配置
-owl ai chat
+owl ai
 
 # 切换 Provider
-owl ai chat --provider anthropic --model claude-3.5-sonnet
-
-# 使用预设
-owl ai chat --preset fast
+owl ai --provider anthropic --model claude-3.5-sonnet
 
 # 覆盖模型参数
-owl ai chat --temperature 0.5 --max-tokens 2048
+owl ai --temperature 0.5 --max-tokens 2048
 ```
 
 ### 5.3 环境变量
@@ -360,7 +357,7 @@ export OWL_BASE_URL="https://api.openai.com/v1"
 ### 6.1 启动时验证
 
 ```
-$ owl ai chat
+$ owl ai
 ✓ 加载配置文件: ~/.owl/config.yaml
 ✓ Provider: openai
 ✓ Model: gpt-4o
@@ -371,15 +368,15 @@ $ owl ai chat
 ### 6.2 错误示例
 
 ```
-$ owl ai chat
+$ owl ai
 ✗ 配置错误: 不支持的 Provider: xxx
   支持的 Provider: openai, anthropic, dashscope
 
-$ owl ai chat
+$ owl ai
 ✗ 配置错误: Provider openai 不支持模型: gpt-5
   支持的模型: gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-4, gpt-3.5-turbo
 
-$ owl ai chat
+$ owl ai
 ✗ 配置错误: API Key 未设置
   请设置环境变量 OWL_API_KEY 或在配置文件中添加
 ```
@@ -770,3 +767,282 @@ $ owl ai models
 ✓ 从缓存加载 (24 小时前更新)
   如需刷新请使用 --refresh
 ```
+
+---
+
+## 10. 配置文件生成命令
+
+### 10.1 设计目标
+
+提供一个交互式命令，帮助用户快速生成和配置 `~/.owl/config.yaml` 文件。
+
+### 10.2 命令设计
+
+```bash
+# 生成默认配置文件
+owl ai config init
+
+# 交互式配置
+owl ai config
+
+# 查看当前配置
+owl ai config show
+```
+
+### 10.3 配置生成流程
+
+**流程 1: 快速初始化 (owl ai config init)**
+
+1. 检查配置文件是否已存在
+2. 如果不存在，创建默认配置文件到 `~/.owl/config.yaml`
+3. 提示用户设置 API Key
+
+**流程 2: 交互式配置 (owl ai config)**
+
+1. 检查现有配置
+2. 依次询问用户配置项：
+   - Provider 选择
+   - Model 选择
+   - API Key 输入
+   - Base URL 配置 (可选)
+3. 保存配置文件
+
+### 10.4 代码实现设计
+
+```go
+// cmd/cli/cmd/ai/config.go
+
+package ai
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"gopkg.in/yaml.v3"
+	
+	"github.com/cangyunye/go-owl/internal/ai"
+)
+
+func NewConfigCmd() *cobra.Command {
+	configCmd := &cobra.Command{
+		Use:   "config",
+		Short: "AI 配置管理",
+		Long: `管理 AI 配置文件。
+
+示例：
+  owl ai config       # 交互式配置
+  owl ai config init  # 快速初始化
+  owl ai config show  # 显示当前配置`,
+	}
+	
+	configCmd.AddCommand(NewConfigInitCmd())
+	configCmd.AddCommand(NewConfigShowCmd())
+	
+	return configCmd
+}
+
+func NewConfigInitCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "init",
+		Short: "初始化配置文件",
+		Long:  `创建默认配置文件到 ~/.owl/config.yaml`,
+		Run:   runConfigInit,
+	}
+}
+
+func NewConfigShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show",
+		Short: "显示当前配置",
+		Long:  `显示当前的 AI 配置信息 (隐藏 API Key)`,
+		Run:   runConfigShow,
+	}
+}
+
+func runConfigInit(cmd *cobra.Command, args []string) {
+	configPath := getConfigPath()
+	
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		fmt.Printf("配置文件已存在: %s\n", configPath)
+		fmt.Println("如需重新生成，请先删除该文件")
+		return
+	}
+	
+	if err := createConfigDir(); err != nil {
+		fmt.Printf("创建配置目录失败: %v\n", err)
+		os.Exit(1)
+	}
+	
+	config := ai.DefaultConfig()
+	
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		fmt.Printf("序列化配置失败: %v\n", err)
+		os.Exit(1)
+	}
+	
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		fmt.Printf("写入配置文件失败: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Printf("✓ 配置文件已创建: %s\n", configPath)
+	fmt.Println()
+	fmt.Println("下一步：")
+	fmt.Println("  1. 编辑配置文件设置 API Key")
+	fmt.Println("  2. 或使用 'owl ai config' 进行交互式配置")
+}
+
+func runConfigShow(cmd *cobra.Command, args []string) {
+	configPath := getConfigPath()
+	cfg, err := ai.LoadConfig(configPath)
+	if err != nil {
+		fmt.Printf("加载配置失败: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Println("当前配置:")
+	fmt.Println()
+	fmt.Printf("  Provider:    %s\n", cfg.AI.Provider)
+	fmt.Printf("  Model:       %s\n", cfg.AI.Model)
+	fmt.Printf("  API Key:     %s\n", maskAPIKey(cfg.AI.APIKey))
+	fmt.Printf("  Base URL:    %s\n", cfg.AI.BaseURL)
+	fmt.Printf("  Timeout:     %ds\n", cfg.AI.Timeout)
+}
+
+func getConfigPath() string {
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		home = "/tmp"
+	}
+	return filepath.Join(home, ".owl", "config.yaml")
+}
+
+func createConfigDir() error {
+	configPath := getConfigPath()
+	dir := filepath.Dir(configPath)
+	return os.MkdirAll(dir, 0755)
+}
+
+func maskAPIKey(key string) string {
+	if key == "" {
+		return "(未设置)"
+	}
+	if len(key) <= 8 {
+		return strings.Repeat("*", len(key))
+	}
+	return key[:4] + strings.Repeat("*", len(key)-8) + key[len(key)-4:]
+}
+
+// 交互式配置模型 (简化示例)
+type configWizardModel struct {
+	step       int
+	providers  list.Model
+	models     list.Model
+	apiKey     textinput.Model
+	baseURL    textinput.Model
+	quitting   bool
+}
+```
+
+### 10.5 使用示例
+
+**示例 1: 快速初始化**
+
+```bash
+$ owl ai config init
+✓ 配置文件已创建: ~/.owl/config.yaml
+
+下一步：
+  1. 编辑配置文件设置 API Key
+  2. 或使用 'owl ai config' 进行交互式配置
+```
+
+**示例 2: 查看当前配置**
+
+```bash
+$ owl ai config show
+当前配置:
+
+  Provider:    openai
+  Model:       gpt-4o
+  API Key:     sk-****-xxxx
+  Base URL:    https://api.openai.com/v1
+  Timeout:     120s
+```
+
+**示例 3: 交互式配置**
+
+```bash
+$ owl ai config
+╔════════════════════════════════════════════╗
+║        owl AI 配置向导                   ║
+╚════════════════════════════════════════════╝
+
+步骤 1/4: 选择 Provider
+  ○ openai
+  ● anthropic
+  ○ dashscope
+  ○ qwen
+  ○ deepseek
+[↑/↓] 选择, [Enter] 确认
+
+步骤 2/4: 选择 Model
+  ○ claude-3.5-sonnet
+  ● claude-3-opus
+  ○ claude-3-sonnet
+  ○ claude-3-haiku
+
+步骤 3/4: 输入 API Key
+  sk-ant-************************************************
+  [隐藏输入]
+
+步骤 4/4: Base URL (可选，直接回车跳过)
+
+✓ 配置已保存到: ~/.owl/config.yaml
+```
+
+### 10.6 生成的配置文件示例
+
+```yaml
+ai:
+  provider: openai
+  model: gpt-4o
+  api_key: ${OWL_API_KEY}
+  base_url: ""
+  timeout: 120
+
+prompts:
+  system: system.md
+  playbook: playbook.md
+  command: command.md
+  transfer: transfer.md
+
+safety:
+  confirm_dangerous: true
+  allowed_commands: []
+  blocked_commands:
+  - rm -rf /
+  - rm -rf /*
+  - ":(){:|:&};:"
+  - ">/dev/sda"
+  - dd if=/dev/zero of=/dev/sda
+```
+
+---
+
+## 11. 测试计划更新
+
+| 测试用例 | 说明 | 预期结果 |
+|---------|------|---------|
+| TC-AI-CONFIG-008 | owl ai config init | 成功生成配置文件 |
+| TC-AI-CONFIG-009 | owl ai config init (文件已存在) | 提示文件已存在 |
+| TC-AI-CONFIG-010 | owl ai config show | 显示当前配置 (隐藏 API Key) |
+| TC-AI-CONFIG-011 | 交互式配置流程 | 依次询问并保存配置 |

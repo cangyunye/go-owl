@@ -1,162 +1,162 @@
 # owl ai 命令详解
 
-AI 助手模块，提供智能运维辅助功能。
+AI 智能助手模块，通过自然语言交互执行分布式运维操作。
 
 ---
 
 ## 1. 命令列表
 
 ```
-owl ai - AI 助手
-├── owl ai chat    - 聊天交互
-├── owl ai explain - 解释命令
-├── owl ai suggest - 建议操作
-├── owl ai models - 模型管理
-└── owl ai config - AI 配置
+owl ai - AI 智能助手
+├── owl ai              - 启动 AI 交互模式
+├── owl ai models      - 列出可用模型
+└── owl ai config      - AI 配置管理
+    ├── owl ai config init    - 初始化配置文件
+    └── owl ai config show    - 显示当前配置
 ```
 
 ---
 
-## 2. owl ai chat
+## 2. owl ai
 
-与 AI 进行自然语言对话。
+启动 AI 智能助手交互模式，通过自然语言执行运维操作。
 
 ### 使用方法
 
 ```bash
-owl ai chat
-owl ai chat "检查所有节点的磁盘使用情况"
-owl ai chat --interactive
+owl ai
+owl ai "检查所有节点的磁盘使用情况"
+owl ai --model gpt-4o
+owl ai --provider dashscope
+owl ai --session <session-id>
+echo "查询所有在线节点" | owl ai
 ```
 
 ### 参数说明
 
 | 参数 | 说明 |
 |------|------|
-| `<message>` | 直接发送的消息 |
-| `--interactive` | 交互式聊天模式 |
-| `--model` | 指定模型 |
-| `--provider` | 指定 Provider |
+| `--model` | AI 模型名称，默认 gpt-4o |
+| `--provider` | AI 提供商: openai, anthropic, dashscope, qwen, deepseek |
+| `--api-key` | API Key（也可通过环境变量 OWL_API_KEY 设置） |
+| `--base-url` | API Base URL（用于代理或自定义端点） |
+| `--timeout` | 请求超时时间（秒），默认 120 |
+| `--session` | 会话 ID（用于恢复历史会话） |
+
+### AI 支持的功能
+
+AI 助手通过工具调用实现以下功能：
+
+| 功能 | 说明 |
+|------|------|
+| 查询节点 | 查询节点状态、分组、标签 |
+| 执行命令 | 在指定节点上执行命令 |
+| 生成剧本 | 根据需求生成 Ansible-like YAML 剧本 |
+| 文件传输 | 传输文件到指定节点 |
+
+### 工作原理
+
+```
+用户输入 → AI 理解意图 → 选择工具 → 验证参数 → 执行操作 → 返回结果
+```
+
+AI 会自动：
+1. 理解自然语言请求
+2. 选择合适的工具
+3. 验证参数有效性
+4. 执行操作并返回结果
 
 ### 示例
 
 ```bash
-# 直接提问
-owl ai chat "如何优化 Nginx 性能"
+# 启动交互式对话
+owl ai
 
-# 交互式聊天
-owl ai chat --interactive
+# 直接提问
+owl ai "查询所有在线节点"
+
+# 执行批量命令
+owl ai "在所有 web 节点执行 df -h"
+
+# 生成剧本
+owl ai "帮我生成一个部署 nginx 的剧本"
+
+# 传输文件
+owl ai "把本地的 config.yaml 传到 web-01 的 /opt/config/ 目录"
 
 # 指定模型
-owl ai chat "重启所有 web 服务器" --model gpt-4o
+owl ai "重启所有 web 服务器" --model gpt-4o
+
+# 使用阿里云 DashScope
+owl ai "检查数据库状态" --provider dashscope --api-key sk-xxx
+
+# 恢复历史会话
+owl ai --session sess-abc123
 ```
 
 ### 示例输出
 
 ```
-$ owl ai chat "检查所有节点的磁盘使用情况"
+$ owl ai "查询所有在线节点"
 
 🤖 AI 助手:
+正在查询节点信息...
 
-建议执行以下命令来检查磁盘使用情况:
+📊 查询结果:
 
-1. 在所有 web 节点执行:
-   df -h
+  ID       Name       Address          Status   Groups
+ ─────────────────────────────────────────────────────────
+  web-01   web1       192.168.1.10    online   web
+  web-02   web2       192.168.1.11    online   web
+  db-01    db1        192.168.1.20    online   db
 
-2. 在所有 db 节点执行:
-   df -h | grep -E '/$|/var|/data'
+找到 3 个在线节点
 
-3. 查看大文件:
-   du -sh /var/log/*
+是否还有其他需要查询的内容？
+>
+```
 
-是否需要我帮你执行这些命令? (yes/no)
+```
+$ owl ai "在 web 分组执行 uptime"
+
+🤖 AI 助手:
+正在执行命令: uptime
+
+📊 执行结果:
+
+✅ [web-01] 成功
+   10:30:00 up 100 days,  1 user,  load average: 0.15, 0.20, 0.15
+
+✅ [web-02] 成功
+   10:30:00 up 50 days,   2 users, load average: 0.25, 0.30, 0.25
+
+📊 总结: 2 成功, 0 失败
+
+是否还有其他需要？
+>
 ```
 
 ---
 
-## 3. owl ai explain
+## 3. owl ai models
 
-解释 Shell 命令。
-
-### 使用方法
-
-```bash
-owl ai explain "<command>"
-```
-
-### 示例
-
-```bash
-$ owl ai explain "find . -type f -mtime +30 -exec rm {} \;"
-
-📖 命令解释:
-
-find . -type f -mtime +30 -exec rm {} \;
-
-- find .          : 在当前目录查找
-- -type f         : 只查找文件
-- -mtime +30      : 修改时间超过 30 天
-- -exec rm {} \;  : 删除找到的文件
-
-⚠️ 警告: 此命令会删除文件，请谨慎使用!
-建议先使用 find . -type f -mtime +30 进行预览
-```
-
----
-
-## 4. owl ai suggest
-
-根据情况建议运维操作。
+列出可用的 AI 模型。
 
 ### 使用方法
 
 ```bash
-owl ai suggest "<situation>"
-owl ai suggest --context "node=web-01,issue=high-cpu"
-```
-
-### 示例
-
-```bash
-$ owl ai suggest "服务器负载很高"
-
-🤖 建议:
-
-可能的原因:
-1. 运行的进程过多
-2. 内存不足导致 swap
-3. 磁盘 I/O 瓶颈
-4. 网络攻击
-
-建议检查:
-1. 查看进程: ps aux --sort=-%cpu | head
-2. 查看内存: free -h
-3. 查看磁盘: iostat -x 1 5
-4. 查看网络: netstat -an | grep ESTABLISHED | wc -l
-
-建议执行的操作:
-1. top -c (查看占用最高的进程)
-2. systemctl restart <service> (重启有问题的服务)
-```
-
----
-
-## 5. owl ai models
-
-管理 AI 模型。
-
-### 使用方法
-
-```bash
-# 列出可用模型
 owl ai models
-
-# 刷新模型列表
-owl ai models --refresh
-
-# 查看特定 Provider 的模型
-owl ai models --provider anthropic
+owl ai models --provider openai
+owl ai models --provider qwen --api-key sk-xxx
 ```
+
+### 参数说明
+
+| 参数 | 说明 |
+|------|------|
+| `--provider` | 指定 Provider，默认使用全局配置的 Provider |
+| `--api-key` | API Key（必需） |
+| `--base-url` | API Base URL |
 
 ### 示例输出
 
@@ -167,6 +167,8 @@ owl ai models --provider anthropic
   Provider: openai
   模型:    gpt-4o
 
+正在获取可用模型列表...
+
 可用模型 (OpenAI):
 ───────────────────────────────────────
   ● gpt-4o           GPT-4o (128K 上下文)
@@ -174,87 +176,164 @@ owl ai models --provider anthropic
     gpt-4-turbo    GPT-4 Turbo (128K 上下文)
     gpt-4           GPT-4 (8K 上下文)
     gpt-3.5-turbo  GPT-3.5 Turbo (16K 上下文)
-
-可用模型 (Anthropic):
-───────────────────────────────────────
-    claude-3.5-sonnet  Claude 3.5 Sonnet (200K 上下文)
-    claude-3-opus      Claude 3 Opus (200K 上下文)
-    claude-3-sonnet    Claude 3 Sonnet (200K 上下文)
-    claude-3-haiku     Claude 3 Haiku (200K 上下文)
-
-💡 提示: 使用 owl settings set ai.model <model-name> 切换模型
 ```
 
 ---
 
-## 6. owl ai config
+## 4. owl ai config
 
-AI 配置管理。
+AI 配置管理模块，帮助用户初始化和查看配置文件。
 
-### 使用方法
+### 4.1 owl ai config init
+
+快速初始化配置文件到 `~/.owl/config.yaml`。
+
+#### 使用方法
 
 ```bash
-# 测试 API 连接
-owl ai config test
+owl ai config init
+```
 
-# 设置 API Key
-owl ai config set api-key "sk-xxx"
+#### 功能说明
+- 检查配置文件是否已存在
+- 如果不存在，创建默认配置文件
+- 包含完整的 AI、提示词、安全配置
 
-# 查看当前配置
+#### 示例输出
+
+```
+$ owl ai config init
+✓ 配置文件已创建: ~/.owl/config.yaml
+
+下一步：
+  1. 编辑配置文件设置 API Key
+  2. 或使用 'owl ai models' 检查连接
+```
+
+#### 生成的配置文件内容
+
+```yaml
+ai:
+    provider: openai
+    model: gpt-4o
+    api_key: ""
+    base_url: ""
+    timeout: 120
+
+prompts:
+    system: system.md
+    playbook: playbook.md
+    command: command.md
+    transfer: transfer.md
+
+safety:
+    confirm_dangerous: true
+    allowed_commands: []
+    blocked_commands:
+        - rm -rf /
+        - rm -rf /*
+        - ':(){:|:&};:'
+        - '>/dev/sda'
+        - dd if=/dev/zero of=/dev/sda
+```
+
+### 4.2 owl ai config show
+
+显示当前的 AI 配置信息，API Key 会被隐藏保护。
+
+#### 使用方法
+
+```bash
 owl ai config show
 ```
 
-### 示例
+#### 示例输出
 
-```bash
-$ owl ai config test
+```
+$ owl ai config show
+当前配置:
 
-🔧 测试 AI 配置...
-
-✓ Provider: openai
-✓ Model: gpt-4o
-✓ API Key: 已设置
-✓ 连接测试: 成功
-✓ 响应时间: 1.2s
-
-配置正常!
+  Provider:    openai
+  Model:       gpt-4o
+  API Key:     sk-****-xxxx
+  Base URL:    https://api.openai.com/v1
+  Timeout:     120s
 ```
 
 ---
 
-## 7. 测试用例
+## 6. 支持的 AI 提供商
 
-### TC-AI-001: 直接聊天
+### OpenAI
+
+| 模型 | 说明 |
+|------|------|
+| gpt-4o | GPT-4o，默认模型 |
+| gpt-4o-mini | GPT-4o Mini，性价比高 |
+| gpt-4-turbo | GPT-4 Turbo |
+| gpt-4 | GPT-4 |
+| gpt-3.5-turbo | GPT-3.5 Turbo |
+
+### Anthropic
+
+| 模型 | 说明 |
+|------|------|
+| claude-3-5-sonnet-latest | Claude 3.5 Sonnet，推荐 |
+| claude-3-opus-latest | Claude 3 Opus |
+| claude-3-sonnet-latest | Claude 3 Sonnet |
+| claude-3-haiku-latest | Claude 3 Haiku |
+
+### 阿里云 DashScope (Qwen)
+
+| 模型 | 说明 |
+|------|------|
+| qwen-plus | 通义千问 Plus |
+| qwen-max | 通义千问 Max |
+| qwen-turbo | 通义千问 Turbo |
+
+### DeepSeek
+
+| 模型 | 说明 |
+|------|------|
+| deepseek-chat | DeepSeek Chat |
+| deepseek-coder | DeepSeek Coder |
+
+---
+
+## 7. 环境变量
+
+| 变量 | 说明 |
+|------|------|
+| `OWL_API_KEY` | AI API Key |
+| `OWL_BASE_URL` | API Base URL（用于代理） |
+| `OWL_MODEL` | 默认模型 |
+| `OWL_PROVIDER` | 默认 Provider |
+
+---
+
+## 8. 测试用例
+
+### TC-AI-001: 查询节点
 
 ```bash
 # 步骤
-$ owl ai chat "你好"
+$ owl ai "查询所有节点"
 
 # 预期结果
-# AI 返回问候和功能介绍
+# AI 返回节点列表
 ```
 
-### TC-AI-002: 命令解释
+### TC-AI-002: 执行命令
 
 ```bash
 # 步骤
-$ owl ai explain "chmod +x script.sh"
+$ owl ai "在 web-01 执行 df -h"
 
 # 预期结果
-# 详细解释命令含义
+# AI 调用工具执行命令，返回结果
 ```
 
-### TC-AI-003: 智能建议
-
-```bash
-# 步骤
-$ owl ai suggest "内存使用率 95%"
-
-# 预期结果
-# 提供可能原因和解决方案
-```
-
-### TC-AI-004: 模型列表
+### TC-AI-003: 模型列表
 
 ```bash
 # 步骤
@@ -264,28 +343,66 @@ $ owl ai models
 # 显示所有可用模型
 ```
 
-### TC-AI-005: 配置测试
+### TC-AI-004: 使用自定义 Provider
 
 ```bash
 # 步骤
-$ owl ai config test
+$ owl ai --provider dashscope --api-key sk-xxx "查询节点"
 
 # 预期结果
-# 测试 API 连接并显示结果
+# 使用阿里云 DashScope 执行查询
+```
+
+### TC-AI-005: 初始化配置
+
+```bash
+# 步骤
+$ owl ai config init
+
+# 预期结果
+# 成功创建 ~/.owl/config.yaml 配置文件
+```
+
+### TC-AI-006: 显示配置
+
+```bash
+# 步骤
+$ owl ai config show
+
+# 预期结果
+# 显示当前配置，API Key 被隐藏
 ```
 
 ---
 
-## 8. 常见问题
+## 9. 常见问题
 
 ### Q: 需要 API Key 吗？
-A: 是的，需要配置 AI Provider 的 API Key
+A: 是的，需要配置 AI Provider 的 API Key。可通过 `--api-key` 参数或设置 `OWL_API_KEY` 环境变量。
 
 ### Q: 支持哪些 Provider？
-A: OpenAI、Anthropic (Claude)、阿里云 DashScope
+A: OpenAI、Anthropic (Claude)、阿里云 DashScope (Qwen)、DeepSeek。
 
-### Q: 如何设置 API Key？
-A: `owl settings set ai.api_key "sk-xxx"` 或设置环境变量 `OWL_API_KEY`
+### Q: AI 执行命令安全吗？
+A: AI 建议的命令需要用户确认才会执行。
 
-### Q: 命令执行安全吗？
-A: AI 建议的命令需要用户确认才会执行
+### Q: 如何查看 API Key 是否配置正确？
+A: 使用 `owl ai models` 命令测试连接。
+
+### Q: 支持流式输出吗？
+A: 是的，支持实时流式响应。
+
+### Q: 如何恢复之前的会话？
+A: 使用 `--session <session-id>` 参数恢复历史会话。
+
+### Q: 请求超时怎么办？
+A: 使用 `--timeout` 参数增加超时时间，默认 120 秒。
+
+### Q: 如何快速初始化配置文件？
+A: 使用 `owl ai config init` 命令快速生成默认配置文件到 `~/.owl/config.yaml`。
+
+### Q: 如何查看当前配置？
+A: 使用 `owl ai config show` 查看当前配置，API Key 会被隐藏保护。
+
+### Q: 配置文件在哪里？
+A: 配置文件位于 `~/.owl/config.yaml`。

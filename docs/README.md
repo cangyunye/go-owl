@@ -134,7 +134,7 @@ docs/
 
 ### AI 助手
 1. 配置 AI Provider
-2. 使用 `owl ai chat` 对话
+2. 使用 `owl ai` 对话
 
 ### 开发者
 1. 阅读 [dev/ARCHITECTURE.md](dev/ARCHITECTURE.md)

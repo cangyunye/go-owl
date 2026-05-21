@@ -8,190 +8,95 @@
 
 ```
 owl history - 历史记录
-├── owl history          - 查看历史
-├── owl history exec     - 命令执行历史
-└── owl history session  - 会话历史
+├── owl history            - 查看历史
+└── owl history clean     - 清理历史
 ```
 
 ---
 
 ## 2. owl history
 
-查看命令执行历史。
+查看命令执行历史记录。
 
 ### 使用方法
 
 ```bash
 owl history
 owl history --limit 100
-owl history --node web-01
-owl history --since "2024-01-01"
+owl history --node-id web-01
+owl history --op-type command
+owl history --status completed
+owl history --last 24h
+owl history --last 7d
+owl history --start-time 2024-01-01T00:00:00Z
 owl history --format json
+owl history --output report.json
 ```
 
 ### 参数说明
 
 | 参数 | 说明 |
 |------|------|
-| `--limit` | 限制显示条数 |
-| `--node` | 按节点筛选 |
-| `--command` | 按命令筛选 |
-| `--status` | 按状态筛选（success/failed） |
-| `--since` | 起始时间 |
-| `--until` | 结束时间 |
-| `--format` | 输出格式（table/json） |
+| `--task-id` | 按任务 ID 筛选 |
+| `--node-id` | 按节点 ID 筛选 |
+| `--op-type` | 按操作类型筛选 (command, file_transfer, playbook, node_manage) |
+| `--status` | 按状态筛选 |
+| `--start-time` | 开始时间 (ISO 格式) |
+| `--end-time` | 结束时间 (ISO 格式) |
+| `--last` | 相对时间 (如 1h, 24h, 7d) |
+| `--limit` | 结果数量限制 (默认 50，最大 1000) |
+| `--offset` | 偏移量 (分页) |
+| `--format` | 输出格式 (table, json, yaml) |
+| `--output` | 输出到文件 |
+| `--verbose` | 显示详细信息 |
 
 ### 示例输出
 
 ```
-  时间                节点      命令                状态    耗时   用户
- ──────────────────────────────────────────────────────────────────────────────
-  2024-01-15 10:30  web-01    uptime              成功    0.5s   root
-  2024-01-15 10:28  web-02    df -h              成功    0.8s   root
-  2024-01-15 10:25  web-01    systemctl restart   成功    2.1s   root
-  2024-01-15 10:20  db-01     mysqldump ...      成功    15.3s  root
-  2024-01-15 10:15  web-01    git pull            失败    1.2s   root
+$ owl history --last 24h
+
+TIME                TASK ID                       OP TYPE       TARGETS              STATUS
+-----               -------                       --------       -------              ------
+2024-01-15 10:30   a1b2c3d4e5f6                 command       [web-01,web-02]     completed
+2024-01-15 09:15   b2c3d4e5f6g7                 file_transfer [db-01]             completed
+2024-01-15 08:00   c3d4e5f6g7h8                 playbook      [web-01]             failed
 ```
 
 ---
 
-## 3. owl history exec
+## 3. owl history clean
 
-查看命令执行详细历史。
+清理过期的历史记录。
 
 ### 使用方法
 
 ```bash
-owl history exec
-owl history exec --id <history-id>
-owl history exec --last 10
+owl history clean --days 30
+owl history clean --days 7 --force
 ```
 
 ### 参数说明
 
 | 参数 | 说明 |
 |------|------|
-| `--id` | 历史记录 ID |
-| `--last` | 最近 N 条 |
-| `--node` | 按节点筛选 |
-| `--output` | 显示完整输出 |
+| `--days` | 保留天数，清理早于此天数的记录 (默认 30) |
+| `--force` | 跳过确认，直接清理 |
 
-### 示例输出
-
-```
-$ owl history exec --id abc123
-
-历史 ID: abc123
-─────────────────────────────────────
-
-节点:      web-01
-命令:      df -h
-状态:      成功
-耗时:      0.8s
-执行时间:  2024-01-15 10:28:00
-用户:      root
-
-输出:
-Filesystem      Size  Used Avail Use% Mounted on
-/dev/sda1       50G   20G   30G  40% /
-/dev/sdb1      100G   60G   40G  60% /data
-tmpfs           16G     0   16G   0% /dev/shm
-```
-
----
-
-## 4. owl history session
-
-查看会话历史。
-
-### 使用方法
-
-```bash
-owl history session
-owl history session --node web-01
-owl history session --limit 50
-```
-
-### 参数说明
-
-| 参数 | 说明 |
-|------|------|
-| `--node` | 按节点筛选 |
-| `--session-id` | 会话 ID |
-| `--limit` | 限制条数 |
-
-### 示例输出
-
-```
-$ owl history session --node web-01
-
-会话历史 - web-01
-─────────────────────────────────────
-
-会话 ID: sess-abc123
-开始时间: 2024-01-15 10:00:00
-结束时间: 2024-01-15 10:30:00
-命令数:   15
-状态:     正常结束
-
-最近命令:
-  10:15  uptime
-  10:18  cd /opt
-  10:20  ls -la
-  10:25  systemctl restart nginx
-  10:30  exit
-```
-
----
-
-## 5. 导出历史
-
-### 使用方法
-
-```bash
-owl history export --format csv --output history.csv
-owl history export --since "2024-01-01" --until "2024-01-31"
-```
-
-### 参数说明
-
-| 参数 | 说明 |
-|------|------|
-| `--format` | 导出格式（csv/json） |
-| `--output` | 输出文件 |
-| `--since` | 起始时间 |
-| `--until` | 结束时间 |
-
----
-
-## 6. 清理历史
-
-### 使用方法
+### 示例
 
 ```bash
 # 清理 30 天前的历史
 owl history clean --days 30
 
-# 清理指定节点的历史
-owl history clean --node web-01
-
-# 清理所有历史
-owl history clean --all
+# 强制清理（跳过确认）
+owl history clean --days 7 --force
 ```
-
-### 参数说明
-
-| 参数 | 说明 |
-|------|------|
-| `--days` | 保留天数 |
-| `--node` | 清理指定节点 |
-| `--all` | 清理所有 |
 
 ---
 
-## 7. 测试用例
+## 4. 测试用例
 
-### TC-HIST-001: 查看历史
+### TC-HIST-001: 查看最近历史
 
 ```bash
 # 步骤
@@ -205,13 +110,23 @@ $ owl history --limit 10
 
 ```bash
 # 步骤
-$ owl history --node test-01
+$ owl history --node-id test-01
 
 # 预期结果
 # 显示 test-01 节点的历史
 ```
 
-### TC-HIST-003: JSON 输出
+### TC-HIST-003: 按操作类型筛选
+
+```bash
+# 步骤
+$ owl history --op-type command
+
+# 预期结果
+# 显示所有命令执行历史
+```
+
+### TC-HIST-004: JSON 输出
 
 ```bash
 # 步骤
@@ -221,21 +136,21 @@ $ owl history --format json --limit 5
 # JSON 格式输出
 ```
 
-### TC-HIST-004: 查看详情
+### TC-HIST-005: 相对时间筛选
 
 ```bash
 # 步骤
-$ owl history exec --last 1
+$ owl history --last 24h
 
 # 预期结果
-# 显示最新命令的详细信息
+# 显示 24 小时内的历史
 ```
 
-### TC-HIST-005: 清理历史
+### TC-HIST-006: 清理历史
 
 ```bash
 # 步骤
-$ owl history clean --days 7
+$ owl history clean --days 7 --force
 
 # 预期结果
 # 清理 7 天前的历史记录
@@ -243,19 +158,16 @@ $ owl history clean --days 7
 
 ---
 
-## 8. 常见问题
+## 5. 常见问题
 
 ### Q: 历史记录保存在哪里？
 A: 默认保存在 `~/.owl/history.db` (SQLite)
 
 ### Q: 历史记录保留多久？
-A: 默认保留 90 天，可通过配置修改
+A: 默认保留 90 天，可通过 `owl history clean` 清理
 
-### Q: 如何查看某个命令的输出？
-A: 使用 `owl history exec --id <id>`
+### Q: 如何查看某个任务的结果？
+A: 使用 `owl history --task-id <id>`
 
 ### Q: 可以导出历史记录吗？
-A: 可以，使用 `owl history export` 命令
-
-### Q: 如何查找某个命令？
-A: 使用 `owl history --command "uptime"`
+A: 可以，使用 `owl history --output file.json --format json`

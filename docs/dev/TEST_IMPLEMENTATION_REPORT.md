@@ -142,19 +142,21 @@
 
 | 测试用例 | 测试步骤 | 文档描述 | 代码实现 | 状态 |
 |---------|---------|---------|---------|------|
-| TC-AI-001 | 直接聊天 | `owl ai chat "你好"` | ✅ 已实现 | ✅ |
-| TC-AI-002 | 命令解释 | `owl ai explain "chmod +x script.sh"` | ✅ 已实现 | ✅ |
-| TC-AI-003 | 智能建议 | `owl ai suggest "内存使用率 95%"` | ✅ 已实现 | ✅ |
-| TC-AI-004 | 模型列表 | `owl ai models` | ⚠️ 部分实现 | ⚠️ |
-| TC-AI-005 | 配置测试 | `owl ai config test` | ⚠️ 部分实现 | ⚠️ |
+| TC-AI-001 | AI 对话 | `owl ai "你好"` | ✅ 已实现 | ✅ |
+| TC-AI-002 | 模型列表 | `owl ai models` | ✅ 已实现 | ✅ |
 
 ### 实现详情
 
-- ✅ `owl ai chat` - 聊天交互
-- ✅ `owl ai explain` - 命令解释
-- ✅ `owl ai suggest` - 智能建议
-- ⚠️ `owl ai models` - 需实现 API 动态获取
-- ⚠️ `owl ai config` - 需完善配置测试
+- ✅ `owl ai` - AI 智能助手主命令
+- ✅ `owl ai models` - 列出可用模型
+
+### 不存在的子命令
+
+以下子命令在原设计中被规划但未实现：
+- `owl ai chat` - 未实现（使用 `owl ai` 代替）
+- `owl ai explain` - 未实现
+- `owl ai suggest` - 未实现
+- `owl ai config` - 未实现
 
 ---
 
@@ -163,18 +165,21 @@
 | 测试用例 | 测试步骤 | 文档描述 | 代码实现 | 状态 |
 |---------|---------|---------|---------|------|
 | TC-HIST-001 | 查看历史 | `owl history --limit 10` | ✅ 已实现 | ✅ |
-| TC-HIST-002 | 按节点筛选 | `owl history --node test-01` | ✅ 已实现 | ✅ |
+| TC-HIST-002 | 按节点筛选 | `owl history --node-id test-01` | ✅ 已实现 | ✅ |
 | TC-HIST-003 | JSON 输出 | `owl history --format json --limit 5` | ✅ 已实现 | ✅ |
-| TC-HIST-004 | 查看详情 | `owl history exec --last 1` | ✅ 已实现 | ✅ |
-| TC-HIST-005 | 清理历史 | `owl history clean --days 7` | ⚠️ 部分实现 | ⚠️ |
+| TC-HIST-004 | 相对时间筛选 | `owl history --last 24h` | ✅ 已实现 | ✅ |
+| TC-HIST-005 | 清理历史 | `owl history clean --days 7` | ✅ 已实现 | ✅ |
 
 ### 实现详情
 
-- ✅ `owl history` - 查看历史，支持 --limit, --node, --command, --status, --format
-- ✅ `owl history exec` - 执行历史详情
-- ✅ `owl history session` - 会话历史
-- ⚠️ `owl history clean` - 需完善清理功能
-- ⚠️ `owl history export` - 需实现导出功能
+- ✅ `owl history` - 查看历史，支持 --limit, --node-id, --op-type, --status, --format
+- ✅ `owl history clean` - 清理历史
+
+### 不存在的子命令
+
+以下子命令在原设计中被规划但未实现：
+- `owl history exec` - 未实现（使用 `owl history --op-type command` 代替）
+- `owl history session` - 未实现（使用 `owl session history` 代替）
 
 ---
 

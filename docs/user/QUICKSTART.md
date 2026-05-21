@@ -111,7 +111,7 @@ owl playbook run deploy.yml --nodes web-01
 
 ```bash
 # 交互式对话
-owl ai chat
+owl ai
 
 # 单次请求
 owl ai "在所有 web 节点上执行 df -h"
@@ -129,7 +129,7 @@ owl ai "在所有 web 节点上执行 df -h"
 | 上传文件 | `owl file upload <file> --nodes <id>` |
 | 下载文件 | `owl file download <path> --node <id>` |
 | 执行剧本 | `owl playbook run <file>` |
-| AI 对话 | `owl ai chat` |
+| AI 对话 | `owl ai` |
 
 ---
 
