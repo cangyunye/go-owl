@@ -15,17 +15,18 @@ const (
 )
 
 type Node struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Address   string            `json:"address"`
-	Port      int               `json:"port"`
-	User      string            `json:"user"`
-	Status    NodeStatus        `json:"status"`
-	Groups    []string          `json:"groups"`
-	Labels    map[string]string `json:"labels"`
-	Metadata  map[string]string `json:"metadata"`
-	CreatedAt time.Time         `json:"created_at"`
-	UpdatedAt time.Time         `json:"updated_at"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Address     string            `json:"address"`
+	Port        int               `json:"port"`
+	User        string            `json:"user"`
+	Status      NodeStatus        `json:"status"`
+	Groups      []string          `json:"groups"`
+	Labels      map[string]string `json:"labels"`
+	Metadata    map[string]string `json:"metadata"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+	LastCheckAt string            `json:"last_check_at,omitempty"`
 }
 
 func NewNode(id, name, address string, port int, user string) *Node {

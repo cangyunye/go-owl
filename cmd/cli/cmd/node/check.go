@@ -14,14 +14,13 @@ import (
 var checkAll bool
 var checkTimeout time.Duration
 var checkWorkers int
-var checkUpdateStatus bool
 
 // NewCheckCmd 创建 check 命令
 func NewCheckCmd() *cobra.Command {
 	checkCmd := &cobra.Command{
 		Use:   "check [node_id...]",
 		Short: "检查节点 SSH 连通性",
-		Long:  `检查一个或多个节点的 SSH 连通性，并可选择性地更新状态。`,
+		Long:  `检查一个或多个节点的 SSH 连通性，默认更新节点状态。`,
 		Example: `# 检查单个节点
   owl node check node1
 
@@ -31,11 +30,8 @@ func NewCheckCmd() *cobra.Command {
   # 检查所有节点
   owl node check --all
 
-  # 检查并更新节点状态
-  owl node check --all --update
-
   # 调整并发数和超时时间
-  owl node check --all --update --workers 10 --timeout 30s`,
+  owl node check --all --workers 10 --timeout 30s`,
 		Run: func(cmd *cobra.Command, args []string) {
 			runCheck(args)
 		},
@@ -44,7 +40,6 @@ func NewCheckCmd() *cobra.Command {
 	checkCmd.Flags().BoolVar(&checkAll, "all", false, "检查所有节点")
 	checkCmd.Flags().DurationVarP(&checkTimeout, "timeout", "t", 10*time.Second, "每个检查的超时时间")
 	checkCmd.Flags().IntVarP(&checkWorkers, "workers", "w", 5, "并发工作协程数")
-	checkCmd.Flags().BoolVarP(&checkUpdateStatus, "update", "u", false, "检查后更新节点状态")
 
 	return checkCmd
 }
@@ -81,12 +76,8 @@ func runCheck(nodeIDs []string) {
 		return
 	}
 
-	statusText := ""
-	if checkUpdateStatus {
-		statusText = " (将更新状态)"
-	}
-	fmt.Printf("正在检查 %d 个节点... (超时: %s, 并发: %d)%s\n\n", 
-		len(nodes), checkTimeout, checkWorkers, statusText)
+	fmt.Printf("正在检查 %d 个节点... (超时: %s, 并发: %d)\n\n", 
+		len(nodes), checkTimeout, checkWorkers)
 
 	type result struct {
 		node    *common.NodeInfo
@@ -133,29 +124,33 @@ func runCheck(nodeIDs []string) {
 	online := 0
 	offline := 0
 
+	currentTime := time.Now().Format("2006-01-02 15:04:05")
+
 	for r := range resultChan {
 		if r.success {
 			fmt.Printf("  ✓ %s (%s:%d) - 在线", r.node.ID, r.node.Address, r.node.Port)
 			online++
-			if checkUpdateStatus {
-				r.node.Status = "online"
-				if err := store.Update(r.node); err != nil {
-					fmt.Printf(" [更新失败: %v]", err)
-				} else {
-					fmt.Printf(" [状态已更新]")
-				}
+			// 默认更新状态
+			r.node.Status = "online"
+			r.node.LastCheckAt = currentTime
+			r.node.UpdatedAt = currentTime
+			if err := store.Update(r.node); err != nil {
+				fmt.Printf(" [更新失败: %v]", err)
+			} else {
+				fmt.Printf(" [状态已更新]")
 			}
 			fmt.Println()
 		} else {
 			fmt.Printf("  ✗ %s (%s:%d) - 离线", r.node.ID, r.node.Address, r.node.Port)
 			offline++
-			if checkUpdateStatus {
-				r.node.Status = "offline"
-				if err := store.Update(r.node); err != nil {
-					fmt.Printf(" [更新失败: %v]", err)
-				} else {
-					fmt.Printf(" [状态已更新]")
-				}
+			// 默认更新状态
+			r.node.Status = "offline"
+			r.node.LastCheckAt = currentTime
+			r.node.UpdatedAt = currentTime
+			if err := store.Update(r.node); err != nil {
+				fmt.Printf(" [更新失败: %v]", err)
+			} else {
+				fmt.Printf(" [状态已更新]")
 			}
 			fmt.Printf(" - %v\n", r.err)
 		}
@@ -163,14 +158,12 @@ func runCheck(nodeIDs []string) {
 
 	fmt.Printf("\n总结: %d 在线, %d 离线, 共 %d\n", online, offline, len(nodes))
 
-	if checkUpdateStatus {
-		// 保存更改
-		if inMemStore, ok := store.(*common.InMemoryNodeStore); ok {
-			if err := inMemStore.Save(); err != nil {
-				fmt.Fprintf(os.Stderr, "保存节点状态失败: %v\n", err)
-			} else {
-				fmt.Println("节点状态保存成功")
-			}
+	// 保存更改
+	if inMemStore, ok := store.(*common.InMemoryNodeStore); ok {
+		if err := inMemStore.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "保存节点状态失败: %v\n", err)
+		} else {
+			fmt.Println("节点状态保存成功")
 		}
 	}
 }

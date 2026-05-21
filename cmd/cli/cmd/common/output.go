@@ -92,9 +92,9 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 	}
 
 	// 表头
-	fmt.Printf("%-10s %-15s %-20s %-10s %-10s %-20s %-15s\n",
-		"ID", "Name", "Address", "User", "Status", "Groups", "Labels")
-	fmt.Println(strings.Repeat("-", 110))
+	fmt.Printf("%-10s %-15s %-20s %-10s %-10s %-20s %-30s %-20s\n",
+		"ID", "Name", "Address", "User", "Status", "Groups", "Labels", "Last Check")
+	fmt.Println(strings.Repeat("-", 145))
 
 	// 表格数据
 	for _, n := range nodes {
@@ -115,6 +115,11 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 
 		address := fmt.Sprintf("%s:%d", n.Address, n.Port)
 
+		lastCheck := n.LastCheckAt
+		if lastCheck == "" {
+			lastCheck = "-"
+		}
+
 		status := string(n.Status)
 		if f.Color {
 			switch n.Status {
@@ -127,8 +132,8 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 			}
 		}
 
-		fmt.Printf("%-10s %-15s %-20s %-10s %-10s %-20s %-15s\n",
-			n.ID, truncate(n.Name, 15), truncate(address, 20), user, status, truncate(groups, 20), truncate(labels, 15))
+		fmt.Printf("%-10s %-15s %-20s %-10s %-10s %-20s %-30s %-20s\n",
+			n.ID, truncate(n.Name, 15), truncate(address, 20), user, status, truncate(groups, 20), truncate(labels, 30), truncate(lastCheck, 20))
 	}
 	fmt.Printf("\nTotal: %d nodes\n", len(nodes))
 }
@@ -137,22 +142,25 @@ func (f *OutputFormatter) printNodeDetail(node *model.Node) {
 	fmt.Println("==============================================")
 	fmt.Printf("  Node: %s\n", node.Name)
 	fmt.Println("----------------------------------------------")
-	fmt.Printf("  ID:       %s\n", node.ID)
-	fmt.Printf("  Address:  %s:%d\n", node.Address, node.Port)
+	fmt.Printf("  ID:          %s\n", node.ID)
+	fmt.Printf("  Address:     %s:%d\n", node.Address, node.Port)
 	if node.User != "" {
-		fmt.Printf("  User:     %s\n", node.User)
+		fmt.Printf("  User:        %s\n", node.User)
 	}
-	fmt.Printf("  Status:   %s\n", node.Status)
+	fmt.Printf("  Status:      %s\n", node.Status)
 
 	groups := strings.Join(node.Groups, ", ")
 	if groups == "" {
 		groups = "(none)"
 	}
-	fmt.Printf("  Groups:   %s\n", truncate(groups, 40))
+	fmt.Printf("  Groups:      %s\n", truncate(groups, 40))
 
-	fmt.Printf("  Labels:   %s\n", formatLabelsStr(node.Labels))
-	fmt.Printf("  Created:  %s\n", node.CreatedAt.Format(time.RFC3339))
-	fmt.Printf("  Updated:  %s\n", node.UpdatedAt.Format(time.RFC3339))
+	fmt.Printf("  Labels:      %s\n", formatLabelsStr(node.Labels))
+	fmt.Printf("  Created:     %s\n", node.CreatedAt.Format(time.RFC3339))
+	fmt.Printf("  Updated:     %s\n", node.UpdatedAt.Format(time.RFC3339))
+	if node.LastCheckAt != "" {
+		fmt.Printf("  Last Check:  %s\n", node.LastCheckAt)
+	}
 	fmt.Println("==============================================")
 }
 

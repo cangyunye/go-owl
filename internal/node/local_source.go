@@ -1,7 +1,10 @@
 package node
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -23,8 +26,58 @@ type LocalNode struct {
 }
 
 func NewLocalSource() *LocalSource {
-	return &LocalSource{
+	s := &LocalSource{
 		nodes: make(map[string]*LocalNode),
+	}
+	s.loadFromFile()
+	return s
+}
+
+func (s *LocalSource) loadFromFile() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	dataFile := filepath.Join(home, ".owl", "nodes.json")
+
+	data, err := os.ReadFile(dataFile)
+	if err != nil {
+		return
+	}
+
+	var nodes []*struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Address  string `json:"address"`
+		Port     int    `json:"port"`
+		User     string `json:"user"`
+		Password string `json:"password,omitempty"`
+		SSHKey   string `json:"ssh_key,omitempty"`
+		Groups   []string `json:"groups"`
+		Labels   map[string]string `json:"labels"`
+	}
+	if err := json.Unmarshal(data, &nodes); err != nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, n := range nodes {
+		localNode := &LocalNode{
+			ID:          n.ID,
+			Name:        n.Name,
+			Address:     n.Address,
+			Port:        n.Port,
+			User:        n.User,
+			Groups:      n.Groups,
+			Labels:      n.Labels,
+			SSHKey:      n.SSHKey,
+			SSHPassword: n.Password,
+		}
+		s.nodes[n.ID] = localNode
+		if n.Name != "" && n.Name != n.ID {
+			s.nodes[n.Name] = localNode
+		}
 	}
 }
 

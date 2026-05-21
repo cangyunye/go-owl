@@ -126,14 +126,15 @@ func toModelNodes(nodes []*common.NodeInfo) []*model.Node {
 	result := make([]*model.Node, len(nodes))
 	for i, n := range nodes {
 		result[i] = &model.Node{
-			ID:      n.ID,
-			Name:    n.Name,
-			Address: n.Address,
-			Port:    n.Port,
-			User:    n.User,
-			Status:  model.NodeStatus(n.Status),
-			Groups:  n.Groups,
-			Labels:  n.Labels,
+			ID:          n.ID,
+			Name:        n.Name,
+			Address:     n.Address,
+			Port:        n.Port,
+			User:        n.User,
+			Status:      model.NodeStatus(n.Status),
+			Groups:      n.Groups,
+			Labels:      n.Labels,
+			LastCheckAt: n.LastCheckAt,
 		}
 	}
 	return result
@@ -141,13 +142,14 @@ func toModelNodes(nodes []*common.NodeInfo) []*model.Node {
 
 func toModelNode(n *common.NodeInfo) *model.Node {
 	return &model.Node{
-		ID:      n.ID,
-		Name:    n.Name,
-		Address: n.Address,
-		Port:    n.Port,
-		User:    n.User,
-		Status:  model.NodeStatus(n.Status),
-		Groups:  n.Groups,
-		Labels:  n.Labels,
+		ID:          n.ID,
+		Name:        n.Name,
+		Address:     n.Address,
+		Port:        n.Port,
+		User:        n.User,
+		Status:      model.NodeStatus(n.Status),
+		Groups:      n.Groups,
+		Labels:      n.Labels,
+		LastCheckAt: n.LastCheckAt,
 	}
 }
