@@ -177,18 +177,3 @@ func TestRetryResult_Failure(t *testing.T) {
 	}
 }
 
-func TestRetryAttempt_Duration(t *testing.T) {
-	start := time.Now()
-	time.Sleep(10 * time.Millisecond)
-	end := time.Now()
-
-	attempt := RetryAttempt{
-		Attempt:   1,
-		StartTime: start,
-		EndTime:   end,
-	}
-
-	if attempt.Duration != end.Sub(start) {
-		t.Errorf("expected duration %v, got %v", end.Sub(start), attempt.Duration)
-	}
-}

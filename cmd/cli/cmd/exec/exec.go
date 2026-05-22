@@ -13,12 +13,12 @@ func NewExecCmd() *cobra.Command {
 
 - run: 执行 Shell 命令
 - script: 执行脚本文件
-- playbook: 执行 Ansible 剧本`,
+
+注意：剧本执行请使用 "owl playbook" 命令`,
 	}
 
 	execCmd.AddCommand(NewRunCmd())
 	execCmd.AddCommand(NewScriptCmd())
-	execCmd.AddCommand(NewPlaybookCmd())
 
 	return execCmd
 }

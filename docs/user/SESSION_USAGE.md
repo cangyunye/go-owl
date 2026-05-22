@@ -36,14 +36,14 @@ owl session history --session-id sess-1234567890
 
 ### 1. 数据库支持
 
-项目支持 **DuckDB** 和 **SQLite3** 两种数据库，可以通过构建标签进行选择：
+项目支持 **SQLite3**（默认）和 **DuckDB** 两种数据库，可以通过构建标签进行选择：
 
 ```bash
-# 默认使用 DuckDB 构建
+# 默认使用 SQLite3 构建（推荐，零 CGo 兼容性问题）
 go build -o owl ./cmd/cli/main.go
 
-# 使用 SQLite3 构建
-go build -tags sqlite3 -o owl ./cmd/cli/main.go
+# 使用 DuckDB 构建（适合分析型查询场景）
+go build -tags duckdb -o owl ./cmd/cli/main.go
 ```
 
 **数据库表结构**:

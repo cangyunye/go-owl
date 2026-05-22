@@ -157,9 +157,9 @@ func TestNewCommandExecutor(t *testing.T) {
 
 func TestCommandExecutor_Execute(t *testing.T) {
 	nodeMgr := NewMockNodeManager()
-	nodeMgr.AddNode(model.NewNode("node-1", "Test Node 1", "127.0.0.1", 8080))
+	nodeMgr.AddNode(model.NewNode("node-1", "Test Node 1", "127.0.0.1", 8080, "root"))
 	nodeMgr.UpdateStatus("node-1", model.NodeStatusOnline)
-	nodeMgr.AddNode(model.NewNode("node-2", "Test Node 2", "127.0.0.2", 8080))
+	nodeMgr.AddNode(model.NewNode("node-2", "Test Node 2", "127.0.0.2", 8080, "root"))
 	nodeMgr.UpdateStatus("node-2", model.NodeStatusOnline)
 
 	mockExec := &MockNodeExecutor{}
@@ -183,7 +183,7 @@ func TestCommandExecutor_Execute(t *testing.T) {
 
 func TestCommandExecutor_ExecuteWithInvalidNode(t *testing.T) {
 	nodeMgr := NewMockNodeManager()
-	nodeMgr.AddNode(model.NewNode("node-1", "Test Node 1", "127.0.0.1", 8080))
+	nodeMgr.AddNode(model.NewNode("node-1", "Test Node 1", "127.0.0.1", 8080, "root"))
 	nodeMgr.UpdateStatus("node-1", model.NodeStatusOnline)
 
 	mockExec := &MockNodeExecutor{}
@@ -207,9 +207,9 @@ func TestCommandExecutor_ExecuteWithInvalidNode(t *testing.T) {
 
 func TestCommandExecutor_ExecuteWithOfflineNode(t *testing.T) {
 	nodeMgr := NewMockNodeManager()
-	nodeMgr.AddNode(model.NewNode("node-1", "Test Node 1", "127.0.0.1", 8080))
+	nodeMgr.AddNode(model.NewNode("node-1", "Test Node 1", "127.0.0.1", 8080, "root"))
 	nodeMgr.UpdateStatus("node-1", model.NodeStatusOnline)
-	nodeMgr.AddNode(model.NewNode("node-2", "Test Node 2", "127.0.0.2", 8080))
+	nodeMgr.AddNode(model.NewNode("node-2", "Test Node 2", "127.0.0.2", 8080, "root"))
 	nodeMgr.UpdateStatus("node-2", model.NodeStatusOffline)
 
 	mockExec := &MockNodeExecutor{}
@@ -233,7 +233,7 @@ func TestCommandExecutor_ExecuteWithOfflineNode(t *testing.T) {
 
 func TestCommandExecutor_ExecuteOnNode(t *testing.T) {
 	nodeMgr := NewMockNodeManager()
-	nodeMgr.AddNode(model.NewNode("node-1", "Test Node 1", "127.0.0.1", 8080))
+	nodeMgr.AddNode(model.NewNode("node-1", "Test Node 1", "127.0.0.1", 8080, "root"))
 	nodeMgr.UpdateStatus("node-1", model.NodeStatusOnline)
 
 	executor := NewCommandExecutor(nodeMgr, nil)
@@ -259,7 +259,7 @@ func TestCommandExecutor_ExecuteOnNode_NotFound(t *testing.T) {
 
 func TestCommandExecutor_ExecuteOnNode_Offline(t *testing.T) {
 	nodeMgr := NewMockNodeManager()
-	nodeMgr.AddNode(model.NewNode("node-1", "Test Node 1", "127.0.0.1", 8080))
+	nodeMgr.AddNode(model.NewNode("node-1", "Test Node 1", "127.0.0.1", 8080, "root"))
 
 	executor := NewCommandExecutor(nodeMgr, nil)
 

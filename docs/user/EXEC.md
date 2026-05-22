@@ -9,7 +9,6 @@
 ```
 owl exec - 批量命令执行
 ├── owl exec run      - 执行命令
-├── owl exec playbook - 执行剧本
 └── owl exec script  - 执行脚本
 ```
 
@@ -111,43 +110,7 @@ owl exec run "df -h" --output detail
 
 ---
 
-## 3. owl exec playbook
-
-执行预定义的剧本（Playbook）。
-
-### 使用方法
-
-```bash
-owl exec playbook <playbook-name>
-owl exec playbook <playbook-name> --nodes node1,node2
-owl exec playbook deploy-app --limit web
-```
-
-### 参数说明
-
-| 参数 | 说明 |
-|------|------|
-| `<playbook-name>` | 剧本名称 |
-| `--nodes` | 指定节点 |
-| `--limit` | 限制执行的节点 |
-| `--vars` | 传递变量 |
-
-### 示例
-
-```bash
-# 执行剧本
-owl exec playbook deploy-app
-
-# 指定节点
-owl exec playbook restart-nginx --nodes web-01,web-02
-
-# 带变量
-owl exec playbook deploy-app --vars version=v1.2.3,env=prod
-```
-
----
-
-## 4. owl exec script
+## 3. owl exec script
 
 执行本地脚本文件。
 

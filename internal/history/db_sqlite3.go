@@ -1,5 +1,5 @@
-//go:build sqlite3
-// +build sqlite3
+//go:build !duckdb
+// +build !duckdb
 
 package history
 

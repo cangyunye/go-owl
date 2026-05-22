@@ -10,7 +10,7 @@ func TestManager_Register(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 
 	err := mgr.Register(node)
 	if err != nil {
@@ -26,8 +26,8 @@ func TestManager_Register_WithDuplicateID(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080)
-	node2 := model.NewNode("node-1", "test-node-2", "192.168.1.101", 8081)
+	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080, "root")
+	node2 := model.NewNode("node-1", "test-node-2", "192.168.1.101", 8081, "root")
 
 	err := mgr.Register(node1)
 	if err != nil {
@@ -48,7 +48,7 @@ func TestManager_Register_WithInvalidNode(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node := model.NewNode("", "test-node", "192.168.1.100", 8080)
+	node := model.NewNode("", "test-node", "192.168.1.100", 8080, "root")
 
 	err := mgr.Register(node)
 	if err == nil {
@@ -64,7 +64,7 @@ func TestManager_Unregister(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 	mgr.Register(node)
 
 	err := mgr.Unregister("node-1")
@@ -91,7 +91,7 @@ func TestManager_GetByID(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 	node.AddGroup("web")
 	node.SetLabel("env", "production")
 	mgr.Register(node)
@@ -129,7 +129,7 @@ func TestManager_GetByID_IsClone(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 	mgr.Register(node)
 
 	retrieved1, _ := mgr.GetByID("node-1")
@@ -145,9 +145,9 @@ func TestManager_List(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080)
-	node2 := model.NewNode("node-2", "test-node-2", "192.168.1.101", 8081)
-	node3 := model.NewNode("node-3", "test-node-3", "192.168.1.102", 8082)
+	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080, "root")
+	node2 := model.NewNode("node-2", "test-node-2", "192.168.1.101", 8081, "root")
+	node3 := model.NewNode("node-3", "test-node-3", "192.168.1.102", 8082, "root")
 
 	mgr.Register(node1)
 	mgr.Register(node2)
@@ -163,7 +163,7 @@ func TestManager_List_IsClone(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 	mgr.Register(node)
 
 	nodes1 := mgr.List()
@@ -179,12 +179,12 @@ func TestManager_GetByGroup(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080)
+	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080, "root")
 	node1.AddGroup("web")
-	node2 := model.NewNode("node-2", "test-node-2", "192.168.1.101", 8081)
+	node2 := model.NewNode("node-2", "test-node-2", "192.168.1.101", 8081, "root")
 	node2.AddGroup("web")
 	node2.AddGroup("database")
-	node3 := model.NewNode("node-3", "test-node-3", "192.168.1.102", 8082)
+	node3 := model.NewNode("node-3", "test-node-3", "192.168.1.102", 8082, "root")
 	node3.AddGroup("database")
 
 	mgr.Register(node1)
@@ -211,13 +211,13 @@ func TestManager_GetByLabels(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080)
+	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080, "root")
 	node1.SetLabel("env", "production")
 	node1.SetLabel("region", "us-west")
-	node2 := model.NewNode("node-2", "test-node-2", "192.168.1.101", 8081)
+	node2 := model.NewNode("node-2", "test-node-2", "192.168.1.101", 8081, "root")
 	node2.SetLabel("env", "production")
 	node2.SetLabel("region", "us-east")
-	node3 := model.NewNode("node-3", "test-node-3", "192.168.1.102", 8082)
+	node3 := model.NewNode("node-3", "test-node-3", "192.168.1.102", 8082, "root")
 	node3.SetLabel("env", "staging")
 
 	mgr.Register(node1)
@@ -244,7 +244,7 @@ func TestManager_UpdateStatus(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 	mgr.Register(node)
 
 	err := mgr.UpdateStatus("node-1", model.NodeStatusOffline)
@@ -272,9 +272,9 @@ func TestManager_GetOnlineNodes(t *testing.T) {
 	store := NewInMemoryNodeStore()
 	mgr := NewManager(store)
 
-	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080)
-	node2 := model.NewNode("node-2", "test-node-2", "192.168.1.101", 8081)
-	node3 := model.NewNode("node-3", "test-node-3", "192.168.1.102", 8082)
+	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080, "root")
+	node2 := model.NewNode("node-2", "test-node-2", "192.168.1.101", 8081, "root")
+	node3 := model.NewNode("node-3", "test-node-3", "192.168.1.102", 8082, "root")
 
 	mgr.Register(node1)
 	mgr.Register(node2)
@@ -302,13 +302,13 @@ func TestManager_Count(t *testing.T) {
 		t.Errorf("expected 0 nodes, got %d", mgr.Count())
 	}
 
-	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080)
+	node1 := model.NewNode("node-1", "test-node-1", "192.168.1.100", 8080, "root")
 	mgr.Register(node1)
 	if mgr.Count() != 1 {
 		t.Errorf("expected 1 node, got %d", mgr.Count())
 	}
 
-	node2 := model.NewNode("node-2", "test-node-2", "192.168.1.101", 8081)
+	node2 := model.NewNode("node-2", "test-node-2", "192.168.1.101", 8081, "root")
 	mgr.Register(node2)
 	if mgr.Count() != 2 {
 		t.Errorf("expected 2 nodes, got %d", mgr.Count())
@@ -323,7 +323,7 @@ func TestManager_Count(t *testing.T) {
 func TestInMemoryNodeStore(t *testing.T) {
 	store := NewInMemoryNodeStore()
 
-	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := model.NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 
 	store.Set("node-1", node)
 

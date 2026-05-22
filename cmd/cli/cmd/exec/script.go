@@ -13,7 +13,6 @@ import (
 	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
-	"github.com/cangyunye/go-owl/internal/ssh"
 )
 
 // NewScriptCmd 创建脚本执行命令
@@ -133,9 +132,8 @@ func runScript(cmd *cobra.Command, args []string) {
 	})
 
 	// 创建执行器
-	sshExec := ssh.NewRemoteNodeExecutor("")
 	transferMgr := transfer.NewTransferManager(nodeResolver)
-	scriptExec := script.NewScriptExecutor(nodeResolver, transferMgr, sshExec)
+	scriptExec := script.NewScriptExecutor(nodeResolver, transferMgr)
 
 	opts := &script.ScriptExecutionOptions{
 		DestDir: scriptDest,

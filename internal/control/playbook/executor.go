@@ -254,8 +254,7 @@ func (r *defaultActionRunner) runScript(result *TaskResult, args map[string]inte
 	opts.Timeout = mergedOpts.GetTimeout()
 
 	// 创建 script executor
-	sshExec := ssh.NewRemoteNodeExecutor("")
-	scriptExec := script.NewScriptExecutor(r.nodeResolver, r.transferMgr, sshExec)
+	scriptExec := script.NewScriptExecutor(r.nodeResolver, r.transferMgr)
 
 	// 执行脚本
 	results, err := scriptExec.ExecuteScript(scriptPath, []string{nodeID}, opts)

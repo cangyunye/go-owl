@@ -125,7 +125,7 @@ docs/
 
 ### 命令执行
 1. 使用 `owl exec run` 执行命令
-2. 使用 `owl exec playbook` 执行剧本
+2. 使用 `owl playbook run` 执行剧本
 3. 查看 `owl exec` 参数
 
 ### 文件传输
