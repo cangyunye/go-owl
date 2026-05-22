@@ -9,6 +9,22 @@ import (
 	"time"
 )
 
+// SSHAuthError SSH 认证失败错误
+type SSHAuthError struct {
+	ExitCode  int
+	NodeID    string
+	Stderr    string
+	Cause     error
+}
+
+func (e *SSHAuthError) Error() string {
+	return fmt.Sprintf("SSH 连接失败 (exit code %d) on node %s: %s", e.ExitCode, e.NodeID, strings.TrimSpace(e.Stderr))
+}
+
+func (e *SSHAuthError) Unwrap() error {
+	return e.Cause
+}
+
 // NodeExecutorFactory 节点执行器工厂
 type NodeExecutorFactory struct {
 	sshConfigPath string
@@ -27,22 +43,22 @@ func NewNodeExecutorFactoryWithSSHConfig(sshConfigPath string) *NodeExecutorFact
 }
 
 // GetExecutorForNode 获取适合指定节点的执行器
-func (f *NodeExecutorFactory) GetExecutorForNode(nodeID, nodeAddress string, nodePort int, nodeUser string) (NodeExecutor, error) {
-	// 1. 解析连接信息
-	connInfo, err := ResolveConnection(nodeID, nodeAddress, nodePort, nodeUser, f.sshConfigPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. 如果是本地节点（127.0.0.1 或 localhost），使用本地执行器
+// 默认使用基于 crypto/ssh 的原生执行器（支持密钥优先、密码兜底）
+func (f *NodeExecutorFactory) GetExecutorForNode(nodeID, nodeAddress string, nodePort int, nodeUser, nodeKeyFile, nodePassword string) (NodeExecutor, error) {
+	// 1. 如果是本地节点（127.0.0.1 或 localhost），使用本地执行器
 	if isLocalNode(nodeAddress) {
 		return &LocalNodeExecutor{}, nil
 	}
 
-	// 3. 返回远程执行器
-	return &RemoteNodeExecutorWithInfo{
-		connInfo:      connInfo,
-		sshConfigPath: f.sshConfigPath,
+	// 2. 解析连接信息
+	connInfo, err := ResolveConnection(nodeID, nodeAddress, nodePort, nodeUser, nodeKeyFile, nodePassword, f.sshConfigPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. 返回基于 crypto/ssh 的原生执行器
+	return &NativeNodeExecutor{
+		connInfo: connInfo,
 	}, nil
 }
 
@@ -76,6 +92,18 @@ func (e *RemoteNodeExecutorWithInfo) Execute(command string, timeout time.Durati
 
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr.ExitCode() == 255 {
+				stderrStr := stderr.String()
+				if stderrStr == "" {
+					stderrStr = output
+				}
+				return exitErr.ExitCode(), output, &SSHAuthError{
+					ExitCode:  255,
+					NodeID:    e.connInfo.Address,
+					Stderr:    stderrStr,
+					Cause:     err,
+				}
+			}
 			return exitErr.ExitCode(), output, nil
 		}
 		return -1, output, err
@@ -124,6 +152,18 @@ func (e *RemoteNodeExecutorWithInfo) ExecuteWithConfig(command string, config *T
 	// 解析超时类型
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr.ExitCode() == 255 {
+				stderrStr := stderr.String()
+				if stderrStr == "" {
+					stderrStr = output
+				}
+				return exitErr.ExitCode(), output, &SSHAuthError{
+					ExitCode:  255,
+					NodeID:    e.connInfo.Address,
+					Stderr:    stderrStr,
+					Cause:     err,
+				}
+			}
 			return exitErr.ExitCode(), output, nil
 		}
 

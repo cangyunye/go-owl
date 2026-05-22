@@ -1,14 +1,21 @@
 package playbook
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/command"
-	"github.com/cangyunye/go-owl/internal/control/node"
+	"github.com/cangyunye/go-owl/internal/control/script"
+	controlnode "github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/cangyunye/go-owl/internal/control/task"
+	"github.com/cangyunye/go-owl/internal/control/transfer"
+	"github.com/cangyunye/go-owl/internal/node"
 	"github.com/cangyunye/go-owl/internal/ssh"
 )
 
@@ -58,29 +65,41 @@ type Executor interface {
 }
 
 type playbookExecutor struct {
-	nodeMgr   node.Manager
-	cmdExec   command.CommandExecutor
-	taskSched task.Scheduler
-	runner    ActionRunner
-	options   *PlaybookOptions
+	nodeMgr      controlnode.Manager
+	cmdExec      command.CommandExecutor
+	taskSched    task.Scheduler
+	runner       ActionRunner
+	options      *PlaybookOptions
+	nodeResolver *node.NodeResolver
 }
 
-func NewExecutor(nodeMgr node.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, runner ActionRunner) Executor {
+func NewExecutor(nodeMgr controlnode.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, nodeResolver *node.NodeResolver) Executor {
+	runner := NewDefaultActionRunner(cmdExec, nodeResolver)
 	return &playbookExecutor{
-		nodeMgr:   nodeMgr,
-		cmdExec:   cmdExec,
-		taskSched: taskSched,
-		runner:    runner,
+		nodeMgr:      nodeMgr,
+		cmdExec:      cmdExec,
+		taskSched:    taskSched,
+		runner:       runner,
+		nodeResolver: nodeResolver,
 	}
 }
 
-func NewExecutorWithOptions(nodeMgr node.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, runner ActionRunner, opts *PlaybookOptions) Executor {
+func NewExecutorWithOptions(nodeMgr controlnode.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, nodeResolver *node.NodeResolver, opts *PlaybookOptions) Executor {
+	runner := NewDefaultActionRunnerWithOptions(cmdExec, nodeResolver, opts)
 	return &playbookExecutor{
-		nodeMgr:   nodeMgr,
-		cmdExec:   cmdExec,
-		taskSched: taskSched,
-		runner:    runner,
-		options:   opts,
+		nodeMgr:      nodeMgr,
+		cmdExec:      cmdExec,
+		taskSched:    taskSched,
+		runner:       runner,
+		options:      opts,
+		nodeResolver: nodeResolver,
+	}
+}
+
+// SetPlaybookBaseDir 设置 Playbook 基础目录，用于解析相对路径
+func (e *playbookExecutor) SetPlaybookBaseDir(path string) {
+	if r, ok := e.runner.(*defaultActionRunner); ok {
+		r.SetPlaybookBaseDir(path)
 	}
 }
 
@@ -89,16 +108,41 @@ type ActionRunner interface {
 }
 
 type defaultActionRunner struct {
-	cmdExec command.CommandExecutor
-	opts    *PlaybookOptions
+	cmdExec       command.CommandExecutor
+	nodeResolver  *node.NodeResolver
+	transferMgr   *transfer.TransferManager
+	opts          *PlaybookOptions
+	playbookBaseDir string
 }
 
-func NewDefaultActionRunner(cmdExec command.CommandExecutor) *defaultActionRunner {
-	return &defaultActionRunner{cmdExec: cmdExec}
+func NewDefaultActionRunner(cmdExec command.CommandExecutor, nodeResolver *node.NodeResolver) *defaultActionRunner {
+	return &defaultActionRunner{
+		cmdExec:       cmdExec,
+		nodeResolver:  nodeResolver,
+		transferMgr:   transfer.NewTransferManager(nodeResolver),
+	}
 }
 
-func NewDefaultActionRunnerWithOptions(cmdExec command.CommandExecutor, opts *PlaybookOptions) *defaultActionRunner {
-	return &defaultActionRunner{cmdExec: cmdExec, opts: opts}
+func NewDefaultActionRunnerWithOptions(cmdExec command.CommandExecutor, nodeResolver *node.NodeResolver, opts *PlaybookOptions) *defaultActionRunner {
+	return &defaultActionRunner{
+		cmdExec:       cmdExec,
+		nodeResolver:  nodeResolver,
+		transferMgr:   transfer.NewTransferManager(nodeResolver),
+		opts:          opts,
+	}
+}
+
+// SetPlaybookBaseDir 设置 Playbook 所在的基础目录，用于解析相对路径
+func (r *defaultActionRunner) SetPlaybookBaseDir(path string) {
+	r.playbookBaseDir = path
+}
+
+// resolvePath 相对于 Playbook 目录解析路径
+func (r *defaultActionRunner) resolvePath(path string) string {
+	if r.playbookBaseDir != "" && !filepath.IsAbs(path) {
+		return filepath.Join(r.playbookBaseDir, path)
+	}
+	return path
 }
 
 func (r *defaultActionRunner) RunAction(action string, args map[string]interface{}, nodeID string, vars map[string]interface{}, actionOpts *ActionOptions) (*TaskResult, error) {
@@ -109,6 +153,23 @@ func (r *defaultActionRunner) RunAction(action string, args map[string]interface
 		StartTime: time.Now(),
 	}
 
+	// 根据 action 类型执行不同的操作
+	switch strings.ToLower(action) {
+	case "script":
+		return r.runScript(result, args, nodeID, vars, actionOpts)
+	case "upload":
+		return r.runUpload(result, args, nodeID, vars, actionOpts)
+	case "download":
+		return r.runDownload(result, args, nodeID, vars, actionOpts)
+	case "command", "cmd", "shell":
+		fallthrough
+	default:
+		return r.runCommand(result, args, nodeID, vars, actionOpts)
+	}
+}
+
+// runCommand 执行命令类型的动作
+func (r *defaultActionRunner) runCommand(result *TaskResult, args map[string]interface{}, nodeID string, vars map[string]interface{}, actionOpts *ActionOptions) (*TaskResult, error) {
 	var cmd string
 	if c, ok := args["cmd"]; ok {
 		cmd = fmt.Sprintf("%v", c)
@@ -117,8 +178,11 @@ func (r *defaultActionRunner) RunAction(action string, args map[string]interface
 	} else if c, ok := args["script"]; ok {
 		cmd = fmt.Sprintf("bash %v", c)
 	} else {
-		cmd = fmt.Sprintf("echo 'Action: %s, Args: %v'", action, args)
+		cmd = fmt.Sprintf("echo 'Action: %s, Args: %v'", result.Action, args)
 	}
+
+	// 替换变量
+	cmd = r.interpolateVariables(cmd, vars)
 
 	mergedOpts := MergeActionOptions(actionOpts, r.getGlobalDefaults())
 
@@ -145,6 +209,195 @@ func (r *defaultActionRunner) RunAction(action string, args map[string]interface
 	result.EndTime = time.Now()
 
 	return result, nil
+}
+
+// runScript 执行脚本类型的动作
+func (r *defaultActionRunner) runScript(result *TaskResult, args map[string]interface{}, nodeID string, vars map[string]interface{}, actionOpts *ActionOptions) (*TaskResult, error) {
+	scriptPath, ok := args["script"].(string)
+	if !ok {
+		result.Error = fmt.Errorf("script action requires 'script' argument")
+		result.EndTime = time.Now()
+		return result, result.Error
+	}
+
+	// 解析路径和替换变量
+	scriptPath = r.resolvePath(r.interpolateVariables(scriptPath, vars))
+
+	// 检查脚本文件是否存在
+	if !(len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://")) {
+		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+			result.Error = fmt.Errorf("script file not found: %s", scriptPath)
+			result.EndTime = time.Now()
+			return result, result.Error
+		}
+	}
+
+	// 读取其他参数
+	opts := &script.ScriptExecutionOptions{
+		DestDir: "/tmp",
+	}
+
+	if v, ok := args["dest"].(string); ok {
+		opts.DestDir = r.interpolateVariables(v, vars)
+	}
+	if v, ok := args["args"].(string); ok {
+		opts.Args = r.interpolateVariables(v, vars)
+	}
+	if v, ok := args["inline"].(bool); ok {
+		opts.Inline = v
+	}
+	if v, ok := args["keep"].(bool); ok {
+		opts.Keep = v
+	}
+
+	mergedOpts := MergeActionOptions(actionOpts, r.getGlobalDefaults())
+	opts.Timeout = mergedOpts.GetTimeout()
+
+	// 创建 script executor
+	sshExec := ssh.NewRemoteNodeExecutor("")
+	scriptExec := script.NewScriptExecutor(r.nodeResolver, r.transferMgr, sshExec)
+
+	// 执行脚本
+	results, err := scriptExec.ExecuteScript(scriptPath, []string{nodeID}, opts)
+	if err != nil {
+		result.Error = err
+		result.EndTime = time.Now()
+		return result, err
+	}
+
+	if len(results) > 0 {
+		scriptResult := results[0]
+		result.ExitCode = scriptResult.ExitCode
+		result.Output = scriptResult.Output
+		result.Error = scriptResult.Error
+		result.Changed = scriptResult.ExitCode != 0
+	}
+
+	result.EndTime = time.Now()
+	return result, result.Error
+}
+
+// runUpload 执行上传动作
+func (r *defaultActionRunner) runUpload(result *TaskResult, args map[string]interface{}, nodeID string, vars map[string]interface{}, actionOpts *ActionOptions) (*TaskResult, error) {
+	src, ok := args["src"].(string)
+	if !ok {
+		result.Error = fmt.Errorf("upload requires 'src' argument")
+		result.EndTime = time.Now()
+		return result, result.Error
+	}
+
+	dest, ok := args["dest"].(string)
+	if !ok {
+		result.Error = fmt.Errorf("upload requires 'dest' argument")
+		result.EndTime = time.Now()
+		return result, result.Error
+	}
+
+	// 解析路径和替换变量
+	src = r.resolvePath(r.interpolateVariables(src, vars))
+	dest = r.interpolateVariables(dest, vars)
+
+	// 构建上传选项
+	opts := &transfer.UploadOptions{
+		Parallel:  true,
+		Resume:    true,
+		Overwrite: true,
+	}
+
+	if v, ok := args["overwrite"].(bool); ok {
+		opts.Overwrite = v
+	}
+	if v, ok := args["no-overwrite"].(bool); ok {
+		opts.NoOverwrite = v
+	}
+	if v, ok := args["resume"].(bool); ok {
+		opts.Resume = v
+	}
+
+	// 执行上传
+	ctx := context.Background()
+	results := r.transferMgr.Upload(ctx, []string{nodeID}, src, dest, opts)
+
+	if len(results) > 0 {
+		transferResult := results[0]
+		if transferResult.Error != nil {
+			result.Error = transferResult.Error
+			result.ExitCode = 1
+		} else {
+			result.ExitCode = 0
+			result.Output = fmt.Sprintf("Uploaded %s to %s (method: %s)", src, transferResult.Path, transferResult.Method)
+			result.Changed = true
+		}
+	}
+
+	result.EndTime = time.Now()
+	return result, result.Error
+}
+
+// runDownload 执行下载动作
+func (r *defaultActionRunner) runDownload(result *TaskResult, args map[string]interface{}, nodeID string, vars map[string]interface{}, actionOpts *ActionOptions) (*TaskResult, error) {
+	src, ok := args["src"].(string)
+	if !ok {
+		result.Error = fmt.Errorf("download requires 'src' argument")
+		result.EndTime = time.Now()
+		return result, result.Error
+	}
+
+	dest, ok := args["dest"].(string)
+	if !ok {
+		result.Error = fmt.Errorf("download requires 'dest' argument")
+		result.EndTime = time.Now()
+		return result, result.Error
+	}
+
+	// 解析路径和替换变量
+	src = r.interpolateVariables(src, vars)
+	dest = r.resolvePath(r.interpolateVariables(dest, vars))
+
+	// 构建下载选项
+	opts := &transfer.DownloadOptions{
+		Parallel: true,
+		Resume:   true,
+	}
+
+	if v, ok := args["subdir"].(bool); ok {
+		opts.Subdir = v
+	}
+	if v, ok := args["name-format"].(string); ok {
+		opts.NameFormat = v
+	}
+	if v, ok := args["resume"].(bool); ok {
+		opts.Resume = v
+	}
+
+	// 执行下载
+	ctx := context.Background()
+	results := r.transferMgr.Download(ctx, []string{nodeID}, src, dest, opts)
+
+	if len(results) > 0 {
+		transferResult := results[0]
+		if transferResult.Error != nil {
+			result.Error = transferResult.Error
+			result.ExitCode = 1
+		} else {
+			result.ExitCode = 0
+			result.Output = fmt.Sprintf("Downloaded %s to %s (method: %s)", src, transferResult.Path, transferResult.Method)
+			result.Changed = true
+		}
+	}
+
+	result.EndTime = time.Now()
+	return result, result.Error
+}
+
+// interpolateVariables 简单的变量插值函数
+func (r *defaultActionRunner) interpolateVariables(s string, vars map[string]interface{}) string {
+	// 这里使用简单的变量替换，实际可以使用 TemplateEngine
+	for k, v := range vars {
+		placeholder := fmt.Sprintf("{{%s}}", k)
+		s = strings.ReplaceAll(s, placeholder, fmt.Sprintf("%v", v))
+	}
+	return s
 }
 
 func (r *defaultActionRunner) getTimeout() time.Duration {
@@ -350,7 +603,10 @@ func (e *playbookExecutor) executeTaskForNode(exec *PlaybookExecution, task *Par
 	}
 
 	if e.runner == nil {
-		e.runner = NewDefaultActionRunnerWithOptions(e.cmdExec, e.options)
+		if e.nodeResolver == nil {
+			e.nodeResolver = node.NewNodeResolver()
+		}
+		e.runner = NewDefaultActionRunnerWithOptions(e.cmdExec, e.nodeResolver, e.options)
 	}
 
 	result, err := e.runner.RunAction(task.Action, task.Args, nodeID, taskVars, task.ActionOpts)

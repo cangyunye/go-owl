@@ -151,29 +151,79 @@ owl exec playbook deploy-app --vars version=v1.2.3,env=prod
 
 执行本地脚本文件。
 
+支持两种执行方式：
+- **默认方式**：先上传脚本到远程节点，赋予执行权限，再执行
+- **inline 方式**：直接发送脚本内容给远程执行，不留文件痕迹
+
 ### 使用方法
 
 ```bash
 owl exec script <script-file>
 owl exec script ./deploy.sh --nodes web-01,web-02
+owl exec script ./init.sh --nodes web-01 --inline
+owl exec script ./setup.sh --nodes web-01 --keep
+owl exec script ./config.sh --nodes web-01 --args "--env prod"
 ```
 
 ### 参数说明
 
 | 参数 | 说明 |
 |------|------|
-| `<script-file>` | 本地脚本文件路径 |
-| `--nodes` | 指定节点 |
-| `--interpreter` | 脚本解释器（bash/sh/python） |
+| `<script-file>` | 本地脚本文件路径（未来支持 URL 脚本） |
+| `--nodes` | 指定节点 ID（逗号分隔） |
+| `--group` | 按分组选择节点 |
+| `--label` | 按标签选择节点 |
+| `--dest` | 远程存放目录（默认 /tmp） |
+| `--args` | 传递给脚本的参数 |
+| `--timeout` | 执行超时时间（默认 5m） |
+| `--inline` | 直接发送内容执行，不留脚本文件（安全模式） |
+| `--keep` | 执行后保留远程脚本文件（调试模式） |
 
 ### 示例
 
 ```bash
-# 执行本地脚本
+# 基本用法 - 上传并执行（默认）
 owl exec script ./deploy.sh --nodes web-01
 
-# 指定解释器
-owl exec script ./deploy.py --interpreter python --nodes db-01
+# 传递参数
+owl exec script ./deploy.sh --nodes web-01 --args "--version 1.0.0 --env prod"
+
+# 安全执行 - 不留文件
+owl exec script ./init.sh --nodes web-01 --inline
+
+# 调试模式 - 保留脚本文件
+owl exec script ./setup.sh --nodes web-01 --keep
+
+# 自定义存放目录
+owl exec script ./deploy.sh --nodes web-01 --dest /home/user/
+```
+
+### 执行方式对比
+
+| 方式 | 特点 | 适用场景 |
+|------|------|---------|
+| **默认（上传+执行）** | 脚本文件保留在远程<br>支持脚本引用同目录文件<br>便于调试和复现 | 标准部署脚本<br>复杂任务<br>需要调试的场景 |
+| **inline 方式** | 脚本内容不保留<br>更安全<br>无法引用同目录文件 | 快速检查<br>安全检查<br>包含敏感信息的脚本 |
+
+### 示例输出
+
+```
+📜 脚本: ./deploy.sh
+🎯 目标节点: 2 个
+🚀 执行方式: 文件传输 + 执行
+📂 存放目录: /tmp
+
+⏳ 开始执行...
+✅ [web-01] 成功
+    输出:
+      Deploying...
+      Done!
+✅ [web-02] 成功
+    输出:
+      Deploying...
+      Done!
+
+📊 总结: 2 成功, 0 失败
 ```
 
 ---

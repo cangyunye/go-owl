@@ -2,11 +2,18 @@ package exec
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/control/script"
+	"github.com/cangyunye/go-owl/internal/control/transfer"
+	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logger"
+	"github.com/cangyunye/go-owl/internal/node"
+	"github.com/cangyunye/go-owl/internal/ssh"
 )
 
 // NewScriptCmd 创建脚本执行命令
@@ -18,11 +25,17 @@ func NewScriptCmd() *cobra.Command {
 
 支持本地脚本文件和 URL 远程脚本。
 
+执行方式：
+  默认：上传到远端文件执行（便于调试和审计）
+  --inline：直接发送内容执行（不留痕迹）
+
 示例：
   owl exec script deploy.sh --nodes web-01,web-02
   owl exec script ./scripts/install.sh --group web --dest /tmp
-  owl exec script https://example.com/setup.sh --args "--env prod"
-  owl exec script backup.sh --label env=prod --timeout 10m`,
+  owl exec script backup.sh --args "--env prod" --label env=prod
+  owl exec script init.sh --inline --nodes test-01  # 直接内容执行
+  owl exec script setup.sh --keep --nodes all  # 执行后保留脚本
+  owl exec script deploy.sh --timeout 10m`,
 		Args: cobra.ExactArgs(1),
 		Run:  runScript,
 	}
@@ -39,6 +52,10 @@ func NewScriptCmd() *cobra.Command {
 		"传递给脚本的参数")
 	scriptCmd.Flags().DurationVar(&scriptTimeout, "timeout", 5*60*time.Second,
 		"脚本执行超时时间")
+	scriptCmd.Flags().BoolVar(&scriptInline, "inline", false,
+		"直接发送内容执行，不保存为文件")
+	scriptCmd.Flags().BoolVar(&scriptKeep, "keep", false,
+		"执行后保留脚本文件（默认会删除）")
 
 	return scriptCmd
 }
@@ -51,71 +68,185 @@ var (
 	scriptDest    string
 	scriptArgs    string
 	scriptTimeout time.Duration
+	scriptInline  bool
+	scriptKeep    bool
 )
 
 func runScript(cmd *cobra.Command, args []string) {
 	scriptPath := args[0]
-	store := common.GetNodeStore()
-
-	// 获取目标节点
-	targetNodes := selectScriptTargetNodes(store)
-	if len(targetNodes) == 0 {
-		fmt.Println("No target nodes found.")
-		return
+	logger.Init(nil)
+	defer logger.Sync()
+	_, err := history.NewDB(history.DefaultConfig())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
 	}
 
-	// 确定脚本类型
-	scriptType := "local"
-	if len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://") {
-		scriptType = "url"
-	}
-
-	// 传输并执行脚本
-	fmt.Printf("Script type: %s\n", scriptType)
-	fmt.Printf("Script: %s\n", scriptPath)
-	fmt.Printf("Target: %d nodes\n", len(targetNodes))
-	fmt.Printf("Destination: %s\n", scriptDest)
-
-	if scriptArgs != "" {
-		fmt.Printf("Arguments: %s\n", scriptArgs)
-	}
-
-	fmt.Println("\nTransferring and executing script...")
-
-	// 模拟传输和执行
-	success := 0
-	failed := 0
-	for _, n := range targetNodes {
-		if n.Status == "online" {
-			fmt.Printf("[%s] OK: Script transferred and executed\n", n.ID)
-			success++
-		} else {
-			fmt.Printf("[%s] FAIL: Node offline\n", n.ID)
-			failed++
+	// 检查脚本文件是否存在
+	if !(len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://")) {
+		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "错误: 脚本文件不存在: %s\n", scriptPath)
+			os.Exit(1)
 		}
 	}
 
-	fmt.Printf("\nSummary: %d succeeded, %d failed\n", success, failed)
+	// 获取目标节点
+	nodeResolver := node.NewNodeResolver()
+	targetNodes := selectScriptTargetNodesWithResolver(nodeResolver)
+	if len(targetNodes) == 0 {
+		fmt.Println("未找到目标节点")
+		return
+	}
+
+	// 执行前显示信息
+	fmt.Printf("📜 脚本: %s\n", scriptPath)
+	fmt.Printf("🎯 目标节点: %d 个\n", len(targetNodes))
+	if scriptInline {
+		fmt.Println("🚀 执行方式: 直接内容执行 (inline)")
+	} else {
+		fmt.Printf("🚀 执行方式: 文件传输 + 执行\n")
+		fmt.Printf("📂 存放目录: %s\n", scriptDest)
+	}
+	if scriptKeep {
+		fmt.Println("📝 保留脚本: 是")
+	}
+	if scriptArgs != "" {
+		fmt.Printf("📋 参数: %s\n", scriptArgs)
+	}
+
+	fmt.Println("\n⏳ 开始执行...")
+
+	// 准备执行
+	nodeIDs := make([]string, 0, len(targetNodes))
+	for _, n := range targetNodes {
+		nodeIDs = append(nodeIDs, n.ID)
+	}
+
+	// 记录操作开始
+	taskID := generateTaskID()
+	history.RecordOperation(&history.Operation{
+		TaskID:    taskID,
+		OpType:    "script",
+		Command:   scriptPath,
+		Targets:   nodeIDs,
+		Status:    "running",
+		CreatedAt: time.Now(),
+	})
+
+	// 创建执行器
+	sshExec := ssh.NewRemoteNodeExecutor("")
+	transferMgr := transfer.NewTransferManager(nodeResolver)
+	scriptExec := script.NewScriptExecutor(nodeResolver, transferMgr, sshExec)
+
+	opts := &script.ScriptExecutionOptions{
+		DestDir: scriptDest,
+		Args:    scriptArgs,
+		Timeout: scriptTimeout,
+		Inline:  scriptInline,
+		Keep:    scriptKeep,
+	}
+
+	// 执行脚本
+	results, execErr := scriptExec.ExecuteScript(scriptPath, nodeIDs, opts)
+
+	// 处理结果
+	success := 0
+	failed := 0
+	
+	for _, result := range results {
+		if result.Success() {
+			fmt.Printf("✅ [%s] 成功\n", result.NodeID)
+			success++
+		} else {
+			if result.Error != nil {
+				fmt.Printf("❌ [%s] 失败: %v\n", result.NodeID, result.Error)
+			} else {
+				fmt.Printf("❌ [%s] 失败 (退出码: %d)\n", result.NodeID, result.ExitCode)
+			}
+			failed++
+		}
+		
+		// 显示输出
+		if result.Output != "" {
+			fmt.Printf("   输出:\n")
+			for _, line := range splitLines(result.Output) {
+				fmt.Printf("     %s\n", line)
+			}
+		}
+
+		// 记录历史
+		errorMsg := ""
+		if result.Error != nil {
+			errorMsg = result.Error.Error()
+		}
+		history.RecordCommandExecution(&history.CommandExecution{
+			TaskID:     taskID,
+			NodeID:     result.NodeID,
+			Command:    scriptPath,
+			ExitCode:   result.ExitCode,
+			Stdout:     truncateString(result.Output, 4096),
+			Stderr:     errorMsg,
+			DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
+			Success:    result.Success(),
+			CreatedAt:  time.Now(),
+		})
+	}
+
+	// 更新操作状态
+	finalStatus := "completed"
+	if failed > 0 {
+		if success == 0 {
+			finalStatus = "failed"
+		} else {
+			finalStatus = "partial_failure"
+		}
+	}
+	history.RecordOperation(&history.Operation{
+		TaskID:    taskID,
+		OpType:    "script",
+		Command:   scriptPath,
+		Targets:   nodeIDs,
+		Status:    finalStatus,
+		CreatedAt: time.Now(),
+	})
+
+	// 显示总结
+	fmt.Printf("\n📊 总结: %d 成功, %d 失败\n", success, failed)
+	
+	if execErr != nil {
+		fmt.Fprintf(os.Stderr, "\n执行过程中出错: %v\n", execErr)
+		os.Exit(1)
+	}
+	
+	if failed > 0 {
+		os.Exit(1)
+	}
 }
 
-func selectScriptTargetNodes(store common.NodeStore) []*common.NodeInfo {
-	var result []*common.NodeInfo
-	allNodes, _ := store.List()
+func selectScriptTargetNodesWithResolver(resolver *node.NodeResolver) []*node.ResolvedNode {
+	var result []*node.ResolvedNode
+	allNodes, _ := resolver.ListNodes(&node.ListOptions{})
 
 	for _, n := range allNodes {
+		included := false
+		
+		// 检查 --nodes 筛选
 		if scriptNodes != "" {
 			nodeIDs := common.ParseNodeList(scriptNodes)
 			if !containsStringList(nodeIDs, n.ID) {
 				continue
 			}
+			included = true
 		}
 
+		// 检查 --group 筛选
 		if scriptGroup != "" {
 			if !containsStringList(n.Groups, scriptGroup) {
 				continue
 			}
+			included = true
 		}
 
+		// 检查 --label 筛选
 		if len(scriptLabel) > 0 {
 			match := true
 			for _, label := range scriptLabel {
@@ -131,21 +262,44 @@ func selectScriptTargetNodes(store common.NodeStore) []*common.NodeInfo {
 			if !match {
 				continue
 			}
+			included = true
 		}
 
-		result = append(result, n)
+		// 如果没有指定任何筛选条件，默认包含所有
+		if scriptNodes == "" && scriptGroup == "" && len(scriptLabel) == 0 {
+			included = true
+		}
+
+		if included {
+			result = append(result, n)
+		}
 	}
 
 	return result
 }
 
-func containsStringList(list []string, s string) bool {
-	for _, item := range list {
-		if item == s {
-			return true
+func splitLines(s string) []string {
+	var lines []string
+	current := ""
+	for _, c := range s {
+		if c == '\n' {
+			lines = append(lines, current)
+			current = ""
+		} else {
+			current += string(c)
 		}
 	}
-	return false
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return lines
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 func splitLabelEq(s string) []string {
@@ -155,4 +309,17 @@ func splitLabelEq(s string) []string {
 		}
 	}
 	return []string{s}
+}
+
+func generateTaskID() string {
+	return fmt.Sprintf("task-%d", time.Now().UnixNano())
+}
+
+func containsStringList(list []string, s string) bool {
+	for _, item := range list {
+		if item == s {
+			return true
+		}
+	}
+	return false
 }

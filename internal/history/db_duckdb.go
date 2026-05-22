@@ -55,8 +55,14 @@ func (d *DuckDB) Connection() *sql.DB {
 // InitSchema 初始化表结构
 func (d *DuckDB) InitSchema() error {
 	schemas := []string{
+		`CREATE SEQUENCE IF NOT EXISTS seq_operations_id START 1;`,
+		`CREATE SEQUENCE IF NOT EXISTS seq_node_comm_id START 1;`,
+		`CREATE SEQUENCE IF NOT EXISTS seq_command_exec_id START 1;`,
+		`CREATE SEQUENCE IF NOT EXISTS seq_file_transfer_id START 1;`,
+		`CREATE SEQUENCE IF NOT EXISTS seq_session_cmd_id START 1;`,
+
 		`CREATE TABLE IF NOT EXISTS operations (
-			id BIGINT PRIMARY KEY,
+			id BIGINT PRIMARY KEY DEFAULT NEXTVAL('seq_operations_id'),
 			task_id VARCHAR,
 			op_type VARCHAR,
 			command VARCHAR,
@@ -69,7 +75,7 @@ func (d *DuckDB) InitSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_operations_created_at ON operations (created_at);`,
 
 		`CREATE TABLE IF NOT EXISTS node_communications (
-			id BIGINT PRIMARY KEY,
+			id BIGINT PRIMARY KEY DEFAULT NEXTVAL('seq_node_comm_id'),
 			task_id VARCHAR,
 			node_id VARCHAR,
 			node_address VARCHAR,
@@ -85,7 +91,7 @@ func (d *DuckDB) InitSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_communications_created_at ON node_communications (created_at);`,
 
 		`CREATE TABLE IF NOT EXISTS command_executions (
-			id BIGINT PRIMARY KEY,
+			id BIGINT PRIMARY KEY DEFAULT NEXTVAL('seq_command_exec_id'),
 			task_id VARCHAR,
 			node_id VARCHAR,
 			command VARCHAR,
@@ -101,7 +107,7 @@ func (d *DuckDB) InitSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_executions_created_at ON command_executions (created_at);`,
 
 		`CREATE TABLE IF NOT EXISTS file_transfers (
-			id BIGINT PRIMARY KEY,
+			id BIGINT PRIMARY KEY DEFAULT NEXTVAL('seq_file_transfer_id'),
 			task_id VARCHAR,
 			node_id VARCHAR,
 			file_name VARCHAR,
@@ -131,7 +137,7 @@ func (d *DuckDB) InitSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions (created_at);`,
 
 		`CREATE TABLE IF NOT EXISTS session_commands (
-			id BIGINT PRIMARY KEY,
+			id BIGINT PRIMARY KEY DEFAULT NEXTVAL('seq_session_cmd_id'),
 			session_id VARCHAR,
 			command VARCHAR,
 			targets JSON,

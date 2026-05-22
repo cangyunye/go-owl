@@ -10,7 +10,7 @@
 #   make install           # 安装到系统
 #   make clean             # 清理构建文件
 
-.PHONY: help build build/linux build/linux-amd64 build/windows build/windows-amd64 build/darwin build/darwin-arm64 build/all build-duckdb build-sqlite3 clean install test fmt lint all
+.PHONY: help build build/linux build/linux-amd64 build/windows build/windows-amd64 build/darwin build/darwin-arm64 build/all build-duckdb build-sqlite3 clean install test test-quick test-unit test-integration test-bash test-all test-clean test-coverage fmt lint all
 
 # 变量定义
 BINARY_NAME := owl
@@ -211,13 +211,35 @@ clean:
 # 测试
 # ====================
 
-## test: 运行测试
-test:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 运行测试...\n"
-	@$(GO) test -v ./...
+## test: 运行测试（所有测试）
+test: test-all
 
-## test-cover: 运行测试并生成覆盖率报告
-test-cover:
+## test-all: 运行所有测试
+test-all:
+	@make -C tests test-all
+
+## test-unit: 运行单元测试
+test-unit:
+	@make -C tests test-unit
+
+## test-integration: 运行集成测试
+test-integration:
+	@make -C tests test-integration
+
+## test-bash: 运行 Bash 脚本测试
+test-bash:
+	@make -C tests test-bash
+
+## test-quick: 快速测试（仅运行单元测试）
+test-quick:
+	@make -C tests test-quick
+
+## test-clean: 清理测试环境
+test-clean:
+	@make -C tests test-clean
+
+## test-coverage: 运行测试并生成覆盖率报告
+test-coverage:
 	@printf "$(BOLD)$(BLUE)==>$(NC) 运行测试（覆盖率）...\n"
 	@$(GO) test -v -coverprofile=coverage.out ./...
 	@$(GO) tool cover -html=coverage.out -o coverage.html

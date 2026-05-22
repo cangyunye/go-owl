@@ -164,7 +164,7 @@ func (db *DB) Query(opts *QueryOptions) ([]*Record, error) {
 
 	for rows.Next() {
 		var op Operation
-		var targetsJSON []byte
+		var targetsJSON interface{} // Use interface{} to handle different driver types
 		err := rows.Scan(
 			&op.ID, &op.TaskID, &op.OpType, &op.Command,
 			&targetsJSON, &op.Status, &op.CreatedAt,
@@ -173,7 +173,34 @@ func (db *DB) Query(opts *QueryOptions) ([]*Record, error) {
 			return nil, err
 		}
 
-		json.Unmarshal(targetsJSON, &op.Targets)
+		// Parse targetsJSON into []string
+		var jsonBytes []byte
+		switch v := targetsJSON.(type) {
+		case []byte:
+			jsonBytes = v
+		case string:
+			jsonBytes = []byte(v)
+		case []interface{}:
+			// DuckDB may return []interface{} for JSON arrays
+			var strTargets []string
+			for _, item := range v {
+				if s, ok := item.(string); ok {
+					strTargets = append(strTargets, s)
+				}
+			}
+			op.Targets = strTargets
+			// Skip unmarshaling since we already have the targets
+			record := &Record{Operation: &op}
+			records = append(records, record)
+			continue
+		default:
+			// If we can't parse, leave targets empty
+		}
+
+		// Unmarshal JSON if we have bytes
+		if len(jsonBytes) > 0 {
+			json.Unmarshal(jsonBytes, &op.Targets)
+		}
 
 		record := &Record{Operation: &op}
 		records = append(records, record)

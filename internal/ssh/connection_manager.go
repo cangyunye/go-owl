@@ -12,7 +12,8 @@ type ConnectionInfo struct {
 	Address   string
 	Port      int
 	KeyFile   string
-	UseConfig bool // 是否使用 SSH config 中的配置
+	Password  string // SSH 密码
+	UseConfig bool   // 是否使用 SSH config 中的配置
 }
 
 // GetUser 获取连接用户
@@ -29,15 +30,17 @@ func (ci *ConnectionInfo) GetUser() string {
 
 // ResolveConnection 解析连接信息
 // 优先级：节点配置 > SSH config > 当前用户
-func ResolveConnection(nodeID, nodeAddress string, nodePort int, nodeUser string, sshConfigPath string) (*ConnectionInfo, error) {
+func ResolveConnection(nodeID, nodeAddress string, nodePort int, nodeUser, nodeKeyFile, nodePassword string, sshConfigPath string) (*ConnectionInfo, error) {
 	info := &ConnectionInfo{
-		Address: nodeAddress,
-		Port:    nodePort,
-		User:    nodeUser,
+		Address:  nodeAddress,
+		Port:     nodePort,
+		User:     nodeUser,
+		KeyFile:  nodeKeyFile,
+		Password: nodePassword,
 	}
 
-	// 1. 如果节点配置了用户，优先使用
-	if nodeUser != "" {
+	// 1. 如果节点配置了密钥或用户，直接返回（节点配置优先级最高）
+	if nodeKeyFile != "" || nodeUser != "" {
 		info.UseConfig = false
 		return info, nil
 	}

@@ -1,0 +1,42 @@
+name: 测试部署
+description: 测试 Playbook 部署功能
+version: "1.0"
+
+variables:
+  app_name:
+    description: "应用名称"
+    default: "test-app"
+  version:
+    description: "应用版本"
+    default: "1.0.0"
+  app_path:
+    description: "安装路径"
+    default: "/tmp/owl-test"
+
+hosts: ["self-test-1", "self-test-2"]
+
+pre_tasks:
+  - name: 创建应用目录
+    action: command
+    args:
+      cmd: mkdir -p {{ app_path }}
+
+tasks:
+  - name: 上传应用文件
+    action: upload
+    args:
+      src: ./tests/testdata/scripts/test-script.sh
+      dest: "{{ app_path }}/{{ app_name }}.sh"
+      overwrite: true
+
+  - name: 执行部署脚本
+    action: script
+    args:
+      script: "{{ app_path }}/{{ app_name }}.sh"
+      keep: false
+
+post_tasks:
+  - name: 验证部署
+    action: command
+    args:
+      cmd: test -f {{ app_path }}/{{ app_name }}.sh && echo "部署成功" || echo "部署失败"

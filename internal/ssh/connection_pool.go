@@ -57,6 +57,8 @@ func (p *ConnectionPool) Get(nodeInfo *node.ResolvedNode) (NodeExecutor, error) 
 		nodeInfo.Address,
 		nodeInfo.Port,
 		nodeInfo.User,
+		nodeInfo.SSHKey,
+		nodeInfo.SSHPassword,
 	)
 	if err != nil {
 		return nil, err

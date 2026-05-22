@@ -2,6 +2,8 @@ package playbook
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -87,13 +89,34 @@ type TaskOptions struct {
 type Parser struct {
 	variablePattern *regexp.Regexp
 	functionPattern *regexp.Regexp
+	baseDir         string
+	visitedIncludes map[string]bool
 }
 
 func NewParser() *Parser {
 	return &Parser{
 		variablePattern: regexp.MustCompile(`\{\{\s*([^\}]+?)\s*\}\}`),
 		functionPattern: regexp.MustCompile(`([a-zA-Z_][a-zA-Z0-9_]*)\s*\(`),
+		visitedIncludes: make(map[string]bool),
 	}
+}
+
+// ParseFromFile 从文件解析 Playbook，并展开 includes
+func (p *Parser) ParseFromFile(filePath string) (*ParsedPlaybook, error) {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("获取绝对路径失败: %w", err)
+	}
+
+	p.baseDir = filepath.Dir(absPath)
+	p.visitedIncludes = make(map[string]bool)
+
+	content, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("读取文件失败: %w", err)
+	}
+
+	return p.Parse(string(content))
 }
 
 func (p *Parser) Parse(content string) (*ParsedPlaybook, error) {
@@ -106,6 +129,22 @@ func (p *Parser) Parse(content string) (*ParsedPlaybook, error) {
 		return nil, fmt.Errorf("invalid playbook: %w", err)
 	}
 
+	// 展开 includes
+	expandedPreTasks, err := p.expandIncludeTasks(raw.PreTasks)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand pre_tasks: %w", err)
+	}
+
+	expandedTasks, err := p.expandIncludeTasks(raw.Tasks)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand tasks: %w", err)
+	}
+
+	expandedPostTasks, err := p.expandIncludeTasks(raw.PostTasks)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand post_tasks: %w", err)
+	}
+
 	parsed := &ParsedPlaybook{
 		Raw:       &raw,
 		Variables: p.processVariables(raw.Vars),
@@ -114,24 +153,24 @@ func (p *Parser) Parse(content string) (*ParsedPlaybook, error) {
 		PostTasks: make([]*ParsedTask, 0),
 	}
 
-	for i := range raw.PreTasks {
-		task, err := p.parseTask(&raw.PreTasks[i])
+	for i := range expandedPreTasks {
+		task, err := p.parseTask(&expandedPreTasks[i])
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse pre_task[%d]: %w", i, err)
 		}
 		parsed.PreTasks = append(parsed.PreTasks, task)
 	}
 
-	for i := range raw.Tasks {
-		task, err := p.parseTask(&raw.Tasks[i])
+	for i := range expandedTasks {
+		task, err := p.parseTask(&expandedTasks[i])
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse task[%d]: %w", i, err)
 		}
 		parsed.Tasks = append(parsed.Tasks, task)
 	}
 
-	for i := range raw.PostTasks {
-		task, err := p.parseTask(&raw.PostTasks[i])
+	for i := range expandedPostTasks {
+		task, err := p.parseTask(&expandedPostTasks[i])
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse post_task[%d]: %w", i, err)
 		}
@@ -139,6 +178,75 @@ func (p *Parser) Parse(content string) (*ParsedPlaybook, error) {
 	}
 
 	return parsed, nil
+}
+
+// expandIncludeTasks 展开包含 include 的任务列表
+func (p *Parser) expandIncludeTasks(tasks []PlaybookTask) ([]PlaybookTask, error) {
+	var result []PlaybookTask
+
+	for _, task := range tasks {
+		if strings.ToLower(task.Action) == "include" {
+			// 这是一个 include 任务，加载并展开
+			playbookPath, ok := task.Args["playbook"].(string)
+			if !ok {
+				return nil, fmt.Errorf("include task must have 'playbook' argument")
+			}
+
+			// 解析相对路径
+			var fullPath string
+			if filepath.IsAbs(playbookPath) {
+				fullPath = playbookPath
+			} else {
+				fullPath = filepath.Join(p.baseDir, playbookPath)
+			}
+
+			// 检查循环包含
+			absFullPath, err := filepath.Abs(fullPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve include path: %w", err)
+			}
+			if p.visitedIncludes[absFullPath] {
+				return nil, fmt.Errorf("circular include detected: %s", absFullPath)
+			}
+			p.visitedIncludes[absFullPath] = true
+			defer delete(p.visitedIncludes, absFullPath)
+
+			// 加载包含的 Playbook
+			includedContent, err := os.ReadFile(fullPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read include file %s: %w", fullPath, err)
+			}
+
+			var includedPlaybook Playbook
+			if err := yaml.Unmarshal(includedContent, &includedPlaybook); err != nil {
+				return nil, fmt.Errorf("failed to parse include file %s: %w", fullPath, err)
+			}
+
+			// 递归展开包含的 Playbook 的任务
+			expandedIncludedPre, err := p.expandIncludeTasks(includedPlaybook.PreTasks)
+			if err != nil {
+				return nil, err
+			}
+			expandedIncludedTasks, err := p.expandIncludeTasks(includedPlaybook.Tasks)
+			if err != nil {
+				return nil, err
+			}
+			expandedIncludedPost, err := p.expandIncludeTasks(includedPlaybook.PostTasks)
+			if err != nil {
+				return nil, err
+			}
+
+			// 追加到结果中
+			result = append(result, expandedIncludedPre...)
+			result = append(result, expandedIncludedTasks...)
+			result = append(result, expandedIncludedPost...)
+		} else {
+			// 普通任务，直接添加
+			result = append(result, task)
+		}
+	}
+
+	return result, nil
 }
 
 func (p *Parser) parseTask(raw *PlaybookTask) (*ParsedTask, error) {

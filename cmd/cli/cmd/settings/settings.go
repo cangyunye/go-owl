@@ -26,58 +26,36 @@ func NewSettingsCmd() *cobra.Command {
 
 // Settings 配置结构
 type Settings struct {
-	Server    ServerSettings    `yaml:"server"`
-	Output    OutputSettings    `yaml:"output"`
-	Diffusion DiffusionSettings `yaml:"diffusion"`
-	Defaults  DefaultSettings   `yaml:"defaults"`
-}
-
-// ServerSettings 服务器设置
-type ServerSettings struct {
-	Address string `yaml:"address"`
-	Timeout string `yaml:"timeout"`
+	Output  OutputSettings  `yaml:"output"`
+	Default DefaultSettings `yaml:"default"`
 }
 
 // OutputSettings 输出设置
 type OutputSettings struct {
-	Format string `yaml:"format"`
-	Color  bool   `yaml:"color"`
-}
-
-// DiffusionSettings 扩散传输设置
-type DiffusionSettings struct {
-	FanOut      int `yaml:"fan_out"`
-	MaxDepth    int `yaml:"max_depth"`
-	SourceCount int `yaml:"source_count"`
+	Format string `yaml:"format"` // "table" | "json" | "simple"
+	Color  bool   `yaml:"color"`  // 是否启用颜色
 }
 
 // DefaultSettings 默认设置
 type DefaultSettings struct {
-	Groups  []string          `yaml:"groups"`
-	Labels  map[string]string `yaml:"labels"`
-	Timeout string            `yaml:"timeout"`
+	Timeout  string            `yaml:"timeout"`  // 默认超时时间
+	Group    string            `yaml:"group"`    // 默认分组
+	Parallel bool              `yaml:"parallel"` // 默认并行执行
+	Labels   map[string]string `yaml:"labels"`   // 默认标签
 }
 
 // getCurrentSettings 获取当前设置
 func getCurrentSettings() *Settings {
 	return &Settings{
-		Server: ServerSettings{
-			Address: "localhost:8080",
-			Timeout: "30s",
-		},
 		Output: OutputSettings{
 			Format: "table",
 			Color:  true,
 		},
-		Diffusion: DiffusionSettings{
-			FanOut:      3,
-			MaxDepth:    10,
-			SourceCount: 2,
-		},
-		Defaults: DefaultSettings{
-			Groups:  []string{},
-			Labels:  map[string]string{},
-			Timeout: "60s",
+		Default: DefaultSettings{
+			Timeout:  "60s",
+			Group:    "",
+			Parallel: true,
+			Labels:   map[string]string{},
 		},
 	}
 }

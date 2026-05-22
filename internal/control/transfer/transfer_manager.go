@@ -70,7 +70,7 @@ func (tm *TransferManager) CheckRsyncAvailable(ctx context.Context, nodeID strin
 		// 尝试再次获取连接信息
 		nodeInfo, _ := tm.nodeResolver.Resolve(nodeID)
 		if nodeInfo != nil {
-			connInfo, _ := ssh.ResolveConnection(nodeID, nodeInfo.Address, nodeInfo.Port, nodeInfo.User, tm.sshConfigPath)
+			connInfo, _ := ssh.ResolveConnection(nodeID, nodeInfo.Address, nodeInfo.Port, nodeInfo.User, nodeInfo.SSHKey, nodeInfo.SSHPassword, tm.sshConfigPath)
 			return connInfo, available
 		}
 		return nil, available
@@ -83,7 +83,7 @@ func (tm *TransferManager) CheckRsyncAvailable(ctx context.Context, nodeID strin
 	}
 
 	// 获取连接信息
-	connInfo, err := ssh.ResolveConnection(nodeID, nodeInfo.Address, nodeInfo.Port, nodeInfo.User, tm.sshConfigPath)
+	connInfo, err := ssh.ResolveConnection(nodeID, nodeInfo.Address, nodeInfo.Port, nodeInfo.User, nodeInfo.SSHKey, nodeInfo.SSHPassword, tm.sshConfigPath)
 	if err != nil {
 		tm.rsyncAvailable[nodeID] = false
 		return nil, false

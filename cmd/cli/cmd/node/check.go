@@ -2,12 +2,15 @@ package node
 
 import (
 	"fmt"
-	"net"
 	"os"
+	"os/user"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh"
+
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 )
 
@@ -19,8 +22,13 @@ var checkWorkers int
 func NewCheckCmd() *cobra.Command {
 	checkCmd := &cobra.Command{
 		Use:   "check [node_id...]",
-		Short: "检查节点 SSH 连通性",
-		Long:  `检查一个或多个节点的 SSH 连通性，默认更新节点状态。`,
+		Short: "检查节点 SSH 连通性（真实 SSH 认证）",
+		Long: `通过真实的 SSH 握手检查节点连通性，支持密钥和密码两种认证方式。
+自动尝试密钥认证，失败后回退到密码认证。
+
+注意：这与 "owl node ping" 不同，ping 只检查 TCP 端口是否开放，
+而 check 会完成完整的 SSH 认证流程。
+`,
 		Example: `# 检查单个节点
   owl node check node1
 
@@ -42,6 +50,13 @@ func NewCheckCmd() *cobra.Command {
 	checkCmd.Flags().IntVarP(&checkWorkers, "workers", "w", 5, "并发工作协程数")
 
 	return checkCmd
+}
+
+type checkResult struct {
+	node    *common.NodeInfo
+	success bool
+	method  string // "key", "password", or ""
+	err     error
 }
 
 func runCheck(nodeIDs []string) {
@@ -76,46 +91,26 @@ func runCheck(nodeIDs []string) {
 		return
 	}
 
-	fmt.Printf("正在检查 %d 个节点... (超时: %s, 并发: %d)\n\n", 
+	fmt.Printf("正在检查 %d 个节点的 SSH 连通性... (超时: %s, 并发: %d)\n\n",
 		len(nodes), checkTimeout, checkWorkers)
 
-	type result struct {
-		node    *common.NodeInfo
-		success bool
-		err     error
-	}
-
-	resultChan := make(chan result, len(nodes))
+	resultChan := make(chan checkResult, len(nodes))
 	var wg sync.WaitGroup
 
-	// 使用信号量控制并发数
 	semaphore := make(chan struct{}, checkWorkers)
 
-	for _, node := range nodes {
+	for _, n := range nodes {
 		wg.Add(1)
 		go func(n *common.NodeInfo) {
 			defer wg.Done()
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			// 尝试 TCP 连接到 SSH 端口
-			address := fmt.Sprintf("%s:%d", n.Address, n.Port)
-			conn, err := net.DialTimeout("tcp", address, checkTimeout)
-
-			r := result{node: n}
-			if err == nil {
-				conn.Close()
-				r.success = true
-			} else {
-				r.success = false
-				r.err = err
-			}
-
+			r := checkNodeSSH(n)
 			resultChan <- r
-		}(node)
+		}(n)
 	}
 
-	// 等待所有 goroutine 完成
 	go func() {
 		wg.Wait()
 		close(resultChan)
@@ -128,9 +123,12 @@ func runCheck(nodeIDs []string) {
 
 	for r := range resultChan {
 		if r.success {
-			fmt.Printf("  ✓ %s (%s:%d) - 在线", r.node.ID, r.node.Address, r.node.Port)
+			authMethod := "密钥"
+			if r.method == "password" {
+				authMethod = "密码"
+			}
+			fmt.Printf("  ✓ %s (%s:%d) - 在线 [%s认证]", r.node.ID, r.node.Address, r.node.Port, authMethod)
 			online++
-			// 默认更新状态
 			r.node.Status = "online"
 			r.node.LastCheckAt = currentTime
 			r.node.UpdatedAt = currentTime
@@ -141,24 +139,24 @@ func runCheck(nodeIDs []string) {
 			}
 			fmt.Println()
 		} else {
-			fmt.Printf("  ✗ %s (%s:%d) - 离线", r.node.ID, r.node.Address, r.node.Port)
+			fmt.Printf("  ✗ %s (%s:%d) - SSH 不可达\n", r.node.ID, r.node.Address, r.node.Port)
 			offline++
-			// 默认更新状态
 			r.node.Status = "offline"
 			r.node.LastCheckAt = currentTime
 			r.node.UpdatedAt = currentTime
 			if err := store.Update(r.node); err != nil {
-				fmt.Printf(" [更新失败: %v]", err)
+				fmt.Printf("    [状态更新失败: %v]\n", err)
 			} else {
-				fmt.Printf(" [状态已更新]")
+				fmt.Println("    [状态已更新为 offline]")
 			}
-			fmt.Printf(" - %v\n", r.err)
+			if r.err != nil {
+				fmt.Printf("    原因: %v\n", r.err)
+			}
 		}
 	}
 
 	fmt.Printf("\n总结: %d 在线, %d 离线, 共 %d\n", online, offline, len(nodes))
 
-	// 保存更改
 	if inMemStore, ok := store.(*common.InMemoryNodeStore); ok {
 		if err := inMemStore.Save(); err != nil {
 			fmt.Fprintf(os.Stderr, "保存节点状态失败: %v\n", err)
@@ -166,4 +164,104 @@ func runCheck(nodeIDs []string) {
 			fmt.Println("节点状态保存成功")
 		}
 	}
+}
+
+func checkNodeSSH(n *common.NodeInfo) checkResult {
+	addr := fmt.Sprintf("%s:%d", n.Address, n.Port)
+
+	sshUser := n.User
+	if sshUser == "" {
+		current, err := user.Current()
+		if err == nil {
+			sshUser = current.Username
+		} else {
+			sshUser = "root"
+		}
+	}
+
+	// 先尝试密钥认证
+	if n.SSHKey != "" {
+		signer, err := parsePrivateKey(n.SSHKey)
+		if err == nil {
+			config := &ssh.ClientConfig{
+				User:            sshUser,
+				Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+				Timeout:         checkTimeout,
+			}
+
+			client, err := ssh.Dial("tcp", addr, config)
+			if err == nil {
+				client.Close()
+				return checkResult{node: n, success: true, method: "key"}
+			}
+
+			return checkResult{
+				node:    n,
+				success: false,
+				err:     fmt.Errorf("密钥认证失败: %w", err),
+			}
+		}
+
+		// 密钥文件解析失败（文件不存在等情况），记录下来但继续尝试密码
+		if n.Password == "" {
+			return checkResult{
+				node:    n,
+				success: false,
+				err:     fmt.Errorf("密钥文件无效: %v（且未配置密码）", err),
+			}
+		}
+	}
+
+	// 密钥认证失败或无密钥，尝试密码认证
+	if n.Password != "" {
+		config := &ssh.ClientConfig{
+			User:            sshUser,
+			Auth:            []ssh.AuthMethod{ssh.Password(n.Password)},
+			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+			Timeout:         checkTimeout,
+		}
+
+		client, err := ssh.Dial("tcp", addr, config)
+		if err == nil {
+			client.Close()
+			return checkResult{node: n, success: true, method: "password"}
+		}
+
+		return checkResult{
+			node:    n,
+			success: false,
+			err:     fmt.Errorf("密钥和密码认证均失败（密码: %w）", err),
+		}
+	}
+
+	// 既没有密钥也没有密码
+	return checkResult{
+		node:    n,
+		success: false,
+		err:     fmt.Errorf("节点未配置 SSH 密钥或密码，无法认证"),
+	}
+}
+
+func parsePrivateKey(keyPath string) (ssh.Signer, error) {
+	expandedPath := keyPath
+	if len(keyPath) > 2 && keyPath[:2] == "~/" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("无法解析用户目录: %w", err)
+		}
+		expandedPath = filepath.Join(home, keyPath[2:])
+	}
+
+	keyData, err := os.ReadFile(expandedPath)
+	if err != nil {
+		return nil, fmt.Errorf("读取密钥文件失败: %w", err)
+	}
+
+	signer, err := ssh.ParsePrivateKey(keyData)
+	if err != nil {
+		return nil, fmt.Errorf("解析密钥失败: %w", err)
+	}
+
+	return signer, nil
 }

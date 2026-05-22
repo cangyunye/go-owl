@@ -8,9 +8,12 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/google/uuid"
 
 	"github.com/cangyunye/go-owl/internal/control/async"
 	"github.com/cangyunye/go-owl/internal/control/command"
+	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
 	"github.com/cangyunye/go-owl/internal/ssh"
 )
@@ -35,6 +38,8 @@ var (
 	execFormat             string
 	execNoColor            bool
 	execParallel           bool
+	execSerial             bool
+	execDebug              bool
 )
 
 func NewRunCmd() *cobra.Command {
@@ -53,7 +58,9 @@ func NewRunCmd() *cobra.Command {
   owl exec run "df -h" --output detail
   owl exec run "sleep 5" --connect-timeout 5s --command-timeout 30s
   owl exec run "curl api.example.com" --retry 3 --retry-interval 2s
-  owl exec run "long-running-script.sh" --async`,
+  owl exec run "long-running-script.sh" --async
+  owl exec run "uptime" --nodes node1 --debug
+  owl exec run "uptime" --nodes node1 --serial  # 串行执行`,
 		Args: cobra.ExactArgs(1),
 		Run:  runExecRun,
 	}
@@ -73,7 +80,9 @@ func NewRunCmd() *cobra.Command {
 	runCmd.Flags().DurationVar(&execCommandTimeout, "command-timeout", 30*time.Second,
 		"命令执行超时时间")
 	runCmd.Flags().BoolVar(&execParallel, "parallel", true,
-		"并行执行")
+		"并行执行 (默认启用)")
+	runCmd.Flags().BoolVar(&execSerial, "serial", false,
+		"串行执行 (禁用并行模式)")
 	runCmd.Flags().IntVar(&execRetry, "retry", 3,
 		"最大重试次数")
 	runCmd.Flags().DurationVar(&execRetryInterval, "retry-interval", 1*time.Second,
@@ -96,12 +105,21 @@ func NewRunCmd() *cobra.Command {
 		"输出格式: simple, detail, json")
 	runCmd.Flags().BoolVar(&execNoColor, "no-color", false,
 		"禁用颜色输出")
+	runCmd.Flags().BoolVar(&execDebug, "debug", false,
+		"Debug 模式，显示详细的执行过程和错误信息")
 
 	return runCmd
 }
 
 func runExecRun(cmd *cobra.Command, args []string) {
 	execmd := args[0]
+
+	logger.Init(nil)
+	defer logger.Sync()
+	_, err := history.NewDB(history.DefaultConfig())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
+	}
 
 	nodeResolver := node.NewNodeResolver()
 
@@ -147,21 +165,44 @@ func runExecRun(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	taskID := uuid.New().String()
+	startTime := time.Now()
+
+	// 处理并行模式：--serial 会覆盖 --parallel
+	isParallel := execParallel && !execSerial
+
 	fmt.Printf("🔧 命令: %s\n", execmd)
 	fmt.Printf("🎯 节点: %d 个\n", len(targetNodeIDs))
-	if execParallel {
+	if isParallel {
 		fmt.Println("⚡ 模式: 并行执行")
+	} else {
+		fmt.Println("⚡ 模式: 串行执行")
 	}
-	fmt.Println()
+	if execDebug {
+		fmt.Println("🔍 Debug 模式: 启用")
+	}
+	fmt.Printf("🆔 任务ID: %s\n\n", taskID)
+
+	history.RecordOperation(&history.Operation{
+		TaskID:    taskID,
+		OpType:    "command",
+		Command:   execmd,
+		Targets:   targetNodeIDs,
+		Status:    "running",
+		CreatedAt: startTime,
+	})
 
 	executor := command.NewExecutor(nodeResolver)
+	if execDebug {
+		executor.SetDebug(true)
+	}
 	defer executor.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), execTimeout*time.Duration(len(targetNodeIDs)))
 	defer cancel()
 
 	opts := &command.ExecuteOptions{
-		Parallel: execParallel,
+		Parallel: isParallel,
 	}
 
 	if execConnectTimeout > 0 || execCommandTimeout > 0 {
@@ -192,6 +233,14 @@ func runExecRun(cmd *cobra.Command, args []string) {
 		tasks, err := executor.RunAsync(ctx, targetNodeIDs, execmd, asyncOpts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "错误: 启动异步任务失败: %v\n", err)
+			history.RecordOperation(&history.Operation{
+				TaskID:    taskID,
+				OpType:    "command",
+				Command:   execmd,
+				Targets:   targetNodeIDs,
+				Status:    "failed",
+				CreatedAt: startTime,
+			})
 			os.Exit(1)
 		}
 
@@ -201,6 +250,14 @@ func runExecRun(cmd *cobra.Command, args []string) {
 				fmt.Printf("   错误: %v\n", task.Error)
 			}
 		}
+		history.RecordOperation(&history.Operation{
+			TaskID:    taskID,
+			OpType:    "command",
+			Command:   execmd,
+			Targets:   targetNodeIDs,
+			Status:    "completed",
+			CreatedAt: startTime,
+		})
 		return
 	}
 
@@ -217,6 +274,22 @@ func runExecRun(cmd *cobra.Command, args []string) {
 			failed++
 		}
 
+		errorMsg := ""
+		if result.Error != nil {
+			errorMsg = result.Error.Error()
+		}
+		history.RecordCommandExecution(&history.CommandExecution{
+			TaskID:     taskID,
+			NodeID:     result.NodeID,
+			Command:    execmd,
+			ExitCode:   result.ExitCode,
+			Stdout:     truncateOutput(result.Output, 4096),
+			Stderr:     errorMsg,
+			DurationMs: time.Since(startTime).Milliseconds(),
+			Success:    result.Success,
+			CreatedAt:  time.Now(),
+		})
+
 		if execFormat == "json" {
 			fmt.Printf(`{"node":"%s","success":%v,"output":"%s","exit_code":%d}`+"\n",
 				result.NodeID, result.Success, escapeJSON(result.Output), result.ExitCode)
@@ -227,11 +300,26 @@ func runExecRun(cmd *cobra.Command, args []string) {
 				fmt.Printf("状态: ✅ 成功 (exit code: %d)\n", result.ExitCode)
 			} else {
 				fmt.Printf("状态: ❌ 失败\n")
-				if result.Error != nil {
+				if result.ErrorType.String() != "" {
+					fmt.Printf("错误类型: %s\n", result.ErrorType)
+				}
+				if result.ErrorDetail != "" {
+					fmt.Printf("错误详情: %s\n", result.ErrorDetail)
+				} else if result.Error != nil {
 					fmt.Printf("错误: %v\n", result.Error)
+				}
+				if result.ErrorType.Suggestion() != "" {
+					fmt.Printf("💡 建议: %s\n", result.ErrorType.Suggestion())
 				}
 			}
 			fmt.Printf("\n输出:\n%s\n", result.Output)
+			
+			if execDebug && len(result.DebugInfo) > 0 {
+				fmt.Println("\n🔍 Debug 信息:")
+				for _, line := range result.DebugInfo {
+					fmt.Printf("   - %s\n", line)
+				}
+			}
 		} else {
 			if result.Success {
 				fmt.Printf("✅ [%s] 成功\n", result.NodeID)
@@ -241,11 +329,36 @@ func runExecRun(cmd *cobra.Command, args []string) {
 					}
 				}
 			} else {
-				fmt.Printf("❌ [%s] 失败", result.NodeID)
-				if result.Error != nil {
-					fmt.Printf(": %v", result.Error)
+				fmt.Printf("❌ [%s] 失败\n", result.NodeID)
+				
+				// 显示详细错误信息
+				if result.ErrorType.String() != "" {
+					fmt.Printf("   类型: %s\n", result.ErrorType)
 				}
-				fmt.Println()
+				
+				if result.ErrorDetail != "" {
+					fmt.Printf("   详情: %s\n", result.ErrorDetail)
+				} else if result.Error != nil {
+					fmt.Printf("   错误: %v\n", result.Error)
+				}
+				
+				if result.ErrorType.Suggestion() != "" {
+					fmt.Printf("   💡 建议: %s\n", result.ErrorType.Suggestion())
+				}
+				
+				if result.Output != "" {
+					fmt.Println("   输出:")
+					for _, line := range strings.Split(result.Output, "\n") {
+						fmt.Printf("      %s\n", line)
+					}
+				}
+				
+				if execDebug && len(result.DebugInfo) > 0 {
+					fmt.Println("   🔍 Debug 信息:")
+					for _, line := range result.DebugInfo {
+						fmt.Printf("      - %s\n", line)
+					}
+				}
 			}
 		}
 	}
@@ -253,6 +366,24 @@ func runExecRun(cmd *cobra.Command, args []string) {
 	if execFormat != "json" {
 		fmt.Printf("\n📊 总结: %d 成功, %d 失败\n", success, failed)
 	}
+
+	finalStatus := "completed"
+	if failed > 0 {
+		if success == 0 {
+			finalStatus = "failed"
+		} else {
+			finalStatus = "partial_failure"
+		}
+	}
+
+	history.RecordOperation(&history.Operation{
+		TaskID:    taskID,
+		OpType:    "command",
+		Command:   execmd,
+		Targets:   targetNodeIDs,
+		Status:    finalStatus,
+		CreatedAt: startTime,
+	})
 
 	if failed > 0 {
 		os.Exit(1)
@@ -289,6 +420,13 @@ func parseLabels(labels []string) map[string]string {
 		}
 	}
 	return result
+}
+
+func truncateOutput(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 func escapeJSON(s string) string {

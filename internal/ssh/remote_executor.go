@@ -23,7 +23,7 @@ func NewRemoteNodeExecutor(sshConfigPath string) *RemoteNodeExecutor {
 // Execute 在远程节点执行命令
 func (e *RemoteNodeExecutor) Execute(nodeID, nodeAddress string, nodePort int, nodeUser, command string, timeout time.Duration) (int, string, error) {
 	// 解析连接信息
-	connInfo, err := ResolveConnection(nodeID, nodeAddress, nodePort, nodeUser, e.sshConfigPath)
+	connInfo, err := ResolveConnection(nodeID, nodeAddress, nodePort, nodeUser, "", "", e.sshConfigPath)
 	if err != nil {
 		return -1, "", fmt.Errorf("解析连接信息失败: %w", err)
 	}

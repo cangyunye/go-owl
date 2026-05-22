@@ -182,47 +182,120 @@ owl playbook validate <playbook-file>
 
 ## 6. 剧本格式
 
-剧本使用 YAML 格式定义：
+剧本使用 YAML 格式定义，支持多种动作类型：
 
 ```yaml
 name: deploy-app
 description: 应用部署流程
 version: "1.0"
 
-variables:
-  version:
-    description: 应用版本
-    required: true
-  env:
-    description: 环境名称
-    default: prod
+hosts: ["web-01", "web-02"]
 
-steps:
-  - name: 备份配置
-    tags: [pre-deploy]
-    command: |
-      tar -czf /backup/app-$(date +%Y%m%d).tar.gz /opt/app/
+vars:
+  version: "1.0.0"
+  env: "prod"
 
-  - name: 停止服务
-    tags: [pre-deploy]
-    command: systemctl stop myapp
+pre_tasks: []
 
-  - name: 部署应用
-    tags: [deploy]
-    command: |
-      curl -O http://repo/app-{{version}}.tar.gz
-      tar -xzf app-{{version}}.tar.gz -C /opt/
+tasks:
+  - name: 包含基础设置
+    action: include
+    args:
+      playbook: ./common/setup.yaml
 
-  - name: 启动服务
-    tags: [post-deploy]
-    command: systemctl start myapp
+  - name: 上传应用包
+    action: upload
+    args:
+      src: ./dist/app-{{version}}.tar.gz
+      dest: /opt/app/
+      overwrite: true
+      resume: true
+
+  - name: 执行部署脚本
+    action: script
+    args:
+      script: ./scripts/deploy.sh
+      dest: /tmp/
+      args: "--version {{version}}"
+
+  - name: 执行安全检查脚本（不留文件）
+    action: script
+    args:
+      script: ./scripts/security-check.sh
+      inline: true
+
+  - name: 解压并部署
+    action: command
+    args:
+      cmd: |
+        cd /opt/app
+        tar -xzf app-{{version}}.tar.gz
+        systemctl restart myapp
+
+  - name: 下载日志文件
+    action: download
+    args:
+      src: /var/log/myapp/app.log
+      dest: ./logs/
+      subdir: true
+      name_format: "{node}-app.log"
+
+post_tasks: []
+```
+
+### 支持的动作类型
+
+| 动作类型 | 说明 | 参数 |
+|---------|------|------|
+| `command` / `cmd` / `shell` | 执行命令 | `cmd` 或 `command` - 要执行的命令 |
+| `script` | 执行脚本文件 | `script` - 脚本文件路径（本地文件或 URL）<br>`dest` - 远程存放目录（默认 /tmp）<br>`args` - 传递给脚本的参数<br>`inline` - 是否直接发送内容执行（不留文件）<br>`keep` - 是否保留远程脚本文件 |
+| `upload` | 上传文件到节点 | `src` - 本地源文件<br>`dest` - 远程目标路径<br>`overwrite` - 是否覆盖<br>`resume` - 是否断点续传 |
+| `download` | 从节点下载文件 | `src` - 远程源文件<br>`dest` - 本地目标路径<br>`subdir` - 是否按节点创建子目录<br>`name_format` - 文件命名格式（支持 `{node}` 和 `{file}` 占位符） |
+| `include` | 包含其他剧本 | `playbook` - 要包含的剧本文件路径（支持相对路径） |
+
+### 变量插值
+
+支持使用 `{{variable}}` 语法进行变量插值，例如：
+
+```yaml
+vars:
+  version: "1.0.0"
+
+tasks:
+  - name: 上传应用
+    action: upload
+    args:
+      src: ./dist/app-{{version}}.tar.gz
+      dest: /opt/app/
+```
+
+### 模块化与包含
+
+使用 `include` 动作可以实现剧本的模块化复用：
+
+```yaml
+# main.yaml
+name: 完整部署
+hosts: ["web-01"]
+
+tasks:
+  - name: 基础设置
+    action: include
+    args:
+      playbook: ./common/setup.yaml
+
+  - name: 应用部署
+    action: include
+    args:
+      playbook: ./deploy/app.yaml
 
   - name: 健康检查
-    tags: [post-deploy]
-    command: curl -f http://localhost:8080/health
-    retry: 3
-    delay: 5s
+    action: include
+    args:
+      playbook: ./common/healthcheck.yaml
 ```
+
+包含的剧本可以嵌套包含，但会检测循环包含防止死循环。
 
 ---
 
@@ -278,6 +351,26 @@ $ owl playbook validate ./my-playbook.yaml
 # ✅ 验证通过 或 显示错误
 ```
 
+### TC-PLAY-006: 测试文件上传
+
+```bash
+# 步骤
+$ owl playbook run upload-test --nodes test-01
+
+# 预期结果
+# 成功上传文件到目标节点
+```
+
+### TC-PLAY-007: 测试剧本包含
+
+```bash
+# 步骤
+$ owl playbook run include-test --nodes test-01
+
+# 预期结果
+# 成功执行包含的剧本
+```
+
 ---
 
 ## 8. 常见问题
@@ -293,3 +386,9 @@ A: 默认停止执行，使用 `--continue-on-error` 继续
 
 ### Q: 如何重试失败的步骤？
 A: 使用 `retry: N` 定义重试次数
+
+### Q: 如何复用剧本片段？
+A: 使用 `include` 动作包含其他剧本文件
+
+### Q: include 的路径如何解析？
+A: 相对于主剧本所在目录解析相对路径

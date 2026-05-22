@@ -1,0 +1,27 @@
+name: 测试命令执行
+description: 测试 Playbook 命令执行功能
+version: "1.0"
+
+hosts: ["self-test-1", "self-test-2"]
+
+tasks:
+  - name: 创建测试目录
+    action: command
+    args:
+      cmd: mkdir -p /tmp/owl-test
+
+  - name: 创建测试文件
+    action: command
+    args:
+      cmd: echo "测试数据 - $(date)" > /tmp/owl-test/playbook-test.txt
+
+  - name: 验证文件创建
+    action: command
+    args:
+      cmd: cat /tmp/owl-test/playbook-test.txt
+
+post_tasks:
+  - name: 清理测试文件
+    action: command
+    args:
+      cmd: rm -rf /tmp/owl-test
