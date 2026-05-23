@@ -2,6 +2,8 @@ package exec
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	"github.com/cangyunye/go-owl/internal/control/script"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
 	"github.com/cangyunye/go-owl/internal/history"
@@ -56,6 +59,8 @@ func NewScriptCmd() *cobra.Command {
 		"直接发送内容执行，不保存为文件")
 	scriptCmd.Flags().BoolVar(&scriptKeep, "keep", false,
 		"执行后保留脚本文件（默认会删除）")
+	scriptCmd.Flags().BoolVarP(&scriptForce, "force", "f", false,
+		"跳过黑名单危险命令检查")
 
 	return scriptCmd
 }
@@ -70,6 +75,7 @@ var (
 	scriptTimeout time.Duration
 	scriptInline  bool
 	scriptKeep    bool
+	scriptForce   bool
 )
 
 func runScript(cmd *cobra.Command, args []string) {
@@ -111,6 +117,63 @@ func runScript(cmd *cobra.Command, args []string) {
 	}
 	if scriptArgs != "" {
 		fmt.Printf("📋 参数: %s\n", scriptArgs)
+	}
+
+	if scriptForce {
+		fmt.Println("⚠️  已跳过黑名单检查 (--force)")
+	} else {
+		var scriptContent []byte
+		if len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://") {
+			resp, fetchErr := http.Get(scriptPath)
+			if fetchErr == nil {
+				defer resp.Body.Close()
+				scriptContent, _ = io.ReadAll(resp.Body)
+			}
+		} else {
+			scriptContent, _ = os.ReadFile(scriptPath)
+		}
+
+		if len(scriptContent) > 0 {
+			cfg, err := blacklist.LoadConfig()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "⚠️  加载黑名单配置失败: %v\n", err)
+			} else {
+				checker := blacklist.NewChecker(cfg)
+				contentStr := string(scriptContent)
+
+				blocked := false
+				nodeResults := make([]*blacklist.CheckResult, len(targetNodes))
+				for i, n := range targetNodes {
+					result := checker.Check(n.User, contentStr)
+					nodeResults[i] = result
+					if result.Blocked {
+						blocked = true
+					}
+				}
+
+				if blocked {
+					fmt.Println("⚠️  危险命令检测!")
+					fmt.Printf("脚本: %s\n", scriptPath)
+					for i, n := range targetNodes {
+						r := nodeResults[i]
+						if len(r.Matches) > 0 {
+							fmt.Printf("节点: %s (用户: %s)\n", n.ID, n.User)
+							for _, m := range r.Matches {
+								fmt.Printf("  - 行: %s\n", m.Line)
+								fmt.Printf("    匹配模式: %s\n", m.Pattern)
+							}
+						}
+					}
+					fmt.Printf("⚠️  脚本中包含危险命令，确定要继续执行吗? (y/N): ")
+					var input string
+					_, _ = fmt.Scanln(&input)
+					if input != "y" && input != "Y" {
+						fmt.Println("已取消执行")
+						return
+					}
+				}
+			}
+		}
 	}
 
 	fmt.Println("\n⏳ 开始执行...")

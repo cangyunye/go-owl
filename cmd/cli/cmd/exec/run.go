@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cangyunye/go-owl/internal/control/async"
+	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	"github.com/cangyunye/go-owl/internal/control/command"
 	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/logger"
@@ -40,6 +41,7 @@ var (
 	execParallel           bool
 	execSerial             bool
 	execDebug              bool
+	execForce              bool
 )
 
 func NewRunCmd() *cobra.Command {
@@ -107,6 +109,8 @@ func NewRunCmd() *cobra.Command {
 		"禁用颜色输出")
 	runCmd.Flags().BoolVar(&execDebug, "debug", false,
 		"Debug 模式，显示详细的执行过程和错误信息")
+	runCmd.Flags().BoolVarP(&execForce, "force", "f", false,
+		"跳过黑名单命令检查")
 
 	return runCmd
 }
@@ -182,6 +186,55 @@ func runExecRun(cmd *cobra.Command, args []string) {
 		fmt.Println("🔍 Debug 模式: 启用")
 	}
 	fmt.Printf("🆔 任务ID: %s\n\n", taskID)
+
+	cfg, err := blacklist.LoadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 加载黑名单配置失败: %v\n", err)
+	}
+	checker := blacklist.NewChecker(cfg)
+
+	if execForce {
+		fmt.Println("⚠️  已跳过黑名单检查 (--force)")
+	} else {
+		type blockedNode struct {
+			nodeID string
+			user   string
+			result *blacklist.CheckResult
+		}
+		var blockedNodes []blockedNode
+
+		for _, nodeID := range targetNodeIDs {
+			nodeInfo, err := nodeResolver.Resolve(nodeID)
+			if err != nil {
+				if execDebug {
+					fmt.Printf("警告: 解析节点 %s 失败，跳过黑名单检查: %v\n", nodeID, err)
+				}
+				continue
+			}
+			result := checker.Check(nodeInfo.User, execmd)
+			if result.Blocked {
+				blockedNodes = append(blockedNodes, blockedNode{nodeID, nodeInfo.User, result})
+			}
+		}
+
+		if len(blockedNodes) > 0 {
+			fmt.Println("⚠️  危险命令检测!")
+			fmt.Printf("命令: %s\n", execmd)
+			for _, bn := range blockedNodes {
+				fmt.Printf("节点: %s (用户: %s)\n", bn.nodeID, bn.user)
+				for _, match := range bn.result.Matches {
+					fmt.Printf("  行: %s  匹配模式: %s\n", match.Line, match.Pattern)
+				}
+			}
+			fmt.Print("⚠️  以上命令可能造成严重后果，确定要继续执行吗? (y/N): ")
+			var input string
+			fmt.Scanln(&input)
+			if input != "y" && input != "Y" {
+				fmt.Println("已取消执行")
+				return
+			}
+		}
+	}
 
 	history.RecordOperation(&history.Operation{
 		TaskID:    taskID,
