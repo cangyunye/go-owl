@@ -2,12 +2,17 @@ package file
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/google/uuid"
 
 	"github.com/cangyunye/go-owl/internal/control/transfer"
+	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
 )
 
@@ -67,6 +72,13 @@ func NewDownloadCmd() *cobra.Command {
 
 func runDownload(cmd *cobra.Command, args []string) {
 	remoteFile := args[0]
+
+	logger.Init(nil)
+	defer logger.Sync()
+	_, err := history.NewDB(history.DefaultConfig())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
+	}
 
 	nodeResolver := node.NewNodeResolver()
 
@@ -142,12 +154,45 @@ func runDownload(cmd *cobra.Command, args []string) {
 		Resume:     downloadResume,
 	}
 
+	taskID := uuid.New().String()
+	startTime := time.Now()
+	meta, _ := json.Marshal(map[string]string{
+		"remote_file": remoteFile,
+		"local_path":  downloadDest,
+	})
+	history.RecordOperation(&history.Operation{
+		TaskID:    taskID,
+		OpType:    "file_transfer",
+		Command:   string(meta),
+		Targets:   targetNodeIDs,
+		Status:    "running",
+		CreatedAt: startTime,
+	})
+
 	results := manager.Download(ctx, targetNodeIDs, remoteFile, downloadDest, opts)
 
 	success := 0
 	failed := 0
 
 	for _, result := range results {
+		status := "completed"
+		errMsg := ""
+		if result.Error != nil {
+			status = "failed"
+			errMsg = result.Error.Error()
+		}
+		history.RecordFileTransfer(&history.FileTransfer{
+			TaskID:       taskID,
+			NodeID:       result.NodeID,
+			FileName:     getFileNameFromPath(remoteFile),
+			FileSize:     0,
+			TransferType: result.Method,
+			Status:       status,
+			Progress:     100.0,
+			Error:        errMsg,
+			CreatedAt:    time.Now(),
+		})
+
 		if result.Error != nil {
 			fmt.Printf("❌ [%s] 失败: %v\n", result.NodeID, result.Error)
 			failed++
@@ -167,6 +212,24 @@ func runDownload(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("\n📊 总结: %d 成功, %d 失败\n", success, failed)
+
+	finalStatus := "completed"
+	if failed > 0 {
+		if success == 0 {
+			finalStatus = "failed"
+		} else {
+			finalStatus = "partial_failure"
+		}
+	}
+	history.RecordOperation(&history.Operation{
+		TaskID:    taskID,
+		OpType:    "file_transfer",
+		Command:   string(meta),
+		Targets:   targetNodeIDs,
+		Status:    finalStatus,
+		CreatedAt: startTime,
+	})
+
 	if failed > 0 {
 		os.Exit(1)
 	}

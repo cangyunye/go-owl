@@ -127,6 +127,9 @@ func runHistory(cmd *cobra.Command, args []string) {
 
 	opts := &history.QueryOptions{
 		TaskID: taskID,
+		NodeID: nodeID,
+		OpType: opType,
+		Status: status,
 		Limit:  limit,
 		Offset: offset,
 	}
@@ -202,18 +205,102 @@ func printTable(w io.Writer, records []*history.Record) {
 	writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.FilterHTML)
 	defer writer.Flush()
 
-	fmt.Fprintln(writer, "TIME\tTASK ID\tOP TYPE\tTARGETS\tSTATUS")
-	fmt.Fprintln(writer, "-----\t-------\t--------\t---\t------")
+	fmt.Fprintln(writer, "TIME\tTASK ID\tOP TYPE\tCOMMAND\tTARGETS\tSTATUS")
+	fmt.Fprintln(writer, "-----\t-------\t--------\t-------\t---\t------")
 	for _, r := range records {
 		if r.Operation != nil {
-			targets := "[" + strings.Join(r.Operation.Targets, ",") + "]"
-			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n",
-				r.Operation.CreatedAt.Format("2006-01-02 15:04:05"),
-				r.Operation.TaskID,
-				r.Operation.OpType,
+			op := r.Operation
+			targets := "[" + strings.Join(op.Targets, ",") + "]"
+			cmdDisplay := op.Command
+			if len(cmdDisplay) > 60 {
+				cmdDisplay = cmdDisplay[:57] + "..."
+			}
+			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				op.CreatedAt.Format("2006-01-02 15:04:05"),
+				op.TaskID,
+				op.OpType,
+				cmdDisplay,
 				targets,
-				r.Operation.Status,
+				op.Status,
 			)
+
+			if verbose {
+				printVerboseDetails(writer, r)
+			}
 		}
 	}
+}
+
+func printVerboseDetails(w io.Writer, record *history.Record) {
+	op := record.Operation
+	if op == nil {
+		return
+	}
+
+	writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.FilterHTML)
+
+	if len(record.CommandExecutions) > 0 {
+		fmt.Fprintln(writer, "  ── Command Executions ──")
+		fmt.Fprintln(writer, "  NODE\tEXIT CODE\tDURATION\tSTATUS\tCOMMAND")
+		for _, exec := range record.CommandExecutions {
+			status := "✅"
+			if !exec.Success {
+				status = "❌"
+			}
+			cmdDisplay := exec.Command
+			if len(cmdDisplay) > 40 {
+				cmdDisplay = cmdDisplay[:37] + "..."
+			}
+			fmt.Fprintf(writer, "  %s\t%d\t%dms\t%s\t%s\n",
+				exec.NodeID, exec.ExitCode, exec.DurationMs, status, cmdDisplay)
+		}
+		writer.Flush()
+	}
+
+	if len(record.Transfers) > 0 {
+		fmt.Fprintln(writer, "  ── File Transfers ──")
+		fmt.Fprintln(writer, "  NODE\tFILE\tSIZE\tMETHOD\tSTATUS")
+		for _, tf := range record.Transfers {
+			status := "✅"
+			if tf.Status == "failed" {
+				status = "❌"
+			} else if tf.Status == "partial_failure" {
+				status = "⚠️"
+			}
+			sizeDisplay := formatFileSize(tf.FileSize)
+			fmt.Fprintf(writer, "  %s\t%s\t%s\t%s\t%s\n",
+				tf.NodeID, tf.FileName, sizeDisplay, tf.TransferType, status)
+		}
+		writer.Flush()
+	}
+
+	if len(record.Communications) > 0 {
+		fmt.Fprintln(writer, "  ── Node Communications ──")
+		fmt.Fprintln(writer, "  NODE\tDIRECTION\tTYPE\tSTATUS")
+		for _, comm := range record.Communications {
+			status := "✅"
+			if !comm.Success {
+				status = "❌"
+			}
+			fmt.Fprintf(writer, "  %s\t%s\t%s\t%s\n",
+				comm.NodeID, comm.Direction, comm.MessageType, status)
+		}
+		writer.Flush()
+	}
+}
+
+func formatFileSize(size int64) string {
+	if size <= 0 {
+		return "N/A"
+	}
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
 }

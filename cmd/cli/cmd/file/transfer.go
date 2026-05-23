@@ -1,15 +1,21 @@
 package file
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/google/uuid"
 
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/common/model"
+	"github.com/cangyunye/go-owl/internal/control/transfer"
+	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logger"
+	"github.com/cangyunye/go-owl/internal/node"
 )
 
-// transferFlags
 var (
 	transferNodes       string
 	transferAllNodes    bool
@@ -21,7 +27,6 @@ var (
 	transferThreshold   int
 )
 
-// NewTransferCmd 创建扩散传输命令
 func NewTransferCmd() *cobra.Command {
 	transferCmd := &cobra.Command{
 		Use:   "transfer <file>",
@@ -61,135 +66,386 @@ func NewTransferCmd() *cobra.Command {
 
 func runTransfer(cmd *cobra.Command, args []string) {
 	fileName := args[0]
-	store := common.GetNodeStore()
 
-	// 获取目标节点
-	var targetNodes []*common.NodeInfo
+	fileInfo, err := os.Stat(fileName)
+	if os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "错误: 文件不存在: %s\n", fileName)
+		os.Exit(1)
+	}
+	fileSize := fileInfo.Size()
 
-	if transferAllNodes {
-		allNodes, _ := store.List()
-		targetNodes = allNodes
-	} else if transferNodes != "" {
-		nodeIDs := common.ParseNodeList(transferNodes)
-		for _, id := range nodeIDs {
-			if n, err := store.Get(id); err == nil {
-				targetNodes = append(targetNodes, n)
-			}
+	logger.Init(nil)
+	defer logger.Sync()
+	_, err = history.NewDB(history.DefaultConfig())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
+	}
+
+	nodeResolver := node.NewNodeResolver()
+
+	var resolvedNodes []*node.ResolvedNode
+
+	if transferNodes != "" {
+		nodeIDs := parseNodeList(transferNodes)
+		resolvedNodes, err = nodeResolver.ResolveMultiple(nodeIDs)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 解析节点失败: %v\n", err)
+			os.Exit(1)
 		}
-	} else if transferGroup != "" || len(transferLabel) > 0 {
-		targetNodes = selectTransferTargetNodes(store)
+	} else if transferAllNodes {
+		resolvedNodes, err = nodeResolver.ListNodes(nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
+			os.Exit(1)
+		}
+	} else if transferGroup != "" {
+		resolvedNodes, err = nodeResolver.ListNodes(&node.ListOptions{
+			Group: transferGroup,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
+			os.Exit(1)
+		}
+	} else if len(transferLabel) > 0 {
+		resolvedNodes, err = nodeResolver.ListNodes(&node.ListOptions{
+			Label: transferLabel[0],
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
+			os.Exit(1)
+		}
 	} else {
-		fmt.Fprintln(os.Stderr, "Error: must specify --nodes, --all-nodes, --group, or --label")
+		fmt.Fprintln(os.Stderr, "错误: 请指定 --nodes, --all-nodes, --group 或 --label")
 		os.Exit(1)
 	}
 
-	if len(targetNodes) == 0 {
-		fmt.Println("No target nodes found.")
+	if len(resolvedNodes) == 0 {
+		fmt.Println("未找到目标节点")
 		return
 	}
 
-	// 过滤在线节点
-	onlineNodes := make([]*common.NodeInfo, 0)
-	for _, n := range targetNodes {
-		if n.Status == "online" {
-			onlineNodes = append(onlineNodes, n)
-		}
+	useDiffusion := len(resolvedNodes) >= transferThreshold
+
+	taskID := uuid.New().String()
+	startTime := time.Now()
+	nodeIDs := make([]string, len(resolvedNodes))
+	for i, n := range resolvedNodes {
+		nodeIDs[i] = n.ID
 	}
 
-	if len(onlineNodes) == 0 {
-		fmt.Println("No online nodes found.")
-		return
+	history.RecordOperation(&history.Operation{
+		TaskID:    taskID,
+		OpType:    "file_transfer",
+		Command:   fileName,
+		Targets:   nodeIDs,
+		Status:    "running",
+		CreatedAt: startTime,
+	})
+
+	remotePath := transferDest
+	if remotePath[len(remotePath)-1] != '/' {
+		remotePath += "/"
 	}
+	remotePath += getFileNameFromPath(fileName)
 
-	// 判断是否使用扩散传输
-	useDiffusion := shouldUseDiffusion(len(onlineNodes), transferThreshold)
+	ctx := context.Background()
 
-	// 显示传输信息
-	fmt.Printf("File: %s\n", fileName)
-	fmt.Printf("Destination: %s\n", transferDest)
-	fmt.Printf("Total nodes: %d\n", len(onlineNodes))
+	fmt.Printf("文件: %s (%.2f MB)\n", fileName, float64(fileSize)/1024/1024)
+	fmt.Printf("目标: %s\n", remotePath)
+	fmt.Printf("节点: %d 个\n", len(resolvedNodes))
 
 	if useDiffusion {
-		fmt.Printf("Mode: Diffusion Transfer\n")
-		fmt.Printf("Source count: %d\n", transferSourceCount)
-		fmt.Printf("Fan-out: %d\n", transferFanOut)
+		fmt.Printf("模式: 扩散传输 (fan-out=%d, threshold=%d)\n", transferFanOut, transferThreshold)
 	} else {
-		fmt.Printf("Mode: Direct Transfer (nodes < threshold)\n")
+		fmt.Printf("模式: 直接传输 (节点数 < threshold=%d)\n", transferThreshold)
 	}
 
-	// 构建扩散树
-	fmt.Println("\nBuilding diffusion tree...")
+	var successCount, failCount int
 
-	if useDiffusion && len(onlineNodes) > transferSourceCount {
-		displayDiffusionTree(onlineNodes, transferSourceCount, transferFanOut)
+	if useDiffusion {
+		successCount, failCount = runDiffusionTransfer(ctx, nodeResolver, taskID, fileName, fileSize, remotePath, resolvedNodes)
+	} else {
+		successCount, failCount = runDirectTransfer(ctx, nodeResolver, taskID, fileName, fileSize, remotePath, nodeIDs)
 	}
 
-	// 模拟传输
-	fmt.Println("\nTransferring...")
+	finalStatus := "completed"
+	if failCount > 0 {
+		if successCount == 0 {
+			finalStatus = "failed"
+		} else {
+			finalStatus = "partial_failure"
+		}
+	}
+
+	history.RecordOperation(&history.Operation{
+		TaskID:    taskID,
+		OpType:    "file_transfer",
+		Command:   fileName,
+		Targets:   nodeIDs,
+		Status:    finalStatus,
+		CreatedAt: startTime,
+	})
+
+	fmt.Println()
+	fmt.Printf("总结: %d 成功, %d 失败\n", successCount, failCount)
+	if failCount > 0 {
+		os.Exit(1)
+	}
+}
+
+func runDirectTransfer(ctx context.Context, nodeResolver *node.NodeResolver, taskID, fileName string, fileSize int64, remotePath string, nodeIDs []string) (int, int) {
+	manager := transfer.NewTransferManager(nodeResolver)
+	defer manager.Close()
+
+	opts := &transfer.UploadOptions{
+		Parallel: true,
+		Resume:   true,
+	}
+
+	fmt.Println("\n正在传输...")
+	results := manager.Upload(ctx, nodeIDs, fileName, remotePath, opts)
+
+	successCount := 0
+	failCount := 0
+
+	for _, result := range results {
+		method := result.Method
+		if method == "" {
+			method = "scp"
+		}
+
+		status := "completed"
+		errMsg := ""
+		if result.Error != nil {
+			status = "failed"
+			errMsg = result.Error.Error()
+			fmt.Printf("  [%s] 失败 [%s]: %v\n", result.NodeID, method, result.Error)
+			failCount++
+		} else {
+			speedInfo := ""
+			if result.Speed != "" && result.Speed != "N/A" {
+				speedInfo = ", " + result.Speed
+			}
+			fmt.Printf("  [%s] 成功 [%s%s]\n", result.NodeID, method, speedInfo)
+			successCount++
+		}
+
+		history.RecordFileTransfer(&history.FileTransfer{
+			TaskID:       taskID,
+			NodeID:       result.NodeID,
+			FileName:     fileName,
+			FileSize:     fileSize,
+			TransferType: method,
+			Status:       status,
+			Progress:     100,
+			Error:        errMsg,
+			CreatedAt:    time.Now(),
+		})
+	}
+
+	return successCount, failCount
+}
+
+func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, taskID, fileName string, fileSize int64, remotePath string, resolvedNodes []*node.ResolvedNode) (int, int) {
+	fmt.Println("\n构建扩散树...")
+
+	modelNodes := resolvedToModelNodes(resolvedNodes)
+	treeBuilder := transfer.NewTreeBuilder(transferFanOut, 10, transferThreshold)
+	tree := treeBuilder.Build(modelNodes)
+
+	diffTransfer := transfer.NewDiffusionTransfer(taskID, getFileNameFromPath(fileName), fileName, remotePath, fileSize, "", tree)
+	diffTransfer.InitializeStatuses()
+
+	displayDiffusionTree(tree, resolvedNodes)
+
+	fmt.Println("\n正在传输...")
+
+	manager := transfer.NewTransferManager(nodeResolver)
+	defer manager.Close()
+
+	ctx = context.Background()
+	opts := &transfer.UploadOptions{
+		Parallel: true,
+		Resume:   true,
+	}
+
+	successCount := 0
+	failCount := 0
+
+	queue := make([]string, 0)
+	queue = append(queue, tree.Nodes["control"].Children...)
 
 	progress := 0
-	total := len(onlineNodes)
-	for range onlineNodes {
-		progress++
-		percent := float64(progress) / float64(total) * 100
-		bar := generateProgressBar(percent, 40)
-		fmt.Printf("\r[%s] %.0f%% (%d/%d nodes)", bar, percent, progress, total)
+	total := len(resolvedNodes)
+
+	for len(queue) > 0 {
+		currentLevel := make([]string, len(queue))
+		copy(currentLevel, queue)
+		queue = nil
+
+		levelNodeIDs := make([]string, 0)
+		for _, nodeID := range currentLevel {
+			if _, ok := tree.Nodes[nodeID]; ok {
+				levelNodeIDs = append(levelNodeIDs, nodeID)
+			}
+		}
+
+		if len(levelNodeIDs) == 0 {
+			continue
+		}
+
+		results := manager.Upload(ctx, levelNodeIDs, fileName, remotePath, opts)
+
+		resultMap := make(map[string]transfer.TransferResult)
+		for _, r := range results {
+			resultMap[r.NodeID] = r
+		}
+
+		for _, nodeID := range levelNodeIDs {
+			result, ok := resultMap[nodeID]
+			if !ok {
+				continue
+			}
+
+			method := result.Method
+			if method == "" {
+				method = "scp"
+			}
+
+			status := "completed"
+			errMsg := ""
+			if result.Error != nil {
+				status = "failed"
+				errMsg = result.Error.Error()
+				fmt.Printf("  [%s] 失败 [%s]: %v\n", nodeID, method, result.Error)
+				failCount++
+				diffTransfer.UpdateNodeStatus(nodeID, transfer.DiffusionStatusFailed, 100, errMsg)
+			} else {
+				speedInfo := ""
+				if result.Speed != "" && result.Speed != "N/A" {
+					speedInfo = ", " + result.Speed
+				}
+				fmt.Printf("  [%s] 成功 [%s%s]\n", nodeID, method, speedInfo)
+				successCount++
+				diffTransfer.UpdateNodeStatus(nodeID, transfer.DiffusionStatusCompleted, 100, "")
+			}
+
+			history.RecordFileTransfer(&history.FileTransfer{
+				TaskID:       taskID,
+				NodeID:       nodeID,
+				FileName:     fileName,
+				FileSize:     fileSize,
+				TransferType: method,
+				Status:       status,
+				Progress:     100,
+				Error:        errMsg,
+				CreatedAt:    time.Now(),
+			})
+
+			progress++
+			percent := float64(progress) / float64(total) * 100
+			bar := generateProgressBar(percent, 40)
+			fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+
+			if result.Error == nil {
+				treeNode := tree.Nodes[nodeID]
+				if treeNode != nil && len(treeNode.Children) > 0 {
+					queue = append(queue, treeNode.Children...)
+				}
+			}
+		}
 	}
 
 	fmt.Println()
 
-	// 显示传输结果
-	fmt.Println("Transfer complete!")
-	fmt.Printf("  Total nodes: %d\n", total)
-	fmt.Printf("  Source nodes: %d\n", minInt(transferSourceCount, total))
-	fmt.Printf("  Transfer time: ~%.1fs\n", 3.2)
+	return successCount, failCount
 }
 
-func shouldUseDiffusion(nodeCount, threshold int) bool {
-	return nodeCount >= threshold
+func resolvedToModelNodes(resolved []*node.ResolvedNode) []*model.Node {
+	nodes := make([]*model.Node, len(resolved))
+	for i, r := range resolved {
+		labels := make(map[string]string)
+		for k, v := range r.Labels {
+			labels[k] = v
+		}
+		groups := make([]string, len(r.Groups))
+		copy(groups, r.Groups)
+
+		nodes[i] = &model.Node{
+			ID:      r.ID,
+			Name:    r.Name,
+			Address: r.Address,
+			Port:    r.Port,
+			User:    r.User,
+			Status:  model.NodeStatusOnline,
+			Groups:  groups,
+			Labels:  labels,
+		}
+	}
+	return nodes
 }
 
-func displayDiffusionTree(nodes []*common.NodeInfo, sourceCount, fanOut int) {
-	if len(nodes) == 0 {
-		return
+func displayDiffusionTree(tree *transfer.DiffusionTree, resolvedNodes []*node.ResolvedNode) {
+	nodeNameMap := make(map[string]string)
+	for _, n := range resolvedNodes {
+		name := n.ID
+		if n.Name != "" {
+			name = n.Name
+		}
+		nodeNameMap[n.ID] = name
 	}
 
-	fmt.Println("\nDiffusion Tree Structure:")
+	fmt.Println("\n扩散树结构:")
 	fmt.Println("========================")
 
-	sourceNodes := nodes[:minInt(sourceCount, len(nodes))]
-	otherNodes := nodes[minInt(sourceCount, len(nodes)):]
+	controlNode := tree.Nodes["control"]
+	sourceNodes := controlNode.Children
 
-	fmt.Printf("Source nodes: ")
-	for i, n := range sourceNodes {
+	fmt.Print("源节点: ")
+	for i, id := range sourceNodes {
 		if i > 0 {
-			fmt.Printf(", ")
+			fmt.Print(", ")
 		}
-		fmt.Printf("%s", n.ID)
+		name, ok := nodeNameMap[id]
+		if ok {
+			fmt.Print(name)
+		} else {
+			fmt.Print(id)
+		}
 	}
 	fmt.Println()
 
-	if len(otherNodes) > 0 {
-		fmt.Println("Diffusion paths:")
-		childIndex := 0
-		for _, source := range sourceNodes {
-			maxChildren := minInt(fanOut, len(otherNodes)-childIndex)
-			if maxChildren <= 0 {
-				break
-			}
-
-			children := otherNodes[childIndex : childIndex+maxChildren]
-			fmt.Printf("  %s -> ", source.ID)
-			for j, child := range children {
-				if j > 0 {
-					fmt.Printf(", ")
-				}
-				fmt.Printf("%s", child.ID)
-			}
-			fmt.Println()
-
-			childIndex += maxChildren
+	childIndex := 0
+	for _, sourceID := range sourceNodes {
+		sourceNode := tree.Nodes[sourceID]
+		if sourceNode == nil || len(sourceNode.Children) == 0 {
+			continue
 		}
+
+		sourceName, ok := nodeNameMap[sourceID]
+		if !ok {
+			sourceName = sourceID
+		}
+		fmt.Printf("  %s -> ", sourceName)
+
+		for j, childID := range sourceNode.Children {
+			if j > 0 {
+				fmt.Print(", ")
+			}
+			childName, ok := nodeNameMap[childID]
+			if ok {
+				fmt.Print(childName)
+			} else {
+				fmt.Print(childID)
+			}
+			childIndex++
+		}
+		fmt.Println()
+	}
+
+	remainingCount := len(resolvedNodes) - len(sourceNodes) - childIndex
+	if remainingCount > 0 {
+		fmt.Printf("  ... 还有 %d 个节点在更深层级\n", remainingCount)
 	}
 }
 
@@ -209,61 +465,6 @@ func generateProgressBar(percent float64, width int) string {
 	return result
 }
 
-func containsNodeIDList(list []string, s string) bool {
-	for _, item := range list {
-		if item == s {
-			return true
-		}
-	}
-	return false
-}
 
-func splitLabelEq(s string) []string {
-	for i := 0; i < len(s); i++ {
-		if s[i] == '=' {
-			return []string{s[:i], s[i+1:]}
-		}
-	}
-	return []string{s}
-}
 
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 
-func selectTransferTargetNodes(store common.NodeStore) []*common.NodeInfo {
-	var result []*common.NodeInfo
-	allNodes, _ := store.List()
-
-	for _, n := range allNodes {
-		if transferGroup != "" {
-			if !containsNodeIDList(n.Groups, transferGroup) {
-				continue
-			}
-		}
-
-		if len(transferLabel) > 0 {
-			match := true
-			for _, label := range transferLabel {
-				parts := splitLabelEq(label)
-				if len(parts) == 2 {
-					key, value := parts[0], parts[1]
-					if v, ok := n.Labels[key]; !ok || v != value {
-						match = false
-						break
-					}
-				}
-			}
-			if !match {
-				continue
-			}
-		}
-
-		result = append(result, n)
-	}
-
-	return result
-}

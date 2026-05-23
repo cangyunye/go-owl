@@ -1,14 +1,24 @@
 package playbook
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/google/uuid"
 
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/command"
+	controlnode "github.com/cangyunye/go-owl/internal/control/node"
+	pbexec "github.com/cangyunye/go-owl/internal/control/playbook"
+	"github.com/cangyunye/go-owl/internal/control/task"
+	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logger"
+	"github.com/cangyunye/go-owl/internal/node"
 	"github.com/cangyunye/go-owl/internal/ssh"
 )
 
@@ -28,6 +38,115 @@ var (
 	pbRunDefaultRetryInterval    time.Duration
 	pbRunDefaultRetryMaxInterval time.Duration
 )
+
+// adapterNodeManager 包装 node.NodeResolver 实现 controlnode.Manager
+type adapterNodeManager struct {
+	resolver *node.NodeResolver
+	nodes    map[string]*model.Node
+}
+
+func newAdapterNodeManager(resolver *node.NodeResolver, resolvedNodes []*node.ResolvedNode) *adapterNodeManager {
+	m := &adapterNodeManager{
+		resolver: resolver,
+		nodes:    make(map[string]*model.Node),
+	}
+	for _, rn := range resolvedNodes {
+		m.nodes[rn.ID] = &model.Node{
+			ID:      rn.ID,
+			Name:    rn.Name,
+			Address: rn.Address,
+			Port:    rn.Port,
+			User:    rn.User,
+			Status:  model.NodeStatusOnline,
+			Groups:  rn.Groups,
+			Labels:  rn.Labels,
+		}
+	}
+	return m
+}
+
+func (m *adapterNodeManager) Register(node *model.Node) error  { return nil }
+func (m *adapterNodeManager) Unregister(id string) error        { return nil }
+func (m *adapterNodeManager) UpdateStatus(id string, status model.NodeStatus) error { return nil }
+
+func (m *adapterNodeManager) GetByID(id string) (*model.Node, error) {
+	if n, ok := m.nodes[id]; ok {
+		return n, nil
+	}
+	return nil, fmt.Errorf("node %s not found", id)
+}
+
+func (m *adapterNodeManager) List() []*model.Node {
+	nodes := make([]*model.Node, 0, len(m.nodes))
+	for _, n := range m.nodes {
+		nodes = append(nodes, n)
+	}
+	return nodes
+}
+
+func (m *adapterNodeManager) GetByGroup(group string) []*model.Node {
+	var result []*model.Node
+	for _, n := range m.nodes {
+		for _, g := range n.Groups {
+			if g == group {
+				result = append(result, n)
+				break
+			}
+		}
+	}
+	return result
+}
+
+func (m *adapterNodeManager) GetByLabels(labels map[string]string) []*model.Node {
+	var result []*model.Node
+	for _, n := range m.nodes {
+		match := true
+		for k, v := range labels {
+			if nv, ok := n.Labels[k]; !ok || nv != v {
+				match = false
+				break
+			}
+		}
+		if match {
+			result = append(result, n)
+		}
+	}
+	return result
+}
+
+func (m *adapterNodeManager) GetOnlineNodes() []*model.Node { return m.List() }
+func (m *adapterNodeManager) Count() int                    { return len(m.nodes) }
+
+// adapterCommandExecutor 包装 V2 command.Executor 实现 V1 CommandExecutor
+type adapterCommandExecutor struct {
+	v2Exec *command.Executor
+}
+
+func (a *adapterCommandExecutor) Execute(tk *task.Task, nodeMgr controlnode.Manager) error {
+	return nil
+}
+
+func (a *adapterCommandExecutor) ExecuteOnNode(nodeID string, cmd string, timeout time.Duration) (*task.TaskResult, error) {
+	ctx := context.Background()
+	opts := &command.ExecuteOptions{
+		Parallel: false,
+		Timeout:  timeout,
+	}
+	results := a.v2Exec.Run(ctx, []string{nodeID}, cmd, opts)
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no result from node %s", nodeID)
+	}
+	r := results[0]
+	startTime := time.Now()
+	return &task.TaskResult{
+		NodeID:    r.NodeID,
+		ExitCode:  r.ExitCode,
+		Output:    r.Output,
+		Error:     nil,
+		StartTime: startTime,
+		EndTime:   startTime,
+	}, r.Error
+}
 
 // NewPlaybookRunCmd 创建剧本执行命令
 func NewPlaybookRunCmd() *cobra.Command {
@@ -77,19 +196,24 @@ func NewPlaybookRunCmd() *cobra.Command {
 
 func runPlaybookRun(cmd *cobra.Command, args []string) {
 	playbookFile := args[0]
-	store := common.GetNodeStore()
 
-	// 获取目标节点
-	targetNodes := selectPlaybookRunTargetNodes(store)
+	logger.Init(nil)
+	defer logger.Sync()
+	_, err := history.NewDB(history.DefaultConfig())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
+	}
+
+	nodeResolver := node.NewNodeResolver()
+
+	targetNodes := selectPlaybookRunTargetNodes(nodeResolver)
 	if len(targetNodes) == 0 {
-		fmt.Println("No target nodes found.")
+		fmt.Println("未找到目标节点")
 		return
 	}
 
-	// 解析额外变量
 	extraVars := parsePlaybookRunExtraVars(pbRunExtraVars)
 
-	// 显示执行信息
 	fmt.Printf("Playbook: %s\n", playbookFile)
 	fmt.Printf("Target: %d nodes\n", len(targetNodes))
 	if pbRunTags != "" {
@@ -108,7 +232,6 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		fmt.Println("Mode: DIFF (showing changes)")
 	}
 
-	// 显示超时配置
 	if pbRunDefaultConnectTimeout > 0 || pbRunDefaultCommandTimeout > 0 {
 		timeoutCfg := &ssh.TimeoutConfig{
 			ConnectTimeout: pbRunDefaultConnectTimeout,
@@ -117,7 +240,6 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		fmt.Printf("Timeout: connect=%v, command=%v\n", timeoutCfg.ConnectTimeout, timeoutCfg.CommandTimeout)
 	}
 
-	// 显示重试配置
 	if pbRunDefaultRetry > 0 {
 		retryCfg := &command.RetryConfig{
 			MaxRetries:      pbRunDefaultRetry,
@@ -127,60 +249,241 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		fmt.Printf("Retry: max=%d, interval=%v, max-interval=%v\n", retryCfg.MaxRetries, retryCfg.InitialInterval, retryCfg.MaxInterval)
 	}
 
-	// 检查剧本文件
+	// 检查剧本文件是否存在
 	if _, err := os.Stat(playbookFile); os.IsNotExist(err) {
-		// 如果文件不存在，使用示例执行
 		runSamplePlaybook(targetNodes)
 		return
 	}
 
-	// 执行剧本
-	fmt.Println("\nExecuting playbook...")
+	// 解析剧本文件
+	parser := pbexec.NewParser()
+	parsedPlaybook, err := parser.ParseFromFile(playbookFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "错误: 解析剧本文件失败: %v\n", err)
+		os.Exit(1)
+	}
 
-	success := 0
-	failed := 0
+	// 解析节点完整信息
+	var resolvedNodes []*node.ResolvedNode
 	for _, n := range targetNodes {
-		if n.Status == "online" {
-			fmt.Printf("[%s] OK: Playbook executed successfully\n", n.ID)
-			success++
-		} else {
-			fmt.Printf("[%s] FAIL: Node offline\n", n.ID)
-			failed++
+		rn, err := nodeResolver.Resolve(n.ID)
+		if err == nil {
+			resolvedNodes = append(resolvedNodes, rn)
 		}
 	}
 
-	fmt.Printf("\nSummary: %d succeeded, %d failed\n", success, failed)
+	if len(resolvedNodes) == 0 {
+		fmt.Println("未找到可用的目标节点")
+		os.Exit(1)
+	}
+
+	var targetModelNodes []*model.Node
+	for _, rn := range resolvedNodes {
+		targetModelNodes = append(targetModelNodes, &model.Node{
+			ID:      rn.ID,
+			Name:    rn.Name,
+			Address: rn.Address,
+			Port:    rn.Port,
+			User:    rn.User,
+			Status:  model.NodeStatusOnline,
+			Groups:  rn.Groups,
+			Labels:  rn.Labels,
+		})
+	}
+
+	// 设置执行器适配器
+	v2Exec := command.NewExecutor(nodeResolver)
+	defer v2Exec.Close()
+
+	cmdExec := &adapterCommandExecutor{v2Exec: v2Exec}
+	nodeMgr := newAdapterNodeManager(nodeResolver, resolvedNodes)
+
+	// 创建 Playbook 执行器
+	playbookOpts := &pbexec.PlaybookOptions{
+		TimeoutConfig: &ssh.TimeoutConfig{
+			ConnectTimeout: pbRunDefaultConnectTimeout,
+			CommandTimeout: pbRunDefaultCommandTimeout,
+		},
+		RetryConfig: &command.RetryConfig{
+			MaxRetries:      pbRunDefaultRetry,
+			InitialInterval: pbRunDefaultRetryInterval,
+			MaxInterval:     pbRunDefaultRetryMaxInterval,
+		},
+	}
+	pbExecutor := pbexec.NewExecutorWithOptions(nodeMgr, cmdExec, nil, nodeResolver, playbookOpts)
+	if bds, ok := pbExecutor.(interface{ SetPlaybookBaseDir(string) }); ok {
+		bds.SetPlaybookBaseDir(filepath.Dir(playbookFile))
+	}
+
+	taskID := uuid.New().String()
+	startTime := time.Now()
+
+	meta, _ := json.Marshal(map[string]interface{}{
+		"playbook": playbookFile,
+		"tags":     pbRunTags,
+		"check":    pbRunCheck,
+	})
+
+	var targetNodeIDs []string
+	for _, n := range targetModelNodes {
+		targetNodeIDs = append(targetNodeIDs, n.ID)
+	}
+
+	history.RecordOperation(&history.Operation{
+		TaskID:    taskID,
+		OpType:    "playbook",
+		Command:   string(meta),
+		Targets:   targetNodeIDs,
+		Status:    "running",
+		CreatedAt: startTime,
+	})
+
+	// 执行 Playbook
+	fmt.Println("\n执行剧本...")
+	execution, err := pbExecutor.Execute(parsedPlaybook, targetModelNodes, extraVars)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\n错误: 剧本执行失败: %v\n", err)
+	}
+
+	// 记录每个任务结果
+	for taskName, results := range execution.Results {
+		for _, result := range results {
+			errorMsg := ""
+			if result.Error != nil {
+				errorMsg = result.Error.Error()
+			}
+			history.RecordCommandExecution(&history.CommandExecution{
+				TaskID:     taskID,
+				NodeID:     result.NodeID,
+				Command:    taskName,
+				ExitCode:   result.ExitCode,
+				Stdout:     truncateStr(result.Output, 4096),
+				Stderr:     errorMsg,
+				DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
+				Success:    result.ExitCode == 0,
+				CreatedAt:  time.Now(),
+			})
+		}
+	}
+
+	// 更新操作最终状态
+	finalStatus := "completed"
+	failed := execution.FailureCount()
+	success := execution.SuccessCount()
+	if failed > 0 {
+		if success == 0 {
+			finalStatus = "failed"
+		} else {
+			finalStatus = "partial_failure"
+		}
+	}
+	history.RecordOperation(&history.Operation{
+		TaskID:    taskID,
+		OpType:    "playbook",
+		Command:   string(meta),
+		Targets:   targetNodeIDs,
+		Status:    finalStatus,
+		CreatedAt: startTime,
+	})
+
+	// 显示执行结果
+	fmt.Println()
+	for taskName, results := range execution.Results {
+		for _, result := range results {
+			nodeName := result.NodeID
+			for _, rn := range resolvedNodes {
+				if rn.ID == result.NodeID {
+					if rn.Name != "" {
+						nodeName = rn.Name
+					}
+					break
+				}
+			}
+			if result.Error != nil {
+				fmt.Printf("❌ [%s] %s 失败: %v\n", nodeName, taskName, result.Error)
+			} else if result.ExitCode == 0 {
+				fmt.Printf("✅ [%s] %s 成功\n", nodeName, taskName)
+				if result.Output != "" {
+					for _, line := range splitLines(truncateStr(result.Output, 1024)) {
+						fmt.Printf("   %s\n", line)
+					}
+				}
+			} else {
+				fmt.Printf("⚠️  [%s] %s 退出码 %d\n", nodeName, taskName, result.ExitCode)
+				if result.Output != "" {
+					for _, line := range splitLines(truncateStr(result.Output, 1024)) {
+						fmt.Printf("   %s\n", line)
+					}
+				}
+			}
+		}
+	}
+
+	fmt.Printf("\n总结: %d 成功, %d 失败\n", success, failed)
+	if execution.Status == pbexec.ExecutionStatusFailed {
+		fmt.Printf("状态: 失败 (%s)\n", execution.Error)
+	} else if execution.Status == pbexec.ExecutionStatusCompleted {
+		fmt.Println("状态: 完成")
+	} else {
+		fmt.Printf("状态: %s\n", execution.Status)
+	}
+
 	if failed > 0 {
 		os.Exit(1)
 	}
 }
 
-func selectPlaybookRunTargetNodes(store common.NodeStore) []*common.NodeInfo {
-	var result []*common.NodeInfo
-	allNodes, _ := store.List()
+func selectPlaybookRunTargetNodes(resolver *node.NodeResolver) []*model.Node {
+	var result []*model.Node
+	var nodes []*node.ResolvedNode
+	var err error
 
-	for _, n := range allNodes {
-		if pbRunNodes != "" {
-			// 按节点 ID 过滤
-			ids := parseNodeIDsList(pbRunNodes)
-			if !containsNodeIDList(ids, n.ID) {
-				continue
+	if pbRunNodes != "" {
+		ids := parseNodeIDsList(pbRunNodes)
+		for _, id := range ids {
+			rn, resolveErr := resolver.Resolve(id)
+			if resolveErr == nil {
+				nodes = append(nodes, rn)
 			}
 		}
+	} else if pbRunGroup != "" {
+		nodes, err = resolver.ListNodes(&node.ListOptions{Group: pbRunGroup})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "警告: 按分组查询节点失败: %v\n", err)
+		}
+	} else if len(pbRunLabel) > 0 {
+		nodes, err = resolver.ListNodes(&node.ListOptions{Label: pbRunLabel[0]})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "警告: 按标签查询节点失败: %v\n", err)
+		}
+	} else {
+		nodes, err = resolver.ListNodes(nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "警告: 获取节点列表失败: %v\n", err)
+		}
+	}
 
+	for _, rn := range nodes {
+		// 如果同时指定了多个筛选条件，在 Go 层做二次过滤
 		if pbRunGroup != "" {
-			if !containsNodeIDList(n.Groups, pbRunGroup) {
+			found := false
+			for _, g := range rn.Groups {
+				if g == pbRunGroup {
+					found = true
+					break
+				}
+			}
+			if !found {
 				continue
 			}
 		}
-
-		if len(pbRunLabel) > 0 {
+		if len(pbRunLabel) > 1 {
 			match := true
-			for _, label := range pbRunLabel {
+			for _, label := range pbRunLabel[1:] {
 				parts := splitKeyValueList(label)
 				if len(parts) == 2 {
 					key, value := parts[0], parts[1]
-					if v, ok := n.Labels[key]; !ok || v != value {
+					if v, ok := rn.Labels[key]; !ok || v != value {
 						match = false
 						break
 					}
@@ -191,7 +494,16 @@ func selectPlaybookRunTargetNodes(store common.NodeStore) []*common.NodeInfo {
 			}
 		}
 
-		result = append(result, n)
+		result = append(result, &model.Node{
+			ID:      rn.ID,
+			Name:    rn.Name,
+			Address: rn.Address,
+			Port:    rn.Port,
+			User:    rn.User,
+			Status:  model.NodeStatusOnline,
+			Groups:  rn.Groups,
+			Labels:  rn.Labels,
+		})
 	}
 
 	return result
@@ -249,8 +561,8 @@ func splitKeyValueList(s string) []string {
 	return []string{s}
 }
 
-func parsePlaybookRunExtraVars(vars []string) map[string]string {
-	result := make(map[string]string)
+func parsePlaybookRunExtraVars(vars []string) map[string]interface{} {
+	result := make(map[string]interface{})
 	for _, v := range vars {
 		parts := splitKeyValueList(v)
 		if len(parts) == 2 {
@@ -260,10 +572,9 @@ func parsePlaybookRunExtraVars(vars []string) map[string]string {
 	return result
 }
 
-func runSamplePlaybook(nodes []*common.NodeInfo) {
-	fmt.Println("\nExecuting sample playbook...")
+func runSamplePlaybook(nodes []*model.Node) {
+	fmt.Println("\n执行示例剧本...")
 
-	// 模拟执行
 	steps := []string{
 		"[Gathering Facts]",
 		"[Pre Tasks]",
@@ -279,15 +590,39 @@ func runSamplePlaybook(nodes []*common.NodeInfo) {
 	success := 0
 	failed := 0
 	for _, n := range nodes {
-		if n.Status == "online" {
+		if n.Status == model.NodeStatusOnline {
 			success++
 		} else {
 			failed++
 		}
 	}
 
-	fmt.Printf("\nSummary: %d succeeded, %d failed\n", success, failed)
+	fmt.Printf("\n总结: %d 成功, %d 失败\n", success, failed)
 	if failed > 0 {
 		os.Exit(1)
 	}
+}
+
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+func splitLines(s string) []string {
+	var lines []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			if i > start {
+				lines = append(lines, s[start:i])
+			}
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
+	return lines
 }

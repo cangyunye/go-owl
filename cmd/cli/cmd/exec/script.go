@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
@@ -121,7 +122,7 @@ func runScript(cmd *cobra.Command, args []string) {
 	}
 
 	// 记录操作开始
-	taskID := generateTaskID()
+	taskID := uuid.New().String()
 	history.RecordOperation(&history.Operation{
 		TaskID:    taskID,
 		OpType:    "script",
@@ -307,10 +308,6 @@ func splitLabelEq(s string) []string {
 		}
 	}
 	return []string{s}
-}
-
-func generateTaskID() string {
-	return fmt.Sprintf("task-%d", time.Now().UnixNano())
 }
 
 func containsStringList(list []string, s string) bool {
