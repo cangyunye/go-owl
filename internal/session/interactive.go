@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/cangyunye/go-owl/internal/control/command"
 )
 
 // InteractiveLoop 交互循环
@@ -189,7 +191,7 @@ func (l *InteractiveLoop) executeRemoteCommand(command string) {
 }
 
 // printResultsTable 表格形式打印结果
-func (l *InteractiveLoop) printResultsTable(results []CommandResult) {
+func (l *InteractiveLoop) printResultsTable(results []command.CommandResult) {
 	if len(results) == 0 {
 		return
 	}
@@ -240,7 +242,7 @@ func (l *InteractiveLoop) printResultsTable(results []CommandResult) {
 }
 
 // printResultSummary 打印结果汇总
-func (l *InteractiveLoop) printResultSummary(results []CommandResult) {
+func (l *InteractiveLoop) printResultSummary(results []command.CommandResult) {
 	if len(results) == 0 {
 		return
 	}

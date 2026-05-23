@@ -41,7 +41,7 @@ func TestIsRetryable(t *testing.T) {
 		},
 		{
 			name:     "timeout",
-			err:      errors.New("command timed out"),
+			err:      errors.New("command timeout"),
 			config:   nil,
 			expected: true,
 		},

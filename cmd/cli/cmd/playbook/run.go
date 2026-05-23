@@ -1,7 +1,6 @@
 package playbook
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,9 +12,7 @@ import (
 
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/command"
-	controlnode "github.com/cangyunye/go-owl/internal/control/node"
 	pbexec "github.com/cangyunye/go-owl/internal/control/playbook"
-	"github.com/cangyunye/go-owl/internal/control/task"
 	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
@@ -116,37 +113,6 @@ func (m *adapterNodeManager) GetByLabels(labels map[string]string) []*model.Node
 
 func (m *adapterNodeManager) GetOnlineNodes() []*model.Node { return m.List() }
 func (m *adapterNodeManager) Count() int                    { return len(m.nodes) }
-
-// adapterCommandExecutor 包装 V2 command.Executor 实现 V1 CommandExecutor
-type adapterCommandExecutor struct {
-	v2Exec *command.Executor
-}
-
-func (a *adapterCommandExecutor) Execute(tk *task.Task, nodeMgr controlnode.Manager) error {
-	return nil
-}
-
-func (a *adapterCommandExecutor) ExecuteOnNode(nodeID string, cmd string, timeout time.Duration) (*task.TaskResult, error) {
-	ctx := context.Background()
-	opts := &command.ExecuteOptions{
-		Parallel: false,
-		Timeout:  timeout,
-	}
-	results := a.v2Exec.Run(ctx, []string{nodeID}, cmd, opts)
-	if len(results) == 0 {
-		return nil, fmt.Errorf("no result from node %s", nodeID)
-	}
-	r := results[0]
-	startTime := time.Now()
-	return &task.TaskResult{
-		NodeID:    r.NodeID,
-		ExitCode:  r.ExitCode,
-		Output:    r.Output,
-		Error:     nil,
-		StartTime: startTime,
-		EndTime:   startTime,
-	}, r.Error
-}
 
 // NewPlaybookRunCmd 创建剧本执行命令
 func NewPlaybookRunCmd() *cobra.Command {
@@ -291,11 +257,11 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		})
 	}
 
-	// 设置执行器适配器
+	// 设置执行器
 	v2Exec := command.NewExecutor(nodeResolver)
 	defer v2Exec.Close()
 
-	cmdExec := &adapterCommandExecutor{v2Exec: v2Exec}
+	cmdExec := command.CommandExecutor(v2Exec)
 	nodeMgr := newAdapterNodeManager(nodeResolver, resolvedNodes)
 
 	// 创建 Playbook 执行器

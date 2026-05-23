@@ -7,7 +7,7 @@ import (
 )
 
 func TestNode_New(t *testing.T) {
-	node := NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 
 	if node.ID != "node-1" {
 		t.Errorf("expected ID 'node-1', got '%s'", node.ID)
@@ -47,7 +47,7 @@ func TestNode_Validate(t *testing.T) {
 	}{
 		{
 			name:    "valid node",
-			node:    NewNode("node-1", "test-node", "192.168.1.100", 8080),
+			node:    NewNode("node-1", "test-node", "192.168.1.100", 8080, "root"),
 			wantErr: false,
 		},
 		{
@@ -154,7 +154,7 @@ func TestNode_Validate(t *testing.T) {
 }
 
 func TestNode_SetStatus(t *testing.T) {
-	node := NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 	originalUpdatedAt := node.UpdatedAt
 
 	time.Sleep(1 * time.Millisecond)
@@ -169,7 +169,7 @@ func TestNode_SetStatus(t *testing.T) {
 }
 
 func TestNode_Groups(t *testing.T) {
-	node := NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 
 	node.AddGroup("web")
 	if len(node.Groups) != 1 {
@@ -206,7 +206,7 @@ func TestNode_Groups(t *testing.T) {
 }
 
 func TestNode_Labels(t *testing.T) {
-	node := NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 
 	node.SetLabel("env", "production")
 	node.SetLabel("region", "us-west")
@@ -228,7 +228,7 @@ func TestNode_Labels(t *testing.T) {
 }
 
 func TestNode_MatchLabels(t *testing.T) {
-	node := NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 	node.SetLabel("env", "production")
 	node.SetLabel("region", "us-west")
 
@@ -279,7 +279,7 @@ func TestNode_MatchLabels(t *testing.T) {
 }
 
 func TestNode_JSONSerialize(t *testing.T) {
-	node := NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 	node.AddGroup("web")
 	node.SetLabel("env", "production")
 	node.SetMetadata("os", "linux")
@@ -343,7 +343,7 @@ func TestNode_JSONDeserialize(t *testing.T) {
 }
 
 func TestNode_Clone(t *testing.T) {
-	node := NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 	node.AddGroup("web")
 	node.AddGroup("database")
 	node.SetLabel("env", "production")
@@ -386,7 +386,7 @@ func TestNode_Clone(t *testing.T) {
 }
 
 func TestNode_SetMetadata(t *testing.T) {
-	node := NewNode("node-1", "test-node", "192.168.1.100", 8080)
+	node := NewNode("node-1", "test-node", "192.168.1.100", 8080, "root")
 
 	node.SetMetadata("cpu", "8 cores")
 	node.SetMetadata("memory", "16GB")

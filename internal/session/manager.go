@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cangyunye/go-owl/internal/control/command"
 	"github.com/cangyunye/go-owl/internal/history"
 	gossh "golang.org/x/crypto/ssh"
 )
@@ -121,19 +122,19 @@ func (s *Session) Connect(nodeConfigs []*NodeConfig) error {
 }
 
 // ExecuteCommand 执行命令（并发执行）
-func (s *Session) ExecuteCommand(command string, timeout time.Duration) []CommandResult {
+func (s *Session) ExecuteCommand(commandStr string, timeout time.Duration) []command.CommandResult {
 	s.mu.Lock()
 	s.lastActivity = time.Now()
 	s.mu.Unlock()
 
-	s.history.Add(command)
+	s.history.Add(commandStr)
 	s.CommandCount++
 
 	stats := s.pool.GetStats()
 	nodeCount := len(stats.NodeIDs)
 
 	// 使用channel收集结果，容量为节点数量
-	resultChan := make(chan CommandResult, nodeCount)
+	resultChan := make(chan command.CommandResult, nodeCount)
 	var wg sync.WaitGroup
 
 	// 并发执行命令
@@ -144,7 +145,7 @@ func (s *Session) ExecuteCommand(command string, timeout time.Duration) []Comman
 
 			conn, ok := s.pool.GetConnection(nid)
 			if !ok {
-				resultChan <- CommandResult{
+				resultChan <- command.CommandResult{
 					NodeID: nid,
 					Error:  fmt.Errorf("连接不存在"),
 				}
@@ -152,10 +153,10 @@ func (s *Session) ExecuteCommand(command string, timeout time.Duration) []Comman
 			}
 
 			start := time.Now()
-			exitCode, output, err := conn.Execute(command, timeout)
+			exitCode, output, err := conn.Execute(commandStr, timeout)
 			duration := time.Since(start)
 
-			resultChan <- CommandResult{
+			resultChan <- command.CommandResult{
 				NodeID:   nid,
 				ExitCode: exitCode,
 				Output:   output,
@@ -172,7 +173,7 @@ func (s *Session) ExecuteCommand(command string, timeout time.Duration) []Comman
 	}()
 
 	// 收集结果
-	var results []CommandResult
+	var results []command.CommandResult
 	for result := range resultChan {
 		results = append(results, result)
 
@@ -190,7 +191,7 @@ func (s *Session) ExecuteCommand(command string, timeout time.Duration) []Comman
 		}
 		history.RecordSessionCommand(&history.SessionCommand{
 			SessionID:  s.ID,
-			Command:    command,
+			Command:    commandStr,
 			NodeID:     result.NodeID,
 			ExitCode:   result.ExitCode,
 			Output:     result.Output,
@@ -325,13 +326,4 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
 	}
 	return fmt.Sprintf("%02d:%02d", m, s)
-}
-
-// CommandResult 命令结果
-type CommandResult struct {
-	NodeID   string
-	ExitCode int
-	Output   string
-	Error    error
-	Duration time.Duration
 }

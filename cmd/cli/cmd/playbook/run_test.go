@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
+	"github.com/cangyunye/go-owl/internal/control/command"
 	"github.com/cangyunye/go-owl/internal/node"
 )
 
@@ -349,8 +350,8 @@ func TestRunSamplePlaybook(t *testing.T) {
 	runSamplePlaybook(nodes)
 }
 
-func TestAdapterCommandExecutor_Execute(t *testing.T) {
-	exec := &adapterCommandExecutor{v2Exec: nil}
+func TestCommandExecutor_Execute(t *testing.T) {
+	exec := command.NewExecutor(nil)
 	err := exec.Execute(nil, nil)
 	if err != nil {
 		t.Errorf("Execute should not error: %v", err)

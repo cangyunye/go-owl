@@ -9,59 +9,13 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/internal/control/async"
+	controlnode "github.com/cangyunye/go-owl/internal/control/node"
+	"github.com/cangyunye/go-owl/internal/control/task"
 	"github.com/cangyunye/go-owl/internal/node"
 	"github.com/cangyunye/go-owl/internal/ssh"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"go.uber.org/zap"
 )
-
-// ErrorType 错误类型
-type ErrorType int
-
-const (
-	ErrorTypeUnknown    ErrorType = iota // 未知错误
-	ErrorTypeNode                        // 节点相关错误
-	ErrorTypeConnection                  // 连接失败
-	ErrorTypeAuth                        // 认证失败
-	ErrorTypeTimeout                     // 超时
-	ErrorTypeCommand                     // 命令执行错误
-)
-
-// String 返回错误类型的可读字符串
-func (t ErrorType) String() string {
-	switch t {
-	case ErrorTypeNode:
-		return "节点错误"
-	case ErrorTypeConnection:
-		return "连接失败"
-	case ErrorTypeAuth:
-		return "认证失败"
-	case ErrorTypeTimeout:
-		return "超时"
-	case ErrorTypeCommand:
-		return "命令错误"
-	default:
-		return "未知错误"
-	}
-}
-
-// Suggestion 返回对应错误的建议
-func (t ErrorType) Suggestion() string {
-	switch t {
-	case ErrorTypeNode:
-		return "请检查节点配置是否正确"
-	case ErrorTypeConnection:
-		return "请检查网络连接和节点地址"
-	case ErrorTypeAuth:
-		return "请检查用户名、密码或密钥配置"
-	case ErrorTypeTimeout:
-		return "请使用 --connect-timeout 或 --command-timeout 调整超时时间"
-	case ErrorTypeCommand:
-		return "请检查命令语法和脚本路径"
-	default:
-		return "请查看详细日志"
-	}
-}
 
 type Executor struct {
 	nodeResolver *node.NodeResolver
@@ -80,26 +34,6 @@ func NewExecutor(nodeResolver *node.NodeResolver) *Executor {
 // SetDebug 设置 debug 模式
 func (e *Executor) SetDebug(debug bool) {
 	e.debug = debug
-}
-
-type CommandResult struct {
-	NodeID       string
-	Output       string
-	ExitCode     int
-	Error        error
-	ErrorType    ErrorType
-	ErrorDetail  string
-	DebugInfo    []string
-	Success      bool
-}
-
-type ExecuteOptions struct {
-	Parallel      bool
-	Timeout       time.Duration
-	TimeoutConfig *ssh.TimeoutConfig
-	RetryConfig   *RetryConfig
-	WorkingDir    string
-	Env           map[string]string
 }
 
 func (e *Executor) Run(ctx context.Context, nodeIDs []string, command string, opts *ExecuteOptions) []CommandResult {
@@ -321,6 +255,31 @@ func (e *Executor) runOnNode(ctx context.Context, nodeID, command string, opts *
 	}
 
 	return result
+}
+
+func (e *Executor) Execute(tk *task.Task, nodeMgr controlnode.Manager) error {
+	return nil
+}
+
+func (e *Executor) ExecuteOnNode(nodeID string, cmd string, timeout time.Duration) (*task.TaskResult, error) {
+	ctx := context.Background()
+	opts := &ExecuteOptions{
+		Parallel: false,
+		Timeout:  timeout,
+	}
+	results := e.Run(ctx, []string{nodeID}, cmd, opts)
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no result from node %s", nodeID)
+	}
+	r := results[0]
+	startTime := time.Now()
+	return &task.TaskResult{
+		NodeID:    r.NodeID,
+		ExitCode:  r.ExitCode,
+		Output:    r.Output,
+		StartTime: startTime,
+		EndTime:   startTime,
+	}, r.Error
 }
 
 func (e *Executor) Close() {
