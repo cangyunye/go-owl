@@ -3,6 +3,7 @@ package transfer
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -102,16 +103,9 @@ func (tm *TransferManager) CheckRsyncAvailable(ctx context.Context, nodeID strin
 
 // checkRsyncRemotely 通过 SSH 检查远程节点是否有 rsync
 func (tm *TransferManager) checkRsyncRemotely(nodeInfo *node.ResolvedNode, connInfo *ssh.ConnectionInfo) bool {
-	// 使用 SSH 执行 which rsync
-	args := connInfo.BuildSSHCommand("which rsync")
-	
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	
-	cmd := exec.CommandContext(ctx, "ssh", args...)
-	err := cmd.Run()
-	
-	return err == nil
+	executor := ssh.NewNativeNodeExecutor(connInfo)
+	exitCode, _, err := executor.Execute("which rsync", 5*time.Second)
+	return err == nil && exitCode == 0
 }
 
 func (tm *TransferManager) Upload(ctx context.Context, nodeIDs []string, localPath, remotePath string, opts *UploadOptions) []TransferResult {
@@ -149,7 +143,8 @@ func (tm *TransferManager) smartUpload(ctx context.Context, nodeID, localPath, r
 	startTime := time.Now()
 
 	connInfo, rsyncOK := tm.CheckRsyncAvailable(ctx, nodeID)
-	if opts.Resume && rsyncOK && connInfo != nil {
+	// 密码认证时跳过 rsync（rsync CLI 不支持密码传递）
+	if opts.Resume && rsyncOK && connInfo != nil && connInfo.Password == "" {
 		return tm.rsyncUpload(ctx, nodeID, localPath, remotePath, opts, connInfo, startTime)
 	}
 
@@ -191,43 +186,43 @@ func (tm *TransferManager) rsyncUpload(ctx context.Context, nodeID, localPath, r
 }
 
 func (tm *TransferManager) scpFallback(ctx context.Context, nodeID, localPath, remotePath string, opts *UploadOptions, startTime time.Time) TransferResult {
-	// 这里我们使用 SSH 连接池的 scp 方式，保持向后兼容
-	// 先获取 executor，然后通过 SSH 命令调用 scp
-	executor, poolErr := tm.getExecutor(ctx, nodeID)
-	if poolErr != nil {
+	nodeInfo, err := tm.nodeResolver.Resolve(nodeID)
+	if err != nil {
 		return TransferResult{
 			NodeID: nodeID,
 			Path:   remotePath,
-			Error:  fmt.Errorf("获取连接失败: %w", poolErr),
+			Error:  fmt.Errorf("获取节点信息失败: %w", err),
 			Method: "scp",
 		}
 	}
-	
-	nodeInfo, _ := tm.nodeResolver.Resolve(nodeID)
-	scpCmd := fmt.Sprintf("scp -q %s %s@%s:%s", localPath, nodeInfo.User, nodeInfo.Address, remotePath)
-	
-	_, _, err := executor.Execute(scpCmd, 60*time.Second)
-	
-	duration := time.Since(startTime)
+
+	connInfo, err := ssh.ResolveConnection(nodeInfo.ID, nodeInfo.Address, nodeInfo.Port, nodeInfo.User, nodeInfo.SSHKey, nodeInfo.SSHPassword, tm.sshConfigPath)
+	if err != nil {
+		return TransferResult{
+			NodeID: nodeID,
+			Path:   remotePath,
+			Error:  fmt.Errorf("解析连接信息失败: %w", err),
+			Method: "scp",
+		}
+	}
+
+	executor := ssh.NewNativeNodeExecutor(connInfo)
+	if err := executor.WriteFile(localPath, remotePath); err != nil {
+		return TransferResult{
+			NodeID:   nodeID,
+			Path:     remotePath,
+			Error:    fmt.Errorf("文件传输失败: %w", err),
+			Method:   "scp",
+			Duration: time.Since(startTime),
+		}
+	}
+
 	return TransferResult{
 		NodeID:   nodeID,
 		Path:     remotePath,
-		Error:    err,
 		Method:   "scp",
-		Duration: duration,
+		Duration: time.Since(startTime),
 	}
-}
-
-// getExecutor 从连接池获取 executor
-func (tm *TransferManager) getExecutor(ctx context.Context, nodeID string) (ssh.NodeExecutor, error) {
-	nodeInfo, err := tm.nodeResolver.Resolve(nodeID)
-	if err != nil {
-		return nil, err
-	}
-	
-	pool := ssh.NewConnectionPool(10, 5*time.Minute)
-	executor, err := pool.Get(nodeInfo)
-	return executor, err
 }
 
 func (tm *TransferManager) Download(ctx context.Context, nodeIDs []string, remotePath, localPath string, opts *DownloadOptions) []TransferResult {
@@ -267,7 +262,8 @@ func (tm *TransferManager) smartDownload(ctx context.Context, nodeID, remotePath
 	startTime := time.Now()
 
 	connInfo, rsyncOK := tm.CheckRsyncAvailable(ctx, nodeID)
-	if opts.Resume && rsyncOK && connInfo != nil {
+	// 密码认证时跳过 rsync（rsync CLI 不支持密码传递）
+	if opts.Resume && rsyncOK && connInfo != nil && connInfo.Password == "" {
 		return tm.rsyncDownload(ctx, nodeID, remotePath, localPath, opts, connInfo, startTime)
 	}
 
@@ -312,25 +308,51 @@ func (tm *TransferManager) scpDownloadFallback(ctx context.Context, nodeID, remo
 			Method: "scp",
 		}
 	}
-	
-	scpCmd := fmt.Sprintf("scp -q %s@%s:%s %s", nodeInfo.User, nodeInfo.Address, remotePath, localPath)
-	
-	executor, err := tm.getExecutor(ctx, nodeID)
+
+	connInfo, err := ssh.ResolveConnection(nodeInfo.ID, nodeInfo.Address, nodeInfo.Port, nodeInfo.User, nodeInfo.SSHKey, nodeInfo.SSHPassword, tm.sshConfigPath)
 	if err != nil {
 		return TransferResult{
 			NodeID: nodeID,
 			Path:   localPath,
-			Error:  err,
+			Error:  fmt.Errorf("解析连接信息失败: %w", err),
 			Method: "scp",
 		}
 	}
-	
-	_, _, err = executor.Execute(scpCmd, 60*time.Second)
-	
+
+	executor := ssh.NewNativeNodeExecutor(connInfo)
+	exitCode, output, execErr := executor.Execute(fmt.Sprintf("cat '%s'", remotePath), 60*time.Second)
+	if execErr != nil {
+		return TransferResult{
+			NodeID:   nodeID,
+			Path:     localPath,
+			Error:    fmt.Errorf("读取远程文件失败: %w", execErr),
+			Method:   "scp",
+			Duration: time.Since(startTime),
+		}
+	}
+	if exitCode != 0 {
+		return TransferResult{
+			NodeID:   nodeID,
+			Path:     localPath,
+			Error:    fmt.Errorf("读取远程文件失败，退出码: %d", exitCode),
+			Method:   "scp",
+			Duration: time.Since(startTime),
+		}
+	}
+
+	if err := os.WriteFile(localPath, []byte(output), 0644); err != nil {
+		return TransferResult{
+			NodeID:   nodeID,
+			Path:     localPath,
+			Error:    fmt.Errorf("写入本地文件失败: %w", err),
+			Method:   "scp",
+			Duration: time.Since(startTime),
+		}
+	}
+
 	return TransferResult{
 		NodeID:   nodeID,
 		Path:     localPath,
-		Error:    err,
 		Method:   "scp",
 		Duration: time.Since(startTime),
 	}

@@ -28,6 +28,66 @@ func (e *NativeNodeExecutor) Execute(command string, timeout time.Duration) (int
 	return e.execute(command, timeout, timeout)
 }
 
+// WriteFile 通过 SSH 将本地文件写入远程路径（基于 crypto/ssh）
+func (e *NativeNodeExecutor) WriteFile(localPath, remotePath string) error {
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return fmt.Errorf("读取本地文件 %s 失败: %w", localPath, err)
+	}
+
+	addr := fmt.Sprintf("%s:%d", e.connInfo.Address, e.connInfo.Port)
+
+	config := &gossh.ClientConfig{
+		User:            e.connInfo.GetUser(),
+		HostKeyCallback: gossh.InsecureIgnoreHostKey(),
+		Timeout:         30 * time.Second,
+	}
+
+	auths := e.buildAuthMethods()
+	if len(auths) == 0 {
+		return &SSHAuthError{
+			ExitCode: -1,
+			NodeID:   e.connInfo.Address,
+			Stderr:   "没有可用的认证方式：请配置 SSH 密钥或密码",
+			Cause:    fmt.Errorf("no authentication methods available"),
+		}
+	}
+	config.Auth = auths
+
+	client, err := gossh.Dial("tcp", addr, config)
+	if err != nil {
+		errMsg := err.Error()
+		errType := ErrorTypeConnection
+		if containsAnySSH(errMsg, "auth", "password", "key", "permission", "authentication") {
+			errType = ErrorTypeAuth
+		}
+		return &ConnectionError{
+			NodeID:    e.connInfo.Address,
+			ErrorType: errType,
+			Stderr:    errMsg,
+			Cause:     err,
+		}
+	}
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		return fmt.Errorf("创建 SSH 会话失败: %w", err)
+	}
+	defer session.Close()
+
+	var stderr bytes.Buffer
+	session.Stdin = bytes.NewReader(data)
+	session.Stderr = &stderr
+
+	cmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", filepath.Dir(remotePath), remotePath)
+	if err := session.Run(cmd); err != nil {
+		return fmt.Errorf("文件传输失败: %w\n%s", err, stderr.String())
+	}
+
+	return nil
+}
+
 func (e *NativeNodeExecutor) ExecuteWithConfig(command string, config *TimeoutConfig) (int, string, error) {
 	if config == nil {
 		config = &TimeoutConfig{
