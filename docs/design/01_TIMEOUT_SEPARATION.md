@@ -260,7 +260,7 @@ func (e *RemoteNodeExecutorWithInfo) ExecuteWithConfig(command string, config *T
 | 文件 | 改动点 |
 |------|--------|
 | `internal/ssh/executor_factory.go` | 添加 ExecuteWithConfig 方法 |
-| `internal/control/command/executor_v2.go` | 支持 TimeoutConfig |
+| `internal/ssh/native_executor.go` | 支持 TimeoutConfig |
 | `cmd/cli/cmd/exec/run.go` | 添加 `--connect-timeout`, `--command-timeout` 参数 |
 
 ### 3.3 详细改动点
@@ -317,7 +317,7 @@ type NodeExecutor interface {
 }
 ```
 
-#### 3.3.3 internal/control/command/executor_v2.go（修改）
+#### 3.3.3 internal/ssh/native_executor.go（修改）
 
 ```go
 type ExecuteOptions struct {

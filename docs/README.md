@@ -12,7 +12,7 @@
 |------|------|
 | [user/QUICKSTART.md](user/QUICKSTART.md) | 快速入门指南 |
 | [user/README.md](user/README.md) | 用户文档索引 |
-| [user/USAGE.md](user/USAGE.md) | 通用使用指南 |
+| [user/USAGE.md](user/USAGE.md) | AI 助手使用指南 |
 
 ### 命令详解
 
@@ -21,8 +21,9 @@
 | [user/NODE.md](user/NODE.md) | 节点管理（添加、查看、更新、删除、ping、check） |
 | [user/EXEC.md](user/EXEC.md) | 批量命令执行 |
 | [user/PLAYBOOK.md](user/PLAYBOOK.md) | Playbook 剧本管理 |
-| [user/FILE.md](user/FILE.md) | 文件传输（上传、下载） |
+| [user/FILE.md](user/FILE.md) | 文件传输（上传、下载、扩散传输） |
 | [user/SESSION.md](user/SESSION.md) | 交互式会话管理 |
+| [user/SESSION_USAGE.md](user/SESSION_USAGE.md) | 会话功能详细使用说明 |
 | [user/AI.md](user/AI.md) | AI 助手 |
 | [user/HISTORY.md](user/HISTORY.md) | 执行历史记录 |
 | [user/SETTINGS.md](user/SETTINGS.md) | 系统设置 |
@@ -41,18 +42,26 @@
 | [dev/FILE_TRANSFER_ARCHITECTURE.md](dev/FILE_TRANSFER_ARCHITECTURE.md) | 文件传输架构 |
 | [dev/SSH_CONFIG.md](dev/SSH_CONFIG.md) | SSH 配置解析设计 |
 | [dev/AI_CONFIG_DESIGN.md](dev/AI_CONFIG_DESIGN.md) | AI 配置方案 |
-| [dev/AI_OPTIMIZATION_PLAN.md](dev/AI_OPTIMIZATION_PLAN.md) | AI 优化计划 |
-| [dev/LOGGING_PLAN.md](dev/LOGGING_PLAN.md) | 日志系统设计 |
 | [dev/TEST_IMPLEMENTATION_REPORT.md](dev/TEST_IMPLEMENTATION_REPORT.md) | 测试用例报告 |
 
-### 高可靠执行设计
+### 已完成的修复记录
 
-| 文档 | 说明 |
-|------|------|
-| [design/01_TIMEOUT_SEPARATION.md](design/01_TIMEOUT_SEPARATION.md) | 连接超时与命令超时分离 |
-| [design/02_RETRY_MECHANISM.md](design/02_RETRY_MECHANISM.md) | 命令重试机制 |
-| [design/03_ASYNC_EXECUTION.md](design/03_ASYNC_EXECUTION.md) | 异步执行模式 |
-| [design/PLAYBOOK_ACTION_OPTIONS.md](design/PLAYBOOK_ACTION_OPTIONS.md) | Playbook Action 超时重试配置 |
+| 文档 | 说明 | 状态 |
+|------|------|------|
+| [dev/FIX_PASSWORD_AUTH_CHAIN.md](dev/FIX_PASSWORD_AUTH_CHAIN.md) | 密钥→密码认证回退链路修复 | ✅ 已实现 |
+| [dev/FIX_SSH_ERROR_INFO_LOSS.md](dev/FIX_SSH_ERROR_INFO_LOSS.md) | SSH 退出码错误信息丢失修复 | ✅ 已通过架构重构解决 |
+
+---
+
+## 🔧 高可靠执行设计
+
+| 文档 | 说明 | 状态 |
+|------|------|------|
+| [design/01_TIMEOUT_SEPARATION.md](design/01_TIMEOUT_SEPARATION.md) | 连接超时与命令超时分离 | ✅ 已实现 |
+| [design/02_RETRY_MECHANISM.md](design/02_RETRY_MECHANISM.md) | 命令重试机制 | ✅ 已实现 |
+| [design/03_ASYNC_EXECUTION.md](design/03_ASYNC_EXECUTION.md) | 异步执行模式 | ⚠️ 部分实现 |
+| [design/PLAYBOOK_ACTION_OPTIONS.md](design/PLAYBOOK_ACTION_OPTIONS.md) | Playbook Action 超时重试配置 | ✅ 已实现 |
+| [design/PLAYBOOK_TEMPLATE_SYSTEM.md](design/PLAYBOOK_TEMPLATE_SYSTEM.md) | Playbook 模板系统方案 | ⚠️ 未实现 |
 
 ---
 
@@ -83,6 +92,7 @@ docs/
 │   ├── PLAYBOOK.md
 │   ├── FILE.md
 │   ├── SESSION.md
+│   ├── SESSION_USAGE.md
 │   ├── AI.md
 │   ├── HISTORY.md
 │   └── SETTINGS.md
@@ -93,14 +103,15 @@ docs/
 │   ├── FILE_TRANSFER_ARCHITECTURE.md
 │   ├── SSH_CONFIG.md
 │   ├── AI_CONFIG_DESIGN.md
-│   ├── AI_OPTIMIZATION_PLAN.md
-│   ├── LOGGING_PLAN.md
-│   └── TEST_IMPLEMENTATION_REPORT.md
+│   ├── TEST_IMPLEMENTATION_REPORT.md
+│   ├── FIX_PASSWORD_AUTH_CHAIN.md
+│   └── FIX_SSH_ERROR_INFO_LOSS.md
 ├── design/             ← 高可靠设计
 │   ├── 01_TIMEOUT_SEPARATION.md
 │   ├── 02_RETRY_MECHANISM.md
 │   ├── 03_ASYNC_EXECUTION.md
-│   └── PLAYBOOK_ACTION_OPTIONS.md
+│   ├── PLAYBOOK_ACTION_OPTIONS.md
+│   └── PLAYBOOK_TEMPLATE_SYSTEM.md
 └── reference/          ← 参考文档
     ├── README.md
     ├── SSH_USAGE.md
@@ -138,5 +149,5 @@ docs/
 
 ### 开发者
 1. 阅读 [dev/ARCHITECTURE.md](dev/ARCHITECTURE.md)
-2. 了解高可靠设计
-3. 查看测试报告
+2. 了解高可靠设计文档
+3. 查看 [测试报告](dev/TEST_IMPLEMENTATION_REPORT.md)

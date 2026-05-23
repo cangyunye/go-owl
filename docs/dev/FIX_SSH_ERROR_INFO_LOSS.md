@@ -1,3 +1,5 @@
+> ✅ **状态：已通过架构重构解决** — 系统 SSH 调用已被替换为 `golang.org/x/crypto/ssh` 原生实现（`native_executor.go`），exit code 255 问题不再存在。本文档保留作为历史参考。
+
 # SSH 退出码 255 错误信息丢失问题修复方案
 
 ## 问题描述

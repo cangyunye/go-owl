@@ -1,3 +1,5 @@
+> ⚠️ **状态：未实现 — 设计提案**。本文档描述的模板系统（`owl playbook templates` 命令等）尚未在代码中实现，当前 playbook 命令仅支持 `list`、`validate`、`info`、`run` 四个子命令。
+
 # Playbook 模板系统设计方案
 
 ## 1. 概述
