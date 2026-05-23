@@ -148,6 +148,10 @@ func (tm *TransferManager) smartUpload(ctx context.Context, nodeID, localPath, r
 		return tm.rsyncUpload(ctx, nodeID, localPath, remotePath, opts, connInfo, startTime)
 	}
 
+	if rsyncOK && connInfo != nil && connInfo.Password != "" {
+		fmt.Printf("[%s] 节点使用密码认证，跳过 rsync，改用 SSH 原生传输\n", nodeID)
+	}
+
 	return tm.scpFallback(ctx, nodeID, localPath, remotePath, opts, startTime)
 }
 
@@ -265,6 +269,10 @@ func (tm *TransferManager) smartDownload(ctx context.Context, nodeID, remotePath
 	// 密码认证时跳过 rsync（rsync CLI 不支持密码传递）
 	if opts.Resume && rsyncOK && connInfo != nil && connInfo.Password == "" {
 		return tm.rsyncDownload(ctx, nodeID, remotePath, localPath, opts, connInfo, startTime)
+	}
+
+	if rsyncOK && connInfo != nil && connInfo.Password != "" {
+		fmt.Printf("[%s] 节点使用密码认证，跳过 rsync，改用 SSH 原生传输\n", nodeID)
 	}
 
 	return tm.scpDownloadFallback(ctx, nodeID, remotePath, localPath, opts, startTime)
