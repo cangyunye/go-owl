@@ -126,3 +126,59 @@ func TestGetTimeoutType(t *testing.T) {
 		})
 	}
 }
+
+func TestTimeoutType_Constants(t *testing.T) {
+	if TimeoutConnect != "connect" {
+		t.Errorf("expected TimeoutConnect 'connect', got '%s'", TimeoutConnect)
+	}
+	if TimeoutCommand != "command" {
+		t.Errorf("expected TimeoutCommand 'command', got '%s'", TimeoutCommand)
+	}
+}
+
+func TestTimeoutError_NoCause(t *testing.T) {
+	err := &TimeoutError{
+		Type:    TimeoutCommand,
+		NodeID:  "node-1",
+		Timeout: 30 * time.Second,
+	}
+
+	expectedContains := []string{"command", "timeout", "30s", "node-1"}
+	msg := err.Error()
+	for _, s := range expectedContains {
+		if !containsString(msg, s) {
+			t.Errorf("expected error message to contain '%s', got: %s", s, msg)
+		}
+	}
+}
+
+func TestTimeoutError_UnwrapNilCause(t *testing.T) {
+	err := &TimeoutError{
+		Type:    TimeoutConnect,
+		NodeID:  "node-1",
+		Timeout: 5 * time.Second,
+	}
+
+	unwrapped := errors.Unwrap(err)
+	if unwrapped != nil {
+		t.Errorf("expected nil unwrapped, got %v", unwrapped)
+	}
+}
+
+func TestIsTimeoutError_Wrapped(t *testing.T) {
+	timeoutErr := &TimeoutError{Type: TimeoutConnect, NodeID: "test"}
+	wrapped := errors.New("wrapped: " + timeoutErr.Error())
+
+	if IsTimeoutError(wrapped) {
+		t.Error("expected wrapped non-TimeoutError to not be detected as timeout")
+	}
+}
+
+func containsString(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
