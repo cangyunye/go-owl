@@ -194,70 +194,141 @@ owl file download /var/log/app.log \
 
 ## 4. owl file transfer
 
-节点间扩散传输（P2P 模式），将文件从一个节点扩散到其他节点。
+节点间扩散传输，将文件从控制节点分批发送到大量目标节点。
 
 ### 使用方法
 
 ```bash
-owl file transfer <file> --source node1 --targets node2,node3,node4
+owl file transfer <local-file> --nodes node1,node2,node3,node4,node5
+owl file transfer app.tar.gz --nodes n1,n2,n3,n4,n5 --source-count 2 --fan-out 3
 ```
 
 ### 参数说明
 
 | 参数 | 说明 |
 |------|------|
-| `<file>` | 要传输的文件路径 |
-| `--source` | 源节点 ID |
-| `--targets` | 目标节点 ID（逗号分隔） |
-| `--fan-out` | 同时连接数，默认 3 |
-| `--threshold` | 阈值，低于此数量自动扩散 |
+| `<file>` | 本地文件路径（必填） |
+| `--nodes` | 目标节点 ID（逗号分隔） |
+| `--all-nodes` | 选择所有注册节点 |
+| `--group` | 按分组选择节点 |
+| `--label` | 按标签选择节点 |
+| `--dest` | 目标目录，默认 `/tmp` |
+| `--source-count` | 源节点数量（前 N 个节点作为源），默认 2 |
+| `--fan-out` | 扇出系数（每个源节点最多传给几个子节点），默认 3 |
+| `--threshold` | 扩散阈值（低于此数量直接传输），默认 5 |
 
 ### 工作原理
 
+将目标节点构建为一棵扩散树，按层级分批传输：
+
+**第一步：构建扩散树**（5 个节点，fan-out=3）
+
 ```
-1. 从源节点获取文件
-2. 同时发送给 N 个节点（fan-out）
-3. 已收到的节点继续扩散给其他节点
-4. 直到所有节点都收到文件
+                  ┌──────────────┐
+                  │   控制节点     │
+                  │  (control)   │
+                  └──────┬───────┘
+                         │
+       ┌─────────────────┼─────────────────┐
+       │ fan-out=3，一次分配 3 个             │
+       ▼                 ▼                  ▼
+ ┌──────────┐    ┌──────────┐       ┌──────────┐
+ │  Node 1  │    │  Node 2  │       │  Node 3  │
+ │  (源节点) │    │  (叶子)   │       │  (叶子)   │
+ └────┬─────┘    └──────────┘       └──────────┘
+      │
+      │ 剩余 [n4, n5] 分配给 Node 1
+ ┌────┴────────┐
+ ▼             ▼
+┌──────────┐ ┌──────────┐
+│  Node 4  │ │  Node 5  │
+└──────────┘ └──────────┘
+```
+
+> Node 1 有子节点，成为源节点。Node 2~5 是叶子节点。
+
+**第二步：分批传输**
+
+```
+═══════════════════════════════════════════════
+  第一批：控制节点 → Node 1, Node 2, Node 3
+═══════════════════════════════════════════════
+
+           ┌──────────────┐
+           │   控制节点     │
+           └──────┬───────┘
+                  │
+     ┌────────────┼────────────┐
+     ▼            ▼            ▼
+ Node 1 ✅     Node 2 ✅     Node 3 ✅
+
+  只有 Node 1 成功，才会触发下一批
+
+
+═══════════════════════════════════════════════
+  第二批：控制节点 → Node 4, Node 5
+═══════════════════════════════════════════════
+
+           ┌──────────────┐
+           │   控制节点     │  ← 仍由控制节点发出
+           └──────┬───────┘
+                  │
+         ┌────────┴────────┐
+         ▼                 ▼
+     Node 4 ✅         Node 5 ✅
+```
+
+> **注意**：两批数据都从控制节点直接发出，扩散树只负责编排"谁先收、谁后收"，不表示节点间真正转发数据。
+
+**传输模式判断**：
+
+```
+节点数 >= 5 (threshold) → 扩散传输模式（分批）
+节点数 <  5 (threshold) → 直接传输模式（一次性批量上传）
 ```
 
 ### 示例
 
 ```bash
-# 基本用法
-owl file transfer /tmp/large-file.tar.gz \
-  --source web-01 \
-  --targets web-02,web-03,web-04,web-05
+# 指定节点列表，扩散传输
+owl file transfer app.tar.gz \
+  --nodes node1,node2,node3,node4,node5 \
+  --dest /opt/app/ --source-count 2
 
-# 高并发扩散
-owl file transfer /opt/app.tar.gz \
-  --source web-01 \
-  --targets web-02,web-03,web-04,web-05,web-06 \
-  --fan-out 5
+# 发送到所有注册节点
+owl file transfer data.zip --all-nodes --dest /data/ --fan-out 3
 
-# 自动阈值扩散
-owl file transfer /tmp/data.zip \
-  --source web-01 \
-  --targets node1,node2,node3,node4,node5 \
-  --threshold 2
+# 按分组扩散
+owl file transfer db.tar.gz --group database --source-count 1
+
+# 少量节点自动走直接传输
+owl file transfer app.tar.gz --nodes node1,node2 --dest /opt/app/
 ```
 
 ### 示例输出
 
 ```
-📦 扩散传输
-📁 文件: /tmp/large-file.tar.gz (500MB)
-📍 源节点: web-01
-🎯 目标: 5 个节点
-⚡ Fan-out: 3
+文件: app.tar.gz (128.00 MB)
+目标: /opt/app/app.tar.gz
+节点: 5 个
+模式: 扩散传输 (fan-out=3, threshold=5)
 
-正在扩散...
-[10:30:00] web-01 → web-02, web-03, web-04 ✓
-[10:30:05] web-02 → web-05 ✓
-[10:30:10] 扩散完成
+扩散树结构:
+========================
+源节点: Node 1, Node 2
+  Node 1 -> Node 4, Node 5
+  Node 2 -> Node 3
 
-📊 总结: 5 成功, 0 失败
-总耗时: 10s
+正在传输...
+  [node1] 成功 [scp, 12.5 MB/s]
+  [node2] 成功 [scp, 10.2 MB/s]
+  [node3] 成功 [scp, 11.1 MB/s]
+  进度: [========----------] 60% (3/5)
+  [node4] 成功 [scp, 11.8 MB/s]
+  [node5] 成功 [scp, 9.5 MB/s]
+  进度: [===================] 100% (5/5)
+
+总结: 5 成功, 0 失败
 ```
 
 ---
