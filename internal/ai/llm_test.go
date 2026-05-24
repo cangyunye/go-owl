@@ -291,6 +291,86 @@ func TestCreateLLMClient_Anthropic_DefaultModel(t *testing.T) {
 	}
 }
 
+func TestCreateLLMClient_OpenAI_DefaultValues(t *testing.T) {
+	config := &Config{
+		AI: AIConfig{
+			Provider: "openai",
+			APIKey:   "test-key",
+			Model:    "",
+			BaseURL:  "",
+		},
+	}
+
+	client, err := CreateLLMClient(config)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected client to be created")
+	}
+
+	openAIClient, ok := client.(*OpenAIClient)
+	if !ok {
+		t.Fatal("expected OpenAIClient type")
+	}
+	if openAIClient.baseURL != "https://api.openai.com/v1" {
+		t.Errorf("expected default base URL for openai, got '%s'", openAIClient.baseURL)
+	}
+}
+
+func TestCreateLLMClient_DashScope_DefaultValues(t *testing.T) {
+	config := &Config{
+		AI: AIConfig{
+			Provider: "dashscope",
+			APIKey:   "test-key",
+			Model:    "",
+			BaseURL:  "",
+		},
+	}
+
+	client, err := CreateLLMClient(config)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected client to be created")
+	}
+
+	openAIClient, ok := client.(*OpenAIClient)
+	if !ok {
+		t.Fatal("expected OpenAIClient type")
+	}
+	if openAIClient.model != "qwen-turbo" {
+		t.Errorf("expected default model 'qwen-turbo', got '%s'", openAIClient.model)
+	}
+	if openAIClient.baseURL != "https://dashscope.aliyuncs.com/compatible-mode/v1" {
+		t.Errorf("expected default base URL for dashscope, got '%s'", openAIClient.baseURL)
+	}
+}
+
+func TestAllRegisteredProviders(t *testing.T) {
+	providers := []string{"openai", "anthropic", "qwen", "dashscope", "deepseek"}
+
+	for _, provider := range providers {
+		t.Run(provider, func(t *testing.T) {
+			config := &Config{
+				AI: AIConfig{
+					Provider: provider,
+					APIKey:   "test-key",
+				},
+			}
+			client, err := CreateLLMClient(config)
+			if err != nil {
+				t.Errorf("unexpected error for provider '%s': %v", provider, err)
+				return
+			}
+			if client == nil {
+				t.Errorf("expected client for provider '%s'", provider)
+			}
+		})
+	}
+}
+
 func TestMessage_Struct(t *testing.T) {
 	msg := Message{
 		Role:    "user",

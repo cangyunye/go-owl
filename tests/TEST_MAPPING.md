@@ -74,10 +74,10 @@
 
 | 用户手册 TC | 描述 | L2 Go 测试 | L3 Bash 测试 | 状态 |
 |-------------|------|-----------|-------------|------|
-| TC-SESSION-001 | 单节点连接 | `cmd/cli/cmd/session/session_test.go::TestSessionAttachFlags` | - (交互式) | ❌ |
+| TC-SESSION-001 | 单节点连接 | `cmd/cli/cmd/session/session_test.go::TestSessionAttachFlags` | - (交互式) | ⚠️ |
 | TC-SESSION-002 | 会话帮助 | - | - (交互式) | ❌ |
-| TC-SESSION-003 | 会话历史 | `cmd/cli/cmd/session/session_test.go::TestSessionHistoryFlags` | - | ❌ |
-| TC-SESSION-004 | 多节点连接 | `cmd/cli/cmd/session/session_test.go::TestSessionAttachFlags` | - (交互式) | ❌ |
+| TC-SESSION-003 | 会话历史 | `cmd/cli/cmd/session/session_test.go::TestSessionHistoryFlags` | - | ⚠️ |
+| TC-SESSION-004 | 多节点连接 | `cmd/cli/cmd/session/session_test.go::TestSessionAttachFlags` | - (交互式) | ⚠️ |
 
 ---
 
@@ -85,11 +85,11 @@
 
 | 用户手册 TC | 描述 | L2 Go 测试 | 状态 |
 |-------------|------|-----------|------|
-| TC-AI-001 | AI 对话 | `cmd/cli/cmd/ai/ai_test.go::TestAIFlags` | ❌ |
-| TC-AI-002 | 模型列表 | `cmd/cli/cmd/ai/ai_test.go::TestAIModelsFlags` | ❌ |
-| TC-AI-003 | 初始化配置 | `cmd/cli/cmd/ai/ai_test.go::TestAIConfigSubcommands` | ❌ |
-| TC-AI-004 | 显示配置 | `cmd/cli/cmd/ai/ai_test.go::TestAIConfigSubcommands` | ❌ |
-| TC-AI-005 | 提供商验证 | `cmd/cli/cmd/ai/ai_test.go::TestAIProviders` | ❌ |
+| TC-AI-001 | AI 对话 | `cmd/cli/cmd/ai/ai_test.go::TestAIFlags` | ⚠️ |
+| TC-AI-002 | 模型列表 | `cmd/cli/cmd/ai/ai_test.go::TestAIModelsFlags` | ⚠️ |
+| TC-AI-003 | 初始化配置 | `cmd/cli/cmd/ai/ai_test.go::TestAIConfigSubcommands` | ⚠️ |
+| TC-AI-004 | 显示配置 | `cmd/cli/cmd/ai/ai_test.go::TestAIConfigShowCmd` | ⚠️ |
+| TC-AI-005 | 提供商验证 | `internal/ai/llm_test.go::TestAllRegisteredProviders` | ✅ |
 
 ---
 
@@ -97,11 +97,11 @@
 
 | 用户手册 TC | 描述 | L2 Go 测试 | L3 Bash 测试 | 状态 |
 |-------------|------|-----------|-------------|------|
-| TC-HIST-001 | 查看历史 | `cmd/cli/cmd/history/history_test.go::TestHistoryFlags` | `tests/scripts/test-history.sh::test_history_list` | ❌ |
-| TC-HIST-002 | 按节点筛选 | `cmd/cli/cmd/history/history_test.go::TestHistoryFlags` | `tests/scripts/test-history.sh::test_history_by_node` | ❌ |
-| TC-HIST-003 | JSON 输出 | `cmd/cli/cmd/history/history_test.go::TestHistoryFlags` | `tests/scripts/test-history.sh::test_history_json_output` | ❌ |
-| TC-HIST-004 | 相对时间 | `cmd/cli/cmd/history/history_test.go::TestHistoryFlags` | `tests/scripts/test-history.sh::test_history_relative_time` | ❌ |
-| TC-HIST-005 | 清理历史 | `cmd/cli/cmd/history/history_test.go::TestHistoryCleanFlags` | `tests/scripts/test-history.sh::test_history_clean` | ❌ |
+| TC-HIST-001 | 查看历史 | `cmd/cli/cmd/history/history_cmd_test.go::TestHistoryFlags` | `tests/scripts/test-history.sh::test_history_list` | ⚠️ |
+| TC-HIST-002 | 按节点筛选 | `cmd/cli/cmd/history/history_cmd_test.go::TestHistoryFlags` | `tests/scripts/test-history.sh::test_history_by_node` | ⚠️ |
+| TC-HIST-003 | JSON 输出 | `cmd/cli/cmd/history/history_cmd_test.go::TestHistoryFlags` | `tests/scripts/test-history.sh::test_history_json_output` | ⚠️ |
+| TC-HIST-004 | 相对时间 | `cmd/cli/cmd/history/history_cmd_test.go::TestHistoryFlags` | `tests/scripts/test-history.sh::test_history_relative_time` | ⚠️ |
+| TC-HIST-005 | 清理历史 | `cmd/cli/cmd/history/history_cmd_test.go::TestHistoryCleanFlags` | `tests/scripts/test-history.sh::test_history_clean` | ⚠️ |
 
 ---
 
@@ -109,9 +109,18 @@
 
 | 用户手册 TC | 描述 | L2 Go 测试 | L3 Bash 测试 | 状态 |
 |-------------|------|-----------|-------------|------|
-| TC-SETTINGS-001 | 显示设置 | `cmd/cli/cmd/settings/settings_test.go::TestSettingsShowCmd` | `tests/scripts/test-settings.sh::test_settings_show` | ❌ |
-| TC-SETTINGS-002 | 设置值 | `cmd/cli/cmd/settings/settings_test.go::TestSettingsSetCmd` | `tests/scripts/test-settings.sh::test_settings_set` | ❌ |
-| TC-SETTINGS-003 | 默认目标 | `cmd/cli/cmd/settings/settings_test.go::TestSettingsTargetFlags` | `tests/scripts/test-settings.sh::test_settings_target` | ❌ |
+| TC-SETTINGS-001 | 显示设置 | `cmd/cli/cmd/settings/settings_test.go::TestSettingsShowCmd` | `tests/scripts/test-settings.sh::test_settings_show` | ⚠️ |
+| TC-SETTINGS-002 | 设置值 | `cmd/cli/cmd/settings/settings_test.go::TestSettingsSetCmd` | `tests/scripts/test-settings.sh::test_settings_set` | ⚠️ |
+| TC-SETTINGS-003 | 默认目标 | `cmd/cli/cmd/settings/settings_test.go::TestSettingsTargetFlags` | `tests/scripts/test-settings.sh::test_settings_target` | ⚠️ |
+
+---
+
+## ASYNC 模块
+
+| 测试项 | L2 Go 测试 | 状态 |
+|--------|-----------|------|
+| async 父命令 + 5 子命令 | `cmd/cli/cmd/async/async_test.go` | ✅ |
+| wait poll-interval flag | `cmd/cli/cmd/async/async_test.go::TestAsyncWaitCmd` | ✅ |
 
 ---
 
@@ -134,9 +143,10 @@
 | EXEC | 7 | 7 | 0 | 50% |
 | FILE | 9 | 8 | 0 | 44% |
 | PLAYBOOK | 5 | 5 | 0 | 50% |
-| SESSION | 4 | 0 | 0 | 0% |
-| AI | 5 | 0 | 0 | 0% |
-| HISTORY | 5 | 0 | 0 | 0% |
-| SETTINGS | 3 | 0 | 0 | 0% |
+| SESSION | 4 | 3 | 0 | 38% |
+| HISTORY | 5 | 5 | 0 | 50% |
+| SETTINGS | 3 | 3 | 0 | 50% |
 | 根命令 | 4 | 4 | - | 100% |
-| **总计** | **51** | **33** | **0** | **65%** |
+| ASYNC | - | - | - | ✅ |
+| AI | 5 | 5 | 0 | 60% |
+| **总计** | **51** | **49** | **0** | **96%** |
