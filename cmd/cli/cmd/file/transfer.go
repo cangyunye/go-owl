@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -278,6 +279,8 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 	progress := 0
 	total := len(resolvedNodes)
 
+	firstBatch := true
+
 	for len(queue) > 0 {
 		currentLevel := make([]string, len(queue))
 		copy(currentLevel, queue)
@@ -351,6 +354,336 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 				treeNode := tree.Nodes[nodeID]
 				if treeNode != nil && len(treeNode.Children) > 0 {
 					queue = append(queue, treeNode.Children...)
+				}
+			}
+		}
+
+		if firstBatch {
+			firstBatch = false
+			break
+		}
+	}
+
+	resolvedMap := make(map[string]*node.ResolvedNode)
+	for _, rn := range resolvedNodes {
+		resolvedMap[rn.ID] = rn
+	}
+
+	completedSources := make([]string, 0)
+	for _, childID := range tree.Nodes["control"].Children {
+		if st, ok := diffTransfer.NodeStatuses[childID]; ok && st.Status == transfer.DiffusionStatusCompleted {
+			completedSources = append(completedSources, childID)
+		}
+	}
+
+	if len(queue) > 0 {
+		type relayTarget struct {
+			nodeID   string
+			host     string
+			password string
+		}
+
+		var relayTargets []relayTarget
+		var directNodeIDs []string
+
+		for _, nodeID := range queue {
+			resolved, ok := resolvedMap[nodeID]
+			if !ok {
+				continue
+			}
+			if resolved.SSHPassword != "" {
+				relayTargets = append(relayTargets, relayTarget{
+					nodeID:   nodeID,
+					host:     fmt.Sprintf("%s@%s:%s", resolved.User, resolved.Address, remotePath),
+					password: resolved.SSHPassword,
+				})
+			} else {
+				directNodeIDs = append(directNodeIDs, nodeID)
+			}
+		}
+
+		if len(directNodeIDs) > 0 {
+			results := manager.Upload(ctx, directNodeIDs, fileName, remotePath, opts)
+			for _, result := range results {
+				method := result.Method
+				if method == "" {
+					method = "scp"
+				}
+
+				status := "completed"
+				errMsg := ""
+				if result.Error != nil {
+					status = "failed"
+					errMsg = result.Error.Error()
+					fmt.Printf("  [%s] 失败 [%s]: %v\n", result.NodeID, method, result.Error)
+					failCount++
+					diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusFailed, 100, errMsg)
+				} else {
+					speedInfo := ""
+					if result.Speed != "" && result.Speed != "N/A" {
+						speedInfo = ", " + result.Speed
+					}
+					fmt.Printf("  [%s] 成功 [%s%s]\n", result.NodeID, method, speedInfo)
+					successCount++
+					diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusCompleted, 100, "")
+				}
+
+				history.RecordFileTransfer(&history.FileTransfer{
+					TaskID:       taskID,
+					NodeID:       result.NodeID,
+					FileName:     fileName,
+					FileSize:     fileSize,
+					TransferType: method,
+					Status:       status,
+					Progress:     100,
+					Error:        errMsg,
+					CreatedAt:    time.Now(),
+				})
+
+				progress++
+				percent := float64(progress) / float64(total) * 100
+				bar := generateProgressBar(percent, 40)
+				fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+			}
+		}
+
+		if len(relayTargets) > 0 && len(completedSources) > 0 {
+			relayExecutor := transfer.NewRelayExecutor(nodeResolver)
+
+			dist := make(map[string][]relayTarget)
+			for i, rt := range relayTargets {
+				sourceIdx := i % len(completedSources)
+				dist[completedSources[sourceIdx]] = append(dist[completedSources[sourceIdx]], rt)
+			}
+
+			for _, sourceID := range completedSources {
+				targets, ok := dist[sourceID]
+				if !ok || len(targets) == 0 {
+					continue
+				}
+
+				fmt.Printf("  正在部署中继脚本到 [%s]...\n", sourceID)
+				if err := relayExecutor.DeployScript(ctx, sourceID); err != nil {
+					fmt.Printf("  警告: 部署中继脚本到 [%s] 失败: %v, 降级为直接传输\n", sourceID, err)
+					fallbackIDs := make([]string, len(targets))
+					for j, t := range targets {
+						fallbackIDs[j] = t.nodeID
+					}
+					results := manager.Upload(ctx, fallbackIDs, fileName, remotePath, opts)
+					for _, result := range results {
+						method := result.Method
+						if method == "" {
+							method = "scp"
+						}
+						status := "completed"
+						errMsg := ""
+						if result.Error != nil {
+							status = "failed"
+							errMsg = result.Error.Error()
+							fmt.Printf("  [%s] 失败 [%s]: %v\n", result.NodeID, method, result.Error)
+							failCount++
+							diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusFailed, 100, errMsg)
+						} else {
+							speedInfo := ""
+							if result.Speed != "" && result.Speed != "N/A" {
+								speedInfo = ", " + result.Speed
+							}
+							fmt.Printf("  [%s] 成功 [%s%s]\n", result.NodeID, method, speedInfo)
+							successCount++
+							diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusCompleted, 100, "")
+						}
+						history.RecordFileTransfer(&history.FileTransfer{
+							TaskID:       taskID,
+							NodeID:       result.NodeID,
+							FileName:     fileName,
+							FileSize:     fileSize,
+							TransferType: method,
+							Status:       status,
+							Progress:     100,
+							Error:        errMsg,
+							CreatedAt:    time.Now(),
+						})
+						progress++
+						percent := float64(progress) / float64(total) * 100
+						bar := generateProgressBar(percent, 40)
+						fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+					}
+					continue
+				}
+
+				relayTargetObjs := make([]transfer.RelayTarget, len(targets))
+				targetNodeIDs := make([]string, len(targets))
+				for j, t := range targets {
+					relayTargetObjs[j] = transfer.RelayTarget{Host: t.host, Password: t.password}
+					targetNodeIDs[j] = t.nodeID
+				}
+
+				subTask := &transfer.RelaySubTask{
+					SourceNodeID: sourceID,
+					Targets:      relayTargetObjs,
+					SourceFile:   remotePath,
+					TimeoutSec:   300,
+				}
+
+				targetNames := make([]string, len(targetNodeIDs))
+				for j, id := range targetNodeIDs {
+					name := id
+					if rn, ok := resolvedMap[id]; ok && rn.Name != "" {
+						name = rn.Name
+					}
+					targetNames[j] = name
+				}
+				fmt.Printf("  [%s] 正在向 [%s] 中继传输...\n", sourceID, strings.Join(targetNames, ", "))
+
+				relayResults, err := relayExecutor.ExecuteRelay(ctx, sourceID, subTask)
+				if err != nil {
+					fmt.Printf("  警告: [%s] 中继传输失败: %v, 降级为直接传输\n", sourceID, err)
+					fallbackIDs := make([]string, len(targets))
+					for j, t := range targets {
+						fallbackIDs[j] = t.nodeID
+					}
+					results := manager.Upload(ctx, fallbackIDs, fileName, remotePath, opts)
+					for _, result := range results {
+						method := result.Method
+						if method == "" {
+							method = "scp"
+						}
+						status := "completed"
+						errMsg := ""
+						if result.Error != nil {
+							status = "failed"
+							errMsg = result.Error.Error()
+							fmt.Printf("  [%s] 失败 [%s]: %v\n", result.NodeID, method, result.Error)
+							failCount++
+							diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusFailed, 100, errMsg)
+						} else {
+							speedInfo := ""
+							if result.Speed != "" && result.Speed != "N/A" {
+								speedInfo = ", " + result.Speed
+							}
+							fmt.Printf("  [%s] 成功 [%s%s]\n", result.NodeID, method, speedInfo)
+							successCount++
+							diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusCompleted, 100, "")
+						}
+						history.RecordFileTransfer(&history.FileTransfer{
+							TaskID:       taskID,
+							NodeID:       result.NodeID,
+							FileName:     fileName,
+							FileSize:     fileSize,
+							TransferType: method,
+							Status:       status,
+							Progress:     100,
+							Error:        errMsg,
+							CreatedAt:    time.Now(),
+						})
+						progress++
+						percent := float64(progress) / float64(total) * 100
+						bar := generateProgressBar(percent, 40)
+						fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+					}
+					continue
+				}
+
+				hostToNodeID := make(map[string]string)
+				for _, t := range targets {
+					hostToNodeID[t.host] = t.nodeID
+				}
+
+				for _, rr := range relayResults {
+					nodeID := hostToNodeID[rr.Target]
+					if nodeID == "" {
+						nodeID = rr.Target
+					}
+
+					name := nodeID
+					if rn, ok := resolvedMap[nodeID]; ok && rn.Name != "" {
+						name = rn.Name
+					}
+
+					if rr.Status == "success" {
+						fmt.Printf("  [%s] 成功 [relay, %dms]\n", name, rr.DurationMs)
+						successCount++
+						diffTransfer.UpdateNodeStatus(nodeID, transfer.DiffusionStatusCompleted, 100, "")
+
+						history.RecordFileTransfer(&history.FileTransfer{
+							TaskID:       taskID,
+							NodeID:       nodeID,
+							FileName:     fileName,
+							FileSize:     fileSize,
+							TransferType: "relay",
+							Status:       "completed",
+							Progress:     100,
+							Error:        "",
+							CreatedAt:    time.Now(),
+						})
+					} else {
+						fmt.Printf("  [%s] 失败 [relay]: %s\n", name, rr.Error)
+						failCount++
+						diffTransfer.UpdateNodeStatus(nodeID, transfer.DiffusionStatusFailed, 100, rr.Error)
+
+						history.RecordFileTransfer(&history.FileTransfer{
+							TaskID:       taskID,
+							NodeID:       nodeID,
+							FileName:     fileName,
+							FileSize:     fileSize,
+							TransferType: "relay",
+							Status:       "failed",
+							Progress:     100,
+							Error:        rr.Error,
+							CreatedAt:    time.Now(),
+						})
+					}
+
+					progress++
+					percent := float64(progress) / float64(total) * 100
+					bar := generateProgressBar(percent, 40)
+					fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+				}
+			}
+		} else if len(relayTargets) > 0 && len(completedSources) == 0 {
+			fmt.Println("  无可用中继源节点，全部降级为直接传输")
+			for _, rt := range relayTargets {
+				directNodeIDs = append(directNodeIDs, rt.nodeID)
+			}
+			if len(directNodeIDs) > 0 {
+				results := manager.Upload(ctx, directNodeIDs, fileName, remotePath, opts)
+				for _, result := range results {
+					method := result.Method
+					if method == "" {
+						method = "scp"
+					}
+					status := "completed"
+					errMsg := ""
+					if result.Error != nil {
+						status = "failed"
+						errMsg = result.Error.Error()
+						fmt.Printf("  [%s] 失败 [%s]: %v\n", result.NodeID, method, result.Error)
+						failCount++
+						diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusFailed, 100, errMsg)
+					} else {
+						speedInfo := ""
+						if result.Speed != "" && result.Speed != "N/A" {
+							speedInfo = ", " + result.Speed
+						}
+						fmt.Printf("  [%s] 成功 [%s%s]\n", result.NodeID, method, speedInfo)
+						successCount++
+						diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusCompleted, 100, "")
+					}
+					history.RecordFileTransfer(&history.FileTransfer{
+						TaskID:       taskID,
+						NodeID:       result.NodeID,
+						FileName:     fileName,
+						FileSize:     fileSize,
+						TransferType: method,
+						Status:       status,
+						Progress:     100,
+						Error:        errMsg,
+						CreatedAt:    time.Now(),
+					})
+					progress++
+					percent := float64(progress) / float64(total) * 100
+					bar := generateProgressBar(percent, 40)
+					fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
 				}
 			}
 		}
