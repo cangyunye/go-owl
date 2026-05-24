@@ -1,4 +1,6 @@
-.PHONY: help test test-unit test-integration test-bash test-all test-clean test-quick
+.PHONY: help test test-unit test-integration test-bash test-all test-clean test-quick \
+        test-bash-exec test-bash-node test-bash-history test-bash-version \
+        test-bash-file test-bash-playbook test-bash-settings
 
 help:
 	@echo "go-owl 测试命令"
@@ -28,6 +30,12 @@ test-unit:
 	@echo "运行单元测试"
 	@echo "========================================="
 	@go test -v ./unit/...
+	@echo ""
+	@echo "运行 CLI 命令结构性测试 (cmd/cli/cmd/)"
+	@cd .. && go test ./cmd/cli/cmd/...
+	@echo ""
+	@echo "运行 internal 层逻辑测试"
+	@cd .. && go test ./internal/...
 
 test-integration:
 	@echo "========================================="
@@ -43,15 +51,59 @@ test-integration:
 		@go test -v ./integration/...; \
 	fi
 
-test-bash:
+test-bash: test-bash-version test-bash-node test-bash-exec test-bash-file test-bash-playbook test-bash-history test-bash-settings
+	@echo ""
+	@echo "全部 bash 测试完成!"
+
+test-bash-exec:
 	@echo "========================================="
-	@echo "运行 Bash 脚本测试"
+	@echo "bash 测试: exec"
 	@echo "========================================="
-	@echo "当前 OWL_TEST_NODES 值: '$(OWL_TEST_NODES)'"
 	@chmod +x ./scripts/*.sh
-	@OWL_TEST_NODES=$(OWL_TEST_NODES) bash ./scripts/test-exec.sh
-	@OWL_TEST_NODES=$(OWL_TEST_NODES) bash ./scripts/test-node.sh
-	@OWL_TEST_NODES=$(OWL_TEST_NODES) bash ./scripts/test-history.sh
+	@OWL_TEST_NODES=$(OWL_TEST_NODES) ./scripts/test-exec.sh
+
+test-bash-node:
+	@echo ""
+	@echo "========================================="
+	@echo "bash 测试: node"
+	@echo "========================================="
+	@OWL_TEST_NODES=$(OWL_TEST_NODES) ./scripts/test-node.sh
+
+test-bash-history:
+	@echo ""
+	@echo "========================================="
+	@echo "bash 测试: history 和 settings"
+	@echo "========================================="
+	@./scripts/test-history.sh
+
+test-bash-version:
+	@echo ""
+	@echo "========================================="
+	@echo "bash 测试: version"
+	@echo "========================================="
+	@./scripts/test-version.sh
+
+test-bash-file:
+	@echo ""
+	@echo "========================================="
+	@echo "bash 测试: file"
+	@echo "========================================="
+	@chmod +x ./scripts/*.sh
+	@OWL_TEST_NODES=$(OWL_TEST_NODES) ./scripts/test-file.sh
+
+test-bash-playbook:
+	@echo ""
+	@echo "========================================="
+	@echo "bash 测试: playbook"
+	@echo "========================================="
+	@OWL_TEST_NODES=$(OWL_TEST_NODES) ./scripts/test-playbook.sh
+
+test-bash-settings:
+	@echo ""
+	@echo "========================================="
+	@echo "bash 测试: settings"
+	@echo "========================================="
+	@./scripts/test-settings.sh
 
 test-quick:
 	@echo "========================================="
@@ -71,9 +123,10 @@ test-coverage:
 	@echo "========================================="
 	@echo "生成测试覆盖率报告"
 	@echo "========================================="
-	@go test -coverprofile=coverage.out ./unit/...
-	@go tool cover -html=coverage.out -o coverage.html
-	@echo "报告已生成: coverage.html"
+	@cd .. && go test -coverprofile=tests/coverage.out ./cmd/cli/cmd/... ./internal/... ./tests/unit/...
+	@cd .. && go tool cover -html=tests/coverage.out -o tests/coverage.html
+	@echo "覆盖率报告已生成: coverage.html"
+	@cd .. && go tool cover -func=tests/coverage.out | tail -1
 
 test-help:
 	@echo "========================================="
