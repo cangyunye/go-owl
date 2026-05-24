@@ -90,6 +90,8 @@
 | TC-AI-003 | 初始化配置 | `cmd/cli/cmd/ai/ai_test.go::TestAIConfigSubcommands` | ⚠️ |
 | TC-AI-004 | 显示配置 | `cmd/cli/cmd/ai/ai_test.go::TestAIConfigShowCmd` | ⚠️ |
 | TC-AI-005 | 提供商验证 | `internal/ai/llm_test.go::TestAllRegisteredProviders` | ✅ |
+| — | 配置加载/保存 | `internal/ai/config_test.go` (6 tests) | ✅ |
+| — | LoadConfigForTest helper | `internal/ai/config_test.go::LoadConfigForTest` — 优先从 `~/.owl/config.yaml` 加载，否则用 mock key | ✅ |
 
 ---
 

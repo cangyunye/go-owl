@@ -5,20 +5,40 @@ import (
 	"testing"
 )
 
-func TestOpenAIClient_NewOpenAIClient(t *testing.T) {
-	config := &Config{
+const testAPIKey = "test-key"
+
+func makeTestConfig(provider, model string) *Config {
+	return &Config{
 		AI: AIConfig{
-			APIKey:  "test-key",
-			Model:   "gpt-4o",
-			BaseURL: "https://api.openai.com/v1",
+			Provider: provider,
+			APIKey:   testAPIKey,
+			Model:    model,
+		},
+	}
+}
+
+func makeOpenAITestConfig(model, baseURL string) *Config {
+	cfg := &Config{
+		AI: AIConfig{
+			APIKey:  testAPIKey,
+			Model:   model,
+			BaseURL: baseURL,
 			Timeout: 60,
 		},
 	}
+	if baseURL == "" {
+		cfg.AI.BaseURL = "https://api.openai.com/v1"
+	}
+	return cfg
+}
+
+func TestOpenAIClient_NewOpenAIClient(t *testing.T) {
+	config := makeOpenAITestConfig("gpt-4o", "https://api.openai.com/v1")
 
 	client := NewOpenAIClient(config)
 
-	if client.apiKey != "test-key" {
-		t.Errorf("expected API key 'test-key', got '%s'", client.apiKey)
+	if client.apiKey != testAPIKey {
+		t.Errorf("expected API key '%s', got '%s'", testAPIKey, client.apiKey)
 	}
 	if client.model != "gpt-4o" {
 		t.Errorf("expected model 'gpt-4o', got '%s'", client.model)
@@ -34,7 +54,7 @@ func TestOpenAIClient_NewOpenAIClient(t *testing.T) {
 func TestOpenAIClient_NewOpenAIClient_DefaultBaseURL(t *testing.T) {
 	config := &Config{
 		AI: AIConfig{
-			APIKey:  "test-key",
+			APIKey:  testAPIKey,
 			Model:   "gpt-4o",
 			BaseURL: "",
 			Timeout: 60,
@@ -51,7 +71,7 @@ func TestOpenAIClient_NewOpenAIClient_DefaultBaseURL(t *testing.T) {
 func TestAnthropicClient_NewAnthropicClient(t *testing.T) {
 	config := &Config{
 		AI: AIConfig{
-			APIKey:  "test-key",
+			APIKey:  testAPIKey,
 			Model:   "claude-3-opus",
 			Timeout: 60,
 		},
@@ -59,8 +79,8 @@ func TestAnthropicClient_NewAnthropicClient(t *testing.T) {
 
 	client := NewAnthropicClient(config)
 
-	if client.apiKey != "test-key" {
-		t.Errorf("expected API key 'test-key', got '%s'", client.apiKey)
+	if client.apiKey != testAPIKey {
+		t.Errorf("expected API key '%s', got '%s'", testAPIKey, client.apiKey)
 	}
 	if client.model != "claude-3-opus" {
 		t.Errorf("expected model 'claude-3-opus', got '%s'", client.model)
@@ -71,13 +91,7 @@ func TestAnthropicClient_NewAnthropicClient(t *testing.T) {
 }
 
 func TestCreateLLMClient_OpenAI(t *testing.T) {
-	config := &Config{
-		AI: AIConfig{
-			Provider: "openai",
-			APIKey:   "test-key",
-			Model:    "gpt-4o",
-		},
-	}
+	config := makeTestConfig("openai", "gpt-4o")
 
 	client, err := CreateLLMClient(config)
 	if err != nil {
@@ -92,13 +106,7 @@ func TestCreateLLMClient_OpenAI(t *testing.T) {
 }
 
 func TestCreateLLMClient_Anthropic(t *testing.T) {
-	config := &Config{
-		AI: AIConfig{
-			Provider: "anthropic",
-			APIKey:   "test-key",
-			Model:    "claude-3-opus",
-		},
-	}
+	config := makeTestConfig("anthropic", "claude-3-opus")
 
 	client, err := CreateLLMClient(config)
 	if err != nil {
@@ -113,13 +121,7 @@ func TestCreateLLMClient_Anthropic(t *testing.T) {
 }
 
 func TestCreateLLMClient_Qwen(t *testing.T) {
-	config := &Config{
-		AI: AIConfig{
-			Provider: "qwen",
-			APIKey:   "test-key",
-			Model:    "qwen-turbo",
-		},
-	}
+	config := makeTestConfig("qwen", "qwen-turbo")
 
 	client, err := CreateLLMClient(config)
 	if err != nil {
@@ -134,13 +136,7 @@ func TestCreateLLMClient_Qwen(t *testing.T) {
 }
 
 func TestCreateLLMClient_DeepSeek(t *testing.T) {
-	config := &Config{
-		AI: AIConfig{
-			Provider: "deepseek",
-			APIKey:   "test-key",
-			Model:    "deepseek-chat",
-		},
-	}
+	config := makeTestConfig("deepseek", "deepseek-chat")
 
 	client, err := CreateLLMClient(config)
 	if err != nil {
@@ -155,13 +151,7 @@ func TestCreateLLMClient_DeepSeek(t *testing.T) {
 }
 
 func TestCreateLLMClient_DefaultProvider(t *testing.T) {
-	config := &Config{
-		AI: AIConfig{
-			Provider: "",
-			APIKey:   "test-key",
-			Model:    "gpt-4o",
-		},
-	}
+	config := makeTestConfig("", "gpt-4o")
 
 	client, err := CreateLLMClient(config)
 	if err != nil {
@@ -176,13 +166,7 @@ func TestCreateLLMClient_DefaultProvider(t *testing.T) {
 }
 
 func TestCreateLLMClient_UnsupportedProvider(t *testing.T) {
-	config := &Config{
-		AI: AIConfig{
-			Provider: "unsupported",
-			APIKey:   "test-key",
-			Model:    "some-model",
-		},
-	}
+	config := makeTestConfig("unsupported", "some-model")
 
 	_, err := CreateLLMClient(config)
 	if err == nil {
@@ -209,7 +193,7 @@ func TestCreateLLMClient_Qwen_DefaultValues(t *testing.T) {
 	config := &Config{
 		AI: AIConfig{
 			Provider: "qwen",
-			APIKey:   "test-key",
+			APIKey:   testAPIKey,
 			Model:    "",
 			BaseURL:  "",
 		},
@@ -239,7 +223,7 @@ func TestCreateLLMClient_DeepSeek_DefaultValues(t *testing.T) {
 	config := &Config{
 		AI: AIConfig{
 			Provider: "deepseek",
-			APIKey:   "test-key",
+			APIKey:   testAPIKey,
 			Model:    "",
 			BaseURL:  "",
 		},
@@ -269,7 +253,7 @@ func TestCreateLLMClient_Anthropic_DefaultModel(t *testing.T) {
 	config := &Config{
 		AI: AIConfig{
 			Provider: "anthropic",
-			APIKey:   "test-key",
+			APIKey:   testAPIKey,
 			Model:    "",
 		},
 	}
@@ -295,7 +279,7 @@ func TestCreateLLMClient_OpenAI_DefaultValues(t *testing.T) {
 	config := &Config{
 		AI: AIConfig{
 			Provider: "openai",
-			APIKey:   "test-key",
+			APIKey:   testAPIKey,
 			Model:    "",
 			BaseURL:  "",
 		},
@@ -322,7 +306,7 @@ func TestCreateLLMClient_DashScope_DefaultValues(t *testing.T) {
 	config := &Config{
 		AI: AIConfig{
 			Provider: "dashscope",
-			APIKey:   "test-key",
+			APIKey:   testAPIKey,
 			Model:    "",
 			BaseURL:  "",
 		},
@@ -349,17 +333,14 @@ func TestCreateLLMClient_DashScope_DefaultValues(t *testing.T) {
 }
 
 func TestAllRegisteredProviders(t *testing.T) {
+	cfg := LoadConfigForTest(t)
+
 	providers := []string{"openai", "anthropic", "qwen", "dashscope", "deepseek"}
 
 	for _, provider := range providers {
 		t.Run(provider, func(t *testing.T) {
-			config := &Config{
-				AI: AIConfig{
-					Provider: provider,
-					APIKey:   "test-key",
-				},
-			}
-			client, err := CreateLLMClient(config)
+			cfg.AI.Provider = provider
+			client, err := CreateLLMClient(cfg)
 			if err != nil {
 				t.Errorf("unexpected error for provider '%s': %v", provider, err)
 				return
@@ -388,19 +369,14 @@ func TestMessage_Struct(t *testing.T) {
 func TestLLMClient_Interface(t *testing.T) {
 	var client LLMClient
 
-	config := &Config{
-		AI: AIConfig{
-			Provider: "openai",
-			APIKey:   "test-key",
-			Model:    "gpt-4o",
-		},
-	}
+	config := makeTestConfig("openai", "gpt-4o")
 
 	client = NewOpenAIClient(config)
 	if client == nil {
 		t.Error("expected OpenAIClient to implement LLMClient interface")
 	}
 
+	config = makeTestConfig("anthropic", "claude-3-opus")
 	client = NewAnthropicClient(config)
 	if client == nil {
 		t.Error("expected AnthropicClient to implement LLMClient interface")
@@ -434,7 +410,7 @@ func TestOpenAIClient_Generate_MissingAPIKey(t *testing.T) {
 func TestOpenAIClient_Generate_MissingBaseURL(t *testing.T) {
 	config := &Config{
 		AI: AIConfig{
-			APIKey:  "test-key",
+			APIKey:  testAPIKey,
 			Model:   "gpt-4o",
 			BaseURL: "",
 			Timeout: 60,
