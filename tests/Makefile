@@ -46,9 +46,9 @@ test-integration:
 		echo "示例: OWL_TEST_ENABLED=true make test-integration"; \
 	else \
 		echo "检查测试节点..."; \
-		@owl exec run "echo ok" --nodes $(OWL_TEST_NODES) || (echo "错误: 测试节点不可用"; exit 1); \
+		owl exec run "echo ok" --nodes $(OWL_TEST_NODES) || (echo "错误: 测试节点不可用"; exit 1); \
 		echo "运行集成测试..."; \
-		@go test -v ./integration/...; \
+		go test -v ./integration/...; \
 	fi
 
 test-bash: test-bash-version test-bash-node test-bash-exec test-bash-file test-bash-playbook test-bash-history test-bash-settings

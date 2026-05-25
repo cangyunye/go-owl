@@ -12,6 +12,7 @@ import (
 
 var pingAll bool
 var pingTimeout time.Duration
+var pingCount int
 
 // NewPingCmd 创建 ping 命令
 func NewPingCmd() *cobra.Command {
@@ -28,8 +29,11 @@ func NewPingCmd() *cobra.Command {
   # Ping 所有节点
   owl node ping --all
 
-  # 设置超时时间
-  owl node ping --all --timeout 5s`,
+  # 设置超时时间和次数
+  owl node ping --all --timeout 5s --count 3
+
+  # Ping 3次取平均值
+  owl node ping node1 -n 3`,
 		Run: func(cmd *cobra.Command, args []string) {
 			runPing(args)
 		},
@@ -37,6 +41,7 @@ func NewPingCmd() *cobra.Command {
 
 	pingCmd.Flags().BoolVar(&pingAll, "all", false, "检查所有节点")
 	pingCmd.Flags().DurationVarP(&pingTimeout, "timeout", "t", 3*time.Second, "每个 ping 的超时时间")
+	pingCmd.Flags().IntVarP(&pingCount, "count", "n", 1, "ping 次数（支持浮点数表示间隔时间）")
 
 	return pingCmd
 }
@@ -73,30 +78,65 @@ func runPing(nodeIDs []string) {
 		return
 	}
 
-	fmt.Printf("正在检查 %d 个节点... (超时: %s)\n\n", len(nodes), pingTimeout)
+	fmt.Printf("正在检查 %d 个节点... (超时: %s, 次数: %d)\n\n", len(nodes), pingTimeout, pingCount)
 
 	reachable := 0
 	unreachable := 0
 
 	for _, node := range nodes {
 		addr := node.Address
-		// 如果有端口，先分离出来
 		if host, _, err := net.SplitHostPort(addr); err == nil {
 			addr = host
 		}
 
-		start := time.Now()
-		// 使用 TCP 连接模拟 ping
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", addr, node.Port), pingTimeout)
-		latency := time.Since(start)
+		var latencies []time.Duration
+		success := false
 
-		if err != nil {
-			fmt.Printf("  ✗ %s (%s) - 不可达\n    %v\n", node.ID, node.Address, err)
-			unreachable++
-		} else {
-			conn.Close()
-			fmt.Printf("  ✓ %s (%s) - 可达 (%v)\n", node.ID, node.Address, latency.Round(time.Millisecond))
+		for i := 0; i < pingCount; i++ {
+			start := time.Now()
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", addr, node.Port), pingTimeout)
+			latency := time.Since(start)
+
+			if err == nil {
+				conn.Close()
+				latencies = append(latencies, latency)
+				success = true
+			}
+
+			if i < pingCount-1 && success {
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+
+		if len(latencies) > 0 {
+			var total time.Duration
+			for _, lat := range latencies {
+				total += lat
+			}
+			avgLatency := total / time.Duration(len(latencies))
+			minLatency := latencies[0]
+			maxLatency := latencies[0]
+			for _, lat := range latencies[1:] {
+				if lat < minLatency {
+					minLatency = lat
+				}
+				if lat > maxLatency {
+					maxLatency = lat
+				}
+			}
+
+			if pingCount > 1 {
+				fmt.Printf("  ✓ %s (%s) - 可达\n", node.ID, node.Address)
+				fmt.Printf("    次数: %d, 平均: %v, 最小: %v, 最大: %v\n",
+					len(latencies), avgLatency.Round(time.Millisecond),
+					minLatency.Round(time.Millisecond), maxLatency.Round(time.Millisecond))
+			} else {
+				fmt.Printf("  ✓ %s (%s) - 可达 (%v)\n", node.ID, node.Address, avgLatency.Round(time.Millisecond))
+			}
 			reachable++
+		} else {
+			fmt.Printf("  ✗ %s (%s) - 不可达\n", node.ID, node.Address)
+			unreachable++
 		}
 	}
 

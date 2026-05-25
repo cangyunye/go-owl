@@ -42,7 +42,7 @@ owl node list --format json
 | `--group` | 按分组筛选节点 |
 | `--label` | 按标签筛选节点 |
 | `--status` | 按状态筛选（online/offline） |
-| `--format` | 输出格式（table/json） |
+| `--format` | 输出格式（table/json/yaml） |
 
 ### 示例输出
 
@@ -354,7 +354,7 @@ $ owl node add test-01 \
 
 ```bash
 # 步骤
-$ owl node list --format json
+$ owl node list --output json
 
 # 预期结果
 # 返回 JSON 格式的节点列表

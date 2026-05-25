@@ -35,7 +35,7 @@ func NewListCmd() *cobra.Command {
 		Run: runList,
 	}
 
-	listCmd.Flags().StringVarP(&listFormat, "output", "o", "table",
+	listCmd.Flags().StringVarP(&listFormat, "format", "o", "table",
 		"输出格式: table, json, yaml")
 	listCmd.Flags().StringVar(&listGroup, "group", "",
 		"按分组过滤")

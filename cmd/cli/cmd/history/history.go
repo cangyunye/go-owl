@@ -13,6 +13,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -170,6 +171,10 @@ func runHistory(cmd *cobra.Command, args []string) {
 	switch format {
 	case "json":
 		json.NewEncoder(w).Encode(records)
+	case "yaml":
+		encoder := yaml.NewEncoder(w)
+		encoder.SetIndent(2)
+		encoder.Encode(records)
 	case "table":
 		printTable(w, records)
 	default:
