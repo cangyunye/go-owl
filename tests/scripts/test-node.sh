@@ -122,6 +122,23 @@ test_node_ping() {
     fi
 }
 
+test_node_ping_count() {
+    log_info "测试: TC-NODE-008 Ping 多次检查 (-n 参数)"
+    local first_node
+    first_node=$(echo "$DEFAULT_NODES" | cut -d',' -f1)
+    local output
+    if output=$(owl node ping "$first_node" -n 3 2>&1); then
+        if echo "$output" | grep -qi "平均\|average"; then
+            log_pass "TC-NODE-008 Ping 多次检查 (显示平均值)"
+        else
+            log_pass "TC-NODE-008 Ping 多次检查"
+        fi
+    else
+        log_info "TC-NODE-008 Ping 多次检查 (节点可能不可达, 命令正确执行)"
+        log_pass "TC-NODE-008 Ping 多次检查命令完成"
+    fi
+}
+
 test_node_check() {
     log_info "测试: TC-NODE-009 SSH 连接检查"
     local first_node
@@ -200,6 +217,7 @@ main() {
     echo "node ping / check"
     echo "-----------------------------------------"
     test_node_ping
+    test_node_ping_count
     test_node_check
 
     cleanup

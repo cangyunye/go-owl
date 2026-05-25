@@ -314,13 +314,10 @@ func runExecRun(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	results := executor.Run(ctx, targetNodeIDs, execmd, opts)
-
 	success := 0
 	failed := 0
 
-	for _, result := range results {
-		// 首先更新计数器（无论输出格式如何）
+	processResult := func(result command.CommandResult) {
 		if result.Success {
 			success++
 		} else {
@@ -343,76 +340,18 @@ func runExecRun(cmd *cobra.Command, args []string) {
 			CreatedAt:  time.Now(),
 		})
 
-		if execFormat == "json" {
-			fmt.Printf(`{"node":"%s","success":%v,"output":"%s","exit_code":%d}`+"\n",
-				result.NodeID, result.Success, escapeJSON(result.Output), result.ExitCode)
-		} else if execFormat == "detail" {
-			fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-			fmt.Printf("节点: %s\n", result.NodeID)
-			if result.Success {
-				fmt.Printf("状态: ✅ 成功 (exit code: %d)\n", result.ExitCode)
-			} else {
-				fmt.Printf("状态: ❌ 失败\n")
-				if result.ErrorType.String() != "" {
-					fmt.Printf("错误类型: %s\n", result.ErrorType)
-				}
-				if result.ErrorDetail != "" {
-					fmt.Printf("错误详情: %s\n", result.ErrorDetail)
-				} else if result.Error != nil {
-					fmt.Printf("错误: %v\n", result.Error)
-				}
-				if result.ErrorType.Suggestion() != "" {
-					fmt.Printf("💡 建议: %s\n", result.ErrorType.Suggestion())
-				}
-			}
-			fmt.Printf("\n输出:\n%s\n", result.Output)
-			
-			if execDebug && len(result.DebugInfo) > 0 {
-				fmt.Println("\n🔍 Debug 信息:")
-				for _, line := range result.DebugInfo {
-					fmt.Printf("   - %s\n", line)
-				}
-			}
-		} else {
-			if result.Success {
-				fmt.Printf("✅ [%s] 成功\n", result.NodeID)
-				if result.Output != "" {
-					for _, line := range strings.Split(result.Output, "\n") {
-						fmt.Printf("   %s\n", line)
-					}
-				}
-			} else {
-				fmt.Printf("❌ [%s] 失败\n", result.NodeID)
-				
-				// 显示详细错误信息
-				if result.ErrorType.String() != "" {
-					fmt.Printf("   类型: %s\n", result.ErrorType)
-				}
-				
-				if result.ErrorDetail != "" {
-					fmt.Printf("   详情: %s\n", result.ErrorDetail)
-				} else if result.Error != nil {
-					fmt.Printf("   错误: %v\n", result.Error)
-				}
-				
-				if result.ErrorType.Suggestion() != "" {
-					fmt.Printf("   💡 建议: %s\n", result.ErrorType.Suggestion())
-				}
-				
-				if result.Output != "" {
-					fmt.Println("   输出:")
-					for _, line := range strings.Split(result.Output, "\n") {
-						fmt.Printf("      %s\n", line)
-					}
-				}
-				
-				if execDebug && len(result.DebugInfo) > 0 {
-					fmt.Println("   🔍 Debug 信息:")
-					for _, line := range result.DebugInfo {
-						fmt.Printf("      - %s\n", line)
-					}
-				}
-			}
+		printResult(result)
+	}
+
+	if !isParallel {
+		resultChan := executor.RunStreaming(ctx, targetNodeIDs, execmd, opts)
+		for result := range resultChan {
+			processResult(result)
+		}
+	} else {
+		results := executor.Run(ctx, targetNodeIDs, execmd, opts)
+		for _, result := range results {
+			processResult(result)
 		}
 	}
 
@@ -501,4 +440,77 @@ func escapeJSON(s string) string {
 		}
 	}
 	return result.String()
+}
+
+func printResult(result command.CommandResult) {
+	if execFormat == "json" {
+		fmt.Printf(`{"node":"%s","success":%v,"output":"%s","exit_code":%d}`+"\n",
+			result.NodeID, result.Success, escapeJSON(result.Output), result.ExitCode)
+	} else if execFormat == "detail" {
+		fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+		fmt.Printf("节点: %s\n", result.NodeID)
+		if result.Success {
+			fmt.Printf("状态: ✅ 成功 (exit code: %d)\n", result.ExitCode)
+		} else {
+			fmt.Printf("状态: ❌ 失败\n")
+			if result.ErrorType.String() != "" {
+				fmt.Printf("错误类型: %s\n", result.ErrorType)
+			}
+			if result.ErrorDetail != "" {
+				fmt.Printf("错误详情: %s\n", result.ErrorDetail)
+			} else if result.Error != nil {
+				fmt.Printf("错误: %v\n", result.Error)
+			}
+			if result.ErrorType.Suggestion() != "" {
+				fmt.Printf("💡 建议: %s\n", result.ErrorType.Suggestion())
+			}
+		}
+		fmt.Printf("\n输出:\n%s\n", result.Output)
+
+		if execDebug && len(result.DebugInfo) > 0 {
+			fmt.Println("\n🔍 Debug 信息:")
+			for _, line := range result.DebugInfo {
+				fmt.Printf("   - %s\n", line)
+			}
+		}
+	} else {
+		if result.Success {
+			fmt.Printf("✅ [%s] 成功\n", result.NodeID)
+			if result.Output != "" {
+				for _, line := range strings.Split(result.Output, "\n") {
+					fmt.Printf("   %s\n", line)
+				}
+			}
+		} else {
+			fmt.Printf("❌ [%s] 失败\n", result.NodeID)
+
+			if result.ErrorType.String() != "" {
+				fmt.Printf("   类型: %s\n", result.ErrorType)
+			}
+
+			if result.ErrorDetail != "" {
+				fmt.Printf("   详情: %s\n", result.ErrorDetail)
+			} else if result.Error != nil {
+				fmt.Printf("   错误: %v\n", result.Error)
+			}
+
+			if result.ErrorType.Suggestion() != "" {
+				fmt.Printf("   💡 建议: %s\n", result.ErrorType.Suggestion())
+			}
+
+			if result.Output != "" {
+				fmt.Println("   输出:")
+				for _, line := range strings.Split(result.Output, "\n") {
+					fmt.Printf("      %s\n", line)
+				}
+			}
+
+			if execDebug && len(result.DebugInfo) > 0 {
+				fmt.Println("   🔍 Debug 信息:")
+				for _, line := range result.DebugInfo {
+					fmt.Printf("      - %s\n", line)
+				}
+			}
+		}
+	}
 }

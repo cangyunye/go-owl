@@ -288,6 +288,20 @@ func (e *Executor) Close() {
 	}
 }
 
+func (e *Executor) RunStreaming(ctx context.Context, nodeIDs []string, command string, opts *ExecuteOptions) <-chan CommandResult {
+	results := make(chan CommandResult, len(nodeIDs))
+
+	go func() {
+		defer close(results)
+		for _, nodeID := range nodeIDs {
+			result := e.runOnNode(ctx, nodeID, command, opts)
+			results <- result
+		}
+	}()
+
+	return results
+}
+
 // RunAsync 异步执行命令
 func (e *Executor) RunAsync(ctx context.Context, nodeIDs []string, command string, asyncOpts *async.AsyncOptions) ([]*async.AsyncTask, error) {
 	if asyncOpts == nil {

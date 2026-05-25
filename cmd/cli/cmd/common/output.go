@@ -92,9 +92,9 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 	}
 
 	// 表头
-	fmt.Printf("%-10s %-15s %-20s %-10s %-10s %-20s %-30s %-20s\n",
+	fmt.Printf("%-20s %-25s %-25s %-10s %-12s %-20s %-30s %-20s\n",
 		"ID", "Name", "Address", "User", "Status", "Groups", "Labels", "Last Check")
-	fmt.Println(strings.Repeat("-", 145))
+	fmt.Println(strings.Repeat("-", 165))
 
 	// 表格数据
 	for _, n := range nodes {
@@ -132,8 +132,8 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 			}
 		}
 
-		fmt.Printf("%-10s %-15s %-20s %-10s %-10s %-20s %-30s %-20s\n",
-			n.ID, truncate(n.Name, 15), truncate(address, 20), user, status, truncate(groups, 20), truncate(labels, 30), truncate(lastCheck, 20))
+		fmt.Printf("%-20s %-25s %-25s %-10s %-12s %-20s %-30s %-20s\n",
+			n.ID, truncate(n.Name, 25), truncate(address, 25), user, status, truncate(groups, 20), truncate(labels, 30), truncate(lastCheck, 20))
 	}
 	fmt.Printf("\nTotal: %d nodes\n", len(nodes))
 }
