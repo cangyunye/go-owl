@@ -18,10 +18,19 @@ type Config struct {
 	RetentionDays int
 }
 
+const (
+	envDBPath = "OWL_DB_PATH"
+)
+
 // DefaultConfig 默认配置
+// 可通过环境变量 OWL_DB_PATH 指定数据库路径，如: OWL_DB_PATH=/path/to/custom.db
 func DefaultConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
-	dbPath := filepath.Join(homeDir, ".owl", "history.db")
+	dbPath := filepath.Join(homeDir, ".owl", "owl.db")
+
+	if envPath := os.Getenv(envDBPath); envPath != "" {
+		dbPath = envPath
+	}
 
 	return &Config{
 		Enabled:       true,

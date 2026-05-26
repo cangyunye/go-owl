@@ -26,10 +26,10 @@ func NewDB(config *Config) (DBInterface, error) {
 		config = DefaultConfig()
 	}
 
-	// SQLite3 使用 .sqlite3 扩展名
+	// 确保数据库文件以 .db 结尾
 	dbPath := config.DBPath
-	if filepath.Ext(dbPath) != ".sqlite3" && filepath.Ext(dbPath) != ".db" {
-		dbPath = dbPath + ".sqlite3"
+	if filepath.Ext(dbPath) != ".db" {
+		dbPath = dbPath + ".db"
 	}
 
 	ensureDBDir(dbPath)

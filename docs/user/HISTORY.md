@@ -161,7 +161,7 @@ $ owl history clean --days 7 --force
 ## 5. 常见问题
 
 ### Q: 历史记录保存在哪里？
-A: 默认保存在 `~/.owl/history.db` (SQLite)
+A: 默认保存在 `~/.owl/owl.db` (可通过环境变量 `OWL_DB_PATH` 自定义路径)
 
 ### Q: 历史记录保留多久？
 A: 默认保留 90 天，可通过 `owl history clean` 清理

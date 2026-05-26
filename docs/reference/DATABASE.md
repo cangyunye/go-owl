@@ -33,8 +33,18 @@ go build -tags duckdb -o owl ./cmd/cli
 
 ## 数据库文件
 
-- **SQLite3**（默认）: `~/.owl/history.db`
-- **DuckDB**: `~/.owl/history.db`
+默认路径: `~/.owl/owl.db`（可通过环境变量 `OWL_DB_PATH` 覆盖）
+
+- **SQLite3**（默认）: `~/.owl/owl.db`
+- **DuckDB**: `~/.owl/owl.db`
+
+### 自定义数据库路径
+
+```bash
+# 通过环境变量指定
+export OWL_DB_PATH=/path/to/custom.db
+owl node list
+```
 
 ## 差异对比
 

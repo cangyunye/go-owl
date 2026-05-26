@@ -90,7 +90,7 @@ func TestDefaultConfig_PathPattern(t *testing.T) {
 
 	validSuffixes := []string{
 		".owl",
-		"history.db",
+		"owl.db",
 	}
 	for _, suffix := range validSuffixes {
 		if len(config.DBPath) > len(suffix) &&
@@ -101,6 +101,6 @@ func TestDefaultConfig_PathPattern(t *testing.T) {
 	}
 
 	if config.DBPath == "" {
-		t.Error("DBPath should contain '.owl' and 'history.db'")
+		t.Error("DBPath should contain '.owl' and 'owl.db'")
 	}
 }
