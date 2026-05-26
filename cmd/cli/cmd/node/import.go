@@ -131,7 +131,7 @@ func importNodes(opts *importOptions) {
 		}
 	}
 
-	store := common.GetNodeStore().(*common.InMemoryNodeStore)
+	store := common.GetNodeStore()
 
 	success := 0
 	failed := 0
@@ -210,7 +210,7 @@ func importNodes(opts *importOptions) {
 }
 
 func exportNodes(opts *importOptions) {
-	store := common.GetNodeStore().(*common.InMemoryNodeStore)
+	store := common.GetNodeStore()
 	allNodes, err := store.List()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: 获取节点列表失败: %v\n", err)

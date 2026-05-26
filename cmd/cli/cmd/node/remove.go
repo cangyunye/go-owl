@@ -27,7 +27,7 @@ func NewRemoveCmd() *cobra.Command {
 }
 
 func runRemove(cmd *cobra.Command, args []string) {
-	store := common.GetNodeStore().(*common.InMemoryNodeStore)
+	store := common.GetNodeStore()
 	success := 0
 	failed := 0
 

@@ -157,12 +157,10 @@ func runCheck(nodeIDs []string) {
 
 	fmt.Printf("\n总结: %d 在线, %d 离线, 共 %d\n", online, offline, len(nodes))
 
-	if inMemStore, ok := store.(*common.InMemoryNodeStore); ok {
-		if err := inMemStore.Save(); err != nil {
-			fmt.Fprintf(os.Stderr, "保存节点状态失败: %v\n", err)
-		} else {
-			fmt.Println("节点状态保存成功")
-		}
+	if err := store.Save(); err != nil {
+		fmt.Fprintf(os.Stderr, "保存节点状态失败: %v\n", err)
+	} else {
+		fmt.Println("节点状态保存成功")
 	}
 }
 

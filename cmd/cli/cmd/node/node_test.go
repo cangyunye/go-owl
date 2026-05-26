@@ -53,9 +53,9 @@ func TestNodeAddFlags(t *testing.T) {
 func TestNodeListFlags(t *testing.T) {
 	cmd := node.NewListCmd()
 
-	testutil.AssertFlagExists(t, cmd, "output")
-	testutil.AssertFlagShorthand(t, cmd, "output", "o")
-	testutil.AssertFlagDefault(t, cmd, "output", "table")
+	testutil.AssertFlagExists(t, cmd, "format")
+	testutil.AssertFlagShorthand(t, cmd, "format", "o")
+	testutil.AssertFlagDefault(t, cmd, "format", "table")
 
 	testutil.AssertFlagExists(t, cmd, "group")
 	testutil.AssertFlagExists(t, cmd, "label")

@@ -152,6 +152,25 @@ func (s *SQLite3) InitSchema() error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_session_commands_session_id ON session_commands (session_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_session_commands_executed_at ON session_commands (executed_at);`,
+
+		`CREATE TABLE IF NOT EXISTS nodes (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL DEFAULT '',
+			address TEXT NOT NULL DEFAULT '',
+			port INTEGER NOT NULL DEFAULT 22,
+			user TEXT NOT NULL DEFAULT 'root',
+			password TEXT NOT NULL DEFAULT '',
+			ssh_key TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'offline',
+			groups TEXT NOT NULL DEFAULT '[]',
+			labels TEXT NOT NULL DEFAULT '{}',
+			proxy_jump TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			last_check_at DATETIME
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes (status);`,
+		`CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes (name);`,
 	}
 
 	for _, schema := range schemas {

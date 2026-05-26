@@ -7,6 +7,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/ai"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/async"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/exec"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/file"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/history"
@@ -16,6 +17,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui"
 	internalhistory "github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logger"
 
 	"github.com/spf13/cobra"
 )
@@ -28,8 +30,13 @@ var (
 
 // Execute 执行根命令
 func Execute() error {
-	// 初始化历史记录数据库
-	internalhistory.NewDB(internalhistory.DefaultConfig())
+	db, err := internalhistory.NewDB(internalhistory.DefaultConfig())
+	if db == nil || err != nil {
+		logger.Warn("failed to initialize database, falling back to in-memory node store", logger.WithError(err))
+	} else {
+		common.MigrateNodesJSONToDB(db.Connection())
+		common.InitNodeStoreFromDB(db.Connection())
+	}
 
 	rootCmd := NewRootCmd()
 	return rootCmd.Execute()

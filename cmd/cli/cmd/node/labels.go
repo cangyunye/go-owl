@@ -42,7 +42,7 @@ func NewLabelsSetCmd() *cobra.Command {
 
 func runLabelsSet(cmd *cobra.Command, args []string) {
 	nodeID := args[0]
-	store := common.GetNodeStore().(*common.InMemoryNodeStore)
+	store := common.GetNodeStore()
 
 	node, err := store.Get(nodeID)
 	if err != nil {
@@ -85,7 +85,7 @@ func NewLabelsRemoveCmd() *cobra.Command {
 
 func runLabelsRemove(cmd *cobra.Command, args []string) {
 	nodeID, key := args[0], args[1]
-	store := common.GetNodeStore().(*common.InMemoryNodeStore)
+	store := common.GetNodeStore()
 
 	node, err := store.Get(nodeID)
 	if err != nil {

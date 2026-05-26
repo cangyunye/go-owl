@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
+	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/logger"
 )
 
@@ -25,76 +27,200 @@ type LocalNode struct {
 	Labels      map[string]string
 	SSHKey      string
 	SSHPassword string
+	Status      string
+	ProxyJump   string
+	CreatedAt   string
+	UpdatedAt   string
 }
 
 func NewLocalSource() (*LocalSource, error) {
 	s := &LocalSource{
 		nodes: make(map[string]*LocalNode),
 	}
-	if err := s.loadFromFile(); err != nil {
+	if err := s.loadNodes(); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
 
-func (s *LocalSource) loadFromFile() error {
+func (s *LocalSource) loadNodes() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("获取用户主目录失败: %w", err)
 	}
-	dataFile := filepath.Join(home, ".owl", "nodes.json")
 
+	merged := make(map[string]*LocalNode)
+
+	db := history.GetGlobalDB()
+	if db != nil {
+		conn := db.Connection()
+		if conn != nil {
+			rows, err := conn.Query(
+				`SELECT id, name, address, port, user, password, ssh_key, status, groups, labels, proxy_jump, created_at, updated_at FROM nodes`)
+			if err != nil {
+				logger.Warn("Failed to query nodes from database",
+					logger.WithOperation("node_load"),
+					logger.WithField("error", err.Error()))
+			} else {
+				defer rows.Close()
+				for rows.Next() {
+					var id, name, address, user, password, sshKey, status, groupsStr, labelsStr, proxyJump string
+					var port int
+					var createdAt, updatedAt time.Time
+
+					err := rows.Scan(&id, &name, &address, &port, &user, &password, &sshKey, &status, &groupsStr, &labelsStr, &proxyJump, &createdAt, &updatedAt)
+					if err != nil {
+						logger.Warn("Failed to scan node row from database",
+							logger.WithOperation("node_load"),
+							logger.WithField("error", err.Error()))
+						continue
+					}
+
+					var groups []string
+					var labels map[string]string
+					json.Unmarshal([]byte(groupsStr), &groups)
+					json.Unmarshal([]byte(labelsStr), &labels)
+
+					node := &LocalNode{
+						ID:          id,
+						Name:        name,
+						Address:     address,
+						Port:        port,
+						User:        user,
+						SSHKey:      sshKey,
+						SSHPassword: password,
+						Status:      status,
+						ProxyJump:   proxyJump,
+						CreatedAt:   createdAt.Format(time.RFC3339),
+						UpdatedAt:   updatedAt.Format(time.RFC3339),
+						Groups:      groups,
+						Labels:      labels,
+					}
+					merged[id] = node
+					if name != "" && name != id {
+						merged[name] = node
+					}
+				}
+				if err := rows.Err(); err != nil {
+					logger.Warn("Error iterating database node rows",
+						logger.WithOperation("node_load"),
+						logger.WithField("error", err.Error()))
+				}
+				logger.Info("Loaded nodes from database",
+					logger.WithOperation("node_load"),
+					logger.WithField("count", len(merged)))
+			}
+		}
+	}
+
+	dataFile := filepath.Join(home, ".owl", "nodes.json")
 	data, err := os.ReadFile(dataFile)
 	if err != nil {
-		// 如果文件不存在，这是正常的，返回空列表
 		if os.IsNotExist(err) {
-			logger.Debug("Nodes file does not exist, starting with empty node list",
+			logger.Debug("Nodes file does not exist, using database nodes only",
 				logger.WithOperation("node_load"),
 				logger.WithField("file", dataFile))
-			return nil
+		} else {
+			logger.Warn("Failed to read nodes file",
+				logger.WithOperation("node_load"),
+				logger.WithField("file", dataFile),
+				logger.WithField("error", err.Error()))
 		}
-		// 其他读取错误才返回错误
-		return fmt.Errorf("读取节点文件 %s 失败: %w", dataFile, err)
-	}
-
-	var nodes []*struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Address  string `json:"address"`
-		Port     int    `json:"port"`
-		User     string `json:"user"`
-		Password string `json:"password,omitempty"`
-		SSHKey   string `json:"ssh_key,omitempty"`
-		Groups   []string `json:"groups"`
-		Labels   map[string]string `json:"labels"`
-	}
-	if err := json.Unmarshal(data, &nodes); err != nil {
-		return fmt.Errorf("解析节点文件 %s 失败: %w", dataFile, err)
+	} else {
+		var jsonNodes []*struct {
+			ID        string            `json:"id"`
+			Name      string            `json:"name"`
+			Address   string            `json:"address"`
+			Port      int               `json:"port"`
+			User      string            `json:"user"`
+			Password  string            `json:"password,omitempty"`
+			SSHKey    string            `json:"ssh_key,omitempty"`
+			Status    string            `json:"status,omitempty"`
+			ProxyJump string            `json:"proxy_jump,omitempty"`
+			CreatedAt string            `json:"created_at,omitempty"`
+			UpdatedAt string            `json:"updated_at,omitempty"`
+			Groups    []string          `json:"groups"`
+			Labels    map[string]string `json:"labels"`
+		}
+		if err := json.Unmarshal(data, &jsonNodes); err != nil {
+			logger.Warn("Failed to parse nodes file, using database nodes only",
+				logger.WithOperation("node_load"),
+				logger.WithField("file", dataFile),
+				logger.WithField("error", err.Error()))
+		} else {
+			for _, n := range jsonNodes {
+				if existing, ok := merged[n.ID]; ok {
+					if n.Name != "" {
+						existing.Name = n.Name
+					}
+					if n.Address != "" {
+						existing.Address = n.Address
+					}
+					if n.Port != 0 {
+						existing.Port = n.Port
+					}
+					if n.User != "" {
+						existing.User = n.User
+					}
+					if n.Password != "" {
+						existing.SSHPassword = n.Password
+					}
+					if n.SSHKey != "" {
+						existing.SSHKey = n.SSHKey
+					}
+					if n.Status != "" {
+						existing.Status = n.Status
+					}
+					if n.ProxyJump != "" {
+						existing.ProxyJump = n.ProxyJump
+					}
+					if n.CreatedAt != "" {
+						existing.CreatedAt = n.CreatedAt
+					}
+					if n.UpdatedAt != "" {
+						existing.UpdatedAt = n.UpdatedAt
+					}
+					if len(n.Groups) > 0 {
+						existing.Groups = n.Groups
+					}
+					if len(n.Labels) > 0 {
+						existing.Labels = n.Labels
+					}
+				} else {
+					merged[n.ID] = &LocalNode{
+						ID:          n.ID,
+						Name:        n.Name,
+						Address:     n.Address,
+						Port:        n.Port,
+						User:        n.User,
+						SSHKey:      n.SSHKey,
+						SSHPassword: n.Password,
+						Status:      n.Status,
+						ProxyJump:   n.ProxyJump,
+						CreatedAt:   n.CreatedAt,
+						UpdatedAt:   n.UpdatedAt,
+						Groups:      n.Groups,
+						Labels:      n.Labels,
+					}
+				}
+				if n.Name != "" && n.Name != n.ID {
+					merged[n.Name] = merged[n.ID]
+				}
+			}
+			logger.Info("Loaded nodes from file (overlay)",
+				logger.WithOperation("node_load"),
+				logger.WithField("file_count", len(jsonNodes)))
+		}
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, n := range nodes {
-		localNode := &LocalNode{
-			ID:          n.ID,
-			Name:        n.Name,
-			Address:     n.Address,
-			Port:        n.Port,
-			User:        n.User,
-			Groups:      n.Groups,
-			Labels:      n.Labels,
-			SSHKey:      n.SSHKey,
-			SSHPassword: n.Password,
-		}
-		s.nodes[n.ID] = localNode
-		if n.Name != "" && n.Name != n.ID {
-			s.nodes[n.Name] = localNode
-		}
-	}
-	logger.Info("Loaded nodes from file", 
+	s.nodes = merged
+
+	logger.Info("Total nodes loaded",
 		logger.WithOperation("node_load"),
-		logger.WithField("count", len(nodes)))
-	
+		logger.WithField("total_count", len(merged)))
+
 	return nil
 }
 

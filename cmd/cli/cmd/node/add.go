@@ -77,7 +77,7 @@ func NewAddCmd() *cobra.Command {
 
 func runAdd(cmd *cobra.Command, args []string) {
 	nodeID := args[0]
-	store := common.GetNodeStore().(*common.InMemoryNodeStore)
+	store := common.GetNodeStore()
 
 	// 检查节点是否已存在
 	if _, err := store.Get(nodeID); err == nil {

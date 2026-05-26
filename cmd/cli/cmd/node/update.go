@@ -76,7 +76,7 @@ func NewUpdateCmd() *cobra.Command {
 
 func runUpdate(cmd *cobra.Command, args []string) {
 	nodeID := args[0]
-	store := common.GetNodeStore().(*common.InMemoryNodeStore)
+	store := common.GetNodeStore()
 
 	node, err := store.Get(nodeID)
 	if err != nil {

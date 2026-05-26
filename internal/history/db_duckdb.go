@@ -147,6 +147,25 @@ func (d *DuckDB) InitSchema() error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_session_commands_session_id ON session_commands (session_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_session_commands_executed_at ON session_commands (executed_at);`,
+
+		`CREATE TABLE IF NOT EXISTS nodes (
+			id VARCHAR PRIMARY KEY,
+			name VARCHAR NOT NULL DEFAULT '',
+			address VARCHAR NOT NULL DEFAULT '',
+			port INTEGER NOT NULL DEFAULT 22,
+			user VARCHAR NOT NULL DEFAULT 'root',
+			password VARCHAR NOT NULL DEFAULT '',
+			ssh_key VARCHAR NOT NULL DEFAULT '',
+			status VARCHAR NOT NULL DEFAULT 'offline',
+			groups JSON NOT NULL DEFAULT '[]',
+			labels JSON NOT NULL DEFAULT '{}',
+			proxy_jump VARCHAR NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			last_check_at TIMESTAMP
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes (status);`,
+		`CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes (name);`,
 	}
 
 	for _, schema := range schemas {

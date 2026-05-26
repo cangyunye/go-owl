@@ -266,68 +266,57 @@ func TestLoadFromFile(t *testing.T) {
 }
 
 func TestLoadFromFileWithInvalidJSON(t *testing.T) {
-	// Create a temporary directory
 	tmpDir, err := os.MkdirTemp("", "node-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Save original home dir env
 	originalHome := os.Getenv("HOME")
 	defer os.Setenv("HOME", originalHome)
 	os.Setenv("HOME", tmpDir)
 
-	// Create .owl directory and invalid nodes.json
 	owlDir := filepath.Join(tmpDir, ".owl")
 	os.MkdirAll(owlDir, 0755)
 	nodesFile := filepath.Join(owlDir, "nodes.json")
-	
-	// Write invalid JSON
+
 	if err := os.WriteFile(nodesFile, []byte("invalid json {"), 0644); err != nil {
 		t.Fatalf("Failed to write invalid JSON: %v", err)
 	}
 
-	// Test that loading fails with error
-	_, err = NewLocalSource()
-	if err == nil {
-		t.Fatal("Expected NewLocalSource to fail with invalid JSON, got nil error")
-	}
+	source, err := NewLocalSource()
 	if err != nil {
-		t.Logf("Expected error received: %v", err)
+		t.Fatalf("Expected NewLocalSource to gracefully handle invalid JSON, got error: %v", err)
+	}
+	if source == nil {
+		t.Fatal("Expected NewLocalSource to return non-nil with invalid JSON")
 	}
 }
 
 func TestLoadFromFileWithUnreadableFile(t *testing.T) {
-	// Create a temporary directory
 	tmpDir, err := os.MkdirTemp("", "node-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Save original home dir env
 	originalHome := os.Getenv("HOME")
 	defer os.Setenv("HOME", originalHome)
 	os.Setenv("HOME", tmpDir)
 
-	// Create .owl directory and unreadable nodes.json
 	owlDir := filepath.Join(tmpDir, ".owl")
 	os.MkdirAll(owlDir, 0755)
 	nodesFile := filepath.Join(owlDir, "nodes.json")
-	
-	// Create empty file with no read permission
+
 	if err := os.WriteFile(nodesFile, []byte("{}"), 0000); err != nil {
-		// Skip test if we can't create unreadable file (e.g., on Windows or as root)
 		t.Skip("Cannot create unreadable file, skipping test")
 	}
 
-	// Test that loading fails with error
-	_, err = NewLocalSource()
-	if err == nil {
-		t.Fatal("Expected NewLocalSource to fail with unreadable file, got nil error")
-	}
+	source, err := NewLocalSource()
 	if err != nil {
-		t.Logf("Expected error received: %v", err)
+		t.Fatalf("Expected NewLocalSource to gracefully handle unreadable file, got error: %v", err)
+	}
+	if source == nil {
+		t.Fatal("Expected NewLocalSource to return non-nil with unreadable file")
 	}
 }

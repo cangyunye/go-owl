@@ -1,6 +1,7 @@
 package common
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -46,7 +47,7 @@ type InMemoryNodeStore struct {
 }
 
 // 全局单例存储
-var globalStore *InMemoryNodeStore
+var globalStore NodeStore
 
 // GetConfigDir 获取配置目录
 func GetConfigDir() string {
@@ -62,15 +63,16 @@ func GetConfigDir() string {
 // init 初始化全局存储
 func init() {
 	dataFile := filepath.Join(GetConfigDir(), "nodes.json")
-	globalStore = &InMemoryNodeStore{
+	store := &InMemoryNodeStore{
 		nodes:    make(map[string]*NodeInfo),
 		dataFile: dataFile,
 	}
 	// 尝试加载数据文件
-	if err := globalStore.Load(); err != nil {
+	if err := store.Load(); err != nil {
 		// 加载失败，初始化示例数据
-		globalStore.initSampleData()
+		store.initSampleData()
 	}
+	globalStore = store
 }
 
 // NewInMemoryNodeStore 创建内存节点存储
@@ -185,6 +187,11 @@ func GetNodeStore() NodeStore {
 	return globalStore
 }
 
+// InitNodeStoreFromDB 从数据库初始化节点存储
+func InitNodeStoreFromDB(db *sql.DB) {
+	globalStore = NewNodeStoreDB(db)
+}
+
 // Node manager commands
 
 var (
@@ -201,7 +208,7 @@ var (
 // RunAddNode 添加节点
 func RunAddNode(args []string) {
 	nodeID := args[0]
-	store := GetNodeStore().(*InMemoryNodeStore)
+	store := GetNodeStore()
 
 	// 检查节点是否已存在
 	if _, err := store.Get(nodeID); err == nil {
@@ -261,7 +268,7 @@ func RunAddNode(args []string) {
 
 // RunRemoveNode 删除节点
 func RunRemoveNode(args []string) {
-	store := GetNodeStore().(*InMemoryNodeStore)
+	store := GetNodeStore()
 	success := 0
 	failed := 0
 

@@ -43,7 +43,7 @@ func NewGroupsAddCmd() *cobra.Command {
 
 func runGroupsAdd(cmd *cobra.Command, args []string) {
 	nodeID, group := args[0], args[1]
-	store := common.GetNodeStore().(*common.InMemoryNodeStore)
+	store := common.GetNodeStore()
 
 	node, err := store.Get(nodeID)
 	if err != nil {
@@ -81,7 +81,7 @@ func NewGroupsRemoveCmd() *cobra.Command {
 
 func runGroupsRemove(cmd *cobra.Command, args []string) {
 	nodeID, group := args[0], args[1]
-	store := common.GetNodeStore().(*common.InMemoryNodeStore)
+	store := common.GetNodeStore()
 
 	node, err := store.Get(nodeID)
 	if err != nil {
