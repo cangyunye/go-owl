@@ -38,7 +38,7 @@ owl exec run "<command>" --group web
 | `--timeout` | 超时时间，默认 60s |
 | `--parallel` | 并行执行，默认 true |
 | `--async` | 异步执行，不等待结果 |
-| `--output` | 输出格式（simple/detail/json） |
+| `--format` | 输出格式（simple/detail/json） |
 
 ### 示例
 
@@ -62,10 +62,10 @@ owl exec run "uptime" --status online
 owl exec run "sleep 30" --timeout 10s
 
 # JSON 输出
-owl exec run "uptime" --output json
+owl exec run "uptime" --format json
 
 # 详细输出
-owl exec run "df -h" --output detail
+owl exec run "df -h" --format detail
 ```
 
 ### 示例输出
@@ -244,7 +244,7 @@ $ owl exec run "sleep 10" --nodes test-01 --timeout 2s
 
 ```bash
 # 步骤
-$ owl exec run "uptime" --nodes test-01 --output json
+$ owl exec run "uptime" --nodes test-01 --format json
 
 # 预期结果
 # {"node":"test-01","success":true,"output":"...","exit_code":0}
@@ -280,7 +280,7 @@ $ owl exec run "sleep 5 && echo done" --nodes test-01 --async
 ## 6. 常见问题
 
 ### Q: 命令执行失败如何排查？
-A: 使用 `--output detail` 查看详细错误信息
+A: 使用 `--format detail` 查看详细错误信息
 
 ### Q: 如何传递复杂命令？
 A: 使用引号包裹：`owl exec run "cd /tmp && ./script.sh"`

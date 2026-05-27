@@ -75,9 +75,9 @@ func TestExecRunFlags(t *testing.T) {
 	testutil.AssertFlagExists(t, cmd, "async-remote-dir")
 	testutil.AssertFlagDefault(t, cmd, "async-remote-dir", "/tmp/owl")
 
-	testutil.AssertFlagExists(t, cmd, "output")
-	testutil.AssertFlagShorthand(t, cmd, "output", "o")
-	testutil.AssertFlagDefault(t, cmd, "output", "simple")
+	testutil.AssertFlagExists(t, cmd, "format")
+	testutil.AssertFlagShorthand(t, cmd, "format", "o")
+	testutil.AssertFlagDefault(t, cmd, "format", "simple")
 
 	testutil.AssertFlagExists(t, cmd, "no-color")
 	testutil.AssertFlagDefault(t, cmd, "no-color", "false")

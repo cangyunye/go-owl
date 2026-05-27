@@ -56,8 +56,8 @@ func NewRunCmd() *cobra.Command {
   owl exec run "systemctl status nginx" --label env=prod
   owl exec run uptime --status online
   owl exec run "sleep 30" --timeout 10s
-  owl exec run "uptime" --output json
-  owl exec run "df -h" --output detail
+  owl exec run "uptime" --format json
+  owl exec run "df -h" --format detail
   owl exec run "sleep 5" --connect-timeout 5s --command-timeout 30s
   owl exec run "curl api.example.com" --retry 3 --retry-interval 2s
   owl exec run "long-running-script.sh" --async
@@ -103,7 +103,7 @@ func NewRunCmd() *cobra.Command {
 		"异步任务最大轮询次数")
 	runCmd.Flags().StringVar(&execAsyncRemoteDir, "async-remote-dir", "/tmp/owl",
 		"异步任务远程工作目录")
-	runCmd.Flags().StringVarP(&execFormat, "output", "o", "simple",
+	runCmd.Flags().StringVarP(&execFormat, "format", "o", "simple",
 		"输出格式: simple, detail, json")
 	runCmd.Flags().BoolVar(&execNoColor, "no-color", false,
 		"禁用颜色输出")

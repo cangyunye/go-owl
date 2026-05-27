@@ -80,7 +80,7 @@ test_exec_run_json_output() {
     local first_node
     first_node=$(echo "$DEFAULT_NODES" | cut -d',' -f1)
     local output
-    if output=$(owl exec run "echo hello" --nodes "$first_node" --output json 2>&1); then
+    if output=$(owl exec run "echo hello" --nodes "$first_node" --format json 2>&1); then
         if echo "$output" | grep -q '"'; then
             log_pass "TC-EXEC-005 JSON 输出含引号"
         else
@@ -141,7 +141,7 @@ test_exec_run_detail_output() {
     local first_node
     first_node=$(echo "$DEFAULT_NODES" | cut -d',' -f1)
     local output
-    if output=$(owl exec run "echo detail" --nodes "$first_node" --output detail 2>&1); then
+    if output=$(owl exec run "echo detail" --nodes "$first_node" --format detail 2>&1); then
         assert_contains "$output" "detail" "exec run 详细输出模式"
     else
         log_fail "exec run 详细输出模式失败"
