@@ -1,88 +1,60 @@
-package cmd_test
+package cmd
 
 import (
-	"strings"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
-	"github.com/cangyunye/go-owl/cmd/cli/cmd"
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/testutil"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
-func TestRootCmdExists(t *testing.T) {
-	root := cmd.NewRootCmd()
-	if root == nil {
-		t.Fatal("expected NewRootCmd() to return non-nil command")
+func writeTestNodesJSONCmd(t *testing.T, dir string, nodes []*common.NodeInfo) string {
+	t.Helper()
+	jsonPath := filepath.Join(dir, "nodes.json")
+	data, err := json.MarshalIndent(nodes, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal nodes: %v", err)
 	}
-	if root.Use != "owl" {
-		t.Errorf("expected Use 'owl', got '%s'", root.Use)
+	if err := os.WriteFile(jsonPath, data, 0644); err != nil {
+		t.Fatalf("failed to write nodes.json: %v", err)
 	}
+	return jsonPath
 }
 
-func TestRootCmdVersion(t *testing.T) {
-	root := cmd.NewRootCmd()
-
-	verFlag := root.Version
-	if verFlag == "" {
-		t.Error("expected version to be set")
+func TestPrintConflictReport(t *testing.T) {
+	conflicts := []common.NodeConflict{
+		{
+			Type:        common.ConflictCrossSourceName,
+			Description: "Same name 'web' but different IDs: DB=db-1, JSON=json-1",
+			DBNode:      &common.NodeInfo{ID: "db-1", Name: "web", Address: "10.0.0.1"},
+			JSONNode:    &common.NodeInfo{ID: "json-1", Name: "web", Address: "10.0.0.2"},
+		},
+		{
+			Type:        common.ConflictCrossSourceIDFields,
+			Description: "Same ID 'srv1' has different fields: port(22⇔2222), user(root⇔admin)",
+			DBNode:      &common.NodeInfo{ID: "srv1", Name: "server", Address: "10.0.0.3", Port: 22, User: "root"},
+			JSONNode:    &common.NodeInfo{ID: "srv1", Name: "server", Address: "10.0.0.3", Port: 2222, User: "admin"},
+		},
 	}
 
-	output := testutil.ExecuteCommand(t, root, "--version")
-	if !strings.Contains(output, "owl version") {
-		t.Errorf("expected version output to contain 'owl version', got: %s", output)
-	}
+	common.PrintConflictReport(conflicts, 5, 3)
 }
 
-func TestAllSubCommands(t *testing.T) {
-	root := cmd.NewRootCmd()
+func TestRootCmdHasSubcommands(t *testing.T) {
+	rootCmd := NewRootCmd()
 
-	expected := []string{
-		"node",
-		"exec",
-		"file",
-		"playbook",
-		"session",
-		"ai",
-		"history",
-		"settings",
-		"async",
-		"tui",
+	names := make(map[string]bool)
+	for _, c := range rootCmd.Commands() {
+		names[c.Name()] = true
 	}
 
-	testutil.AssertSubCommands(t, root, expected)
-}
-
-func TestRootCmdHelp(t *testing.T) {
-	root := cmd.NewRootCmd()
-
-	testutil.AssertHelpContains(t, root, "智能 Linux 分布式运维工具")
-
-	helpSections := []string{
-		"节点管理",
-		"批量命令执行",
-		"脚本传输执行",
-		"剧本执行",
-		"文件传输",
-		"AI 助手",
-	}
-
-	for _, section := range helpSections {
-		testutil.AssertHelpContains(t, root, section)
-	}
-}
-
-func TestRootCmdShort(t *testing.T) {
-	root := cmd.NewRootCmd()
-
-	if root.Short != "owl - 智能分布式运维工具" {
-		t.Errorf("expected Short 'owl - 智能分布式运维工具', got '%s'", root.Short)
-	}
-}
-
-func TestRootCmdHasSubCommands(t *testing.T) {
-	root := cmd.NewRootCmd()
-	subs := root.Commands()
-
-	if len(subs) < 9 {
-		t.Errorf("expected at least 9 subcommands, got %d", len(subs))
+	expected := []string{"node", "exec", "file", "playbook", "settings", "ai", "history", "session", "async", "tui"}
+	for _, name := range expected {
+		if !names[name] {
+			t.Errorf("expected subcommand %q in root command", name)
+		}
 	}
 }

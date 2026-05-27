@@ -4,22 +4,41 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	_ "github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logger"
 )
 
 var _ NodeStore = (*NodeStoreDB)(nil)
 
 type NodeStoreDB struct {
-	db *sql.DB
+	db        *sql.DB
+	checkOnce sync.Once
 }
 
 func NewNodeStoreDB(db *sql.DB) *NodeStoreDB {
 	return &NodeStoreDB{db: db}
 }
 
-func (s *NodeStoreDB) List() ([]*NodeInfo, error) {
+func (s *NodeStoreDB) ensureConsistent() {
+	s.checkOnce.Do(func() {
+		dbNodes, err := s.listInternal()
+		if err != nil {
+			return
+		}
+		jsonNodes, err := ReadNodesFromJSON(NodeJSONPath())
+		if err != nil || jsonNodes == nil {
+			return
+		}
+		if err := resolveNodeConflicts(s.db, dbNodes, jsonNodes); err != nil {
+			logger.Warn("node data inconsistency detected", logger.WithError(err))
+		}
+	})
+}
+
+func (s *NodeStoreDB) listInternal() ([]*NodeInfo, error) {
 	rows, err := s.db.Query(`SELECT id, name, address, port, user, password, ssh_key, status, groups, labels, proxy_jump, created_at, updated_at, last_check_at FROM nodes`)
 	if err != nil {
 		return nil, err
@@ -56,7 +75,13 @@ func (s *NodeStoreDB) List() ([]*NodeInfo, error) {
 	return nodes, rows.Err()
 }
 
+func (s *NodeStoreDB) List() ([]*NodeInfo, error) {
+	s.ensureConsistent()
+	return s.listInternal()
+}
+
 func (s *NodeStoreDB) Get(id string) (*NodeInfo, error) {
+	s.ensureConsistent()
 	node := &NodeInfo{}
 	var groupsJSON, labelsJSON string
 	var lastCheckAt sql.NullString
@@ -166,6 +191,61 @@ func (s *NodeStoreDB) Update(node *NodeInfo) error {
 		return fmt.Errorf("node not found: %s", node.ID)
 	}
 	return nil
+}
+
+func (s *NodeStoreDB) BulkUpsert(nodes []*NodeInfo) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO nodes (id, name, address, port, user, password, ssh_key, status, groups, labels, proxy_jump, created_at, updated_at, last_check_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	now := time.Now().Format(time.RFC3339)
+	for _, node := range nodes {
+		if node.Groups == nil {
+			node.Groups = []string{}
+		}
+		if node.Labels == nil {
+			node.Labels = map[string]string{}
+		}
+		groupsJSON, err := json.Marshal(node.Groups)
+		if err != nil {
+			return fmt.Errorf("marshal groups: %w", err)
+		}
+		labelsJSON, err := json.Marshal(node.Labels)
+		if err != nil {
+			return fmt.Errorf("marshal labels: %w", err)
+		}
+		if node.CreatedAt == "" {
+			node.CreatedAt = now
+		}
+		if node.UpdatedAt == "" {
+			node.UpdatedAt = now
+		}
+		var lastCheckAt interface{}
+		if node.LastCheckAt == "" {
+			lastCheckAt = nil
+		} else {
+			lastCheckAt = node.LastCheckAt
+		}
+		_, err = stmt.Exec(
+			node.ID, node.Name, node.Address, node.Port,
+			node.User, node.Password, node.SSHKey, node.Status,
+			string(groupsJSON), string(labelsJSON), node.ProxyJump,
+			node.CreatedAt, node.UpdatedAt, lastCheckAt,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (s *NodeStoreDB) Save() error {

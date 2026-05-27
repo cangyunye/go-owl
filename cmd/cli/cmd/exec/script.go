@@ -87,6 +87,8 @@ func runScript(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
 	}
 
+	handleExecNodeConflicts()
+
 	// 检查脚本文件是否存在
 	if !(len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://")) {
 		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {

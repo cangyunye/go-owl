@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/google/uuid"
 
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
 	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/logger"
@@ -83,6 +84,8 @@ func runUpload(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
 	}
+
+	common.CheckNodeConflictsBeforeExec()
 
 	nodeResolver := node.NewNodeResolver()
 

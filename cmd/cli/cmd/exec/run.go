@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/google/uuid"
 
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/control/async"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	"github.com/cangyunye/go-owl/internal/control/command"
@@ -42,6 +43,7 @@ var (
 	execSerial             bool
 	execDebug              bool
 	execForce              bool
+	execSyncNodes          bool
 )
 
 func NewRunCmd() *cobra.Command {
@@ -111,6 +113,8 @@ func NewRunCmd() *cobra.Command {
 		"Debug 模式，显示详细的执行过程和错误信息")
 	runCmd.Flags().BoolVarP(&execForce, "force", "f", false,
 		"跳过黑名单命令检查")
+	runCmd.Flags().BoolVar(&execSyncNodes, "sync-nodes", false,
+		"用 nodes.json 覆盖数据库中的节点数据")
 
 	return runCmd
 }
@@ -124,6 +128,8 @@ func runExecRun(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
 	}
+
+	handleExecNodeConflicts()
 
 	nodeResolver := node.NewNodeResolver()
 
@@ -382,6 +388,26 @@ func runExecRun(cmd *cobra.Command, args []string) {
 	}
 }
 
+func handleExecNodeConflicts() {
+	if execSyncNodes {
+		db, err := history.NewDB(history.DefaultConfig())
+		if err != nil || db == nil {
+			return
+		}
+		sqlDB := db.Connection()
+		if sqlDB == nil {
+			return
+		}
+		if err := common.SyncNodesJSONToDB(sqlDB); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to sync nodes: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	common.CheckNodeConflictsBeforeExec()
+}
+
 func parseNodeList(s string) []string {
 	var result []string
 	current := ""
@@ -397,19 +423,6 @@ func parseNodeList(s string) []string {
 	}
 	if current != "" {
 		result = append(result, current)
-	}
-	return result
-}
-
-func parseLabels(labels []string) map[string]string {
-	result := make(map[string]string)
-	for _, label := range labels {
-		for i := 0; i < len(label); i++ {
-			if label[i] == '=' {
-				result[label[:i]] = label[i+1:]
-				break
-			}
-		}
 	}
 	return result
 }
