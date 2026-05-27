@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -196,8 +197,13 @@ func PrintLabels(labels map[string]string) {
 		fmt.Println("  (no labels)")
 		return
 	}
-	for k, v := range labels {
-		fmt.Printf("  %s: %s\n", k, v)
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Printf("  %s: %s\n", k, labels[k])
 	}
 }
 
@@ -206,9 +212,14 @@ func formatLabelsStr(labels map[string]string) string {
 	if len(labels) == 0 {
 		return ""
 	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	parts := make([]string, 0, len(labels))
-	for k, v := range labels {
-		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, labels[k]))
 	}
 	return strings.Join(parts, ",")
 }

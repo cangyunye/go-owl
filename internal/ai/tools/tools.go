@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
@@ -166,9 +167,14 @@ func formatLabels(labels map[string]string) string {
 	if len(labels) == 0 {
 		return ""
 	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	var parts []string
-	for k, v := range labels {
-		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, labels[k]))
 	}
 	return strings.Join(parts, ",")
 }
