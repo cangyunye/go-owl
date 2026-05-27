@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -74,13 +75,36 @@ func NewModelsCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := context.Background()
 
+			home, _ := os.UserHomeDir()
+			configPath := filepath.Join(home, ".owl", "config.yaml")
+			fileConfig, _ := ai.LoadConfig(configPath)
+			if fileConfig == nil {
+				fileConfig = ai.DefaultConfig()
+			}
+
+			provider := aiProvider
+			model := "gpt-4o"
+			apiKey := getAPIKey()
+			baseURL := getBaseURL()
+			timeout := aiTimeout
+
+			if !cmd.Flags().Changed("provider") && fileConfig.AI.Provider != "" {
+				provider = fileConfig.AI.Provider
+			}
+			if apiKey == "" {
+				apiKey = fileConfig.AI.APIKey
+			}
+			if baseURL == "" {
+				baseURL = fileConfig.AI.BaseURL
+			}
+
 			config := &ai.Config{
 				AI: ai.AIConfig{
-					Provider: aiProvider,
-					Model:    "gpt-4o",
-					APIKey:   getAPIKey(),
-					BaseURL:  getBaseURL(),
-					Timeout:  aiTimeout,
+					Provider: provider,
+					Model:    model,
+					APIKey:   apiKey,
+					BaseURL:  baseURL,
+					Timeout:  timeout,
 				},
 			}
 
@@ -145,13 +169,42 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	playbookParser := playbook.NewParser()
 
+	home, _ := os.UserHomeDir()
+	configPath := filepath.Join(home, ".owl", "config.yaml")
+	fileConfig, err := ai.LoadConfig(configPath)
+	if err != nil {
+		fileConfig = ai.DefaultConfig()
+	}
+
+	provider := aiProvider
+	model := aiModel
+	apiKey := getAPIKey()
+	baseURL := getBaseURL()
+	timeout := aiTimeout
+
+	if !cmd.Flags().Changed("provider") && fileConfig.AI.Provider != "" {
+		provider = fileConfig.AI.Provider
+	}
+	if !cmd.Flags().Changed("model") && fileConfig.AI.Model != "" {
+		model = fileConfig.AI.Model
+	}
+	if apiKey == "" {
+		apiKey = fileConfig.AI.APIKey
+	}
+	if baseURL == "" {
+		baseURL = fileConfig.AI.BaseURL
+	}
+	if !cmd.Flags().Changed("timeout") && fileConfig.AI.Timeout > 0 {
+		timeout = fileConfig.AI.Timeout
+	}
+
 	config := &ai.Config{
 		AI: ai.AIConfig{
-			Provider: aiProvider,
-			Model:    aiModel,
-			APIKey:   getAPIKey(),
-			BaseURL:  getBaseURL(),
-			Timeout:  aiTimeout,
+			Provider: provider,
+			Model:    model,
+			APIKey:   apiKey,
+			BaseURL:  baseURL,
+			Timeout:  timeout,
 		},
 	}
 
