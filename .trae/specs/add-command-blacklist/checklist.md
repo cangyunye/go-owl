@@ -1,0 +1,26 @@
+# Checklist
+
+- [x] `internal/control/blacklist/blacklist.go` 文件存在，包含 `Config`、`Rule` 结构体定义
+- [x] `internal/control/blacklist/blacklist.go` 包含内置默认规则 `DefaultRules()` 函数
+- [x] `internal/control/blacklist/blacklist.go` 包含 `LoadConfig()` 从 `~/.owl/blacklist.yaml` 加载配置
+- [x] `internal/control/blacklist/blacklist.go` 包含 `SaveConfig()` 保存配置
+- [x] `internal/control/blacklist/checker.go` 文件存在，包含 `Checker` 结构体
+- [x] `Checker.Check(user, command string)` 方法返回 `*CheckResult`，含命中标志、匹配规则、匹配行
+- [x] 单元测试：配置文件存在时正确加载
+- [x] 单元测试：配置文件不存在时使用默认规则
+- [x] 单元测试：root 用户命中 rm 规则
+- [x] 单元测试：普通用户不命中 root 专属规则
+- [x] 单元测试：任意用户命中 `*` 全局规则
+- [x] 单元测试：安全命令不命中
+- [x] 单元测试：多条规则同时命中
+- [x] `owl exec run` 支持 `--force` / `-f` flag
+- [x] `owl exec run` 命中黑名单时输出警告并列出关键行
+- [x] `owl exec run --force` 跳过黑名单检查直接执行
+- [x] `owl exec run` 用户输入 N 时中止执行
+- [x] `owl exec run` 用户输入 y 时继续执行
+- [x] `owl exec script` 支持 `--force` / `-f` flag
+- [x] `owl exec script` 命中黑名单时输出警告并列出关键行
+- [x] `owl exec script --force` 跳过黑名单检查直接执行
+- [x] 代码通过 `go vet` 无错误（仅预存的不相关问题）
+- [x] `go build ./...` 通过
+- [x] 全部 15 个单元测试通过

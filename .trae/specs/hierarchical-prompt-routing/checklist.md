@@ -1,0 +1,23 @@
+# Checklist
+
+- [x] RouterPrompt 已创建，字符数 ≤ 500
+- [x] RouterPrompt 输出标签为 node/exec/file/playbook/uncertain，无其他内容
+- [x] RouterPrompt 不含任何工具参数细节
+- [x] NodeSystemPrompt 已创建，只含 query_nodes 工具
+- [x] ExecSystemPrompt 已创建，只含 execute_command + execute_script 工具
+- [x] FileSystemPrompt 已创建，只含 transfer_file 工具
+- [x] PlaybookSystemPrompt 已创建，只含 generate_playbook 工具
+- [x] 每个组提示词包含"输出契约"和"拒绝规则"
+- [x] 每个组提示词字符数 < 2000
+- [x] Agent.Process() 已重构为两阶段（路由 → 执行）
+- [x] Phase 1 路由能正确解析 LLM 返回的组标签（含清理标点/markdown/模糊匹配）
+- [x] uncertain 路由结果 → 直接返回拒绝文案，不进入执行阶段
+- [x] Phase 2 能根据路由标签加载正确的组 SystemPrompt（node/exec/file/playbook）
+- [x] Phase 2 保留原有 10 轮工具调用上限
+- [x] 组内多轮动态注入：execute_command → ExecuteCommandPrompt
+- [x] 组内多轮动态注入：execute_script → ExecuteScriptPrompt
+- [x] 组内多轮动态注入：generate_playbook → PlaybookPrompt
+- [x] 组内多轮动态注入：transfer_file → TransferPrompt
+- [x] 原单体 SystemPrompt 已重命名为 ExecSystemPrompt，不再有引用
+- [x] `go build ./cmd/cli/...` 编译通过
+- [x] `go test ./internal/ai/...` 全部测试通过

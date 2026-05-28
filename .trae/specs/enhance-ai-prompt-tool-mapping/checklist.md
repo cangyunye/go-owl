@@ -1,0 +1,23 @@
+# Checklist
+
+- [x] `ExecuteCommandTool.Parameters()` 包含 `group`、`label`、`format`、`mode` 参数定义
+- [x] `ExecuteScriptTool` 已实现 `Tool` 接口全部方法（Name, Description, Parameters, Validate, Execute）
+- [x] `GetToolDefinitions()` 包含 `execute_script` 的 function 定义
+- [x] `ExecuteCommandTool.Execute()` 能根据 `group`/`label` 调用 nodeMgr 解析节点
+- [x] `ExecuteCommandTool.Execute()` 能根据 `format` 影响输出格式
+- [x] `ExecuteScriptTool.Execute()` 验证脚本文件存在性
+- [x] `ValidateExecuteCommand` 支持 targets/group/label 三选一的互斥校验
+- [x] `ValidateExecuteScript` 方法已创建且校验逻辑完整
+- [x] `ValidateParams` switch 包含 `execute_script` 意图分支
+- [x] `NewAgent()` 中已注册 `execute_script` 工具
+- [x] `intent_classifier.go` 包含 `IntentExecuteScript` 及关键词（脚本、script、.sh 等）
+- [x] `param_extractor.go` 包含 `execute_script` 参数提取逻辑
+- [x] `defaultChatHandler` 能正确处理 `IntentExecuteScript` 意图
+- [x] SystemPrompt 包含 `execute_command` 和 `execute_script` 的完整参数表格
+- [x] 每个 exec 工具至少 3 个示例（覆盖不同参数组合）
+- [x] `ExecuteCommandPrompt` 操作专项提示包含危险命令清单和模式选择指南
+- [x] `ExecuteScriptPrompt` 操作专项提示包含 inline vs 文件模式对比
+- [x] SystemPrompt 总字符数 < 8000（约 3046 字符）
+- [x] 危险命令清单与 `internal/control/blacklist` 一致
+- [x] `go build ./cmd/cli/...` 编译通过
+- [x] `go test ./internal/ai/...` 测试全部通过

@@ -16,6 +16,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/control/command"
 	pbexec "github.com/cangyunye/go-owl/internal/control/playbook"
 	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
 	"github.com/cangyunye/go-owl/internal/ssh"
@@ -186,6 +187,8 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
 	}
 
+	nodeLogWriter := logfile.NewNodeLogWriter("")
+
 	common.CheckNodeConflictsBeforeExec()
 
 	nodeResolver := node.NewNodeResolver()
@@ -337,16 +340,17 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 				errorMsg = result.Error.Error()
 			}
 			history.RecordCommandExecution(&history.CommandExecution{
-				TaskID:     taskID,
-				NodeID:     result.NodeID,
-				Command:    taskName,
-				ExitCode:   result.ExitCode,
-				Stdout:     truncateStr(result.Output, 4096),
-				Stderr:     errorMsg,
-				DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
-				Success:    result.ExitCode == 0,
-				CreatedAt:  time.Now(),
-			})
+			TaskID:     taskID,
+			NodeID:     result.NodeID,
+			Command:    taskName,
+			ExitCode:   result.ExitCode,
+			Stdout:     truncateStr(result.Output, 4096),
+			Stderr:     errorMsg,
+			DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
+			Success:    result.ExitCode == 0,
+			CreatedAt:  time.Now(),
+		})
+		nodeLogWriter.AppendEntry(result.NodeID, taskName, result.Action, result.ExitCode, result.Output, errorMsg, result.EndTime.Sub(result.StartTime))
 		}
 	}
 

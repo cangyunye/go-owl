@@ -1,0 +1,27 @@
+# Checklist
+
+- [x] `aichat` 表 DDL 已添加到 SQLite3 InitSchema
+- [x] `aichat` 表 DDL 已添加到 DuckDB InitSchema
+- [x] `AiChat` 结构体包含所有字段：id, session_id, step, role, prompt, input, output, tool_calls, tool_results, duration_ms, error, metadata, created_at
+- [x] `RecordAiChat()` 函数可正常写入数据库
+- [x] `QueryAiChat()` 函数可按 session_id + limit 查询
+- [x] `CleanAiChat()` 函数可删除过期记录
+- [x] 全局便捷函数 aiChat DB 不可用时静默降级（不 panic）
+- [x] `ProgressCallback` 类型已定义（func(step, detail string)）
+- [x] `Process()` 在路由完成时调用 `onProgress("route", label)`
+- [x] `Process()` 在生成 JSON 时调用 `onProgress("analyze", "正在生成 JSON...")`
+- [x] `Process()` 在解析出 tool_call 时调用 `onProgress("generate", toolName)`
+- [x] `Process()` 在开始执行工具时调用 `onProgress("execute", toolName)`
+- [x] `Process()` 在完成时调用 `onProgress("result", "完成"/"失败")`
+- [x] 无回调旧签名向后兼容（内部传 nil）
+- [x] `owl ai` 新增 `--debug` / `-d` 标志
+- [x] 终端打印格式为 `[HH:MM:SS] owl-ai: <描述>`
+- [x] 终端以 `[HH:MM:SS] 用户：<输入>` 开头
+- [x] 常规模式写入精简 aichat 记录（含 step/role/input/output/tool_calls/tool_results）
+- [x] debug 模式额外写入 prompt 和 metadata 字段
+- [x] `owl ai history list` 可列出会话摘要
+- [x] `owl ai history show <session-id>` 可展示完整对话链
+- [x] `owl ai history clean --days N` 可清理过期记录
+- [x] `go build ./cmd/cli/...` 编译通过
+- [x] `go test ./internal/ai/...` 全部通过
+- [x] `go test ./internal/history/...` 全部通过

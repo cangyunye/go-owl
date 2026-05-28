@@ -15,6 +15,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	"github.com/cangyunye/go-owl/internal/control/command"
 	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
 	"github.com/cangyunye/go-owl/internal/ssh"
@@ -131,6 +132,8 @@ func runExecRun(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
 	}
+
+	nodeLogWriter := logfile.NewNodeLogWriter("")
 
 	handleExecNodeConflicts()
 
@@ -356,6 +359,8 @@ func runExecRun(cmd *cobra.Command, args []string) {
 			Success:    result.Success,
 			CreatedAt:  time.Now(),
 		})
+
+		nodeLogWriter.AppendEntry(result.NodeID, taskID, execmd, result.ExitCode, result.Output, errorMsg, result.Duration)
 
 		if silent {
 			printSilentRow(result.NodeID, result.Success, result.ExitCode, result.Duration)

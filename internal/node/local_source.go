@@ -108,7 +108,7 @@ func (s *LocalSource) loadNodes() error {
 				}
 				logger.Info("Loaded nodes from database",
 					logger.WithOperation("node_load"),
-					logger.WithField("count", len(merged)))
+					logger.WithField("count", countDistinctNodes(merged)))
 			}
 		}
 	}
@@ -219,7 +219,7 @@ func (s *LocalSource) loadNodes() error {
 
 	logger.Info("Total nodes loaded",
 		logger.WithOperation("node_load"),
-		logger.WithField("total_count", len(merged)))
+		logger.WithField("total_count", countDistinctNodes(merged)))
 
 	return nil
 }
@@ -326,4 +326,14 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func countDistinctNodes(merged map[string]*LocalNode) int {
+	seen := make(map[string]bool)
+	for _, node := range merged {
+		if !seen[node.ID] {
+			seen[node.ID] = true
+		}
+	}
+	return len(seen)
 }

@@ -1,0 +1,20 @@
+- [x] `scripts/owl-relay.sh` 存在且可执行，能接收 `--source` `--targets` `--timeout` `--passwords` 参数
+- [x] `scripts/owl-relay.sh` 对每个目标执行 SCP 时使用 `-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`
+- [x] `scripts/owl-relay.sh` 通过 `sshpass` + `SSHPASS` 环境变量进行密码认证，`sshpass` 不可用时返回 `auth_failed`
+- [x] `scripts/owl-relay.sh` 每个目标的 SCP 有独立的 timeout（默认 30s），超时不阻塞后续目标
+- [x] `scripts/owl-relay.sh` 输出 CSV 格式（首行表头 `target,status,error,duration_ms`），后续每行一个目标结果，字段含逗号时双引号包裹
+- [x] 控制节点不将 SSH 私钥文件传递到源节点；仅传递密码凭据
+- [x] `internal/control/transfer/relay_task.go` 定义了 `RelaySubTask` 和 `RelayTargetResult` 结构体
+- [x] `RelaySubTask.ToShellArgs()` 正确序列化为 `--source` `--targets` `--timeout` `--passwords` 参数
+- [x] `ParseRelayResults()` 使用 `encoding/csv` 正确解析，能处理空输出和 malformed CSV
+- [x] `internal/control/transfer/relay_executor.go` 实现了 `RelayExecutor`，能部署脚本并远程执行
+- [x] `cmd/cli/cmd/file/transfer.go` 中 `runDiffusionTransfer` 首批仍由控制节点直传
+- [x] 节点分流：`SSHPassword` 为空的密钥认证节点始终由控制节点直传，不分配给源节点
+- [x] 节点分流：`SSHPassword` 非空的密码认证节点分配给已完成源节点进行中继
+- [x] 已完成源节点可接收新的中继子任务（再调度）
+- [x] 源节点执行失败时，其子节点回退到控制节点直传
+- [x] 全部完成后打印汇总（成功数/失败数/超时数）并记录历史
+- [x] `docs/dev/FILE_TRANSFER_ARCHITECTURE.md` 第 6 章反映真正 P2P 中继架构 + 节点分流策略
+- [x] `docs/user/FILE.md` 第 4 章工作原理说明和示例输出已更新
+- [x] Go 单元测试覆盖 `RelaySubTask`/`RelayExecutor`/`ParseRelayResults`（21 个测试全部 PASS）
+- [x] `scripts/owl-relay.sh` 有对应测试 — `bash -n` 语法检查通过，集成测试通过 `ToShellArgs → mock CSV → ParseRelayResults` 往返验证协议正确性

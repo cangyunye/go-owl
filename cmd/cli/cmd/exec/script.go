@@ -15,6 +15,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/control/script"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
 	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
 )
@@ -89,6 +90,8 @@ func runScript(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
 	}
+
+	nodeLogWriter := logfile.NewNodeLogWriter("")
 
 	handleExecNodeConflicts()
 
@@ -271,6 +274,9 @@ func runScript(cmd *cobra.Command, args []string) {
 			Success:    result.Success(),
 			CreatedAt:  time.Now(),
 		})
+
+		duration := result.EndTime.Sub(result.StartTime)
+		nodeLogWriter.AppendEntry(result.NodeID, taskID, scriptPath, result.ExitCode, result.Output, errorMsg, duration)
 	}
 
 	// 更新操作状态

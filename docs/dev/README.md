@@ -14,6 +14,12 @@
 | [AI_OPTIMIZATION_PLAN.md](AI_OPTIMIZATION_PLAN.md) | AI 助手优化计划 |
 | [LOGGING_PLAN.md](LOGGING_PLAN.md) | 日志系统设计 |
 
+## 📋 日志与审计
+
+| 文档 | 说明 |
+|------|------|
+| [NODE_EXECUTION_LOG.md](NODE_EXECUTION_LOG.md) | 节点执行日志功能设计 |
+
 ## 🧪 测试报告
 
 | 文档 | 说明 |
