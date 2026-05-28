@@ -173,6 +173,9 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 
 		toolCalls := a.parseToolCalls(response)
 		if len(toolCalls) == 0 {
+			if len(response) > 100 && !strings.Contains(response, "tool_calls") {
+				return "我不确定您要做什么", nil
+			}
 			break
 		}
 
