@@ -249,6 +249,9 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 
 		toolCalls := a.parseToolCalls(response)
 		if len(toolCalls) == 0 {
+			if len(response) > 100 && !strings.Contains(response, "tool_calls") {
+				return msgs, "我不确定您要做什么", nil
+			}
 			msgs = append(msgs, Message{Role: "assistant", Content: response})
 			break
 		}
