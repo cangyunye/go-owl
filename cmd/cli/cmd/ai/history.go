@@ -62,9 +62,10 @@ func runAIHistoryList(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Printf("%-10s %-22s %-30s %-18s %-8s %-8s\n",
-		"会话ID", "时间", "用户输入", "工具", "步骤数", "耗时")
-	fmt.Println(strings.Repeat("-", 96))
+	fmt.Printf("%s %s %s %s %s %s\n",
+		padRight("会话ID", 10), padRight("时间", 22), padRight("用户输入", 30),
+		padRight("工具", 18), padRight("步骤数", 8), padRight("耗时", 8))
+	fmt.Println(strings.Repeat("-", 101))
 
 	for _, s := range sessions {
 		sid := s.SessionID
@@ -72,8 +73,8 @@ func runAIHistoryList(cmd *cobra.Command, args []string) {
 			sid = sid[:8]
 		}
 		input := s.FirstInput
-		if len(input) > 30 {
-			input = input[:27] + "..."
+		if displayWidth(input) > 30 {
+			input = truncateByWidth(input, 27) + "..."
 		}
 		toolName := s.ToolName
 		if toolName == "" {
@@ -83,8 +84,10 @@ func runAIHistoryList(cmd *cobra.Command, args []string) {
 		if s.DurationMs > 1000 {
 			duration = fmt.Sprintf("%.1fs", float64(s.DurationMs)/1000.0)
 		}
-		fmt.Printf("%-10s %-22s %-30s %-18s %-8d %-8s\n",
-			sid, s.StartTime, input, toolName, s.StepCount, duration)
+		fmt.Printf("%s %s %s %s %s %s\n",
+			padRight(sid, 10), padRight(s.StartTime, 22), padRight(input, 30),
+			padRight(toolName, 18), padRight(fmt.Sprintf("%d", s.StepCount), 8),
+			padRight(duration, 8))
 	}
 }
 
@@ -139,6 +142,41 @@ func runAIHistoryClean(cmd *cobra.Command, args []string) {
 		return
 	}
 	fmt.Printf("已清理 %d 条超过 %d 天的 AI 聊天记录\n", count, aiHistoryDays)
+}
+
+func displayWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		if r > 127 {
+			w += 2
+		} else {
+			w += 1
+		}
+	}
+	return w
+}
+
+func padRight(s string, width int) string {
+	dw := displayWidth(s)
+	if dw >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-dw)
+}
+
+func truncateByWidth(s string, maxWidth int) string {
+	w := 0
+	for i, r := range s {
+		if r > 127 {
+			w += 2
+		} else {
+			w += 1
+		}
+		if w > maxWidth {
+			return s[:i]
+		}
+	}
+	return s
 }
 
 func truncateStr(s string, maxLen int) string {
