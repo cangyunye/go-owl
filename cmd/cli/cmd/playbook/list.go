@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	common "github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 )
 
 // playbookListFlags
@@ -107,11 +109,15 @@ func displayPlaybookList(playbooks []PlaybookInfo) {
 }
 
 func displayPlaybooksTable(playbooks []PlaybookInfo) {
-	fmt.Printf("%-30s %-50s %-10s\n", "Name", "Path", "Size")
-	fmt.Println(strings.Repeat("-", 95))
+	fmt.Printf("%s %s %s\n",
+		common.PadRight("Name", 30), common.PadRight("Path", 50), common.PadRight("Size", 10))
+	fmt.Println(strings.Repeat("-", 93))
 	for _, pb := range playbooks {
 		size := formatSize(pb.Size)
-		fmt.Printf("%-30s %-50s %-10s\n", pb.Name, truncateString(pb.Path, 50), size)
+		fmt.Printf("%s %s %s\n",
+			common.PadRight(common.TruncateByWidth(pb.Name, 30), 30),
+			common.PadRight(common.TruncateByWidth(pb.Path, 50), 50),
+			common.PadRight(size, 10))
 	}
 }
 
@@ -160,11 +166,4 @@ func formatSize(size int64) string {
 		return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
 	}
 	return fmt.Sprintf("%.1f GB", float64(size)/(1024*1024*1024))
-}
-
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	common "github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/control/async"
 )
 
@@ -51,15 +52,17 @@ func NewListCmd() *cobra.Command {
 				return
 			}
 
-			fmt.Printf("%-36s %-15s %-10s %-20s\n", "任务ID", "节点", "状态", "启动时间")
-			fmt.Println(strings.Repeat("-", 81))
+			fmt.Printf("%s %s %s %s\n",
+				common.PadRight("任务ID", 36), common.PadRight("节点", 15),
+				common.PadRight("状态", 10), common.PadRight("启动时间", 20))
+			fmt.Println(strings.Repeat("-", 86))
 
 			for _, task := range tasks {
-				fmt.Printf("%-36s %-15s %-10s %-20s\n",
-					task.ID,
-					task.NodeID,
-					task.Status,
-					task.StartTime.Format("2006-01-02 15:04:05"))
+				fmt.Printf("%s %s %s %s\n",
+					common.PadRight(task.ID, 36),
+					common.PadRight(task.NodeID, 15),
+					common.PadRight(string(task.Status), 10),
+					common.PadRight(task.StartTime.Format("2006-01-02 15:04:05"), 20))
 			}
 		},
 	}

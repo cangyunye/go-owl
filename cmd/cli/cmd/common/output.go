@@ -92,12 +92,12 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 		return
 	}
 
-	// 表头
-	fmt.Printf("%-20s %-25s %-25s %-10s %-12s %-20s %-30s %-20s\n",
-		"ID", "Name", "Address", "User", "Status", "Groups", "Labels", "Last Check")
-	fmt.Println(strings.Repeat("-", 165))
+	fmt.Printf("%s %s %s %s %s %s %s %s\n",
+		PadRight("ID", 20), PadRight("Name", 25), PadRight("Address", 25),
+		PadRight("User", 10), PadRight("Status", 12), PadRight("Groups", 20),
+		PadRight("Labels", 30), PadRight("Last Check", 20))
+	fmt.Println(strings.Repeat("-", 169))
 
-	// 表格数据
 	for _, n := range nodes {
 		groups := strings.Join(n.Groups, ",")
 		if groups == "" {
@@ -133,8 +133,15 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 			}
 		}
 
-		fmt.Printf("%-20s %-25s %-25s %-10s %-12s %-20s %-30s %-20s\n",
-			n.ID, truncate(n.Name, 25), truncate(address, 25), user, status, truncate(groups, 20), truncate(labels, 30), truncate(lastCheck, 20))
+		fmt.Printf("%s %s %s %s %s %s %s %s\n",
+			PadRight(n.ID, 20),
+			PadRight(TruncateByWidth(n.Name, 25), 25),
+			PadRight(truncate(address, 25), 25),
+			PadRight(user, 10),
+			PadRight(status, 12),
+			PadRight(TruncateByWidth(groups, 20), 20),
+			PadRight(TruncateByWidth(labels, 30), 30),
+			PadRight(truncate(lastCheck, 20), 20))
 	}
 	fmt.Printf("\nTotal: %d nodes\n", len(nodes))
 }
@@ -229,6 +236,41 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+func TruncateByWidth(s string, maxWidth int) string {
+	w := 0
+	for i, r := range s {
+		if r > 127 {
+			w += 2
+		} else {
+			w += 1
+		}
+		if w > maxWidth {
+			return s[:i]
+		}
+	}
+	return s
+}
+
+func DisplayWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		if r > 127 {
+			w += 2
+		} else {
+			w += 1
+		}
+	}
+	return w
+}
+
+func PadRight(s string, width int) string {
+	dw := DisplayWidth(s)
+	if dw >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-dw)
 }
 
 func formatNodeStatusStr(node *model.Node) string {
