@@ -88,6 +88,10 @@ func TestExecRunFlags(t *testing.T) {
 	testutil.AssertFlagExists(t, cmd, "force")
 	testutil.AssertFlagShorthand(t, cmd, "force", "f")
 	testutil.AssertFlagDefault(t, cmd, "force", "false")
+
+	testutil.AssertFlagExists(t, cmd, "silent")
+	testutil.AssertFlagShorthand(t, cmd, "silent", "s")
+	testutil.AssertFlagDefault(t, cmd, "silent", "false")
 }
 
 func TestExecScriptFlags(t *testing.T) {
@@ -120,6 +124,10 @@ func TestExecScriptFlags(t *testing.T) {
 	testutil.AssertFlagExists(t, cmd, "force")
 	testutil.AssertFlagShorthand(t, cmd, "force", "f")
 	testutil.AssertFlagDefault(t, cmd, "force", "false")
+
+	testutil.AssertFlagExists(t, cmd, "silent")
+	testutil.AssertFlagShorthand(t, cmd, "silent", "s")
+	testutil.AssertFlagDefault(t, cmd, "silent", "false")
 }
 
 func TestExecRunCmdUseArg(t *testing.T) {

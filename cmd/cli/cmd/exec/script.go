@@ -61,6 +61,8 @@ func NewScriptCmd() *cobra.Command {
 		"执行后保留脚本文件（默认会删除）")
 	scriptCmd.Flags().BoolVarP(&scriptForce, "force", "f", false,
 		"跳过黑名单危险命令检查")
+	scriptCmd.Flags().BoolVarP(&scriptSilent, "silent", "s", false,
+		"静默模式，仅以表格形式输出执行结果")
 
 	return scriptCmd
 }
@@ -76,6 +78,7 @@ var (
 	scriptInline  bool
 	scriptKeep    bool
 	scriptForce   bool
+	scriptSilent  bool
 )
 
 func runScript(cmd *cobra.Command, args []string) {
@@ -106,19 +109,21 @@ func runScript(cmd *cobra.Command, args []string) {
 	}
 
 	// 执行前显示信息
-	fmt.Printf("📜 脚本: %s\n", scriptPath)
-	fmt.Printf("🎯 目标节点: %d 个\n", len(targetNodes))
-	if scriptInline {
-		fmt.Println("🚀 执行方式: 直接内容执行 (inline)")
-	} else {
-		fmt.Printf("🚀 执行方式: 文件传输 + 执行\n")
-		fmt.Printf("📂 存放目录: %s\n", scriptDest)
-	}
-	if scriptKeep {
-		fmt.Println("📝 保留脚本: 是")
-	}
-	if scriptArgs != "" {
-		fmt.Printf("📋 参数: %s\n", scriptArgs)
+	if !scriptSilent {
+		fmt.Printf("📜 脚本: %s\n", scriptPath)
+		fmt.Printf("🎯 目标节点: %d 个\n", len(targetNodes))
+		if scriptInline {
+			fmt.Println("🚀 执行方式: 直接内容执行 (inline)")
+		} else {
+			fmt.Printf("🚀 执行方式: 文件传输 + 执行\n")
+			fmt.Printf("📂 存放目录: %s\n", scriptDest)
+		}
+		if scriptKeep {
+			fmt.Println("📝 保留脚本: 是")
+		}
+		if scriptArgs != "" {
+			fmt.Printf("📋 参数: %s\n", scriptArgs)
+		}
 	}
 
 	if scriptForce {
@@ -178,7 +183,11 @@ func runScript(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	fmt.Println("\n⏳ 开始执行...")
+	if !scriptSilent {
+		fmt.Println("\n⏳ 开始执行...")
+	} else {
+		printSilentHeader()
+	}
 
 	// 准备执行
 	nodeIDs := make([]string, 0, len(targetNodes))
@@ -218,22 +227,31 @@ func runScript(cmd *cobra.Command, args []string) {
 	
 	for _, result := range results {
 		if result.Success() {
-			fmt.Printf("✅ [%s] 成功\n", result.NodeID)
+			if !scriptSilent {
+				fmt.Printf("✅ [%s] 成功\n", result.NodeID)
+			}
 			success++
 		} else {
-			if result.Error != nil {
-				fmt.Printf("❌ [%s] 失败: %v\n", result.NodeID, result.Error)
-			} else {
-				fmt.Printf("❌ [%s] 失败 (退出码: %d)\n", result.NodeID, result.ExitCode)
+			if !scriptSilent {
+				if result.Error != nil {
+					fmt.Printf("❌ [%s] 失败: %v\n", result.NodeID, result.Error)
+				} else {
+					fmt.Printf("❌ [%s] 失败 (退出码: %d)\n", result.NodeID, result.ExitCode)
+				}
 			}
 			failed++
 		}
-		
-		// 显示输出
-		if result.Output != "" {
-			fmt.Printf("   输出:\n")
-			for _, line := range splitLines(result.Output) {
-				fmt.Printf("     %s\n", line)
+
+		if scriptSilent {
+			duration := result.EndTime.Sub(result.StartTime)
+			printSilentRow(result.NodeID, result.Success(), result.ExitCode, duration)
+		} else {
+			// 显示输出
+			if result.Output != "" {
+				fmt.Printf("   输出:\n")
+				for _, line := range splitLines(result.Output) {
+					fmt.Printf("     %s\n", line)
+				}
 			}
 		}
 
@@ -274,7 +292,11 @@ func runScript(cmd *cobra.Command, args []string) {
 	})
 
 	// 显示总结
-	fmt.Printf("\n📊 总结: %d 成功, %d 失败\n", success, failed)
+	if scriptSilent {
+		printSilentSummary(success, failed)
+	} else {
+		fmt.Printf("\n📊 总结: %d 成功, %d 失败\n", success, failed)
+	}
 	
 	if execErr != nil {
 		fmt.Fprintf(os.Stderr, "\n执行过程中出错: %v\n", execErr)

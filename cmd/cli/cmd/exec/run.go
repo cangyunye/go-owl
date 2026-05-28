@@ -44,6 +44,7 @@ var (
 	execDebug              bool
 	execForce              bool
 	execSyncNodes          bool
+	execSilent             bool
 )
 
 func NewRunCmd() *cobra.Command {
@@ -115,6 +116,8 @@ func NewRunCmd() *cobra.Command {
 		"跳过黑名单命令检查")
 	runCmd.Flags().BoolVar(&execSyncNodes, "sync-nodes", false,
 		"用 nodes.json 覆盖数据库中的节点数据")
+	runCmd.Flags().BoolVarP(&execSilent, "silent", "s", false,
+		"静默模式，仅以表格形式输出执行结果")
 
 	return runCmd
 }
@@ -181,17 +184,21 @@ func runExecRun(cmd *cobra.Command, args []string) {
 	// 处理并行模式：--serial 会覆盖 --parallel
 	isParallel := execParallel && !execSerial
 
-	fmt.Printf("🔧 命令: %s\n", execmd)
-	fmt.Printf("🎯 节点: %d 个\n", len(targetNodeIDs))
-	if isParallel {
-		fmt.Println("⚡ 模式: 并行执行")
-	} else {
-		fmt.Println("⚡ 模式: 串行执行")
+	silent := execSilent && execFormat == "simple"
+
+	if !silent {
+		fmt.Printf("🔧 命令: %s\n", execmd)
+		fmt.Printf("🎯 节点: %d 个\n", len(targetNodeIDs))
+		if isParallel {
+			fmt.Println("⚡ 模式: 并行执行")
+		} else {
+			fmt.Println("⚡ 模式: 串行执行")
+		}
+		if execDebug {
+			fmt.Println("🔍 Debug 模式: 启用")
+		}
+		fmt.Printf("🆔 任务ID: %s\n\n", taskID)
 	}
-	if execDebug {
-		fmt.Println("🔍 Debug 模式: 启用")
-	}
-	fmt.Printf("🆔 任务ID: %s\n\n", taskID)
 
 	cfg, err := blacklist.LoadConfig()
 	if err != nil {
@@ -323,6 +330,10 @@ func runExecRun(cmd *cobra.Command, args []string) {
 	success := 0
 	failed := 0
 
+	if silent {
+		printSilentHeader()
+	}
+
 	processResult := func(result command.CommandResult) {
 		if result.Success {
 			success++
@@ -341,12 +352,16 @@ func runExecRun(cmd *cobra.Command, args []string) {
 			ExitCode:   result.ExitCode,
 			Stdout:     truncateOutput(result.Output, 4096),
 			Stderr:     errorMsg,
-			DurationMs: time.Since(startTime).Milliseconds(),
+			DurationMs: result.Duration.Milliseconds(),
 			Success:    result.Success,
 			CreatedAt:  time.Now(),
 		})
 
-		printResult(result)
+		if silent {
+			printSilentRow(result.NodeID, result.Success, result.ExitCode, result.Duration)
+		} else {
+			printResult(result)
+		}
 	}
 
 	if !isParallel {
@@ -361,7 +376,9 @@ func runExecRun(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	if execFormat != "json" {
+	if silent {
+		printSilentSummary(success, failed)
+	} else if execFormat != "json" {
 		fmt.Printf("\n📊 总结: %d 成功, %d 失败\n", success, failed)
 	}
 
@@ -526,4 +543,33 @@ func printResult(result command.CommandResult) {
 			}
 		}
 	}
+}
+
+func printSilentHeader() {
+	fmt.Printf("%-24s %-8s %-9s %s\n", "NODE", "STATUS", "EXIT CODE", "DURATION")
+	fmt.Println(strings.Repeat("─", 60))
+}
+
+func printSilentRow(nodeID string, success bool, exitCode int, duration time.Duration) {
+	status := "FAILED"
+	if success {
+		status = "SUCCESS"
+	}
+	durationStr := formatDuration(duration)
+	fmt.Printf("%-24s %-8s %-9d %s\n", nodeID, status, exitCode, durationStr)
+}
+
+func printSilentSummary(success, failed int) {
+	fmt.Println(strings.Repeat("─", 60))
+	fmt.Printf("Total: %d success, %d failed\n", success, failed)
+}
+
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
 }
