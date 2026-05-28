@@ -22,6 +22,8 @@ func (e *ParamExtractor) ExtractParams(intent IntentType, input string) map[stri
 		e.extractQueryNodesParams(input, params)
 	case IntentExecuteCmd:
 		e.extractExecuteCmdParams(input, params)
+	case IntentExecuteScript:
+		e.extractExecuteScriptParams(input, params)
 	case IntentGeneratePlaybook:
 		e.extractPlaybookParams(input, params)
 	case IntentTransferFile:
@@ -52,6 +54,54 @@ func (e *ParamExtractor) extractQueryNodesParams(input string, params map[string
 	if strings.Contains(lowerInput, "summary") {
 		params["format"] = "summary"
 	}
+}
+
+func (e *ParamExtractor) extractExecuteScriptParams(input string, params map[string]interface{}) {
+	lowerInput := strings.ToLower(input)
+
+	params["targets"] = e.extractTargets(input)
+
+	script := e.extractScriptPath(input)
+	if script != "" {
+		params["script"] = script
+	} else {
+		params["script"] = "./script.sh"
+	}
+
+	if strings.Contains(lowerInput, "inline") || strings.Contains(lowerInput, "行内") {
+		params["inline"] = true
+	}
+	if strings.Contains(lowerInput, "keep") || strings.Contains(lowerInput, "保留") {
+		params["keep"] = true
+	}
+	if strings.Contains(lowerInput, "/opt") {
+		params["dest"] = "/opt"
+	} else {
+		params["dest"] = "/tmp"
+	}
+	if strings.Contains(lowerInput, "--") {
+		parts := strings.SplitN(input, "--", 2)
+		if len(parts) > 1 {
+			params["args"] = "--" + strings.TrimSpace(parts[1])
+		}
+	}
+}
+
+func (e *ParamExtractor) extractScriptPath(input string) string {
+	words := strings.Fields(input)
+	for _, word := range words {
+		if strings.HasSuffix(word, ".sh") ||
+			strings.HasSuffix(word, ".py") ||
+			strings.HasSuffix(word, ".bash") {
+			if !strings.HasPrefix(word, "./") &&
+				!strings.HasPrefix(word, "/") &&
+				!strings.HasPrefix(word, "http") {
+				return "./" + word
+			}
+			return word
+		}
+	}
+	return ""
 }
 
 func (e *ParamExtractor) extractExecuteCmdParams(input string, params map[string]interface{}) {

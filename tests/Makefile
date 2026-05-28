@@ -1,6 +1,6 @@
 .PHONY: help test test-unit test-integration test-bash test-all test-clean test-quick \
         test-bash-exec test-bash-node test-bash-history test-bash-version \
-        test-bash-file test-bash-playbook test-bash-settings
+        test-bash-file test-bash-playbook test-bash-settings test-bash-ai
 
 help:
 	@echo "go-owl 测试命令"
@@ -51,7 +51,7 @@ test-integration:
 		go test -v ./integration/...; \
 	fi
 
-test-bash: test-bash-version test-bash-node test-bash-exec test-bash-file test-bash-playbook test-bash-history test-bash-settings
+test-bash: test-bash-version test-bash-node test-bash-exec test-bash-file test-bash-playbook test-bash-history test-bash-settings test-bash-ai
 	@echo ""
 	@echo "全部 bash 测试完成!"
 
@@ -104,6 +104,14 @@ test-bash-settings:
 	@echo "bash 测试: settings"
 	@echo "========================================="
 	@./scripts/test-settings.sh
+
+test-bash-ai:
+	@echo ""
+	@echo "========================================="
+	@echo "bash 测试: ai"
+	@echo "========================================="
+	@chmod +x ./scripts/*.sh
+	@OWL_TEST_NODES=$(OWL_TEST_NODES) ./scripts/test-ai.sh
 
 test-quick:
 	@echo "========================================="

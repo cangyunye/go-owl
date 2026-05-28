@@ -9,6 +9,7 @@ type IntentType string
 const (
 	IntentQueryNodes       IntentType = "query_nodes"
 	IntentExecuteCmd       IntentType = "execute_command"
+	IntentExecuteScript    IntentType = "execute_script"
 	IntentGeneratePlaybook IntentType = "generate_playbook"
 	IntentTransferFile     IntentType = "transfer_file"
 	IntentUncertain        IntentType = "uncertain"
@@ -36,6 +37,11 @@ func NewIntentClassifier() *IntentClassifier {
 				"执行", "运行", "命令", "execute", "run", "command", "shell",
 				"在...上", "运行...命令",
 				"uptime", "df", "free", "ps", "systemctl",
+			},
+			IntentExecuteScript: {
+				"脚本", "script", ".sh", ".py", ".bash",
+				"脚本文件", "执行脚本", "运行脚本",
+				"inline", "行内执行",
 			},
 			IntentGeneratePlaybook: {
 				"生成", "创建", "剧本", "playbook",
@@ -85,6 +91,10 @@ func (c *IntentClassifier) Classify(input string) *IntentResult {
 
 	if c.isDirectCommand(input) {
 		scores[IntentExecuteCmd] += 5
+	}
+
+	if c.isScriptFile(input) {
+		scores[IntentExecuteScript] += 5
 	}
 
 	maxScore := 0
@@ -146,12 +156,24 @@ func (c *IntentClassifier) isDirectCommand(input string) bool {
 	return false
 }
 
+func (c *IntentClassifier) isScriptFile(input string) bool {
+	lowerInput := strings.ToLower(input)
+	return strings.Contains(lowerInput, ".sh") ||
+		strings.Contains(lowerInput, ".py") ||
+		strings.Contains(lowerInput, ".bash") ||
+		strings.Contains(lowerInput, "脚本") ||
+		strings.Contains(lowerInput, "script") ||
+		strings.Contains(lowerInput, "inline")
+}
+
 func GetIntentDescription(intent IntentType) string {
 	switch intent {
 	case IntentQueryNodes:
 		return "查询节点信息"
 	case IntentExecuteCmd:
 		return "执行命令"
+	case IntentExecuteScript:
+		return "执行脚本"
 	case IntentGeneratePlaybook:
 		return "生成并执行剧本"
 	case IntentTransferFile:

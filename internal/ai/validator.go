@@ -61,17 +61,18 @@ func (v *Validator) ValidateQueryNodes(params map[string]interface{}) error {
 }
 
 func (v *Validator) ValidateExecuteCommand(params map[string]interface{}) error {
-	targets, ok := params["targets"]
-	if !ok {
-		return fmt.Errorf("targets is required")
-	}
-	targetList, ok := targets.([]interface{})
-	if !ok || len(targetList) == 0 {
-		return fmt.Errorf("targets must be a non-empty array")
-	}
-	for i, t := range targetList {
-		if _, ok := t.(string); !ok {
-			return fmt.Errorf("target at index %d must be a string", i)
+	if targets, ok := params["targets"]; ok {
+		targetList, ok := targets.([]interface{})
+		if !ok {
+			return fmt.Errorf("targets must be an array")
+		}
+		if len(targetList) == 0 {
+			return fmt.Errorf("targets must be a non-empty array")
+		}
+		for i, t := range targetList {
+			if _, ok := t.(string); !ok {
+				return fmt.Errorf("target at index %d must be a string", i)
+			}
 		}
 	}
 
@@ -84,18 +85,66 @@ func (v *Validator) ValidateExecuteCommand(params map[string]interface{}) error 
 		return fmt.Errorf("command must be a non-empty string")
 	}
 
+	if group, ok := params["group"]; ok {
+		if _, ok := group.(string); !ok {
+			return fmt.Errorf("group must be a string")
+		}
+	}
+
+	if label, ok := params["label"]; ok {
+		if _, ok := label.(string); !ok {
+			return fmt.Errorf("label must be a string")
+		}
+	}
+
 	if timeout, ok := params["timeout"]; ok {
-		switch t := timeout.(type) {
+		switch tv := timeout.(type) {
 		case float64:
-			if t < 1 || t > 3600 {
+			if tv < 1 || tv > 3600 {
 				return fmt.Errorf("timeout must be between 1 and 3600 seconds")
 			}
 		case int:
-			if t < 1 || t > 3600 {
+			if tv < 1 || tv > 3600 {
 				return fmt.Errorf("timeout must be between 1 and 3600 seconds")
 			}
 		default:
 			return fmt.Errorf("timeout must be a number")
+		}
+	}
+
+	if format, ok := params["format"]; ok {
+		formatStr, ok := format.(string)
+		if !ok {
+			return fmt.Errorf("format must be a string")
+		}
+		validFormats := []string{"simple", "detail", "json"}
+		found := false
+		for _, f := range validFormats {
+			if strings.EqualFold(formatStr, f) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("invalid format: %s, must be one of: %v", formatStr, validFormats)
+		}
+	}
+
+	if mode, ok := params["mode"]; ok {
+		modeStr, ok := mode.(string)
+		if !ok {
+			return fmt.Errorf("mode must be a string")
+		}
+		validModes := []string{"parallel", "serial", "async"}
+		found := false
+		for _, m := range validModes {
+			if strings.EqualFold(modeStr, m) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("invalid mode: %s, must be one of: %v", modeStr, validModes)
 		}
 	}
 
@@ -188,12 +237,97 @@ func (v *Validator) ValidateTransferFile(params map[string]interface{}) error {
 	return nil
 }
 
+func (v *Validator) ValidateExecuteScript(params map[string]interface{}) error {
+	script, ok := params["script"]
+	if !ok {
+		return fmt.Errorf("script is required")
+	}
+	scriptStr, ok := script.(string)
+	if !ok || scriptStr == "" {
+		return fmt.Errorf("script must be a non-empty string")
+	}
+
+	if targets, ok := params["targets"]; ok {
+		targetList, ok := targets.([]interface{})
+		if !ok {
+			return fmt.Errorf("targets must be an array")
+		}
+		if len(targetList) == 0 {
+			return fmt.Errorf("targets must be a non-empty array")
+		}
+		for i, t := range targetList {
+			if _, ok := t.(string); !ok {
+				return fmt.Errorf("target at index %d must be a string", i)
+			}
+		}
+	}
+
+	if group, ok := params["group"]; ok {
+		if _, ok := group.(string); !ok {
+			return fmt.Errorf("group must be a string")
+		}
+	}
+
+	if label, ok := params["label"]; ok {
+		if _, ok := label.(string); !ok {
+			return fmt.Errorf("label must be a string")
+		}
+	}
+
+	if dest, ok := params["dest"]; ok {
+		destStr, ok := dest.(string)
+		if !ok {
+			return fmt.Errorf("dest must be a string")
+		}
+		if !filepath.IsAbs(destStr) {
+			return fmt.Errorf("dest must be an absolute path")
+		}
+	}
+
+	if args, ok := params["args"]; ok {
+		if _, ok := args.(string); !ok {
+			return fmt.Errorf("args must be a string")
+		}
+	}
+
+	if timeout, ok := params["timeout"]; ok {
+		switch tv := timeout.(type) {
+		case float64:
+			if tv < 1 || tv > 3600 {
+				return fmt.Errorf("timeout must be between 1 and 3600 seconds")
+			}
+		case int:
+			if tv < 1 || tv > 3600 {
+				return fmt.Errorf("timeout must be between 1 and 3600 seconds")
+			}
+		default:
+			return fmt.Errorf("timeout must be a number")
+		}
+	}
+
+	if inline, ok := params["inline"]; ok {
+		if _, ok := inline.(bool); !ok {
+			return fmt.Errorf("inline must be a boolean")
+		}
+	}
+
+	if keep, ok := params["keep"]; ok {
+		if _, ok := keep.(bool); !ok {
+			return fmt.Errorf("keep must be a boolean")
+		}
+	}
+
+	return nil
+}
+
 func (v *Validator) ValidateParams(intent IntentType, params map[string]interface{}) error {
 	switch intent {
 	case IntentQueryNodes:
 		return v.ValidateQueryNodes(params)
 	case IntentExecuteCmd:
 		return v.ValidateExecuteCommand(params)
+	case IntentExecuteScript:
+		return v.ValidateExecuteScript(params)
 	case IntentGeneratePlaybook:
 		return v.ValidateGeneratePlaybook(params)
 	case IntentTransferFile:

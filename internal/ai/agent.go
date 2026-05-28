@@ -41,19 +41,34 @@ func (f ChatModelFunc) Generate(ctx context.Context, messages []Message) (string
 	return f(ctx, messages)
 }
 
+var groupPrompts = map[string]string{
+	"node":     aiPrompts.NodeSystemPrompt,
+	"exec":     aiPrompts.ExecSystemPrompt,
+	"file":     aiPrompts.FileSystemPrompt,
+	"playbook": aiPrompts.PlaybookSystemPrompt,
+}
+
+var toolHints = map[string]string{
+	"execute_command":   aiPrompts.ExecuteCommandPrompt,
+	"execute_script":    aiPrompts.ExecuteScriptPrompt,
+	"generate_playbook": aiPrompts.PlaybookPrompt,
+	"transfer_file":     aiPrompts.TransferPrompt,
+}
+
 func NewAgent(config *Config, nodeMgr node.Manager, playbookParser *playbook.Parser) (*Agent, error) {
 	registry := NewToolRegistry()
 	registry.Register(NewQueryNodesTool(nodeMgr))
 	registry.Register(NewExecuteCommandTool(nodeMgr))
 	registry.Register(NewGeneratePlaybookTool(nodeMgr))
 	registry.Register(NewTransferFileTool(nodeMgr))
+	registry.Register(NewExecuteScriptTool(nodeMgr))
 
 	agent := &Agent{
 		config:         config,
 		nodeMgr:        nodeMgr,
 		registry:       registry,
 		playbookParser: playbookParser,
-		systemPrompt:   aiPrompts.SystemPrompt,
+		systemPrompt:   aiPrompts.ExecSystemPrompt,
 	}
 
 	if config.AI.APIKey != "" && config.AI.Model != "" {
@@ -85,13 +100,45 @@ func (a *Agent) SetSystemPrompt(prompt string) {
 func (a *Agent) Process(ctx context.Context, userInput string) (string, error) {
 	a.mu.RLock()
 	chatModel := a.chatModel
-	systemPrompt := a.systemPrompt
 	a.mu.RUnlock()
 
 	nodeInfo := a.getNodeInfo()
-	toolDescs := a.registry.GetToolDescriptions()
 
-	formattedPrompt := a.formatPrompt(systemPrompt, nodeInfo, toolDescs)
+	routerMessages := []Message{
+		{Role: "system", Content: aiPrompts.RouterPrompt},
+		{Role: "user", Content: userInput},
+	}
+
+	routeResp, err := generateWithRetry(ctx, chatModel, routerMessages, "路由")
+	if err != nil {
+		return "", fmt.Errorf("路由失败: %w", err)
+	}
+
+	routeLabel := strings.TrimSpace(strings.ToLower(routeResp))
+	routeLabel = strings.TrimRight(routeLabel, ".")
+	routeLabel = strings.TrimPrefix(routeLabel, "```")
+	routeLabel = strings.TrimSuffix(routeLabel, "```")
+	routeLabel = strings.TrimSpace(routeLabel)
+
+	if routeLabel == "uncertain" || routeLabel == "" {
+		return "我不确定您要做什么", nil
+	}
+
+	groupPrompt, ok := groupPrompts[routeLabel]
+	if !ok {
+		for k, v := range groupPrompts {
+			if strings.Contains(routeLabel, k) {
+				groupPrompt = v
+				break
+			}
+		}
+		if groupPrompt == "" {
+			return "我不确定您要做什么", nil
+		}
+	}
+
+	toolDescs := a.registry.GetToolDescriptions()
+	formattedPrompt := a.formatPrompt(groupPrompt, nodeInfo, toolDescs)
 
 	messages := []Message{
 		{Role: "system", Content: formattedPrompt},
@@ -100,9 +147,10 @@ func (a *Agent) Process(ctx context.Context, userInput string) (string, error) {
 
 	var fullResponse strings.Builder
 	maxTurns := 10
+	var lastToolName string
 
 	for turn := 0; turn < maxTurns; turn++ {
-		response, err := chatModel.Generate(ctx, messages)
+		response, err := generateWithRetry(ctx, chatModel, messages, "AI调用")
 		if err != nil {
 			return "", fmt.Errorf("AI 调用失败: %w", err)
 		}
@@ -114,6 +162,8 @@ func (a *Agent) Process(ctx context.Context, userInput string) (string, error) {
 			break
 		}
 
+		lastToolName = toolCalls[0].Name
+
 		messages = append(messages, Message{Role: "assistant", Content: response})
 
 		for _, call := range toolCalls {
@@ -124,9 +174,41 @@ func (a *Agent) Process(ctx context.Context, userInput string) (string, error) {
 			toolResult := fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)
 			messages = append(messages, Message{Role: "user", Content: toolResult})
 		}
+
+		if turn >= 1 && lastToolName != "" {
+			if hint, ok := toolHints[lastToolName]; ok {
+				hintMsg := Message{
+					Role:    "system",
+					Content: fmt.Sprintf("\n\n%s", hint),
+				}
+				messages = append(messages, hintMsg)
+			}
+		}
 	}
 
 	return fullResponse.String(), nil
+}
+
+const maxRetries = 3
+const retryDelay = 500 * time.Millisecond
+
+func generateWithRetry(ctx context.Context, chatModel ChatModel, messages []Message, label string) (string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		resp, err := chatModel.Generate(ctx, messages)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if attempt < maxRetries {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(retryDelay * time.Duration(attempt)):
+			}
+		}
+	}
+	return "", fmt.Errorf("%s重试%d次后仍失败: %w", label, maxRetries, lastErr)
 }
 
 func (a *Agent) formatPrompt(systemPrompt, nodeInfo, toolDescs string) string {
@@ -284,6 +366,8 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 		toolCallJSON = a.buildToolCall("query_nodes", params)
 	case IntentExecuteCmd:
 		toolCallJSON = a.buildToolCall("execute_command", params)
+	case IntentExecuteScript:
+		toolCallJSON = a.buildToolCall("execute_script", params)
 	case IntentGeneratePlaybook:
 		toolCallJSON = a.buildToolCall("generate_playbook", params)
 	case IntentTransferFile:
@@ -378,8 +462,8 @@ func (a *Agent) handleTransferFile(content string) (string, error) {
 	}
 	params := map[string]interface{}{
 		"source_file": sourceFile,
-		"targets":    targets,
-		"dest_dir":   destDir,
+		"targets":     targets,
+		"dest_dir":    destDir,
 		"mode":        mode,
 	}
 	return a.buildToolCall("transfer_file", params), nil

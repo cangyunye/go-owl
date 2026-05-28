@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -103,7 +104,7 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 
 	switch format {
 	case "json":
-		data, _ := json.MarshalIndent(t.nodesToInfo(nodes), "", "  ")
+		data, _ := json.MarshalIndent(nodesToInfo(nodes), "", "  ")
 		return string(data), nil
 	case "summary":
 		return fmt.Sprintf("Total %d nodes, %d online", len(nodes), t.countOnline(nodes)), nil
@@ -131,7 +132,7 @@ type nodeInfo struct {
 	Labels  map[string]string `json:"labels"`
 }
 
-func (t *QueryNodesTool) nodesToInfo(nodes []*model.Node) []nodeInfo {
+func nodesToInfo(nodes []*model.Node) []nodeInfo {
 	info := make([]nodeInfo, len(nodes))
 	for i, n := range nodes {
 		info[i] = nodeInfo{
@@ -208,18 +209,36 @@ func (t *ExecuteCommandTool) Parameters() string {
 			"targets": {
 				"type": "array",
 				"items": {"type": "string"},
-				"description": "Target node name list"
+				"description": "Target node name list (mutually exclusive with group/label)"
 			},
 			"command": {
 				"type": "string",
 				"description": "Command to execute"
 			},
+			"group": {
+				"type": "string",
+				"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with targets/label)"
+			},
+			"label": {
+				"type": "string",
+				"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with targets/group)"
+			},
 			"timeout": {
 				"type": "integer",
-				"description": "Timeout in seconds, default 60"
+				"description": "Timeout in seconds, default 30"
+			},
+			"format": {
+				"type": "string",
+				"enum": ["simple", "detail", "json"],
+				"description": "Output format: simple (default), detail, json"
+			},
+			"mode": {
+				"type": "string",
+				"enum": ["parallel", "serial", "async"],
+				"description": "Execution mode: parallel (default), serial, async"
 			}
 		},
-		"required": ["targets", "command"]
+		"required": ["command"]
 	}`
 }
 
@@ -229,26 +248,58 @@ func (t *ExecuteCommandTool) Validate(params map[string]interface{}) error {
 }
 
 func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
-	targets, ok := params["targets"].([]interface{})
-	if !ok || len(targets) == 0 {
-		return "", fmt.Errorf("missing target nodes")
-	}
-
 	command, ok := params["command"].(string)
 	if !ok || command == "" {
 		return "", fmt.Errorf("missing command")
 	}
 
-	timeout := 60
-	if t, ok := params["timeout"].(float64); ok {
-		timeout = int(t)
+	timeout := 30
+	if tv, ok := params["timeout"].(float64); ok {
+		timeout = int(tv)
 	}
 
-	var targetNames []string
-	for _, target := range targets {
-		if s, ok := target.(string); ok {
-			targetNames = append(targetNames, s)
+	format, _ := params["format"].(string)
+	if format == "" {
+		format = "simple"
+	}
+
+	mode, _ := params["mode"].(string)
+	if mode == "" {
+		mode = "parallel"
+	}
+
+	var nodes []*model.Node
+	var filterDesc string
+
+	if targets, ok := params["targets"].([]interface{}); ok && len(targets) > 0 {
+		var targetNames []string
+		for _, target := range targets {
+			if s, ok := target.(string); ok {
+				targetNames = append(targetNames, s)
+			}
 		}
+		for _, name := range targetNames {
+			n, err := t.nodeMgr.GetByID(name)
+			if err != nil {
+				continue
+			}
+			nodes = append(nodes, n)
+		}
+		filterDesc = fmt.Sprintf("targets: %s", strings.Join(targetNames, ", "))
+	} else if group, _ := params["group"].(string); group != "" {
+		nodes = t.nodeMgr.GetByGroup(group)
+		filterDesc = fmt.Sprintf("group: %s", group)
+	} else if label, _ := params["label"].(string); label != "" {
+		labelMap := parseLabelFilter(label)
+		nodes = t.nodeMgr.GetByLabels(labelMap)
+		filterDesc = fmt.Sprintf("label: %s", label)
+	} else {
+		nodes = t.nodeMgr.List()
+		filterDesc = "all nodes"
+	}
+
+	if len(nodes) == 0 {
+		return "No matching target nodes found", nil
 	}
 
 	if err := t.validateCommand(command); err != nil {
@@ -256,24 +307,87 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 	}
 
 	var sb strings.Builder
+
+	switch format {
+	case "json":
+		sb.WriteString(t.formatExecuteJSON(command, nodes, timeout, mode, filterDesc))
+	case "detail":
+		sb.WriteString(t.formatExecuteDetail(command, nodes, timeout, mode, filterDesc))
+	default:
+		sb.WriteString(t.formatExecuteSimple(command, nodes, timeout, mode, filterDesc))
+	}
+
+	return sb.String(), nil
+}
+
+func (t *ExecuteCommandTool) formatExecuteSimple(command string, nodes []*model.Node, timeout int, mode, filterDesc string) string {
+	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Execute command: %s\n", command))
-	sb.WriteString(fmt.Sprintf("Target nodes: %s\n", strings.Join(targetNames, ", ")))
-	sb.WriteString(fmt.Sprintf("Timeout: %ds\n\n", timeout))
+	sb.WriteString(fmt.Sprintf("Target: %s (%d nodes)\n", filterDesc, len(nodes)))
+	sb.WriteString(fmt.Sprintf("Mode: %s, Timeout: %ds\n\n", mode, timeout))
 	sb.WriteString("Results:\n")
 	sb.WriteString(strings.Repeat("-", 60))
 	sb.WriteString("\n")
 
-	for _, name := range targetNames {
-		nodeInfo, err := t.nodeMgr.GetByID(name)
-		if err != nil {
-			sb.WriteString(fmt.Sprintf("[%s] Error: Node not found\n", name))
-			continue
-		}
-		sb.WriteString(fmt.Sprintf("\n>>> %s (%s:%d) <<<\n", nodeInfo.Name, nodeInfo.Address, nodeInfo.Port))
-		sb.WriteString(fmt.Sprintf("Status: %s\n", nodeInfo.Status))
+	for _, n := range nodes {
+		sb.WriteString(fmt.Sprintf("[%s] %s:%d | Status: %s\n", n.Name, n.Address, n.Port, n.Status))
 	}
+	return sb.String()
+}
 
-	return sb.String(), nil
+func (t *ExecuteCommandTool) formatExecuteDetail(command string, nodes []*model.Node, timeout int, mode, filterDesc string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Execute command: %s\n", command))
+	sb.WriteString(fmt.Sprintf("Target: %s (%d nodes)\n", filterDesc, len(nodes)))
+	sb.WriteString(fmt.Sprintf("Mode: %s, Timeout: %ds\n\n", mode, timeout))
+	sb.WriteString("Results:\n")
+	sb.WriteString(strings.Repeat("-", 60))
+	sb.WriteString("\n")
+
+	for _, n := range nodes {
+		sb.WriteString(fmt.Sprintf("\n>>> %s (%s:%d) <<<\n", n.Name, n.Address, n.Port))
+		sb.WriteString(fmt.Sprintf("Status: %s\n", n.Status))
+		if len(n.Groups) > 0 {
+			sb.WriteString(fmt.Sprintf("Groups: %s\n", strings.Join(n.Groups, ", ")))
+		}
+		if len(n.Labels) > 0 {
+			sb.WriteString(fmt.Sprintf("Labels: %s\n", formatLabels(n.Labels)))
+		}
+	}
+	return sb.String()
+}
+
+func (t *ExecuteCommandTool) formatExecuteJSON(command string, nodes []*model.Node, timeout int, mode, filterDesc string) string {
+	type result struct {
+		Command   string     `json:"command"`
+		Target    string     `json:"target"`
+		NodeCount int        `json:"node_count"`
+		Mode      string     `json:"mode"`
+		Timeout   int        `json:"timeout"`
+		Nodes     []nodeInfo `json:"nodes"`
+	}
+	r := result{
+		Command:   command,
+		Target:    filterDesc,
+		NodeCount: len(nodes),
+		Mode:      mode,
+		Timeout:   timeout,
+		Nodes:     nodesToInfo(nodes),
+	}
+	data, _ := json.MarshalIndent(r, "", "  ")
+	return string(data)
+}
+
+func parseLabelFilter(label string) map[string]string {
+	result := make(map[string]string)
+	parts := strings.Split(label, ",")
+	for _, part := range parts {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) == 2 {
+			result[kv[0]] = kv[1]
+		}
+	}
+	return result
 }
 
 func (t *ExecuteCommandTool) validateCommand(cmd string) error {
@@ -289,6 +403,167 @@ func (t *ExecuteCommandTool) validateCommand(cmd string) error {
 		}
 	}
 	return nil
+}
+
+type ExecuteScriptTool struct {
+	nodeMgr node.Manager
+}
+
+func NewExecuteScriptTool(nodeMgr node.Manager) *ExecuteScriptTool {
+	return &ExecuteScriptTool{nodeMgr: nodeMgr}
+}
+
+func (t *ExecuteScriptTool) Name() string {
+	return "execute_script"
+}
+
+func (t *ExecuteScriptTool) Description() string {
+	return "Execute script files on specified nodes. Supports local file upload+exec and inline execution."
+}
+
+func (t *ExecuteScriptTool) Parameters() string {
+	return `{
+		"type": "object",
+		"properties": {
+			"script": {
+				"type": "string",
+				"description": "Script file path or inline script content"
+			},
+			"targets": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Target node name list (mutually exclusive with group/label)"
+			},
+			"group": {
+				"type": "string",
+				"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with targets/label)"
+			},
+			"label": {
+				"type": "string",
+				"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with targets/group)"
+			},
+			"dest": {
+				"type": "string",
+				"description": "Destination path on remote nodes, default /tmp"
+			},
+			"args": {
+				"type": "string",
+				"description": "Arguments to pass to the script"
+			},
+			"timeout": {
+				"type": "integer",
+				"description": "Timeout in seconds, default 300"
+			},
+			"inline": {
+				"type": "boolean",
+				"description": "If true, treat script param as inline content instead of file path, default false"
+			},
+			"keep": {
+				"type": "boolean",
+				"description": "If true, keep script file on remote after execution, default false"
+			}
+		},
+		"required": ["script"]
+	}`
+}
+
+func (t *ExecuteScriptTool) Validate(params map[string]interface{}) error {
+	validator := NewValidator()
+	return validator.ValidateExecuteScript(params)
+}
+
+func (t *ExecuteScriptTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	script, ok := params["script"].(string)
+	if !ok || script == "" {
+		return "", fmt.Errorf("missing script")
+	}
+
+	inline, _ := params["inline"].(bool)
+
+	if !inline {
+		if _, err := os.Stat(script); err != nil {
+			return "", fmt.Errorf("script file not found: %s", script)
+		}
+	}
+
+	dest, _ := params["dest"].(string)
+	if dest == "" {
+		dest = "/tmp"
+	}
+
+	args, _ := params["args"].(string)
+
+	timeout := 300
+	if tv, ok := params["timeout"].(float64); ok {
+		timeout = int(tv)
+	}
+
+	keep, _ := params["keep"].(bool)
+
+	var nodes []*model.Node
+	var filterDesc string
+
+	if targets, ok := params["targets"].([]interface{}); ok && len(targets) > 0 {
+		var targetNames []string
+		for _, target := range targets {
+			if s, ok := target.(string); ok {
+				targetNames = append(targetNames, s)
+			}
+		}
+		for _, name := range targetNames {
+			n, err := t.nodeMgr.GetByID(name)
+			if err != nil {
+				continue
+			}
+			nodes = append(nodes, n)
+		}
+		filterDesc = fmt.Sprintf("targets: %s", strings.Join(targetNames, ", "))
+	} else if group, _ := params["group"].(string); group != "" {
+		nodes = t.nodeMgr.GetByGroup(group)
+		filterDesc = fmt.Sprintf("group: %s", group)
+	} else if label, _ := params["label"].(string); label != "" {
+		labelMap := parseLabelFilter(label)
+		nodes = t.nodeMgr.GetByLabels(labelMap)
+		filterDesc = fmt.Sprintf("label: %s", label)
+	} else {
+		nodes = t.nodeMgr.List()
+		filterDesc = "all nodes"
+	}
+
+	if len(nodes) == 0 {
+		return "No matching target nodes found", nil
+	}
+
+	execType := "File upload+exec"
+	if inline {
+		execType = "Inline execution"
+	}
+
+	keepStr := "No"
+	if keep {
+		keepStr = "Yes"
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Script execution task:\n"))
+	sb.WriteString(fmt.Sprintf("Script: %s\n", script))
+	sb.WriteString(fmt.Sprintf("Type: %s\n", execType))
+	sb.WriteString(fmt.Sprintf("Target: %s (%d nodes)\n", filterDesc, len(nodes)))
+	sb.WriteString(fmt.Sprintf("Destination: %s\n", dest))
+	if args != "" {
+		sb.WriteString(fmt.Sprintf("Arguments: %s\n", args))
+	}
+	sb.WriteString(fmt.Sprintf("Timeout: %ds\n", timeout))
+	sb.WriteString(fmt.Sprintf("Keep after exec: %s\n\n", keepStr))
+	sb.WriteString("Target nodes:\n")
+	sb.WriteString(strings.Repeat("-", 60))
+	sb.WriteString("\n")
+
+	for _, n := range nodes {
+		sb.WriteString(fmt.Sprintf("[%s] %s:%d | Status: %s\n", n.Name, n.Address, n.Port, n.Status))
+	}
+
+	return sb.String(), nil
 }
 
 type GeneratePlaybookTool struct {
@@ -595,18 +870,36 @@ func GetToolDefinitions() []map[string]interface{} {
 						"targets": map[string]interface{}{
 							"type":        "array",
 							"items":       map[string]interface{}{"type": "string"},
-							"description": "Target node name list",
+							"description": "Target node name list (mutually exclusive with group/label)",
 						},
 						"command": map[string]interface{}{
 							"type":        "string",
 							"description": "Command to execute",
 						},
+						"group": map[string]interface{}{
+							"type":        "string",
+							"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with targets/label)",
+						},
+						"label": map[string]interface{}{
+							"type":        "string",
+							"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with targets/group)",
+						},
 						"timeout": map[string]interface{}{
 							"type":        "integer",
-							"description": "Timeout in seconds, default 60",
+							"description": "Timeout in seconds, default 30",
+						},
+						"format": map[string]interface{}{
+							"type":        "string",
+							"enum":        []string{"simple", "detail", "json"},
+							"description": "Output format: simple (default), detail, json",
+						},
+						"mode": map[string]interface{}{
+							"type":        "string",
+							"enum":        []string{"parallel", "serial", "async"},
+							"description": "Execution mode: parallel (default), serial, async",
 						},
 					},
-					"required": []string{"targets", "command"},
+					"required": []string{"command"},
 				},
 			},
 		},
@@ -662,6 +955,56 @@ func GetToolDefinitions() []map[string]interface{} {
 						},
 					},
 					"required": []string{"source_file", "targets", "dest_dir"},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "execute_script",
+				"description": "Execute script files on specified nodes. Supports local file upload+exec and inline execution.",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"script": map[string]interface{}{
+							"type":        "string",
+							"description": "Script file path or inline script content",
+						},
+						"targets": map[string]interface{}{
+							"type":        "array",
+							"items":       map[string]interface{}{"type": "string"},
+							"description": "Target node name list (mutually exclusive with group/label)",
+						},
+						"group": map[string]interface{}{
+							"type":        "string",
+							"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with targets/label)",
+						},
+						"label": map[string]interface{}{
+							"type":        "string",
+							"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with targets/group)",
+						},
+						"dest": map[string]interface{}{
+							"type":        "string",
+							"description": "Destination path on remote nodes, default /tmp",
+						},
+						"args": map[string]interface{}{
+							"type":        "string",
+							"description": "Arguments to pass to the script",
+						},
+						"timeout": map[string]interface{}{
+							"type":        "integer",
+							"description": "Timeout in seconds, default 300",
+						},
+						"inline": map[string]interface{}{
+							"type":        "boolean",
+							"description": "If true, treat script param as inline content instead of file path, default false",
+						},
+						"keep": map[string]interface{}{
+							"type":        "boolean",
+							"description": "If true, keep script file on remote after execution, default false",
+						},
+					},
+					"required": []string{"script"},
 				},
 			},
 		},

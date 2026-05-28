@@ -83,15 +83,25 @@
 
 ## AI 模块
 
-| 用户手册 TC | 描述 | L2 Go 测试 | 状态 |
-|-------------|------|-----------|------|
-| TC-AI-001 | AI 对话 | `cmd/cli/cmd/ai/ai_test.go::TestAIFlags` | ⚠️ |
-| TC-AI-002 | 模型列表 | `cmd/cli/cmd/ai/ai_test.go::TestAIModelsFlags` | ⚠️ |
-| TC-AI-003 | 初始化配置 | `cmd/cli/cmd/ai/ai_test.go::TestAIConfigSubcommands` | ⚠️ |
-| TC-AI-004 | 显示配置 | `cmd/cli/cmd/ai/ai_test.go::TestAIConfigShowCmd` | ⚠️ |
+| 用户手册 TC | 描述 | L2 Go 测试 | L3 Bash 测试 | 状态 |
+|-------------|------|-----------|-------------|------|
+| TC-AI-001 | AI 对话 | `cmd/cli/cmd/ai/ai_test.go::TestAIFlags` | - | ⚠️ |
+| TC-AI-002 | 模型列表 | `cmd/cli/cmd/ai/ai_test.go::TestAIModelsFlags` | - | ⚠️ |
+| TC-AI-003 | 初始化配置 | `cmd/cli/cmd/ai/ai_test.go::TestAIConfigSubcommands` | - | ⚠️ |
+| TC-AI-004 | 显示配置 | `cmd/cli/cmd/ai/ai_test.go::TestAIConfigShowCmd` | - | ⚠️ |
 | TC-AI-005 | 提供商验证 | `internal/ai/llm_test.go::TestAllRegisteredProviders` | ✅ |
+| — | 路由到 exec 命令组 | `internal/ai/agent_test.go::TestProcessRouteExec` | `tests/scripts/test-ai.sh::test_ai_router_exec` | ✅ |
+| — | 路由到 node 命令组 | `internal/ai/agent_test.go::TestProcessRouteNode` | `tests/scripts/test-ai.sh::test_ai_router_node` | ✅ |
+| — | 路由到 file 命令组 | `internal/ai/agent_test.go::TestProcessRouteFile` | `tests/scripts/test-ai.sh::test_ai_router_file` | ✅ |
+| — | 路由到 playbook 命令组 | `internal/ai/agent_test.go::TestProcessRoutePlaybook` | - | ✅ |
+| — | 不确定输入拒绝 | `internal/ai/agent_test.go::TestProcessRouteUncertain` | `tests/scripts/test-ai.sh::test_ai_router_uncertain` | ✅ |
+| — | 路由标签清理 | `internal/ai/agent_test.go::TestProcessRouteWithMarkdownCleanup` | - | ✅ |
+| — | 路由模糊匹配 | `internal/ai/agent_test.go::TestProcessRouteFuzzyMatch` | - | ✅ |
+| — | JSON 格式校验 | `internal/ai/agent_test.go::TestParseToolCallsValid` | `tests/scripts/test-ai.sh::test_ai_json_format_exec` | ✅ |
+| — | exec script 路由 | `internal/ai/agent_test.go::TestDynamicHintInjectionExecuteScript` | `tests/scripts/test-ai.sh::test_ai_exec_script` | ✅ |
+| — | 动态提示注入 | `internal/ai/agent_test.go::TestDynamicHintInjectionExecuteCommand` | - | ✅ |
 | — | 配置加载/保存 | `internal/ai/config_test.go` (6 tests) | ✅ |
-| — | LoadConfigForTest helper | `internal/ai/config_test.go::LoadConfigForTest` — 优先从 `~/.owl/config.yaml` 加载，否则用 mock key | ✅ |
+| — | LoadConfigForTest helper | `internal/ai/config_test.go::LoadConfigForTest` | ✅ |
 
 ---
 
@@ -150,5 +160,5 @@
 | SETTINGS | 3 | 3 | 0 | 50% |
 | 根命令 | 4 | 4 | - | 100% |
 | ASYNC | - | - | - | ✅ |
-| AI | 5 | 5 | 0 | 60% |
-| **总计** | **51** | **49** | **0** | **96%** |
+| AI | 5 | 5 | 6 | 80% |
+| **总计** | **51** | **49** | **6** | **96%** |

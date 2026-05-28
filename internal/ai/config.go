@@ -136,7 +136,7 @@ func SaveDefaultPrompts() error {
 	os.MkdirAll(promptsDir, 0755)
 
 	promptsMap := map[string]string{
-		"system.md":   aiPrompts.SystemPrompt,
+		"system.md":   aiPrompts.ExecSystemPrompt,
 		"playbook.md": aiPrompts.PlaybookPrompt,
 		"command.md":  aiPrompts.CommandPrompt,
 		"transfer.md": aiPrompts.TransferPrompt,
