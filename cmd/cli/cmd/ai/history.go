@@ -3,7 +3,7 @@ package ai
 import (
 	"fmt"
 	"os"
-	"text/tabwriter"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -62,24 +62,30 @@ func runAIHistoryList(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "会话ID\t时间\t用户输入\t工具\t步骤数\t耗时")
+	fmt.Printf("%-10s %-22s %-30s %-18s %-8s %-8s\n",
+		"会话ID", "时间", "用户输入", "工具", "步骤数", "耗时")
+	fmt.Println(strings.Repeat("-", 96))
+
 	for _, s := range sessions {
 		sid := s.SessionID
 		if len(sid) > 8 {
 			sid = sid[:8]
 		}
 		input := s.FirstInput
-		if len(input) > 50 {
-			input = input[:50] + "..."
+		if len(input) > 30 {
+			input = input[:27] + "..."
+		}
+		toolName := s.ToolName
+		if toolName == "" {
+			toolName = "-"
 		}
 		duration := fmt.Sprintf("%dms", s.DurationMs)
 		if s.DurationMs > 1000 {
 			duration = fmt.Sprintf("%.1fs", float64(s.DurationMs)/1000.0)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\n", sid, s.StartTime, input, s.ToolName, s.StepCount, duration)
+		fmt.Printf("%-10s %-22s %-30s %-18s %-8d %-8s\n",
+			sid, s.StartTime, input, toolName, s.StepCount, duration)
 	}
-	w.Flush()
 }
 
 func runAIHistoryShow(cmd *cobra.Command, args []string) {
