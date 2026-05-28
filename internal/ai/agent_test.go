@@ -29,15 +29,44 @@ func (m *mockNodeMgr) GetByID(id string) (*model.Node, error) {
 }
 
 func (m *mockNodeMgr) List() []*model.Node {
-	return []*model.Node{{Name: "node1", Address: "127.0.0.1", Port: 22, Status: "online"}}
+	return []*model.Node{
+		{Name: "mac-mini-m4", Address: "192.168.1.100", Port: 22, Status: "online", Groups: []string{"test"}},
+		{Name: "web-server-01", Address: "192.168.1.101", Port: 22, Status: "online", Groups: []string{"web"}},
+		{Name: "db-server-01", Address: "192.168.1.102", Port: 22, Status: "offline", Groups: []string{"db"}},
+	}
 }
 
 func (m *mockNodeMgr) GetByGroup(group string) []*model.Node {
-	return []*model.Node{{Name: "node1", Address: "127.0.0.1", Port: 22, Status: "online"}}
+	nodes := m.List()
+	result := make([]*model.Node, 0)
+	for _, n := range nodes {
+		for _, g := range n.Groups {
+			if g == group {
+				result = append(result, n)
+				break
+			}
+		}
+	}
+	return result
 }
 
 func (m *mockNodeMgr) GetByLabels(labels map[string]string) []*model.Node {
 	return nil
+}
+
+func (m *mockNodeMgr) SearchByName(pattern string) []*model.Node {
+	if pattern == "" {
+		return nil
+	}
+	nodes := m.List()
+	result := make([]*model.Node, 0)
+	lowerPattern := strings.ToLower(pattern)
+	for _, n := range nodes {
+		if strings.Contains(strings.ToLower(n.Name), lowerPattern) {
+			result = append(result, n)
+		}
+	}
+	return result
 }
 
 func (m *mockNodeMgr) UpdateStatus(id string, status model.NodeStatus) error {
@@ -101,6 +130,164 @@ func TestExtractCommand(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestQueryDatabaseTool_StructuredFilter(t *testing.T) {
+	mgr := &mockNodeMgr{}
+	tool := NewQueryDatabaseTool(mgr)
+	ctx := context.Background()
+
+	t.Run("Group filter", func(t *testing.T) {
+		result, err := tool.Execute(ctx, map[string]interface{}{"group": "test"})
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if !strings.Contains(result, "mac-mini-m4") {
+			t.Errorf("expected result to contain 'mac-mini-m4', got: %s", result)
+		}
+	})
+
+	t.Run("Search filter", func(t *testing.T) {
+		result, err := tool.Execute(ctx, map[string]interface{}{"search": "web"})
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if !strings.Contains(result, "web-server-01") {
+			t.Errorf("expected result to contain 'web-server-01', got: %s", result)
+		}
+	})
+
+	t.Run("Status filter", func(t *testing.T) {
+		result, err := tool.Execute(ctx, map[string]interface{}{"status": "offline"})
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if !strings.Contains(result, "db-server-01") {
+			t.Errorf("expected result to contain 'db-server-01', got: %s", result)
+		}
+	})
+}
+
+func TestQueryDatabaseTool_SQLSelect(t *testing.T) {
+	mgr := &mockNodeMgr{}
+	tool := NewQueryDatabaseTool(mgr)
+	ctx := context.Background()
+
+	t.Run("SELECT all", func(t *testing.T) {
+		result, err := tool.Execute(ctx, map[string]interface{}{"query": "SELECT * FROM nodes"})
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if !strings.Contains(result, "mac-mini-m4") {
+			t.Errorf("expected result to contain 'mac-mini-m4', got: %s", result)
+		}
+	})
+
+	t.Run("SELECT with LIKE", func(t *testing.T) {
+		result, err := tool.Execute(ctx, map[string]interface{}{"query": "SELECT * FROM nodes WHERE name LIKE '%web%'"})
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if !strings.Contains(result, "web-server-01") {
+			t.Errorf("expected result to contain 'web-server-01', got: %s", result)
+		}
+	})
+}
+
+func TestQueryDatabaseTool_RejectWrite(t *testing.T) {
+	mgr := &mockNodeMgr{}
+	tool := NewQueryDatabaseTool(mgr)
+	ctx := context.Background()
+
+	forbidden := []string{"INSERT INTO nodes", "UPDATE nodes SET", "DELETE FROM nodes", "DROP TABLE nodes", "ALTER TABLE nodes"}
+	for _, q := range forbidden {
+		_, err := tool.Execute(ctx, map[string]interface{}{"query": q})
+		if err == nil {
+			t.Errorf("expected error for forbidden query '%s', got nil", q)
+		}
+	}
+}
+
+func TestQueryDatabaseTool_Validate(t *testing.T) {
+	tool := &QueryDatabaseTool{}
+
+	if err := tool.Validate(map[string]interface{}{"query": "SELECT * FROM nodes"}); err != nil {
+		t.Errorf("expected no error for SELECT, got: %v", err)
+	}
+
+	if err := tool.Validate(map[string]interface{}{"group": "test"}); err != nil {
+		t.Errorf("expected no error for group filter, got: %v", err)
+	}
+
+	if err := tool.Validate(map[string]interface{}{}); err == nil {
+		t.Error("expected error for empty params, got nil")
+	}
+
+	if err := tool.Validate(map[string]interface{}{"query": "DELETE FROM nodes"}); err == nil {
+		t.Error("expected error for DELETE, got nil")
+	}
+}
+
+func TestAffirmativeReplies(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"是", true},
+		{"好的", true},
+		{"yes", true},
+		{"YES", true},
+		{"ok", true},
+		{"对", true},
+		{"行", true},
+		{"不是", false},
+		{"no", false},
+		{"不确定", false},
+	}
+	for _, tt := range tests {
+		got := affirmativeReplies[strings.ToLower(tt.input)]
+		if got != tt.expected {
+			t.Errorf("affirmativeReplies[%q] = %v, want %v", tt.input, got, tt.expected)
+		}
+	}
+}
+
+func TestMaybeSetPendingContext(t *testing.T) {
+	agent := &Agent{}
+	session := NewSession(agent)
+
+	t.Run("Sets pending on question", func(t *testing.T) {
+		session.maybeSetPendingContext("是否需要我列出全部节点详情？")
+		if session.pendingContext == nil {
+			t.Error("expected pendingContext to be set")
+		}
+		if session.pendingContext.State != "awaiting_confirmation" {
+			t.Errorf("expected 'awaiting_confirmation', got '%s'", session.pendingContext.State)
+		}
+		session.pendingContext = nil
+	})
+
+	t.Run("Does not set on statement", func(t *testing.T) {
+		session.maybeSetPendingContext("查询到 1 个节点")
+		if session.pendingContext != nil {
+			t.Error("expected pendingContext to be nil for statement")
+		}
+	})
+
+	t.Run("Sets on question mark with keyword", func(t *testing.T) {
+		session.maybeSetPendingContext("需要我帮你查询吗？")
+		if session.pendingContext == nil {
+			t.Error("expected pendingContext to be set")
+		}
+		session.pendingContext = nil
+	})
+
+	t.Run("Does not set on general question", func(t *testing.T) {
+		session.maybeSetPendingContext("当前负载多少？")
+		if session.pendingContext != nil {
+			t.Error("expected pendingContext to be nil for general question without keyword")
+		}
+	})
 }
 
 func TestExtractFilePath(t *testing.T) {
@@ -311,8 +498,8 @@ type mockNodeMgrForAI struct {
 	nodes []*model.Node
 }
 
-func (m *mockNodeMgrForAI) Register(node *model.Node) error           { return nil }
-func (m *mockNodeMgrForAI) Unregister(id string) error                { return nil }
+func (m *mockNodeMgrForAI) Register(node *model.Node) error { return nil }
+func (m *mockNodeMgrForAI) Unregister(id string) error      { return nil }
 func (m *mockNodeMgrForAI) GetByID(id string) (*model.Node, error) {
 	for _, n := range m.nodes {
 		if n.Name == id {
@@ -322,9 +509,22 @@ func (m *mockNodeMgrForAI) GetByID(id string) (*model.Node, error) {
 	return nil, fmt.Errorf("node %s not found", id)
 }
 func (m *mockNodeMgrForAI) UpdateStatus(id string, status model.NodeStatus) error { return nil }
-func (m *mockNodeMgrForAI) GetOnlineNodes() []*model.Node             { return nil }
-func (m *mockNodeMgrForAI) Count() int                                { return len(m.nodes) }
-func (m *mockNodeMgrForAI) GetByLabels(labels map[string]string) []*model.Node { return nil }
+func (m *mockNodeMgrForAI) GetOnlineNodes() []*model.Node                         { return nil }
+func (m *mockNodeMgrForAI) Count() int                                            { return len(m.nodes) }
+func (m *mockNodeMgrForAI) GetByLabels(labels map[string]string) []*model.Node    { return nil }
+func (m *mockNodeMgrForAI) SearchByName(pattern string) []*model.Node {
+	if pattern == "" {
+		return nil
+	}
+	result := make([]*model.Node, 0)
+	lowerPattern := strings.ToLower(pattern)
+	for _, n := range m.nodes {
+		if strings.Contains(strings.ToLower(n.Name), lowerPattern) {
+			result = append(result, n)
+		}
+	}
+	return result
+}
 
 func (m *mockNodeMgrForAI) List() []*model.Node { return m.nodes }
 
@@ -355,7 +555,7 @@ func newTestAgentForRoute(responses []string) *Agent {
 func TestProcessRouteExec(t *testing.T) {
 	agent := newTestAgentForRoute([]string{"exec", "```json\n" + `{"tool_calls":[{"name":"execute_command","arguments":{"command":"uptime","targets":["node1"]}}]}` + "\n```", ""})
 	ctx := context.Background()
-	resp, err := agent.Process(ctx, "execute uptime on node1")
+	resp, err := agent.Process(ctx, "execute uptime on node1", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -373,7 +573,7 @@ func TestProcessRouteNode(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	resp, err := agent.Process(ctx, "list all nodes")
+	resp, err := agent.Process(ctx, "list all nodes", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -388,7 +588,7 @@ func TestProcessRouteFile(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	resp, err := agent.Process(ctx, "upload test.txt to node1")
+	resp, err := agent.Process(ctx, "upload test.txt to node1", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -403,7 +603,7 @@ func TestProcessRoutePlaybook(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	resp, err := agent.Process(ctx, "install nginx on web nodes")
+	resp, err := agent.Process(ctx, "install nginx on web nodes", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -415,7 +615,7 @@ func TestProcessRoutePlaybook(t *testing.T) {
 func TestProcessRouteUncertain(t *testing.T) {
 	agent := newTestAgentForRoute([]string{"uncertain"})
 	ctx := context.Background()
-	resp, err := agent.Process(ctx, "random gibberish")
+	resp, err := agent.Process(ctx, "random gibberish", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -427,7 +627,7 @@ func TestProcessRouteUncertain(t *testing.T) {
 func TestProcessRouteEmpty(t *testing.T) {
 	agent := newTestAgentForRoute([]string{""})
 	ctx := context.Background()
-	resp, err := agent.Process(ctx, "")
+	resp, err := agent.Process(ctx, "", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -442,7 +642,7 @@ func TestProcessRouteWithMarkdownCleanup(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	resp, err := agent.Process(ctx, "execute uptime")
+	resp, err := agent.Process(ctx, "execute uptime", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -457,7 +657,7 @@ func TestProcessRouteWithPeriodCleanup(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	resp, err := agent.Process(ctx, "execute uptime")
+	resp, err := agent.Process(ctx, "execute uptime", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -472,7 +672,7 @@ func TestProcessRouteFuzzyMatch(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	resp, err := agent.Process(ctx, "execute something")
+	resp, err := agent.Process(ctx, "execute something", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -493,7 +693,7 @@ func TestProcessRouterError(t *testing.T) {
 	agent.SetChatModel(mock)
 
 	ctx := context.Background()
-	_, err := agent.Process(ctx, "hello")
+	_, err := agent.Process(ctx, "hello", nil)
 	if err == nil {
 		t.Fatal("expected error from router failure")
 	}
@@ -557,6 +757,30 @@ func TestParseToolCallsIncompleteJSON(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsBareJSON(t *testing.T) {
+	agent := &Agent{}
+	response := `{"tool_calls":[{"name":"query_nodes","arguments":{}}]}`
+	calls := agent.parseToolCalls(response)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 tool call for bare JSON, got %d", len(calls))
+	}
+	if calls[0].Name != "query_nodes" {
+		t.Errorf("expected query_nodes, got %s", calls[0].Name)
+	}
+}
+
+func TestParseToolCallsBareJSONWithText(t *testing.T) {
+	agent := &Agent{}
+	response := "Here is the result:\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\"}}]}\nDone."
+	calls := agent.parseToolCalls(response)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 tool call for bare JSON with text, got %d", len(calls))
+	}
+	if calls[0].Name != "execute_command" {
+		t.Errorf("expected execute_command, got %s", calls[0].Name)
+	}
+}
+
 func TestDynamicHintInjectionExecuteCommand(t *testing.T) {
 	agent := newTestAgentForRoute([]string{
 		"exec",
@@ -564,7 +788,7 @@ func TestDynamicHintInjectionExecuteCommand(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	_, err := agent.Process(ctx, "execute uptime on node1")
+	_, err := agent.Process(ctx, "execute uptime on node1", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -577,7 +801,7 @@ func TestDynamicHintInjectionExecuteScript(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	_, err := agent.Process(ctx, "execute script test.sh on node1")
+	_, err := agent.Process(ctx, "execute script test.sh on node1", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -590,7 +814,7 @@ func TestDynamicHintInjectionPlaybook(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	_, err := agent.Process(ctx, "install nginx on web")
+	_, err := agent.Process(ctx, "install nginx on web", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -603,7 +827,7 @@ func TestDynamicHintInjectionTransferFile(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	_, err := agent.Process(ctx, "upload test.txt to node1")
+	_, err := agent.Process(ctx, "upload test.txt to node1", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
@@ -616,7 +840,7 @@ func TestDynamicHintNoInjectionForQueryNodes(t *testing.T) {
 		"",
 	})
 	ctx := context.Background()
-	_, err := agent.Process(ctx, "list all nodes")
+	_, err := agent.Process(ctx, "list all nodes", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}

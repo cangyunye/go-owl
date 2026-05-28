@@ -171,6 +171,24 @@ func (s *SQLite3) InitSchema() error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes (status);`,
 		`CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes (name);`,
+
+		`CREATE TABLE IF NOT EXISTS aichat (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			step TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT 'user',
+			prompt TEXT DEFAULT '',
+			input TEXT DEFAULT '',
+			output TEXT DEFAULT '',
+			tool_calls TEXT DEFAULT '',
+			tool_results TEXT DEFAULT '',
+			duration_ms INTEGER DEFAULT 0,
+			error TEXT DEFAULT '',
+			metadata TEXT DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_aichat_session ON aichat(session_id, created_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_aichat_created ON aichat(created_at);`,
 	}
 
 	for _, schema := range schemas {
@@ -198,6 +216,11 @@ func (s *SQLite3) Cleanup(retentionDays int) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	_, err := s.conn.Exec(`DELETE FROM aichat WHERE created_at < ?`, cutoff)
+	if err != nil {
+		return err
 	}
 
 	return nil

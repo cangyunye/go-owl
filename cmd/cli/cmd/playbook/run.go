@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -114,6 +115,20 @@ func (m *adapterNodeManager) GetByLabels(labels map[string]string) []*model.Node
 
 func (m *adapterNodeManager) GetOnlineNodes() []*model.Node { return m.List() }
 func (m *adapterNodeManager) Count() int                    { return len(m.nodes) }
+
+func (m *adapterNodeManager) SearchByName(pattern string) []*model.Node {
+	if pattern == "" {
+		return nil
+	}
+	var result []*model.Node
+	lowerPattern := strings.ToLower(pattern)
+	for _, n := range m.nodes {
+		if strings.Contains(strings.ToLower(n.Name), lowerPattern) {
+			result = append(result, n)
+		}
+	}
+	return result
+}
 
 // NewPlaybookRunCmd 创建剧本执行命令
 func NewPlaybookRunCmd() *cobra.Command {

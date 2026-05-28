@@ -102,12 +102,12 @@ func SaveConfig(path string, cfg *Config) error {
 	if err := createConfigDir(path); err != nil {
 		return err
 	}
-	
+
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(path, data, 0600)
 }
 

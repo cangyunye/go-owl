@@ -2,6 +2,7 @@ package node
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
@@ -65,6 +66,7 @@ type Manager interface {
 	List() []*model.Node
 	GetByGroup(group string) []*model.Node
 	GetByLabels(labels map[string]string) []*model.Node
+	SearchByName(pattern string) []*model.Node
 	UpdateStatus(id string, status model.NodeStatus) error
 	GetOnlineNodes() []*model.Node
 	Count() int
@@ -128,6 +130,21 @@ func (m *manager) GetByLabels(labels map[string]string) []*model.Node {
 	result := make([]*model.Node, 0)
 	for _, node := range nodes {
 		if node.MatchLabels(labels) {
+			result = append(result, node)
+		}
+	}
+	return result
+}
+
+func (m *manager) SearchByName(pattern string) []*model.Node {
+	if pattern == "" {
+		return nil
+	}
+	nodes := m.store.GetAll()
+	result := make([]*model.Node, 0)
+	lowerPattern := strings.ToLower(pattern)
+	for _, node := range nodes {
+		if strings.Contains(strings.ToLower(node.Name), lowerPattern) {
 			result = append(result, node)
 		}
 	}

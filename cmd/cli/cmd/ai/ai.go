@@ -7,12 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/control/playbook"
+	internalhistory "github.com/cangyunye/go-owl/internal/history"
 )
 
 var (
@@ -22,6 +24,7 @@ var (
 	aiBaseURL  string
 	aiTimeout  int
 	aiSession  string
+	aiDebug    bool
 )
 
 func NewAICmd() *cobra.Command {
@@ -56,9 +59,12 @@ func NewAICmd() *cobra.Command {
 		"请求超时时间 (秒)")
 	aiCmd.Flags().StringVar(&aiSession, "session", "",
 		"会话 ID (用于恢复会话)")
+	aiCmd.Flags().BoolVarP(&aiDebug, "debug", "d", false,
+		"调试模式，记录完整的 AI 对话到数据库")
 
 	aiCmd.AddCommand(NewModelsCmd())
 	aiCmd.AddCommand(NewConfigCmd())
+	aiCmd.AddCommand(NewHistoryCmd())
 
 	return aiCmd
 }
@@ -155,6 +161,49 @@ func NewModelsCmd() *cobra.Command {
 	return modelsCmd
 }
 
+func progressLog(sessionID string, debug bool, step string, detail string) {
+	timestamp := time.Now().Format("15:04:05")
+
+	role := "assistant"
+	var label string
+	switch step {
+	case "route":
+		label = fmt.Sprintf("确认用户调用子命令为 %s 相关", detail)
+	case "analyze":
+		label = "请求模型生成执行 JSON..."
+	case "generate":
+		label = fmt.Sprintf("JSON 校验通过 (%s)", detail)
+	case "execute":
+		label = "开始执行操作"
+	case "result":
+		if strings.HasPrefix(detail, "失败") {
+			label = detail
+		} else {
+			label = "操作完成"
+		}
+	default:
+		label = detail
+	}
+
+	fmt.Fprintf(os.Stderr, "[%s] owl-ai: %s\n", timestamp, label)
+
+	chat := &internalhistory.AiChat{
+		SessionID: sessionID,
+		Step:      step,
+		Role:      role,
+		Output:    detail,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	internalhistory.RecordAiChatGlobal(chat)
+}
+
+func truncateForDB(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
+	return s
+}
+
 func runAI(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
@@ -208,6 +257,8 @@ func runAI(cmd *cobra.Command, args []string) {
 		},
 	}
 
+	sessionID := fmt.Sprintf("ai-%d", time.Now().UnixMilli())
+
 	agent, err := ai.NewAgent(config, nodeMgr, playbookParser)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize Eino LLM: %v, using fallback mode\n", err)
@@ -215,11 +266,35 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	if len(args) > 0 {
 		query := strings.Join(args, " ")
-		response, err := agent.Process(ctx, query)
+		timestamp := time.Now().Format("15:04:05")
+		fmt.Fprintf(os.Stderr, "[%s] 用户：%s\n", timestamp, query)
+
+		internalhistory.RecordAiChatGlobal(&internalhistory.AiChat{
+			SessionID: sessionID,
+			Step:      "route",
+			Role:      "user",
+			Input:     query,
+			CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		})
+
+		onProgress := func(step string, detail string) {
+			progressLog(sessionID, aiDebug, step, detail)
+		}
+
+		response, err := agent.Process(ctx, query, onProgress)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[%s] owl-ai: 失败: %v\n", time.Now().Format("15:04:05"), err)
 			os.Exit(1)
 		}
+
+		internalhistory.RecordAiChatGlobal(&internalhistory.AiChat{
+			SessionID: sessionID,
+			Step:      "result",
+			Role:      "assistant",
+			Output:    truncateForDB(response, 4096),
+			CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		})
+
 		fmt.Println(response)
 		return
 	}
@@ -239,11 +314,14 @@ func runAI(cmd *cobra.Command, args []string) {
 	fmt.Println()
 
 	session := ai.NewSessionManager()
-	sessionID := aiSession
+	sessionID = aiSession
 	if sessionID == "" {
 		sessionID = "default"
 	}
 	currentSession := session.CreateSession(sessionID, agent)
+	currentSession.OnProgress = func(step string, detail string) {
+		progressLog(sessionID, aiDebug, step, detail)
+	}
 
 	scanner := bufio.NewScanner(os.Stdin)
 
@@ -274,6 +352,14 @@ func runAI(cmd *cobra.Command, args []string) {
 			continue
 		}
 
+		internalhistory.RecordAiChatGlobal(&internalhistory.AiChat{
+			SessionID: sessionID,
+			Step:      "route",
+			Role:      "user",
+			Input:     input,
+			CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		})
+
 		response, err := currentSession.Send(ctx, input)
 		if err != nil {
 			fmt.Printf("\033[31m错误: %v\033[0m\n", err)
@@ -281,6 +367,10 @@ func runAI(cmd *cobra.Command, args []string) {
 			fmt.Printf("\033[36mAI>\033[0m %s\n", response)
 		}
 
+		msgCount := currentSession.MessageCount()
+		if msgCount > 0 {
+			fmt.Printf("\n\033[90m[上下文: %d 条消息]\033[0m ", msgCount)
+		}
 		fmt.Println()
 		fmt.Print("\033[32m您>\033[0m ")
 	}

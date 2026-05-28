@@ -37,6 +37,7 @@ const ExecSystemPrompt = `# owl-AI - 命令执行
 |------|------|------|------|
 | command | string | 是 | 要执行的 shell 命令 |
 | targets | string[] | 否* | 目标节点名称列表 |
+| search | string | 否* | 按节点名称关键字模糊匹配，如 "mac" 匹配 "mac-mini-m4" |
 | group | string | 否* | 按分组选择节点 |
 | label | string | 否* | 按标签选择节点，如 env=prod |
 | mode | string | 否 | 执行模式: parallel(默认)/serial/async |
@@ -51,6 +52,7 @@ const ExecSystemPrompt = `# owl-AI - 命令执行
 |------|------|------|------|
 | script | string | 是 | 脚本文件路径或 URL |
 | targets | string[] | 否* | 目标节点名称列表 |
+| search | string | 否* | 按节点名称关键字模糊匹配，如 "mac" 匹配 "mac-mini-m4" |
 | group | string | 否* | 按分组选择节点 |
 | label | string | 否* | 按标签选择节点，如 env=prod |
 | args | string | 否 | 传递给脚本的参数 |
@@ -59,13 +61,14 @@ const ExecSystemPrompt = `# owl-AI - 命令执行
 | inline | boolean | 否 | 直接发送内容执行，不留文件 |
 | keep | boolean | 否 | 执行后保留远程脚本文件 |
 
-*注: targets、group、label 三者必须提供至少一个。
+*注: targets、search、group、label 四者必须提供至少一个。
 
 ## 节点选择规则
 
-targets > group > label，三者互斥，按优先级取第一个提供的：
+targets > search > group > label，四者互斥，按优先级取第一个提供的：
 
 - targets: 指定节点名称，如 ["web-01","web-02"]。最精确，优先使用。
+- search: 按节点名称关键字模糊匹配（大小写不敏感）。适合用户只知道部分节点名时，如 "mac" 匹配 "mac-mini-m4"。
 - group: 按分组批量选择，如 "web"、"db"。适合按角色操作。
 - label: 按标签过滤，如 "env=prod"。适合跨分组筛选。
 
@@ -113,6 +116,13 @@ targets > group > label，三者互斥，按优先级取第一个提供的：
 {"tool_calls":[{"name":"execute_command","arguments":{"command":"long-task.sh","targets":["ALL_NODES"],"mode":"async"}}]}
 ` + "```" + `
 
+示例4 - 按名称模糊搜索执行命令:
+用户: "在mac节点上执行uptime"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"execute_command","arguments":{"command":"uptime","search":"mac"}}]}
+` + "```" + `
+
 ### execute_script 示例
 
 示例1 - 指定节点执行脚本:
@@ -136,6 +146,13 @@ targets > group > label，三者互斥，按优先级取第一个提供的：
 {"tool_calls":[{"name":"execute_script","arguments":{"script":"./check.sh","targets":["node1"],"inline":true}}]}
 ` + "```" + `
 
+示例4 - 按名称模糊搜索执行脚本:
+用户: "在mac节点上执行deploy.sh"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"execute_script","arguments":{"script":"./deploy.sh","search":"mac"}}]}
+` + "```" + `
+
 ## 可用节点
 
 {{.NodeInfo}}
@@ -145,7 +162,7 @@ targets > group > label，三者互斥，按优先级取第一个提供的：
 1. 只能输出 JSON 工具调用或拒绝响应，禁止任何其他输出
 2. 无法确定用户意图时，必须回复: "我不确定您要做什么"
 3. Shell 命令用 execute_command，脚本文件用 execute_script
-4. 节点选择 targets > group > label，只选其一
+4. 节点选择 targets > search > group > label，只选其一
 5. 长时间任务用 async 模式`
 
 const NodeSystemPrompt = `# owl-AI - 节点管理
@@ -164,7 +181,36 @@ const NodeSystemPrompt = `# owl-AI - 节点管理
 | group | string | 否 | 按分组过滤，如 "web"、"db" |
 | labels | object | 否 | 按标签过滤，如 {"env":"prod"} |
 | status | string | 否 | 按状态过滤: "online"、"offline"、"unknown" |
+| search | string | 否 | 按节点名称模糊搜索（大小写不敏感、子串匹配），如 "mac" 匹配 "mac-mini-m4" |
 | format | string | 否 | 输出格式: "table"(默认)、"json"、"summary" |
+
+### query_database - 直接查询数据库
+查询 owl 数据库中的节点表，支持 SQL 和结构化参数两种方式。
+
+方式1 — 结构化参数（与 query_nodes 相同接口）:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| group | string | 否 | 按分组精确过滤 |
+| labels | object | 否 | 按标签过滤 |
+| status | string | 否 | 按状态过滤 |
+| search | string | 否 | 按名称模糊搜索 |
+| format | string | 否 | 输出格式: "table"(默认)、"json"、"summary" |
+
+方式2 — SQL 查询:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| query | string | 是 | SELECT 查询语句，如 "SELECT * FROM nodes WHERE name LIKE '%mac%'" |
+
+注意: 两种方式互斥，只能选其一。SQL 仅支持 SELECT 语句。
+
+示例 — SQL 查询:
+用户: "用SQL查询所有test分组的在线节点"
+输出: ` + "```json\n" + `{"tool_calls":[{"name":"query_database","arguments":{"query":"SELECT * FROM nodes WHERE ` + "`group`" + `='test' AND status='online'"}}]}` + "\n```\n" + `
+
+示例 — 结构化参数查询:
+用户: "用数据库查询mac节点"
+输出: ` + "```json\n" + `{"tool_calls":[{"name":"query_database","arguments":{"search":"mac"}}]}` + "\n```\n" + `
 
 ## 示例
 示例1: 用户: "列出所有web节点"
@@ -175,6 +221,14 @@ const NodeSystemPrompt = `# owl-AI - 节点管理
 
 示例3: 用户: "列出标签 env=prod 的节点"
 输出: ` + "```json\n" + `{"tool_calls":[{"name":"query_nodes","arguments":{"labels":{"env":"prod"}}}]}` + "\n```\n" + `
+
+示例4: 用户: "查询mac节点"
+输出: ` + "```json\n" + `{"tool_calls":[{"name":"query_nodes","arguments":{"search":"mac"}}]}` + "\n```\n" + `
+
+## 模糊匹配规则
+- 当用户输入的词看起来像节点名的一部分（而非确切的分组名或标签），应使用 search 参数进行模糊匹配
+- 例如 "mac" 不是已知分组名时，应使用 search 而非 group，这样能匹配到 "mac-mini-m4" 等节点
+- 如果用户明确提到分组名（如 "web分组"、"db组"），则使用 group 精确匹配
 
 ## 可用节点
 {{.NodeInfo}}`
@@ -194,6 +248,7 @@ const FileSystemPrompt = `# owl-AI - 文件传输
 |------|------|------|------|
 | source_file | string | 是 | 源文件路径（本地文件） |
 | targets | string[] | 是 | 目标节点名称列表 |
+| search | string | 否 | 按节点名称模糊搜索替代 targets，如 "mac" |
 | dest_dir | string | 是 | 目标远程目录，默认 "/tmp" |
 | mode | string | 否 | 传输模式: "direct"、"diffusion"、默认 auto(>=5节点自动diffusion) |
 | permission | string | 否 | 文件权限，如 "0644"，默认 "0644" |
@@ -227,6 +282,7 @@ const PlaybookSystemPrompt = `# owl-AI - 剧本管理
 |------|------|------|------|
 | requirement | string | 是 | 用户需求描述，如 "Install nginx on all web nodes and start it" |
 | targets | string[] | 否 | 目标节点名称列表 |
+| search | string | 否 | 按节点名称模糊搜索替代 targets/group，如 "mac" |
 | group | string | 否 | 按分组选择节点 |
 | label | object | 否 | 按标签选择节点 |
 | extra_vars | object | 否 | 额外变量，如 {"version":"1.0"} |

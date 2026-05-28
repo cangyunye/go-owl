@@ -30,6 +30,8 @@ type ChatModel interface {
 	Generate(ctx context.Context, messages []Message) (string, error)
 }
 
+type ProgressCallback func(step string, detail string)
+
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
@@ -62,6 +64,7 @@ func NewAgent(config *Config, nodeMgr node.Manager, playbookParser *playbook.Par
 	registry.Register(NewGeneratePlaybookTool(nodeMgr))
 	registry.Register(NewTransferFileTool(nodeMgr))
 	registry.Register(NewExecuteScriptTool(nodeMgr))
+	registry.Register(NewQueryDatabaseTool(nodeMgr))
 
 	agent := &Agent{
 		config:         config,
@@ -97,7 +100,7 @@ func (a *Agent) SetSystemPrompt(prompt string) {
 	a.systemPrompt = prompt
 }
 
-func (a *Agent) Process(ctx context.Context, userInput string) (string, error) {
+func (a *Agent) Process(ctx context.Context, userInput string, onProgress ProgressCallback) (string, error) {
 	a.mu.RLock()
 	chatModel := a.chatModel
 	a.mu.RUnlock()
@@ -111,6 +114,9 @@ func (a *Agent) Process(ctx context.Context, userInput string) (string, error) {
 
 	routeResp, err := generateWithRetry(ctx, chatModel, routerMessages, "路由")
 	if err != nil {
+		if onProgress != nil {
+			onProgress("result", "失败: "+err.Error())
+		}
 		return "", fmt.Errorf("路由失败: %w", err)
 	}
 
@@ -122,6 +128,10 @@ func (a *Agent) Process(ctx context.Context, userInput string) (string, error) {
 
 	if routeLabel == "uncertain" || routeLabel == "" {
 		return "我不确定您要做什么", nil
+	}
+
+	if onProgress != nil {
+		onProgress("route", routeLabel)
 	}
 
 	groupPrompt, ok := groupPrompts[routeLabel]
@@ -139,6 +149,10 @@ func (a *Agent) Process(ctx context.Context, userInput string) (string, error) {
 
 	toolDescs := a.registry.GetToolDescriptions()
 	formattedPrompt := a.formatPrompt(groupPrompt, nodeInfo, toolDescs)
+
+	if onProgress != nil {
+		onProgress("analyze", "正在生成 JSON...")
+	}
 
 	messages := []Message{
 		{Role: "system", Content: formattedPrompt},
@@ -162,11 +176,18 @@ func (a *Agent) Process(ctx context.Context, userInput string) (string, error) {
 			break
 		}
 
+		if onProgress != nil && len(toolCalls) > 0 {
+			onProgress("generate", toolCalls[0].Name)
+		}
+
 		lastToolName = toolCalls[0].Name
 
 		messages = append(messages, Message{Role: "assistant", Content: response})
 
 		for _, call := range toolCalls {
+			if onProgress != nil {
+				onProgress("execute", call.Name)
+			}
 			result, err := a.executeToolCall(ctx, call)
 			if err != nil {
 				result = fmt.Sprintf("Tool execution failed: %v", err)
@@ -186,7 +207,73 @@ func (a *Agent) Process(ctx context.Context, userInput string) (string, error) {
 		}
 	}
 
+	if onProgress != nil {
+		onProgress("result", "完成")
+	}
+
 	return fullResponse.String(), nil
+}
+
+func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onProgress ProgressCallback) ([]Message, string, error) {
+	a.mu.RLock()
+	chatModel := a.chatModel
+	a.mu.RUnlock()
+
+	nodeInfo := a.getNodeInfo()
+
+	if len(messages) == 0 {
+		response, err := a.Process(ctx, "", onProgress)
+		return nil, response, err
+	}
+
+	toolDescs := a.registry.GetToolDescriptions()
+
+	formattedPrompt := a.formatPrompt(messages[0].Content, nodeInfo, toolDescs)
+	msgs := make([]Message, len(messages))
+	msgs[0] = Message{Role: messages[0].Role, Content: formattedPrompt}
+	copy(msgs[1:], messages[1:])
+
+	var fullResponse strings.Builder
+	maxTurns := 10
+
+	for turn := 0; turn < maxTurns; turn++ {
+		response, err := generateWithRetry(ctx, chatModel, msgs, "AI调用")
+		if err != nil {
+			return msgs, "", fmt.Errorf("AI 调用失败: %w", err)
+		}
+
+		fullResponse.WriteString(response)
+
+		toolCalls := a.parseToolCalls(response)
+		if len(toolCalls) == 0 {
+			msgs = append(msgs, Message{Role: "assistant", Content: response})
+			break
+		}
+
+		if onProgress != nil && len(toolCalls) > 0 {
+			onProgress("generate", toolCalls[0].Name)
+		}
+
+		msgs = append(msgs, Message{Role: "assistant", Content: response})
+
+		for _, call := range toolCalls {
+			if onProgress != nil {
+				onProgress("execute", call.Name)
+			}
+			result, err := a.executeToolCall(ctx, call)
+			if err != nil {
+				result = fmt.Sprintf("Tool execution failed: %v", err)
+			}
+			toolResult := fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)
+			msgs = append(msgs, Message{Role: "user", Content: toolResult})
+		}
+	}
+
+	if onProgress != nil {
+		onProgress("result", "完成")
+	}
+
+	return msgs, fullResponse.String(), nil
 }
 
 const maxRetries = 3
@@ -272,23 +359,45 @@ type ToolCall struct {
 }
 
 func (a *Agent) parseToolCalls(response string) []ToolCall {
-	var calls []ToolCall
+	var jsonContent string
 
-	if len(response) < 7 {
-		return calls
+	// Try 1: ```json ... ``` wrapper
+	if idx := strings.Index(response, "```json"); idx != -1 {
+		start := idx + 7
+		if end := strings.Index(response[start:], "```"); end != -1 {
+			jsonContent = strings.TrimSpace(response[start : start+end])
+		}
 	}
 
-	jsonStart := strings.Index(response, "```json")
-	if jsonStart == -1 {
-		return calls
+	// Try 2: bare ``` ... ``` wrapper (no json tag)
+	if jsonContent == "" {
+		if idx := strings.Index(response, "```"); idx != -1 {
+			start := idx + 3
+			if end := strings.Index(response[start:], "```"); end != -1 {
+				candidate := strings.TrimSpace(response[start : start+end])
+				if strings.Contains(candidate, `"tool_calls"`) {
+					jsonContent = candidate
+				}
+			}
+		}
 	}
 
-	jsonEnd := strings.Index(response[jsonStart+7:], "```")
-	if jsonEnd == -1 {
-		return calls
+	// Try 3: bare JSON anywhere in response
+	if jsonContent == "" {
+		toolCallsIdx := strings.Index(response, `"tool_calls"`)
+		if toolCallsIdx != -1 {
+			braceStart := strings.LastIndex(response[:toolCallsIdx], "{")
+			braceEnd := strings.LastIndex(response, "}")
+			if braceStart != -1 && braceEnd != -1 && braceEnd > braceStart {
+				candidate := strings.TrimSpace(response[braceStart : braceEnd+1])
+				jsonContent = candidate
+			}
+		}
 	}
 
-	jsonContent := strings.TrimSpace(response[jsonStart+7 : jsonStart+7+jsonEnd])
+	if jsonContent == "" {
+		return nil
+	}
 
 	var parsed struct {
 		ToolCalls []struct {
@@ -298,16 +407,16 @@ func (a *Agent) parseToolCalls(response string) []ToolCall {
 	}
 
 	if err := json.Unmarshal([]byte(jsonContent), &parsed); err != nil {
-		return calls
+		return nil
 	}
 
+	var calls []ToolCall
 	for _, tc := range parsed.ToolCalls {
 		calls = append(calls, ToolCall{
 			Name:      tc.Name,
 			Arguments: tc.Args,
 		})
 	}
-
 	return calls
 }
 
@@ -547,12 +656,22 @@ func (a *Agent) stringsToJSON(strs []string) string {
 	return string(data)
 }
 
+type PendingContext struct {
+	State        string
+	Action       string
+	LastToolName string
+	LastParams   map[string]interface{}
+	Question     string
+}
+
 type Session struct {
-	agent      *Agent
-	messages   []Message
-	history    []string
-	createdAt  time.Time
-	lastActive time.Time
+	agent          *Agent
+	messages       []Message
+	history        []string
+	createdAt      time.Time
+	lastActive     time.Time
+	OnProgress     ProgressCallback
+	pendingContext *PendingContext
 }
 
 func NewSession(agent *Agent) *Session {
@@ -564,21 +683,78 @@ func NewSession(agent *Agent) *Session {
 	}
 }
 
+var affirmativeReplies = map[string]bool{
+	"是": true, "是的": true, "对": true, "对的": true,
+	"好": true, "好的": true, "可以": true, "行": true,
+	"yes": true, "ok": true, "okay": true, "y": true,
+	"嗯": true, "确认": true,
+}
+
+var questionKeywords = []string{"是否", "要不要", "需要我", "要我", "要不要我"}
+
 func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	s.lastActive = time.Now()
 	s.history = append(s.history, fmt.Sprintf("User: %s", userInput))
 
-	response, err := s.agent.Process(ctx, userInput)
+	if s.pendingContext != nil && s.pendingContext.State == "awaiting_confirmation" {
+		lowerInput := strings.TrimSpace(strings.ToLower(userInput))
+		if affirmativeReplies[lowerInput] {
+			pendingMsg := fmt.Sprintf(
+				"[系统提示] 用户刚才回复了「是」，确认了你的问题：「%s」。请继续执行之前的操作。",
+				s.pendingContext.Question,
+			)
+
+			s.messages = append(s.messages, Message{Role: "system", Content: pendingMsg})
+			s.messages = append(s.messages, Message{Role: "user", Content: fmt.Sprintf("好的，请继续：%s", s.pendingContext.Action)})
+		}
+		s.pendingContext = nil
+	} else {
+		s.messages = append(s.messages, Message{Role: "user", Content: userInput})
+	}
+
+	var response string
+	var err error
+	if len(s.messages) > 0 {
+		var updatedMessages []Message
+		updatedMessages, response, err = s.agent.ProcessWithContext(ctx, s.messages, s.OnProgress)
+		if err == nil {
+			s.messages = updatedMessages
+		}
+	} else {
+		response, err = s.agent.Process(ctx, userInput, s.OnProgress)
+	}
 	if err != nil {
 		return "", err
 	}
+
+	s.maybeSetPendingContext(response)
 
 	s.history = append(s.history, fmt.Sprintf("Assistant: %s", response))
 	return response, nil
 }
 
+func (s *Session) maybeSetPendingContext(response string) {
+	trimmed := strings.TrimSpace(response)
+	if strings.HasSuffix(trimmed, "？") || strings.HasSuffix(trimmed, "?") {
+		for _, kw := range questionKeywords {
+			if strings.Contains(trimmed, kw) {
+				s.pendingContext = &PendingContext{
+					State:    "awaiting_confirmation",
+					Action:   "继续之前的查询",
+					Question: trimmed,
+				}
+				return
+			}
+		}
+	}
+}
+
 func (s *Session) GetHistory() []string {
 	return s.history
+}
+
+func (s *Session) MessageCount() int {
+	return len(s.messages)
 }
 
 type SessionManager struct {

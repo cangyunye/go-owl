@@ -52,6 +52,10 @@ func (t *QueryNodesTool) Parameters() string {
 				"type": "string",
 				"description": "Filter by status: online, offline, unknown"
 			},
+			"search": {
+				"type": "string",
+				"description": "Fuzzy search by node name (case-insensitive substring match)"
+			},
 			"format": {
 				"type": "string",
 				"description": "Output format: table (default), json, summary"
@@ -96,6 +100,17 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 		}
 	} else {
 		nodes = t.nodeMgr.List()
+	}
+
+	if search, ok := params["search"].(string); ok && search != "" {
+		filtered := make([]*model.Node, 0)
+		lowerSearch := strings.ToLower(search)
+		for _, n := range nodes {
+			if strings.Contains(strings.ToLower(n.Name), lowerSearch) {
+				filtered = append(filtered, n)
+			}
+		}
+		nodes = filtered
 	}
 
 	if len(nodes) == 0 {
@@ -236,6 +251,10 @@ func (t *ExecuteCommandTool) Parameters() string {
 				"type": "string",
 				"enum": ["parallel", "serial", "async"],
 				"description": "Execution mode: parallel (default), serial, async"
+			},
+			"search": {
+				"type": "string",
+				"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with targets/group/label)"
 			}
 		},
 		"required": ["command"]
@@ -293,6 +312,9 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 		labelMap := parseLabelFilter(label)
 		nodes = t.nodeMgr.GetByLabels(labelMap)
 		filterDesc = fmt.Sprintf("label: %s", label)
+	} else if search, ok := params["search"].(string); ok && search != "" {
+		nodes = t.nodeMgr.SearchByName(search)
+		filterDesc = fmt.Sprintf("search: %s", search)
 	} else {
 		nodes = t.nodeMgr.List()
 		filterDesc = "all nodes"
@@ -442,6 +464,10 @@ func (t *ExecuteScriptTool) Parameters() string {
 				"type": "string",
 				"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with targets/group)"
 			},
+			"search": {
+				"type": "string",
+				"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with targets/group/label)"
+			},
 			"dest": {
 				"type": "string",
 				"description": "Destination path on remote nodes, default /tmp"
@@ -525,6 +551,9 @@ func (t *ExecuteScriptTool) Execute(ctx context.Context, params map[string]inter
 		labelMap := parseLabelFilter(label)
 		nodes = t.nodeMgr.GetByLabels(labelMap)
 		filterDesc = fmt.Sprintf("label: %s", label)
+	} else if search, ok := params["search"].(string); ok && search != "" {
+		nodes = t.nodeMgr.SearchByName(search)
+		filterDesc = fmt.Sprintf("search: %s", search)
 	} else {
 		nodes = t.nodeMgr.List()
 		filterDesc = "all nodes"
@@ -796,6 +825,273 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 	return sb.String(), nil
 }
 
+type QueryDatabaseTool struct {
+	nodeMgr node.Manager
+}
+
+func NewQueryDatabaseTool(nodeMgr node.Manager) *QueryDatabaseTool {
+	return &QueryDatabaseTool{nodeMgr: nodeMgr}
+}
+
+func (t *QueryDatabaseTool) Name() string {
+	return "query_database"
+}
+
+func (t *QueryDatabaseTool) Description() string {
+	return "Query the owl database directly. Supports SQL SELECT queries and structured filters (group/labels/status/search)."
+}
+
+func (t *QueryDatabaseTool) Parameters() string {
+	return `{
+		"type": "object",
+		"properties": {
+			"query": {
+				"type": "string",
+				"description": "SQL SELECT query to execute on the nodes table"
+			},
+			"group": {
+				"type": "string",
+				"description": "Filter by group, e.g. 'web', 'db'"
+			},
+			"labels": {
+				"type": "object",
+				"description": "Filter by labels, e.g. {\"env\": \"prod\"}"
+			},
+			"status": {
+				"type": "string",
+				"description": "Filter by status: online, offline, unknown"
+			},
+			"search": {
+				"type": "string",
+				"description": "Fuzzy search by node name (case-insensitive substring match)"
+			},
+			"format": {
+				"type": "string",
+				"description": "Output format: table (default), json, summary"
+			}
+		}
+	}`
+}
+
+func (t *QueryDatabaseTool) Validate(params map[string]interface{}) error {
+	query, hasQuery := params["query"].(string)
+	_, hasGroup := params["group"].(string)
+	labelsRaw, hasLabels := params["labels"].(map[string]interface{})
+	_, hasStatus := params["status"].(string)
+	_, hasSearch := params["search"].(string)
+
+	if hasQuery && query != "" {
+		upper := strings.ToUpper(strings.TrimSpace(query))
+		if !strings.HasPrefix(upper, "SELECT") {
+			return fmt.Errorf("only SELECT queries are allowed")
+		}
+		forbidden := []string{"INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE"}
+		for _, f := range forbidden {
+			if strings.Contains(upper, f) {
+				return fmt.Errorf("only SELECT queries are allowed, found: %s", f)
+			}
+		}
+		return nil
+	}
+
+	if hasGroup || hasLabels && labelsRaw != nil || hasStatus || hasSearch {
+		return nil
+	}
+
+	return fmt.Errorf("must provide either 'query' or at least one filter (group/labels/status/search)")
+}
+
+func (t *QueryDatabaseTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	if err := t.Validate(params); err != nil {
+		return "", err
+	}
+
+	format, _ := params["format"].(string)
+	if format == "" {
+		format = "table"
+	}
+
+	query, hasQuery := params["query"].(string)
+
+	var nodes []*model.Node
+
+	if hasQuery && query != "" {
+		nodes = t.nodeMgr.List()
+		nodes = t.filterBySQL(nodes, query)
+	} else {
+		group, _ := params["group"].(string)
+		labelsRaw, _ := params["labels"].(map[string]interface{})
+		status, _ := params["status"].(string)
+		search, _ := params["search"].(string)
+
+		if group != "" {
+			nodes = t.nodeMgr.GetByGroup(group)
+		} else if labelsRaw != nil {
+			labelMap := make(map[string]string)
+			for k, v := range labelsRaw {
+				if vs, ok := v.(string); ok {
+					labelMap[k] = vs
+				}
+			}
+			nodes = t.nodeMgr.GetByLabels(labelMap)
+		} else if status != "" {
+			allNodes := t.nodeMgr.List()
+			nodes = make([]*model.Node, 0)
+			for _, n := range allNodes {
+				if string(n.Status) == status {
+					nodes = append(nodes, n)
+				}
+			}
+		} else {
+			nodes = t.nodeMgr.List()
+		}
+
+		if search != "" && len(nodes) > 0 {
+			filtered := make([]*model.Node, 0)
+			lowerSearch := strings.ToLower(search)
+			for _, n := range nodes {
+				if strings.Contains(strings.ToLower(n.Name), lowerSearch) {
+					filtered = append(filtered, n)
+				}
+			}
+			nodes = filtered
+		}
+	}
+
+	if len(nodes) == 0 {
+		return "No matching nodes found in database", nil
+	}
+
+	switch format {
+	case "json":
+		info := nodesToInfo(nodes)
+		data, _ := json.MarshalIndent(info, "", "  ")
+		return string(data), nil
+	case "summary":
+		count := 0
+		for _, n := range nodes {
+			if n.Status == model.NodeStatusOnline {
+				count++
+			}
+		}
+		return fmt.Sprintf("Total %d nodes, %d online", len(nodes), count), nil
+	default:
+		return t.formatAsTable(nodes), nil
+	}
+}
+
+func (t *QueryDatabaseTool) formatAsTable(nodes []*model.Node) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%-12s %-15s %-6s %-12s %-10s %-20s\n",
+		"NAME", "ADDRESS", "PORT", "STATUS", "GROUPS", "LABELS"))
+	sb.WriteString(strings.Repeat("-", 80))
+	sb.WriteString("\n")
+
+	for _, n := range nodes {
+		groups := strings.Join(n.Groups, ",")
+		if groups == "" {
+			groups = "-"
+		}
+		labels := formatLabels(n.Labels)
+		if labels == "" {
+			labels = "-"
+		}
+		sb.WriteString(fmt.Sprintf("%-12s %-15s %-6d %-12s %-10s %-20s\n",
+			n.Name, n.Address, n.Port, n.Status, groups, labels))
+	}
+	count := 0
+	for _, n := range nodes {
+		if n.Status == model.NodeStatusOnline {
+			count++
+		}
+	}
+	sb.WriteString(fmt.Sprintf("\nTotal %d nodes, %d online", len(nodes), count))
+	return sb.String()
+}
+
+func (t *QueryDatabaseTool) filterBySQL(nodes []*model.Node, query string) []*model.Node {
+	upper := strings.ToUpper(strings.TrimSpace(query))
+
+	if !strings.HasPrefix(upper, "SELECT") {
+		return nil
+	}
+
+	upper = strings.TrimSpace(upper)
+
+	if strings.Contains(upper, "WHERE") {
+		whereIdx := strings.Index(upper, "WHERE")
+		whereClause := strings.TrimSpace(upper[whereIdx+5:])
+		return t.applyWhere(nodes, whereClause)
+	}
+
+	return nodes
+}
+
+func (t *QueryDatabaseTool) applyWhere(nodes []*model.Node, where string) []*model.Node {
+	parts := strings.SplitN(where, " AND ", 2)
+	condition := strings.TrimSpace(parts[0])
+
+	var result []*model.Node
+
+	if strings.Contains(strings.ToUpper(condition), " LIKE ") {
+		kv := strings.SplitN(condition, " LIKE ", 2)
+		if len(kv) == 2 {
+			field := strings.TrimSpace(kv[0])
+			pattern := strings.Trim(strings.TrimSpace(kv[1]), "'%")
+			field = strings.Trim(field, "`\"")
+
+			if strings.ToLower(field) == "name" {
+				lowerPattern := strings.ToLower(pattern)
+				for _, n := range nodes {
+					if strings.Contains(strings.ToLower(n.Name), lowerPattern) {
+						result = append(result, n)
+					}
+				}
+			}
+		}
+	} else if strings.Contains(condition, "=") {
+		kv := strings.SplitN(condition, "=", 2)
+		if len(kv) == 2 {
+			field := strings.TrimSpace(kv[0])
+			value := strings.Trim(strings.TrimSpace(kv[1]), "'\"")
+			field = strings.Trim(field, "`\"")
+
+			switch strings.ToLower(field) {
+			case "group":
+				for _, n := range nodes {
+					for _, g := range n.Groups {
+						if g == value {
+							result = append(result, n)
+							break
+						}
+					}
+				}
+			case "status":
+				for _, n := range nodes {
+					if strings.EqualFold(string(n.Status), value) {
+						result = append(result, n)
+					}
+				}
+			case "name":
+				for _, n := range nodes {
+					if strings.EqualFold(n.Name, value) {
+						result = append(result, n)
+					}
+				}
+			default:
+				result = nodes
+			}
+		}
+	} else {
+		result = nodes
+	}
+
+	if len(parts) > 1 {
+		return t.applyWhere(result, parts[1])
+	}
+	return result
+}
+
 type ToolRegistry struct {
 	tools map[string]Tool
 }
@@ -851,6 +1147,10 @@ func GetToolDefinitions() []map[string]interface{} {
 							"type":        "string",
 							"description": "Filter by status: online, offline, unknown",
 						},
+						"search": map[string]interface{}{
+							"type":        "string",
+							"description": "Fuzzy search by node name (case-insensitive substring match)",
+						},
 						"format": map[string]interface{}{
 							"type":        "string",
 							"description": "Output format: table (default), json, summary",
@@ -897,6 +1197,10 @@ func GetToolDefinitions() []map[string]interface{} {
 							"type":        "string",
 							"enum":        []string{"parallel", "serial", "async"},
 							"description": "Execution mode: parallel (default), serial, async",
+						},
+						"search": map[string]interface{}{
+							"type":        "string",
+							"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with targets/group/label)",
 						},
 					},
 					"required": []string{"command"},
@@ -983,6 +1287,10 @@ func GetToolDefinitions() []map[string]interface{} {
 							"type":        "string",
 							"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with targets/group)",
 						},
+						"search": map[string]interface{}{
+							"type":        "string",
+							"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with targets/group/label)",
+						},
 						"dest": map[string]interface{}{
 							"type":        "string",
 							"description": "Destination path on remote nodes, default /tmp",
@@ -1005,6 +1313,42 @@ func GetToolDefinitions() []map[string]interface{} {
 						},
 					},
 					"required": []string{"script"},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "query_database",
+				"description": "Query the owl database directly. Supports SQL SELECT queries and structured filters (group/labels/status/search).",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"query": map[string]interface{}{
+							"type":        "string",
+							"description": "SQL SELECT query to execute on the nodes table",
+						},
+						"group": map[string]interface{}{
+							"type":        "string",
+							"description": "Filter by group, e.g. 'web', 'db'",
+						},
+						"labels": map[string]interface{}{
+							"type":        "object",
+							"description": "Filter by labels, e.g. {\"env\": \"prod\"}",
+						},
+						"status": map[string]interface{}{
+							"type":        "string",
+							"description": "Filter by status: online, offline, unknown",
+						},
+						"search": map[string]interface{}{
+							"type":        "string",
+							"description": "Fuzzy search by node name (case-insensitive substring match)",
+						},
+						"format": map[string]interface{}{
+							"type":        "string",
+							"description": "Output format: table (default), json, summary",
+						},
+					},
 				},
 			},
 		},

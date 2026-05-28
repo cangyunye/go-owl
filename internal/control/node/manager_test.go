@@ -355,3 +355,54 @@ func TestInMemoryNodeStore(t *testing.T) {
 		t.Error("expected false for nonexistent node deletion")
 	}
 }
+
+func TestManager_SearchByName(t *testing.T) {
+	store := NewInMemoryNodeStore()
+	mgr := NewManager(store)
+
+	node1 := model.NewNode("node-1", "mac-mini-m4", "192.168.1.100", 8080, "root")
+	node2 := model.NewNode("node-2", "web-server-01", "192.168.1.101", 8081, "root")
+	node3 := model.NewNode("node-3", "db-server-01", "192.168.1.102", 8082, "root")
+
+	mgr.Register(node1)
+	mgr.Register(node2)
+	mgr.Register(node3)
+
+	t.Run("Substring match", func(t *testing.T) {
+		nodes := mgr.SearchByName("mac")
+		if len(nodes) != 1 {
+			t.Errorf("expected 1 node matching 'mac', got %d", len(nodes))
+		}
+		if nodes[0].Name != "mac-mini-m4" {
+			t.Errorf("expected 'mac-mini-m4', got '%s'", nodes[0].Name)
+		}
+	})
+
+	t.Run("Case insensitive", func(t *testing.T) {
+		nodes := mgr.SearchByName("WEB")
+		if len(nodes) != 1 {
+			t.Errorf("expected 1 node matching 'WEB', got %d", len(nodes))
+		}
+	})
+
+	t.Run("No match", func(t *testing.T) {
+		nodes := mgr.SearchByName("xyz")
+		if len(nodes) != 0 {
+			t.Errorf("expected 0 nodes, got %d", len(nodes))
+		}
+	})
+
+	t.Run("Empty string", func(t *testing.T) {
+		nodes := mgr.SearchByName("")
+		if len(nodes) != 0 {
+			t.Errorf("expected 0 nodes for empty search, got %d", len(nodes))
+		}
+	})
+
+	t.Run("Partial match", func(t *testing.T) {
+		nodes := mgr.SearchByName("server")
+		if len(nodes) != 2 {
+			t.Errorf("expected 2 nodes matching 'server', got %d", len(nodes))
+		}
+	})
+}
