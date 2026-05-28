@@ -34,6 +34,7 @@ func NewHistoryCmd() *cobra.Command {
 	showCmd := &cobra.Command{
 		Use:   "show <session-id>",
 		Short: "显示指定会话的完整对话链",
+		Long:  `显示指定会话的完整对话链。使用 "owl ai history list" 查看可用的会话 ID。`,
 		Args:  cobra.ExactArgs(1),
 		Run:   runAIHistoryShow,
 	}
@@ -62,9 +63,13 @@ func runAIHistoryList(cmd *cobra.Command, args []string) {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "时间\t用户输入\t工具\t步骤数\t耗时")
-	fmt.Fprintln(w, "----\t--------\t----\t------\t----")
+	fmt.Fprintln(w, "会话ID\t时间\t用户输入\t工具\t步骤数\t耗时")
+	fmt.Fprintln(w, "------\t----\t--------\t----\t------\t----")
 	for _, s := range sessions {
+		sid := s.SessionID
+		if len(sid) > 8 {
+			sid = sid[:8]
+		}
 		input := s.FirstInput
 		if len(input) > 50 {
 			input = input[:50] + "..."
@@ -73,7 +78,7 @@ func runAIHistoryList(cmd *cobra.Command, args []string) {
 		if s.DurationMs > 1000 {
 			duration = fmt.Sprintf("%.1fs", float64(s.DurationMs)/1000.0)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n", s.StartTime, input, s.ToolName, s.StepCount, duration)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\n", sid, s.StartTime, input, s.ToolName, s.StepCount, duration)
 	}
 	w.Flush()
 }
