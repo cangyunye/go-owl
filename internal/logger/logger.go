@@ -33,7 +33,7 @@ func DefaultConfig() *Config {
 
 	return &Config{
 		Level:        "info",
-		Console:      true,
+		Console:      false,
 		ConsoleLevel: "info",
 		File:         true,
 		FilePath:     logPath,
