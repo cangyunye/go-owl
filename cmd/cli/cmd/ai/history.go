@@ -64,7 +64,6 @@ func runAIHistoryList(cmd *cobra.Command, args []string) {
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 	fmt.Fprintln(w, "会话ID\t时间\t用户输入\t工具\t步骤数\t耗时")
-	fmt.Fprintln(w, "------\t----\t--------\t----\t------\t----")
 	for _, s := range sessions {
 		sid := s.SessionID
 		if len(sid) > 8 {
