@@ -36,12 +36,6 @@ func (e *ParamExtractor) ExtractParams(intent IntentType, input string) map[stri
 func (e *ParamExtractor) extractQueryNodesParams(input string, params map[string]interface{}) {
 	lowerInput := strings.ToLower(input)
 
-	if strings.Contains(lowerInput, "web") {
-		params["group"] = "web"
-	}
-	if strings.Contains(lowerInput, "db") {
-		params["group"] = "db"
-	}
 	if strings.Contains(lowerInput, "online") {
 		params["status"] = "online"
 	}
