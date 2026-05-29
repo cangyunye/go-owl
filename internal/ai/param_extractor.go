@@ -59,7 +59,7 @@ func (e *ParamExtractor) extractQueryNodesParams(input string, params map[string
 func (e *ParamExtractor) extractExecuteScriptParams(input string, params map[string]interface{}) {
 	lowerInput := strings.ToLower(input)
 
-	params["targets"] = e.extractTargets(input)
+	params["nodes"] = e.extractNodes(input)
 
 	script := e.extractScriptPath(input)
 	if script != "" {
@@ -107,7 +107,7 @@ func (e *ParamExtractor) extractScriptPath(input string) string {
 func (e *ParamExtractor) extractExecuteCmdParams(input string, params map[string]interface{}) {
 	lowerInput := strings.ToLower(input)
 
-	params["targets"] = e.extractTargets(input)
+	params["nodes"] = e.extractNodes(input)
 
 	command := e.extractCommand(input)
 	if command != "" {
@@ -129,7 +129,7 @@ func (e *ParamExtractor) extractTransferParams(input string, params map[string]i
 		params["source_file"] = sourceFile
 	}
 
-	params["targets"] = e.extractTargets(input)
+	params["nodes"] = e.extractNodes(input)
 
 	destDir := e.extractDestDir(input)
 	if destDir != "" {
@@ -148,30 +148,30 @@ func (e *ParamExtractor) extractTransferParams(input string, params map[string]i
 	}
 }
 
-func (e *ParamExtractor) extractTargets(input string) []interface{} {
-	var targets []interface{}
+func (e *ParamExtractor) extractNodes(input string) []interface{} {
+	var nodes []interface{}
 
 	for _, nodeName := range e.nodeNames {
 		if strings.Contains(input, nodeName) {
-			targets = append(targets, nodeName)
+			nodes = append(nodes, nodeName)
 		}
 	}
 
-	if len(targets) == 0 {
+	if len(nodes) == 0 {
 		if strings.Contains(input, "所有节点") ||
 			strings.Contains(input, "all nodes") ||
 			strings.Contains(input, "所有") {
 			for _, nodeName := range e.nodeNames {
-				targets = append(targets, nodeName)
+				nodes = append(nodes, nodeName)
 			}
 		}
 	}
 
-	if len(targets) == 0 && len(e.nodeNames) > 0 {
-		targets = append(targets, e.nodeNames[0])
+	if len(nodes) == 0 && len(e.nodeNames) > 0 {
+		nodes = append(nodes, e.nodeNames[0])
 	}
 
-	return targets
+	return nodes
 }
 
 func (e *ParamExtractor) extractCommand(input string) string {
