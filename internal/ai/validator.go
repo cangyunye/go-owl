@@ -61,17 +61,17 @@ func (v *Validator) ValidateQueryNodes(params map[string]interface{}) error {
 }
 
 func (v *Validator) ValidateExecuteCommand(params map[string]interface{}) error {
-	if targets, ok := params["targets"]; ok {
-		targetList, ok := targets.([]interface{})
+	if nodes, ok := params["nodes"]; ok {
+		nodeList, ok := nodes.([]interface{})
 		if !ok {
-			return fmt.Errorf("targets must be an array")
+			return fmt.Errorf("nodes must be an array")
 		}
-		if len(targetList) == 0 {
-			return fmt.Errorf("targets must be a non-empty array")
+		if len(nodeList) == 0 {
+			return fmt.Errorf("nodes must be a non-empty array")
 		}
-		for i, t := range targetList {
-			if _, ok := t.(string); !ok {
-				return fmt.Errorf("target at index %d must be a string", i)
+		for i, n := range nodeList {
+			if _, ok := n.(string); !ok {
+				return fmt.Errorf("node at index %d must be a string", i)
 			}
 		}
 	}
@@ -180,17 +180,17 @@ func (v *Validator) ValidateTransferFile(params map[string]interface{}) error {
 		return fmt.Errorf("source_file must be a non-empty string")
 	}
 
-	targets, ok := params["targets"]
+	nodes, ok := params["nodes"]
 	if !ok {
-		return fmt.Errorf("targets is required")
+		return fmt.Errorf("nodes is required")
 	}
-	targetList, ok := targets.([]interface{})
-	if !ok || len(targetList) == 0 {
-		return fmt.Errorf("targets must be a non-empty array")
+	nodeList, ok := nodes.([]interface{})
+	if !ok || len(nodeList) == 0 {
+		return fmt.Errorf("nodes must be a non-empty array")
 	}
-	for i, t := range targetList {
-		if _, ok := t.(string); !ok {
-			return fmt.Errorf("target at index %d must be a string", i)
+	for i, n := range nodeList {
+		if _, ok := n.(string); !ok {
+			return fmt.Errorf("node at index %d must be a string", i)
 		}
 	}
 

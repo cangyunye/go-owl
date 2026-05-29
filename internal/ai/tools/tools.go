@@ -199,10 +199,10 @@ func (t *ExecuteCommandTool) Parameters() string {
 	return `{
 		"type": "object",
 		"properties": {
-			"targets": {
+			"nodes": {
 				"type": "array",
 				"items": {"type": "string"},
-				"description": "Target node name list"
+				"description": "Node name list"
 			},
 			"command": {
 				"type": "string",
@@ -213,14 +213,14 @@ func (t *ExecuteCommandTool) Parameters() string {
 				"description": "Timeout in seconds, default 60"
 			}
 		},
-		"required": ["targets", "command"]
+		"required": ["nodes", "command"]
 	}`
 }
 
 func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
-	targets, ok := params["targets"].([]interface{})
-	if !ok || len(targets) == 0 {
-		return "", fmt.Errorf("missing target nodes")
+	nodes, ok := params["nodes"].([]interface{})
+	if !ok || len(nodes) == 0 {
+		return "", fmt.Errorf("missing nodes")
 	}
 
 	command, ok := params["command"].(string)
@@ -233,10 +233,10 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 		timeout = int(t)
 	}
 
-	var targetNames []string
-	for _, target := range targets {
-		if s, ok := target.(string); ok {
-			targetNames = append(targetNames, s)
+	var nodeNames []string
+	for _, node := range nodes {
+		if s, ok := node.(string); ok {
+			nodeNames = append(nodeNames, s)
 		}
 	}
 
@@ -246,13 +246,13 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Execute command: %s\n", command))
-	sb.WriteString(fmt.Sprintf("Target nodes: %s\n", strings.Join(targetNames, ", ")))
+	sb.WriteString(fmt.Sprintf("Nodes: %s\n", strings.Join(nodeNames, ", ")))
 	sb.WriteString(fmt.Sprintf("Timeout: %ds\n\n", timeout))
 	sb.WriteString("Results:\n")
 	sb.WriteString(strings.Repeat("-", 60))
 	sb.WriteString("\n")
 
-	for _, name := range targetNames {
+	for _, name := range nodeNames {
 		nodeInfo, err := t.nodeMgr.GetByID(name)
 		if err != nil {
 			sb.WriteString(fmt.Sprintf("[%s] Error: Node not found\n", name))
@@ -415,10 +415,10 @@ func (t *TransferFileTool) Parameters() string {
 				"type": "string",
 				"description": "Source file path (local)"
 			},
-			"targets": {
+			"nodes": {
 				"type": "array",
 				"items": {"type": "string"},
-				"description": "Target node name list"
+				"description": "Node name list"
 			},
 			"dest_dir": {
 				"type": "string",
@@ -433,7 +433,7 @@ func (t *TransferFileTool) Parameters() string {
 				"description": "File permission, e.g. 0644"
 			}
 		},
-		"required": ["source_file", "targets", "dest_dir"]
+		"required": ["source_file", "nodes", "dest_dir"]
 	}`
 }
 
@@ -443,9 +443,9 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 		return "", fmt.Errorf("missing source file path")
 	}
 
-	targets, ok := params["targets"].([]interface{})
-	if !ok || len(targets) == 0 {
-		return "", fmt.Errorf("missing target nodes")
+	nodes, ok := params["nodes"].([]interface{})
+	if !ok || len(nodes) == 0 {
+		return "", fmt.Errorf("missing nodes")
 	}
 
 	destDir, ok := params["dest_dir"].(string)
@@ -455,7 +455,7 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 
 	mode, _ := params["mode"].(string)
 	if mode == "" {
-		if len(targets) >= 5 {
+		if len(nodes) >= 5 {
 			mode = "diffusion"
 		} else {
 			mode = "direct"
@@ -467,10 +467,10 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 		permission = "0644"
 	}
 
-	var targetNames []string
-	for _, target := range targets {
-		if s, ok := target.(string); ok {
-			targetNames = append(targetNames, s)
+	var nodeNames []string
+	for _, node := range nodes {
+		if s, ok := node.(string); ok {
+			nodeNames = append(nodeNames, s)
 		}
 	}
 
@@ -483,13 +483,13 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 	sb.WriteString(fmt.Sprintf("File transfer task:\n"))
 	sb.WriteString(fmt.Sprintf("Source file: %s\n", sourceFile))
 	sb.WriteString(fmt.Sprintf("Target directory: %s\n", destDir))
-	sb.WriteString(fmt.Sprintf("Target nodes: %s\n", strings.Join(targetNames, ", ")))
+	sb.WriteString(fmt.Sprintf("Nodes: %s\n", strings.Join(nodeNames, ", ")))
 	sb.WriteString(fmt.Sprintf("Transfer mode: %s\n", transferMode))
 	sb.WriteString(fmt.Sprintf("File permission: %s\n", permission))
-	sb.WriteString(fmt.Sprintf("Node count: %d\n", len(targetNames)))
+	sb.WriteString(fmt.Sprintf("Node count: %d\n", len(nodeNames)))
 
 	if mode == "diffusion" {
-		sourceCount := len(targetNames) / 3
+		sourceCount := len(nodeNames) / 3
 		if sourceCount < 2 {
 			sourceCount = 2
 		}
@@ -571,10 +571,10 @@ func GetToolDefinitions() []map[string]interface{} {
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"targets": map[string]interface{}{
+						"nodes": map[string]interface{}{
 							"type":        "array",
 							"items":       map[string]interface{}{"type": "string"},
-							"description": "Target node name list",
+							"description": "Node name list",
 						},
 						"command": map[string]interface{}{
 							"type":        "string",
@@ -585,7 +585,7 @@ func GetToolDefinitions() []map[string]interface{} {
 							"description": "Timeout in seconds, default 60",
 						},
 					},
-					"required": []string{"targets", "command"},
+					"required": []string{"nodes", "command"},
 				},
 			},
 		},
@@ -622,10 +622,10 @@ func GetToolDefinitions() []map[string]interface{} {
 							"type":        "string",
 							"description": "Source file path (local)",
 						},
-						"targets": map[string]interface{}{
+						"nodes": map[string]interface{}{
 							"type":        "array",
 							"items":       map[string]interface{}{"type": "string"},
-							"description": "Target node name list",
+							"description": "Node name list",
 						},
 						"dest_dir": map[string]interface{}{
 							"type":        "string",
@@ -640,7 +640,7 @@ func GetToolDefinitions() []map[string]interface{} {
 							"description": "File permission, e.g. 0644",
 						},
 					},
-					"required": []string{"source_file", "targets", "dest_dir"},
+					"required": []string{"source_file", "nodes", "dest_dir"},
 				},
 			},
 		},

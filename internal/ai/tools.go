@@ -221,10 +221,10 @@ func (t *ExecuteCommandTool) Parameters() string {
 	return `{
 		"type": "object",
 		"properties": {
-			"targets": {
+			"nodes": {
 				"type": "array",
 				"items": {"type": "string"},
-				"description": "Target node name list (mutually exclusive with group/label)"
+				"description": "Node name list (mutually exclusive with group/label)"
 			},
 			"command": {
 				"type": "string",
@@ -232,11 +232,11 @@ func (t *ExecuteCommandTool) Parameters() string {
 			},
 			"group": {
 				"type": "string",
-				"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with targets/label)"
+				"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with nodes/label)"
 			},
 			"label": {
 				"type": "string",
-				"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with targets/group)"
+				"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with nodes/group)"
 			},
 			"timeout": {
 				"type": "integer",
@@ -254,7 +254,7 @@ func (t *ExecuteCommandTool) Parameters() string {
 			},
 			"search": {
 				"type": "string",
-				"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with targets/group/label)"
+				"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with nodes/group/label)"
 			}
 		},
 		"required": ["command"]
@@ -290,21 +290,21 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 	var nodes []*model.Node
 	var filterDesc string
 
-	if targets, ok := params["targets"].([]interface{}); ok && len(targets) > 0 {
-		var targetNames []string
-		for _, target := range targets {
-			if s, ok := target.(string); ok {
-				targetNames = append(targetNames, s)
+	if nodeList, ok := params["nodes"].([]interface{}); ok && len(nodeList) > 0 {
+		var nodeNames []string
+		for _, node := range nodeList {
+			if s, ok := node.(string); ok {
+				nodeNames = append(nodeNames, s)
 			}
 		}
-		for _, name := range targetNames {
+		for _, name := range nodeNames {
 			n, err := t.nodeMgr.GetByID(name)
 			if err != nil {
 				continue
 			}
 			nodes = append(nodes, n)
 		}
-		filterDesc = fmt.Sprintf("targets: %s", strings.Join(targetNames, ", "))
+		filterDesc = fmt.Sprintf("nodes: %s", strings.Join(nodeNames, ", "))
 	} else if group, _ := params["group"].(string); group != "" {
 		nodes = t.nodeMgr.GetByGroup(group)
 		filterDesc = fmt.Sprintf("group: %s", group)
@@ -321,7 +321,7 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 	}
 
 	if len(nodes) == 0 {
-		return "No matching target nodes found", nil
+		return "No matching nodes found", nil
 	}
 
 	if err := t.validateCommand(command); err != nil {
@@ -451,22 +451,22 @@ func (t *ExecuteScriptTool) Parameters() string {
 				"type": "string",
 				"description": "Script file path or inline script content"
 			},
-			"targets": {
+			"nodes": {
 				"type": "array",
 				"items": {"type": "string"},
-				"description": "Target node name list (mutually exclusive with group/label)"
+				"description": "Node name list (mutually exclusive with group/label)"
 			},
 			"group": {
 				"type": "string",
-				"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with targets/label)"
+				"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with nodes/label)"
 			},
 			"label": {
 				"type": "string",
-				"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with targets/group)"
+				"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with nodes/group)"
 			},
 			"search": {
 				"type": "string",
-				"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with targets/group/label)"
+				"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with nodes/group/label)"
 			},
 			"dest": {
 				"type": "string",
@@ -560,7 +560,7 @@ func (t *ExecuteScriptTool) Execute(ctx context.Context, params map[string]inter
 	}
 
 	if len(nodes) == 0 {
-		return "No matching target nodes found", nil
+		return "No matching nodes found", nil
 	}
 
 	execType := "File upload+exec"
@@ -768,9 +768,9 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 		return "", fmt.Errorf("missing source file path")
 	}
 
-	targets, ok := params["targets"].([]interface{})
-	if !ok || len(targets) == 0 {
-		return "", fmt.Errorf("missing target nodes")
+	nodeList, ok := params["nodes"].([]interface{})
+	if !ok || len(nodeList) == 0 {
+		return "", fmt.Errorf("missing nodes")
 	}
 
 	destDir, ok := params["dest_dir"].(string)
@@ -780,7 +780,7 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 
 	mode, _ := params["mode"].(string)
 	if mode == "" {
-		if len(targets) >= 5 {
+		if len(nodeList) >= 5 {
 			mode = "diffusion"
 		} else {
 			mode = "direct"
@@ -792,10 +792,10 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 		permission = "0644"
 	}
 
-	var targetNames []string
-	for _, target := range targets {
-		if s, ok := target.(string); ok {
-			targetNames = append(targetNames, s)
+	var nodeNames []string
+	for _, node := range nodeList {
+		if s, ok := node.(string); ok {
+			nodeNames = append(nodeNames, s)
 		}
 	}
 
@@ -808,13 +808,13 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 	sb.WriteString(fmt.Sprintf("File transfer task:\n"))
 	sb.WriteString(fmt.Sprintf("Source file: %s\n", sourceFile))
 	sb.WriteString(fmt.Sprintf("Target directory: %s\n", destDir))
-	sb.WriteString(fmt.Sprintf("Target nodes: %s\n", strings.Join(targetNames, ", ")))
+	sb.WriteString(fmt.Sprintf("Nodes: %s\n", strings.Join(nodeNames, ", ")))
 	sb.WriteString(fmt.Sprintf("Transfer mode: %s\n", transferMode))
 	sb.WriteString(fmt.Sprintf("File permission: %s\n", permission))
-	sb.WriteString(fmt.Sprintf("Node count: %d\n", len(targetNames)))
+	sb.WriteString(fmt.Sprintf("Node count: %d\n", len(nodeNames)))
 
 	if mode == "diffusion" {
-		sourceCount := len(targetNames) / 3
+		sourceCount := len(nodeNames) / 3
 		if sourceCount < 2 {
 			sourceCount = 2
 		}
@@ -1167,10 +1167,10 @@ func GetToolDefinitions() []map[string]interface{} {
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"targets": map[string]interface{}{
+						"nodes": map[string]interface{}{
 							"type":        "array",
 							"items":       map[string]interface{}{"type": "string"},
-							"description": "Target node name list (mutually exclusive with group/label)",
+							"description": "Node name list (mutually exclusive with group/label)",
 						},
 						"command": map[string]interface{}{
 							"type":        "string",
@@ -1178,11 +1178,11 @@ func GetToolDefinitions() []map[string]interface{} {
 						},
 						"group": map[string]interface{}{
 							"type":        "string",
-							"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with targets/label)",
+							"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with nodes/label)",
 						},
 						"label": map[string]interface{}{
 							"type":        "string",
-							"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with targets/group)",
+							"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with nodes/group)",
 						},
 						"timeout": map[string]interface{}{
 							"type":        "integer",
@@ -1200,7 +1200,7 @@ func GetToolDefinitions() []map[string]interface{} {
 						},
 						"search": map[string]interface{}{
 							"type":        "string",
-							"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with targets/group/label)",
+							"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with nodes/group/label)",
 						},
 					},
 					"required": []string{"command"},
@@ -1240,10 +1240,10 @@ func GetToolDefinitions() []map[string]interface{} {
 							"type":        "string",
 							"description": "Source file path (local)",
 						},
-						"targets": map[string]interface{}{
+						"nodes": map[string]interface{}{
 							"type":        "array",
 							"items":       map[string]interface{}{"type": "string"},
-							"description": "Target node name list",
+							"description": "Node name list",
 						},
 						"dest_dir": map[string]interface{}{
 							"type":        "string",
@@ -1258,7 +1258,7 @@ func GetToolDefinitions() []map[string]interface{} {
 							"description": "File permission, e.g. 0644",
 						},
 					},
-					"required": []string{"source_file", "targets", "dest_dir"},
+					"required": []string{"source_file", "nodes", "dest_dir"},
 				},
 			},
 		},

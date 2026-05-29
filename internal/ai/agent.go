@@ -550,9 +550,9 @@ func (a *Agent) handleExecuteCommand(content string) (string, error) {
 	if command == "" {
 		command = "uptime"
 	}
-	targets := a.getAllNodeNames()
+	nodes := a.getAllNodeNames()
 	params := map[string]interface{}{
-		"targets": targets,
+		"nodes":   nodes,
 		"command": command,
 		"timeout": 60,
 	}
@@ -568,14 +568,14 @@ func (a *Agent) handleTransferFile(content string) (string, error) {
 	if strings.Contains(content, "/opt") {
 		destDir = "/opt"
 	}
-	targets := a.getAllNodeNames()
+	nodes := a.getAllNodeNames()
 	mode := "direct"
-	if len(targets) >= 5 {
+	if len(nodes) >= 5 {
 		mode = "diffusion"
 	}
 	params := map[string]interface{}{
 		"source_file": sourceFile,
-		"targets":     targets,
+		"nodes":       nodes,
 		"dest_dir":    destDir,
 		"mode":        mode,
 	}

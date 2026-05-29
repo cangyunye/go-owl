@@ -350,7 +350,7 @@ func TestExecuteToolCallWithInvalidParams(t *testing.T) {
 	agent := &Agent{registry: registry}
 
 	invalidParams := map[string]interface{}{
-		"targets": "not-an-array",
+		"nodes": "not-an-array",
 		"command": "",
 	}
 
@@ -371,7 +371,7 @@ func TestExecuteToolCallWithMissingRequiredParams(t *testing.T) {
 	agent := &Agent{registry: registry}
 
 	missingParams := map[string]interface{}{
-		"targets": []interface{}{"node1"},
+		"nodes": []interface{}{"node1"},
 	}
 
 	_, err := agent.executeToolCall(ctx, ToolCall{
@@ -391,7 +391,7 @@ func TestExecuteToolCallWithValidParams(t *testing.T) {
 	agent := &Agent{registry: registry}
 
 	validParams := map[string]interface{}{
-		"targets": []interface{}{"node1"},
+		"nodes": []interface{}{"node1"},
 		"command": "echo hello",
 	}
 
@@ -435,7 +435,7 @@ func TestTransferFileValidation(t *testing.T) {
 			name: "valid params",
 			params: map[string]interface{}{
 				"source_file": "/tmp/test.txt",
-				"targets":     []interface{}{"node1"},
+				"nodes":     []interface{}{"node1"},
 				"dest_dir":    "/tmp",
 			},
 			shouldError: false,
@@ -443,7 +443,7 @@ func TestTransferFileValidation(t *testing.T) {
 		{
 			name: "missing source file",
 			params: map[string]interface{}{
-				"targets":  []interface{}{"node1"},
+				"nodes":  []interface{}{"node1"},
 				"dest_dir": "/tmp",
 			},
 			shouldError: true,
@@ -452,7 +452,7 @@ func TestTransferFileValidation(t *testing.T) {
 			name: "relative path for dest_dir",
 			params: map[string]interface{}{
 				"source_file": "/tmp/test.txt",
-				"targets":     []interface{}{"node1"},
+				"nodes":     []interface{}{"node1"},
 				"dest_dir":    "relative/path",
 			},
 			shouldError: true,
@@ -553,7 +553,7 @@ func newTestAgentForRoute(responses []string) *Agent {
 }
 
 func TestProcessRouteExec(t *testing.T) {
-	agent := newTestAgentForRoute([]string{"exec", "```json\n" + `{"tool_calls":[{"name":"execute_command","arguments":{"command":"uptime","targets":["node1"]}}]}` + "\n```", ""})
+	agent := newTestAgentForRoute([]string{"exec", "```json\n" + `{"tool_calls":[{"name":"execute_command","arguments":{"command":"uptime","nodes":["node1"]}}]}` + "\n```", ""})
 	ctx := context.Background()
 	resp, err := agent.Process(ctx, "execute uptime on node1", nil)
 	if err != nil {
