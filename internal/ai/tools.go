@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/node"
+	"gopkg.in/yaml.v3"
 )
 
 type Tool interface {
@@ -70,10 +72,22 @@ func (t *QueryNodesTool) Validate(params map[string]interface{}) error {
 }
 
 func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	debugLogger.Infow("QueryNodesTool 执行开始",
+		"params", fmt.Sprintf("%+v", params))
+
 	group, _ := params["group"].(string)
 	labels, _ := params["labels"].(map[string]interface{})
 	status, _ := params["status"].(string)
 	format, _ := params["format"].(string)
+	search, _ := params["search"].(string)
+
+	debugLogger.Infow("参数解析",
+		"group", group,
+		"labels", labels,
+		"status", status,
+		"format", format,
+		"search", search)
+
 	if format == "" {
 		format = "table"
 	}
@@ -81,6 +95,7 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 	var nodes []*model.Node
 
 	if group != "" {
+		debugLogger.Infow("按分组获取节点", "group", group)
 		nodes = t.nodeMgr.GetByGroup(group)
 	} else if labels != nil {
 		labelMap := make(map[string]string)
@@ -89,8 +104,10 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 				labelMap[k] = vs
 			}
 		}
+		debugLogger.Infow("按标签获取节点", "labels", labelMap)
 		nodes = t.nodeMgr.GetByLabels(labelMap)
 	} else if status != "" {
+		debugLogger.Infow("按状态获取节点", "status", status)
 		allNodes := t.nodeMgr.List()
 		nodes = make([]*model.Node, 0)
 		for _, n := range allNodes {
@@ -99,19 +116,30 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 			}
 		}
 	} else {
+		debugLogger.Infow("获取所有节点")
 		nodes = t.nodeMgr.List()
 	}
 
-	if search, ok := params["search"].(string); ok && search != "" {
+	debugLogger.Infow("获取到节点数量", "count", len(nodes))
+
+	if search != "" {
+		debugLogger.Infow("按名称搜索", "search", search)
 		filtered := make([]*model.Node, 0)
 		lowerSearch := strings.ToLower(search)
 		for _, n := range nodes {
+			debugLogger.Debugw("检查节点匹配",
+				"nodeID", n.ID,
+				"nodeName", n.Name,
+				"searchTerm", lowerSearch,
+				"matched", strings.Contains(strings.ToLower(n.Name), lowerSearch))
 			if strings.Contains(strings.ToLower(n.Name), lowerSearch) {
 				filtered = append(filtered, n)
 			}
 		}
 		nodes = filtered
 	}
+
+	debugLogger.Infow("最终节点数量", "finalCount", len(nodes))
 
 	if len(nodes) == 0 {
 		return "No matching nodes found", nil
@@ -1090,6 +1118,347 @@ func (t *QueryDatabaseTool) applyWhere(nodes []*model.Node, where string) []*mod
 		return t.applyWhere(result, parts[1])
 	}
 	return result
+}
+
+type ListPlaybooksTool struct{}
+
+func NewListPlaybooksTool() *ListPlaybooksTool {
+	return &ListPlaybooksTool{}
+}
+
+func (t *ListPlaybooksTool) Name() string {
+	return "list_playbooks"
+}
+
+func (t *ListPlaybooksTool) Description() string {
+	return "List all available playbooks."
+}
+
+func (t *ListPlaybooksTool) Parameters() string {
+	return `{
+		"type": "object",
+		"properties": {
+			"group": {
+				"type": "string",
+				"description": "Filter playbooks by group"
+			},
+			"format": {
+				"type": "string",
+				"description": "Output format: table (default), json"
+			}
+		}
+	}`
+}
+
+func (t *ListPlaybooksTool) Validate(params map[string]interface{}) error {
+	return nil
+}
+
+func (t *ListPlaybooksTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	library := "./playbooks"
+	if _, err := os.Stat(library); os.IsNotExist(err) {
+		return "No playbooks found. Playbooks directory does not exist.", nil
+	}
+
+	var playbooks []playbookInfo
+	err := filepath.Walk(library, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && (strings.HasSuffix(path, ".yml") || strings.HasSuffix(path, ".yaml")) {
+			playbooks = append(playbooks, playbookInfo{
+				Name: info.Name(),
+				Path: path,
+				Size: info.Size(),
+			})
+		}
+		return nil
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("failed to scan playbooks: %w", err)
+	}
+
+	if len(playbooks) == 0 {
+		return "No playbooks found.", nil
+	}
+
+	format, _ := params["format"].(string)
+	if format == "" {
+		format = "table"
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Total: %d playbooks\n\n", len(playbooks)))
+
+	if format == "json" {
+		data, _ := json.MarshalIndent(playbooks, "", "  ")
+		sb.WriteString(string(data))
+	} else {
+		sb.WriteString(fmt.Sprintf("%-30s %-50s\n", "Name", "Path"))
+		sb.WriteString(strings.Repeat("-", 80))
+		sb.WriteString("\n")
+		for _, pb := range playbooks {
+			sb.WriteString(fmt.Sprintf("%-30s %-50s\n", pb.Name, pb.Path))
+		}
+	}
+
+	return sb.String(), nil
+}
+
+type playbookInfo struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+}
+
+type RunPlaybookTool struct {
+	nodeMgr node.Manager
+}
+
+func NewRunPlaybookTool(nodeMgr node.Manager) *RunPlaybookTool {
+	return &RunPlaybookTool{nodeMgr: nodeMgr}
+}
+
+func (t *RunPlaybookTool) Name() string {
+	return "run_playbook"
+}
+
+func (t *RunPlaybookTool) Description() string {
+	return "Execute a playbook on specified nodes."
+}
+
+func (t *RunPlaybookTool) Parameters() string {
+	return `{
+		"type": "object",
+		"properties": {
+			"name": {
+				"type": "string",
+				"description": "Playbook name to execute"
+			},
+			"nodes": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Target node name list"
+			},
+			"group": {
+				"type": "string",
+				"description": "Filter by group, e.g. 'web', 'db'"
+			},
+			"label": {
+				"type": "string",
+				"description": "Filter by label, e.g. 'env=prod'"
+			},
+			"search": {
+				"type": "string",
+				"description": "Fuzzy search by node name"
+			},
+			"vars": {
+				"type": "object",
+				"description": "Variables to pass to playbook"
+			},
+			"tags": {
+				"type": "string",
+				"description": "Tags to filter tasks"
+			},
+			"check": {
+				"type": "boolean",
+				"description": "Check mode (dry run)"
+			}
+		},
+		"required": ["name"]
+	}`
+}
+
+func (t *RunPlaybookTool) Validate(params map[string]interface{}) error {
+	if name, ok := params["name"].(string); !ok || name == "" {
+		return fmt.Errorf("playbook name is required")
+	}
+	return nil
+}
+
+func (t *RunPlaybookTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	name, _ := params["name"].(string)
+
+	var nodes []*model.Node
+	var filterDesc string
+
+	if nodeList, ok := params["nodes"].([]interface{}); ok && len(nodeList) > 0 {
+		var nodeNames []string
+		for _, n := range nodeList {
+			if s, ok := n.(string); ok {
+				nodeNames = append(nodeNames, s)
+			}
+		}
+		for _, n := range nodeNames {
+			if node, err := t.nodeMgr.GetByID(n); err == nil {
+				nodes = append(nodes, node)
+			}
+		}
+		filterDesc = fmt.Sprintf("nodes: %s", strings.Join(nodeNames, ", "))
+	} else if group, _ := params["group"].(string); group != "" {
+		nodes = t.nodeMgr.GetByGroup(group)
+		filterDesc = fmt.Sprintf("group: %s", group)
+	} else if label, _ := params["label"].(string); label != "" {
+		labelMap := parseLabelFilter(label)
+		nodes = t.nodeMgr.GetByLabels(labelMap)
+		filterDesc = fmt.Sprintf("label: %s", label)
+	} else if search, _ := params["search"].(string); search != "" {
+		nodes = t.nodeMgr.SearchByName(search)
+		filterDesc = fmt.Sprintf("search: %s", search)
+	} else {
+		nodes = t.nodeMgr.List()
+		filterDesc = "all nodes"
+	}
+
+	checkMode, _ := params["check"].(bool)
+	modeStr := "execute"
+	if checkMode {
+		modeStr = "check (dry run)"
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Playbook execution task:\n"))
+	sb.WriteString(fmt.Sprintf("Playbook: %s\n", name))
+	sb.WriteString(fmt.Sprintf("Mode: %s\n", modeStr))
+	sb.WriteString(fmt.Sprintf("Target: %s (%d nodes)\n", filterDesc, len(nodes)))
+	sb.WriteString(fmt.Sprintf("\nTarget nodes:\n"))
+	sb.WriteString(strings.Repeat("-", 60))
+	sb.WriteString("\n")
+
+	for _, n := range nodes {
+		sb.WriteString(fmt.Sprintf("[%s] %s:%d | Status: %s\n", n.Name, n.Address, n.Port, n.Status))
+	}
+
+	return sb.String(), nil
+}
+
+type PlaybookInfoTool struct{}
+
+func NewPlaybookInfoTool() *PlaybookInfoTool {
+	return &PlaybookInfoTool{}
+}
+
+func (t *PlaybookInfoTool) Name() string {
+	return "playbook_info"
+}
+
+func (t *PlaybookInfoTool) Description() string {
+	return "Get detailed information about a playbook."
+}
+
+func (t *PlaybookInfoTool) Parameters() string {
+	return `{
+		"type": "object",
+		"properties": {
+			"name": {
+				"type": "string",
+				"description": "Playbook name"
+			}
+		},
+		"required": ["name"]
+	}`
+}
+
+func (t *PlaybookInfoTool) Validate(params map[string]interface{}) error {
+	if name, ok := params["name"].(string); !ok || name == "" {
+		return fmt.Errorf("playbook name is required")
+	}
+	return nil
+}
+
+func (t *PlaybookInfoTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	name, _ := params["name"].(string)
+
+	library := "./playbooks"
+	playbookPath := filepath.Join(library, name)
+	if !strings.HasSuffix(playbookPath, ".yaml") && !strings.HasSuffix(playbookPath, ".yml") {
+		if _, err := os.Stat(playbookPath + ".yaml"); err == nil {
+			playbookPath += ".yaml"
+		} else if _, err := os.Stat(playbookPath + ".yml"); err == nil {
+			playbookPath += ".yml"
+		}
+	}
+
+	content, err := os.ReadFile(playbookPath)
+	if err != nil {
+		return "", fmt.Errorf("playbook not found: %s", name)
+	}
+
+	var result struct {
+		Name  string                 `yaml:"name"`
+		Hosts []string               `yaml:"hosts"`
+		Vars  map[string]interface{} `yaml:"vars"`
+	}
+	if err := yaml.Unmarshal(content, &result); err != nil {
+		return "", fmt.Errorf("failed to parse playbook: %w", err)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Playbook: %s\n", name))
+	sb.WriteString(strings.Repeat("-", 60))
+	sb.WriteString("\n")
+	if len(result.Hosts) > 0 {
+		sb.WriteString(fmt.Sprintf("Hosts: %s\n", strings.Join(result.Hosts, ", ")))
+	}
+	if len(result.Vars) > 0 {
+		sb.WriteString("\nVariables:\n")
+		for k, v := range result.Vars {
+			sb.WriteString(fmt.Sprintf("  %s: %v\n", k, v))
+		}
+	}
+
+	return sb.String(), nil
+}
+
+type ValidatePlaybookTool struct{}
+
+func NewValidatePlaybookTool() *ValidatePlaybookTool {
+	return &ValidatePlaybookTool{}
+}
+
+func (t *ValidatePlaybookTool) Name() string {
+	return "validate_playbook"
+}
+
+func (t *ValidatePlaybookTool) Description() string {
+	return "Validate playbook syntax."
+}
+
+func (t *ValidatePlaybookTool) Parameters() string {
+	return `{
+		"type": "object",
+		"properties": {
+			"file": {
+				"type": "string",
+				"description": "Playbook file path"
+			}
+		},
+		"required": ["file"]
+	}`
+}
+
+func (t *ValidatePlaybookTool) Validate(params map[string]interface{}) error {
+	if file, ok := params["file"].(string); !ok || file == "" {
+		return fmt.Errorf("playbook file path is required")
+	}
+	return nil
+}
+
+func (t *ValidatePlaybookTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	filePath, _ := params["file"].(string)
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var result struct{}
+	if err := yaml.Unmarshal(content, &result); err != nil {
+		return "", fmt.Errorf("YAML syntax error: %w", err)
+	}
+
+	return fmt.Sprintf("Playbook '%s' is valid.\n", filePath), nil
 }
 
 type ToolRegistry struct {

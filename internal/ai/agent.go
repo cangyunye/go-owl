@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"text/template"
@@ -14,7 +15,41 @@ import (
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/cangyunye/go-owl/internal/control/playbook"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
+
+var debugLogger *zap.SugaredLogger
+
+func init() {
+	config := zap.Config{
+		Level:            zap.NewAtomicLevelAt(zap.InfoLevel),
+		Development:      false,
+		Encoding:         "console",
+		EncoderConfig:    zap.NewDevelopmentEncoderConfig(),
+		OutputPaths:      []string{"stderr"},
+		ErrorOutputPaths: []string{"stderr"},
+	}
+	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	config.EncoderConfig.TimeKey = "time"
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+
+	logger, _ := config.Build()
+	debugLogger = logger.Sugar().Named("ai-debug")
+}
+
+func debugPrint(debug bool, template string, keysAndValues ...interface{}) {
+	if !debug {
+		return
+	}
+	if len(keysAndValues) == 0 {
+		debugLogger.Info(template)
+	} else {
+		formatted := fmt.Sprintf(template, keysAndValues...)
+		debugLogger.Info(formatted)
+	}
+}
 
 type Agent struct {
 	config         *Config
@@ -24,6 +59,7 @@ type Agent struct {
 	chatModel      ChatModel
 	systemPrompt   string
 	mu             sync.RWMutex
+	debug          bool
 }
 
 type ChatModel interface {
@@ -44,10 +80,23 @@ func (f ChatModelFunc) Generate(ctx context.Context, messages []Message) (string
 }
 
 var groupPrompts = map[string]string{
-	"node":     aiPrompts.NodeSystemPrompt,
-	"exec":     aiPrompts.ExecSystemPrompt,
-	"file":     aiPrompts.FileSystemPrompt,
-	"playbook": aiPrompts.PlaybookSystemPrompt,
+	"node_list":         aiPrompts.NodeListSystemPrompt,
+	"node_add":          aiPrompts.NodeAddSystemPrompt,
+	"node_update":       aiPrompts.NodeUpdateSystemPrompt,
+	"node_remove":       aiPrompts.NodeRemoveSystemPrompt,
+	"node_status":       aiPrompts.NodeStatusSystemPrompt,
+	"node_groups":       aiPrompts.NodeGroupsSystemPrompt,
+	"node_labels":       aiPrompts.NodeLabelsSystemPrompt,
+	"node_import":       aiPrompts.NodeImportSystemPrompt,
+	"node_ping":         aiPrompts.NodePingSystemPrompt,
+	"node_check":        aiPrompts.NodeCheckSystemPrompt,
+	"exec_run":          aiPrompts.ExecRunSystemPrompt,
+	"exec_script":       aiPrompts.ExecScriptSystemPrompt,
+	"file":              aiPrompts.FileSystemPrompt,
+	"playbook_list":     aiPrompts.PlaybookListSystemPrompt,
+	"playbook_run":      aiPrompts.PlaybookRunSystemPrompt,
+	"playbook_info":     aiPrompts.PlaybookInfoSystemPrompt,
+	"playbook_validate": aiPrompts.PlaybookValidateSystemPrompt,
 }
 
 var toolHints = map[string]string{
@@ -57,7 +106,8 @@ var toolHints = map[string]string{
 	"transfer_file":     aiPrompts.TransferPrompt,
 }
 
-func NewAgent(config *Config, nodeMgr node.Manager, playbookParser *playbook.Parser) (*Agent, error) {
+func NewAgent(config *Config, nodeMgr node.Manager, playbookParser *playbook.Parser, debug ...bool) (*Agent, error) {
+	os.Stderr.WriteString("[DEBUG-NEWAGENT-START]\n")
 	registry := NewToolRegistry()
 	registry.Register(NewQueryNodesTool(nodeMgr))
 	registry.Register(NewExecuteCommandTool(nodeMgr))
@@ -65,13 +115,20 @@ func NewAgent(config *Config, nodeMgr node.Manager, playbookParser *playbook.Par
 	registry.Register(NewTransferFileTool(nodeMgr))
 	registry.Register(NewExecuteScriptTool(nodeMgr))
 	registry.Register(NewQueryDatabaseTool(nodeMgr))
+	registry.Register(NewListPlaybooksTool())
+	registry.Register(NewRunPlaybookTool(nodeMgr))
+	registry.Register(NewPlaybookInfoTool())
+	registry.Register(NewValidatePlaybookTool())
+
+	isDebug := len(debug) > 0 && debug[0]
 
 	agent := &Agent{
 		config:         config,
 		nodeMgr:        nodeMgr,
 		registry:       registry,
 		playbookParser: playbookParser,
-		systemPrompt:   aiPrompts.ExecSystemPrompt,
+		systemPrompt:   aiPrompts.ExecRunSystemPrompt,
+		debug:          isDebug,
 	}
 
 	if config.AI.APIKey != "" && config.AI.Model != "" {
@@ -120,14 +177,30 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		return "", fmt.Errorf("路由失败: %w", err)
 	}
 
+	debugPrint(a.debug, "路由原始响应: %s", routeResp)
+
 	routeLabel := strings.TrimSpace(strings.ToLower(routeResp))
 	routeLabel = strings.TrimRight(routeLabel, ".")
 	routeLabel = strings.TrimPrefix(routeLabel, "```")
 	routeLabel = strings.TrimSuffix(routeLabel, "```")
 	routeLabel = strings.TrimSpace(routeLabel)
 
+	debugPrint(a.debug, "路由标签: %s", routeLabel)
+
 	if routeLabel == "uncertain" || routeLabel == "" {
 		return "我不确定您要做什么", nil
+	}
+
+	if routeLabel == "exec" {
+		routeLabel = "exec_run"
+	}
+
+	if routeLabel == "playbook" {
+		routeLabel = "playbook_list"
+	}
+
+	if routeLabel == "node" {
+		routeLabel = "node_list"
 	}
 
 	if onProgress != nil {
@@ -147,8 +220,12 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		}
 	}
 
+	debugPrint(a.debug, "使用系统提示词: %s", routeLabel)
+
 	toolDescs := a.registry.GetToolDescriptions()
 	formattedPrompt := a.formatPrompt(groupPrompt, nodeInfo, toolDescs)
+
+	debugPrint(a.debug, "系统提示词前100字符: %.100s...", formattedPrompt)
 
 	if onProgress != nil {
 		onProgress("analyze", "正在生成 JSON...")
@@ -164,14 +241,43 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 	var lastToolName string
 
 	for turn := 0; turn < maxTurns; turn++ {
+		debugPrint(a.debug, "=== 第 %d 轮对话 ===", turn+1)
+
+		debugPrint(a.debug, "messages 数量: %d", len(messages))
+		for i, msg := range messages {
+			hasResult := strings.Contains(msg.Content, "[TOOL_CALL_RESULT]")
+			if hasResult {
+				debugPrint(a.debug, "  messages[%d] 包含工具结果", i)
+			}
+		}
+
 		response, err := generateWithRetry(ctx, chatModel, messages, "AI调用")
 		if err != nil {
 			return "", fmt.Errorf("AI 调用失败: %w", err)
 		}
 
+		debugPrint(a.debug, "AI 响应: %.200s...", response)
+
 		toolCalls := a.parseToolCalls(response)
+		debugPrint(a.debug, "解析到工具调用数量: %d", len(toolCalls))
+
 		if len(toolCalls) == 0 {
+			hasToolResult := false
+			for _, msg := range messages {
+				if strings.Contains(msg.Content, "[TOOL_CALL_RESULT]") {
+					hasToolResult = true
+					break
+				}
+			}
+			debugPrint(a.debug, "turn=%d, hasToolResult=%v, len(response)=%d", turn, hasToolResult, len(response))
+
+			if turn >= 1 {
+				debugPrint(a.debug, "多轮对话，直接返回 AI 响应")
+				return response, nil
+			}
+
 			if len(response) > 100 && !strings.Contains(response, "tool_calls") {
+				debugPrint(a.debug, "首轮无工具调用且响应无效，返回不确定")
 				return "我不确定您要做什么", nil
 			}
 			fullResponse.WriteString(response)
@@ -425,20 +531,27 @@ func (a *Agent) parseToolCalls(response string) []ToolCall {
 }
 
 func (a *Agent) executeToolCall(ctx context.Context, call ToolCall) (string, error) {
+	debugPrint(a.debug, "执行工具: %s", call.Name)
+	debugPrint(a.debug, "工具参数: %+v", call.Arguments)
+
 	tool, ok := a.registry.Get(call.Name)
 	if !ok {
+		debugPrint(a.debug, "工具不存在: %s", call.Name)
 		return "", fmt.Errorf("未知工具: %s", call.Name)
 	}
 
 	if err := tool.Validate(call.Arguments); err != nil {
+		debugPrint(a.debug, "参数验证失败: %v", err)
 		return "", fmt.Errorf("参数验证失败: %w", err)
 	}
 
 	result, err := tool.Execute(ctx, call.Arguments)
 	if err != nil {
+		debugPrint(a.debug, "工具执行失败: %v", err)
 		return "", err
 	}
 
+	debugPrint(a.debug, "工具执行成功，结果前100字符: %.100s...", result)
 	return result, nil
 }
 

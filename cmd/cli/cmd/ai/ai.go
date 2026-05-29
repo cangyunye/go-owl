@@ -197,6 +197,14 @@ func progressLog(sessionID string, debug bool, step string, detail string) {
 	internalhistory.RecordAiChatGlobal(chat)
 }
 
+func debugLog(debug bool, format string, args ...interface{}) {
+	if debug {
+		timestamp := time.Now().Format("15:04:05")
+		msg := fmt.Sprintf(format, args...)
+		fmt.Fprintf(os.Stderr, "[%s] DEBUG: %s\n", timestamp, msg)
+	}
+}
+
 func truncateForDB(s string, maxLen int) string {
 	if len(s) > maxLen {
 		return s[:maxLen]
@@ -259,13 +267,15 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	sessionID := fmt.Sprintf("ai-%d", time.Now().UnixMilli())
 
-	agent, err := ai.NewAgent(config, nodeMgr, playbookParser)
+	agent, err := ai.NewAgent(config, nodeMgr, playbookParser, aiDebug)
+	fmt.Printf("[DEBUG-AIGO] agent=%p, err=%v\n", agent, err)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize Eino LLM: %v, using fallback mode\n", err)
 	}
 
 	if len(args) > 0 {
 		query := strings.Join(args, " ")
+		debugLog(aiDebug, "用户输入: %s", query)
 		timestamp := time.Now().Format("15:04:05")
 		fmt.Fprintf(os.Stderr, "[%s] 用户：%s\n", timestamp, query)
 
