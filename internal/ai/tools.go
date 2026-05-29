@@ -192,9 +192,16 @@ func nodesToInfo(nodes []*model.Node) []nodeInfo {
 
 func (t *QueryNodesTool) formatAsTable(nodes []*model.Node) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%-12s %-15s %-6s %-12s %-10s %-20s\n",
-		"NAME", "ADDRESS", "PORT", "STATUS", "GROUPS", "LABELS"))
-	sb.WriteString(strings.Repeat("-", 80))
+	if len(nodes) == 0 {
+		sb.WriteString("No nodes found.")
+		return sb.String()
+	}
+
+	sb.WriteString(fmt.Sprintf("%s %s %s %s %s %s %s %s\n",
+		padRight("ID", 20), padRight("Name", 25), padRight("Address", 25),
+		padRight("User", 10), padRight("Status", 12), padRight("Groups", 20),
+		padRight("Labels", 30), padRight("Last Check", 20)))
+	sb.WriteString(strings.Repeat("-", 169))
 	sb.WriteString("\n")
 
 	for _, n := range nodes {
@@ -202,14 +209,35 @@ func (t *QueryNodesTool) formatAsTable(nodes []*model.Node) string {
 		if groups == "" {
 			groups = "-"
 		}
+
 		labels := formatLabels(n.Labels)
 		if labels == "" {
 			labels = "-"
 		}
-		sb.WriteString(fmt.Sprintf("%-12s %-15s %-6d %-12s %-10s %-20s\n",
-			n.Name, n.Address, n.Port, n.Status, groups, labels))
+
+		user := n.User
+		if user == "" {
+			user = "-"
+		}
+
+		address := fmt.Sprintf("%s:%d", n.Address, n.Port)
+
+		lastCheck := n.LastCheckAt
+		if lastCheck == "" {
+			lastCheck = "-"
+		}
+
+		sb.WriteString(fmt.Sprintf("%s %s %s %s %s %s %s %s\n",
+			padRight(n.ID, 20),
+			padRight(truncateByWidth(n.Name, 25), 25),
+			padRight(truncateStr(address, 25), 25),
+			padRight(user, 10),
+			padRight(string(n.Status), 12),
+			padRight(truncateByWidth(groups, 20), 20),
+			padRight(truncateByWidth(labels, 30), 30),
+			padRight(truncateStr(lastCheck, 20), 20)))
 	}
-	sb.WriteString(fmt.Sprintf("\nTotal %d nodes, %d online", len(nodes), t.countOnline(nodes)))
+	sb.WriteString(fmt.Sprintf("\nTotal: %d nodes, %d online", len(nodes), t.countOnline(nodes)))
 	return sb.String()
 }
 
@@ -227,6 +255,48 @@ func formatLabels(labels map[string]string) string {
 		parts = append(parts, fmt.Sprintf("%s=%s", k, labels[k]))
 	}
 	return strings.Join(parts, ",")
+}
+
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+func truncateByWidth(s string, maxWidth int) string {
+	w := 0
+	for i, r := range s {
+		if r > 127 {
+			w += 2
+		} else {
+			w += 1
+		}
+		if w > maxWidth {
+			return s[:i]
+		}
+	}
+	return s
+}
+
+func displayWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		if r > 127 {
+			w += 2
+		} else {
+			w += 1
+		}
+	}
+	return w
+}
+
+func padRight(s string, width int) string {
+	dw := displayWidth(s)
+	if dw >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-dw)
 }
 
 type ExecuteCommandTool struct {
@@ -1010,9 +1080,16 @@ func (t *QueryDatabaseTool) Execute(ctx context.Context, params map[string]inter
 
 func (t *QueryDatabaseTool) formatAsTable(nodes []*model.Node) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%-12s %-15s %-6s %-12s %-10s %-20s\n",
-		"NAME", "ADDRESS", "PORT", "STATUS", "GROUPS", "LABELS"))
-	sb.WriteString(strings.Repeat("-", 80))
+	if len(nodes) == 0 {
+		sb.WriteString("No nodes found in database.")
+		return sb.String()
+	}
+
+	sb.WriteString(fmt.Sprintf("%s %s %s %s %s %s %s %s\n",
+		padRight("ID", 20), padRight("Name", 25), padRight("Address", 25),
+		padRight("User", 10), padRight("Status", 12), padRight("Groups", 20),
+		padRight("Labels", 30), padRight("Last Check", 20)))
+	sb.WriteString(strings.Repeat("-", 169))
 	sb.WriteString("\n")
 
 	for _, n := range nodes {
@@ -1020,12 +1097,33 @@ func (t *QueryDatabaseTool) formatAsTable(nodes []*model.Node) string {
 		if groups == "" {
 			groups = "-"
 		}
+
 		labels := formatLabels(n.Labels)
 		if labels == "" {
 			labels = "-"
 		}
-		sb.WriteString(fmt.Sprintf("%-12s %-15s %-6d %-12s %-10s %-20s\n",
-			n.Name, n.Address, n.Port, n.Status, groups, labels))
+
+		user := n.User
+		if user == "" {
+			user = "-"
+		}
+
+		address := fmt.Sprintf("%s:%d", n.Address, n.Port)
+
+		lastCheck := n.LastCheckAt
+		if lastCheck == "" {
+			lastCheck = "-"
+		}
+
+		sb.WriteString(fmt.Sprintf("%s %s %s %s %s %s %s %s\n",
+			padRight(n.ID, 20),
+			padRight(truncateByWidth(n.Name, 25), 25),
+			padRight(truncateStr(address, 25), 25),
+			padRight(user, 10),
+			padRight(string(n.Status), 12),
+			padRight(truncateByWidth(groups, 20), 20),
+			padRight(truncateByWidth(labels, 30), 30),
+			padRight(truncateStr(lastCheck, 20), 20)))
 	}
 	count := 0
 	for _, n := range nodes {
@@ -1033,7 +1131,7 @@ func (t *QueryDatabaseTool) formatAsTable(nodes []*model.Node) string {
 			count++
 		}
 	}
-	sb.WriteString(fmt.Sprintf("\nTotal %d nodes, %d online", len(nodes), count))
+	sb.WriteString(fmt.Sprintf("\nTotal: %d nodes, %d online", len(nodes), count))
 	return sb.String()
 }
 
