@@ -735,7 +735,7 @@ func (t *TransferFileTool) Parameters() string {
 				"type": "string",
 				"description": "Source file path (local)"
 			},
-			"targets": {
+			"nodes": {
 				"type": "array",
 				"items": {"type": "string"},
 				"description": "Target node name list"
@@ -753,7 +753,7 @@ func (t *TransferFileTool) Parameters() string {
 				"description": "File permission, e.g. 0644"
 			}
 		},
-		"required": ["source_file", "targets", "dest_dir"]
+		"required": ["source_file", "nodes", "dest_dir"]
 	}`
 }
 

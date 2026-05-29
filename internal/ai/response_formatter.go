@@ -58,9 +58,9 @@ func (f *ResponseFormatter) formatQueryNodesConfirmation(sb *strings.Builder, pa
 func (f *ResponseFormatter) formatExecuteCmdConfirmation(sb *strings.Builder, params map[string]interface{}) {
 	sb.WriteString("  意图：执行命令\n")
 
-	if targets, ok := params["targets"].([]interface{}); ok {
-		targetList := f.convertToStringSlice(targets)
-		sb.WriteString(fmt.Sprintf("  目标节点：%s\n", f.formatList(targetList)))
+	if nodes, ok := params["nodes"].([]interface{}); ok {
+		nodeList := f.convertToStringSlice(nodes)
+		sb.WriteString(fmt.Sprintf("  目标节点：%s\n", f.formatList(nodeList)))
 	}
 	if command, ok := params["command"].(string); ok {
 		sb.WriteString(fmt.Sprintf("  命令：%s\n", command))
@@ -91,9 +91,9 @@ func (f *ResponseFormatter) formatTransferConfirmation(sb *strings.Builder, para
 	if sourceFile, ok := params["source_file"].(string); ok {
 		sb.WriteString(fmt.Sprintf("  源文件：%s\n", sourceFile))
 	}
-	if targets, ok := params["targets"].([]interface{}); ok {
-		targetList := f.convertToStringSlice(targets)
-		sb.WriteString(fmt.Sprintf("  目标节点：%s\n", f.formatList(targetList)))
+	if nodes, ok := params["nodes"].([]interface{}); ok {
+		nodeList := f.convertToStringSlice(nodes)
+		sb.WriteString(fmt.Sprintf("  目标节点：%s\n", f.formatList(nodeList)))
 	}
 	if destDir, ok := params["dest_dir"].(string); ok {
 		sb.WriteString(fmt.Sprintf("  目标目录：%s\n", destDir))
