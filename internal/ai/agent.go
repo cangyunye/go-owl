@@ -169,13 +169,12 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 			return "", fmt.Errorf("AI 调用失败: %w", err)
 		}
 
-		fullResponse.WriteString(response)
-
 		toolCalls := a.parseToolCalls(response)
 		if len(toolCalls) == 0 {
 			if len(response) > 100 && !strings.Contains(response, "tool_calls") {
 				return "我不确定您要做什么", nil
 			}
+			fullResponse.WriteString(response)
 			break
 		}
 
@@ -245,13 +244,12 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 			return msgs, "", fmt.Errorf("AI 调用失败: %w", err)
 		}
 
-		fullResponse.WriteString(response)
-
 		toolCalls := a.parseToolCalls(response)
 		if len(toolCalls) == 0 {
 			if len(response) > 100 && !strings.Contains(response, "tool_calls") {
 				return msgs, "我不确定您要做什么", nil
 			}
+			fullResponse.WriteString(response)
 			msgs = append(msgs, Message{Role: "assistant", Content: response})
 			break
 		}
