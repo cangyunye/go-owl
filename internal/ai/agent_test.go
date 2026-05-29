@@ -584,7 +584,7 @@ func TestProcessRouteNode(t *testing.T) {
 
 func TestProcessRouteFile(t *testing.T) {
 	agent := newTestAgentForRoute([]string{"file",
-		"```json\n{\"tool_calls\":[{\"name\":\"transfer_file\",\"arguments\":{\"source_file\":\"/tmp/test.txt\",\"targets\":[\"node1\"],\"dest_dir\":\"/tmp\"}}]}\n```",
+		"```json\n{\"tool_calls\":[{\"name\":\"transfer_file\",\"arguments\":{\"source_file\":\"/tmp/test.txt\",\"nodes\":[\"node1\"],\"dest_dir\":\"/tmp\"}}]}\n```",
 		"",
 	})
 	ctx := context.Background()
@@ -638,7 +638,7 @@ func TestProcessRouteEmpty(t *testing.T) {
 
 func TestProcessRouteWithMarkdownCleanup(t *testing.T) {
 	agent := newTestAgentForRoute([]string{"```exec```",
-		"```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"targets\":[\"node1\"]}}]}\n```",
+		"```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"nodes\":[\"node1\"]}}]}\n```",
 		"",
 	})
 	ctx := context.Background()
@@ -653,7 +653,7 @@ func TestProcessRouteWithMarkdownCleanup(t *testing.T) {
 
 func TestProcessRouteWithPeriodCleanup(t *testing.T) {
 	agent := newTestAgentForRoute([]string{"exec.",
-		"```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"targets\":[\"node1\"]}}]}\n```",
+		"```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"nodes\":[\"node1\"]}}]}\n```",
 		"",
 	})
 	ctx := context.Background()
@@ -668,7 +668,7 @@ func TestProcessRouteWithPeriodCleanup(t *testing.T) {
 
 func TestProcessRouteFuzzyMatch(t *testing.T) {
 	agent := newTestAgentForRoute([]string{"execute",
-		"```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"targets\":[\"node1\"]}}]}\n```",
+		"```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"nodes\":[\"node1\"]}}]}\n```",
 		"",
 	})
 	ctx := context.Background()
@@ -704,7 +704,7 @@ func TestProcessRouterError(t *testing.T) {
 
 func TestParseToolCallsValid(t *testing.T) {
 	agent := &Agent{}
-	response := "```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"targets\":[\"node1\"]}}]}\n```"
+	response := "```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"nodes\":[\"node1\"]}}]}\n```"
 	calls := agent.parseToolCalls(response)
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 tool call, got %d", len(calls))
@@ -784,7 +784,7 @@ func TestParseToolCallsBareJSONWithText(t *testing.T) {
 func TestDynamicHintInjectionExecuteCommand(t *testing.T) {
 	agent := newTestAgentForRoute([]string{
 		"exec",
-		"```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"targets\":[\"node1\"]}}]}\n```",
+		"```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"nodes\":[\"node1\"]}}]}\n```",
 		"",
 	})
 	ctx := context.Background()
@@ -797,7 +797,7 @@ func TestDynamicHintInjectionExecuteCommand(t *testing.T) {
 func TestDynamicHintInjectionExecuteScript(t *testing.T) {
 	agent := newTestAgentForRoute([]string{
 		"exec",
-		"```json\n{\"tool_calls\":[{\"name\":\"execute_script\",\"arguments\":{\"script\":\"./test.sh\",\"targets\":[\"node1\"]}}]}\n```",
+		"```json\n{\"tool_calls\":[{\"name\":\"execute_script\",\"arguments\":{\"script\":\"./test.sh\",\"nodes\":[\"node1\"]}}]}\n```",
 		"",
 	})
 	ctx := context.Background()
@@ -823,7 +823,7 @@ func TestDynamicHintInjectionPlaybook(t *testing.T) {
 func TestDynamicHintInjectionTransferFile(t *testing.T) {
 	agent := newTestAgentForRoute([]string{
 		"file",
-		"```json\n{\"tool_calls\":[{\"name\":\"transfer_file\",\"arguments\":{\"source_file\":\"/tmp/test.txt\",\"targets\":[\"node1\"],\"dest_dir\":\"/tmp\"}}]}\n```",
+		"```json\n{\"tool_calls\":[{\"name\":\"transfer_file\",\"arguments\":{\"source_file\":\"/tmp/test.txt\",\"nodes\":[\"node1\"],\"dest_dir\":\"/tmp\"}}]}\n```",
 		"",
 	})
 	ctx := context.Background()

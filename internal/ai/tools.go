@@ -529,21 +529,21 @@ func (t *ExecuteScriptTool) Execute(ctx context.Context, params map[string]inter
 	var nodes []*model.Node
 	var filterDesc string
 
-	if targets, ok := params["targets"].([]interface{}); ok && len(targets) > 0 {
-		var targetNames []string
-		for _, target := range targets {
-			if s, ok := target.(string); ok {
-				targetNames = append(targetNames, s)
+	if nodesList, ok := params["nodes"].([]interface{}); ok && len(nodesList) > 0 {
+		var nodeNames []string
+		for _, node := range nodesList {
+			if s, ok := node.(string); ok {
+				nodeNames = append(nodeNames, s)
 			}
 		}
-		for _, name := range targetNames {
+		for _, name := range nodeNames {
 			n, err := t.nodeMgr.GetByID(name)
 			if err != nil {
 				continue
 			}
 			nodes = append(nodes, n)
 		}
-		filterDesc = fmt.Sprintf("targets: %s", strings.Join(targetNames, ", "))
+		filterDesc = fmt.Sprintf("nodes: %s", strings.Join(nodeNames, ", "))
 	} else if group, _ := params["group"].(string); group != "" {
 		nodes = t.nodeMgr.GetByGroup(group)
 		filterDesc = fmt.Sprintf("group: %s", group)
@@ -1274,22 +1274,22 @@ func GetToolDefinitions() []map[string]interface{} {
 							"type":        "string",
 							"description": "Script file path or inline script content",
 						},
-						"targets": map[string]interface{}{
+						"nodes": map[string]interface{}{
 							"type":        "array",
 							"items":       map[string]interface{}{"type": "string"},
 							"description": "Target node name list (mutually exclusive with group/label)",
 						},
 						"group": map[string]interface{}{
 							"type":        "string",
-							"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with targets/label)",
+							"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with nodes/label)",
 						},
 						"label": map[string]interface{}{
 							"type":        "string",
-							"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with targets/group)",
+							"description": "Filter by label, e.g. 'env=prod' (mutually exclusive with nodes/group)",
 						},
 						"search": map[string]interface{}{
 							"type":        "string",
-							"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with targets/group/label)",
+							"description": "Fuzzy search by node name, case-insensitive substring match (mutually exclusive with nodes/group/label)",
 						},
 						"dest": map[string]interface{}{
 							"type":        "string",

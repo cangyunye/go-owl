@@ -247,17 +247,17 @@ func (v *Validator) ValidateExecuteScript(params map[string]interface{}) error {
 		return fmt.Errorf("script must be a non-empty string")
 	}
 
-	if targets, ok := params["targets"]; ok {
-		targetList, ok := targets.([]interface{})
+	if nodes, ok := params["nodes"]; ok {
+		nodeList, ok := nodes.([]interface{})
 		if !ok {
-			return fmt.Errorf("targets must be an array")
+			return fmt.Errorf("nodes must be an array")
 		}
-		if len(targetList) == 0 {
-			return fmt.Errorf("targets must be a non-empty array")
+		if len(nodeList) == 0 {
+			return fmt.Errorf("nodes must be a non-empty array")
 		}
-		for i, t := range targetList {
+		for i, t := range nodeList {
 			if _, ok := t.(string); !ok {
-				return fmt.Errorf("target at index %d must be a string", i)
+				return fmt.Errorf("node at index %d must be a string", i)
 			}
 		}
 	}

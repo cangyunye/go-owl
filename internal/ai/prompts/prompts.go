@@ -331,7 +331,7 @@ const ExecuteCommandPrompt = `## execute_command 工具参考
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | command | string | 是 | 要执行的 shell 命令 |
-| targets | string[] | 否* | 目标节点名称列表 |
+| nodes | string[] | 否* | 目标节点名称列表 |
 | group | string | 否* | 按分组选择节点 |
 | label | string | 否* | 按标签选择节点，如 env=prod |
 | mode | string | 否 | 执行模式: parallel(默认)/serial/async |
@@ -367,7 +367,7 @@ const ExecuteScriptPrompt = `## execute_script 工具参考
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | script | string | 是 | 脚本文件路径或 URL |
-| targets | string[] | 否* | 目标节点名称列表 |
+| nodes | string[] | 否* | 目标节点名称列表 |
 | group | string | 否* | 按分组选择节点 |
 | label | string | 否* | 按标签选择节点，如 env=prod |
 | args | string | 否 | 传递给脚本的参数，如 "--env prod --version 1.0" |
