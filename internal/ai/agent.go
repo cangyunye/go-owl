@@ -274,18 +274,8 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		debugPrint(a.debug, "解析到工具调用数量: %d", len(toolCalls))
 
 		if len(toolCalls) == 0 {
-			hasToolResult := false
-			for _, msg := range messages {
-				if strings.Contains(msg.Content, "[TOOL_CALL_RESULT]") {
-					hasToolResult = true
-					break
-				}
-			}
-			debugPrint(a.debug, "turn=%d, hasToolResult=%v, len(response)=%d", turn, hasToolResult, len(response))
-
 			if turn >= 1 {
 				debugPrint(a.debug, "多轮对话，检查是否有工具结果")
-				// 如果有工具结果且AI响应为空，返回工具结果
 				if lastToolResult != "" && (len(strings.TrimSpace(response)) == 0 || response == "") {
 					return lastToolResult, nil
 				}
@@ -305,9 +295,9 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		}
 
 		lastToolName = toolCalls[0].Name
-
 		messages = append(messages, Message{Role: "assistant", Content: response})
 
+		var toolResultStr string
 		for _, call := range toolCalls {
 			if onProgress != nil {
 				onProgress("execute", call.Name)
@@ -316,9 +306,9 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 			if err != nil {
 				result = fmt.Sprintf("Tool execution failed: %v", err)
 			}
-			lastToolResult = result // 保存最后一个工具结果
-			toolResult := fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)
-			messages = append(messages, Message{Role: "user", Content: toolResult})
+			toolResultStr = result
+			lastToolResult = result
+			messages = append(messages, Message{Role: "user", Content: fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)})
 		}
 
 		if turn >= 1 && lastToolName != "" {
@@ -329,6 +319,14 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 				}
 				messages = append(messages, hintMsg)
 			}
+		}
+
+		if turn == 0 && len(toolCalls) > 0 {
+			debugPrint(a.debug, "首轮执行工具后直接返回结果，不再进行额外LLM调用")
+			if onProgress != nil {
+				onProgress("result", "完成")
+			}
+			return toolResultStr, nil
 		}
 	}
 
@@ -369,6 +367,12 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 
 		toolCalls := a.parseToolCalls(response)
 		if len(toolCalls) == 0 {
+			if turn >= 1 {
+				if onProgress != nil {
+					onProgress("result", "完成")
+				}
+				return msgs, fullResponse.String(), nil
+			}
 			if len(response) > 100 && !strings.Contains(response, "tool_calls") {
 				return msgs, "我不确定您要做什么", nil
 			}
@@ -383,6 +387,7 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 
 		msgs = append(msgs, Message{Role: "assistant", Content: response})
 
+		var toolResultStr string
 		for _, call := range toolCalls {
 			if onProgress != nil {
 				onProgress("execute", call.Name)
@@ -391,8 +396,16 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 			if err != nil {
 				result = fmt.Sprintf("Tool execution failed: %v", err)
 			}
-			toolResult := fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)
-			msgs = append(msgs, Message{Role: "user", Content: toolResult})
+			toolResultStr = result
+			msgs = append(msgs, Message{Role: "user", Content: fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)})
+		}
+
+		if turn == 0 && len(toolCalls) > 0 {
+			debugPrint(a.debug, "首轮执行工具后直接返回结果，不再进行额外LLM调用")
+			if onProgress != nil {
+				onProgress("result", "完成")
+			}
+			return msgs, toolResultStr, nil
 		}
 	}
 

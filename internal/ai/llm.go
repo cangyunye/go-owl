@@ -8,7 +8,45 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
+
+var (
+	llmLogger *zap.SugaredLogger
+	llmLogLv  zap.AtomicLevel
+)
+
+func init() {
+	llmLogLv = zap.NewAtomicLevelAt(zap.WarnLevel)
+	config := zap.Config{
+		Level:            llmLogLv,
+		Development:      false,
+		Encoding:         "console",
+		EncoderConfig:    zap.NewDevelopmentEncoderConfig(),
+		OutputPaths:      []string{"stderr"},
+		ErrorOutputPaths: []string{"stderr"},
+	}
+	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	config.EncoderConfig.TimeKey = "time"
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+
+	logger, _ := config.Build()
+	llmLogger = logger.Sugar().Named("llm")
+}
+
+func SetLLMLogVerbose(verbose bool) {
+	if verbose {
+		llmLogLv.SetLevel(zap.DebugLevel)
+	} else {
+		llmLogLv.SetLevel(zap.WarnLevel)
+	}
+}
+
+func llmDebug(format string, args ...interface{}) {
+	llmLogger.Debugf(format, args...)
+}
 
 // LLMClient 是 LLM 客户端接口
 type LLMClient interface {
@@ -123,6 +161,10 @@ func (c *OpenAIClient) Generate(ctx context.Context, messages []Message) (string
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	llmDebug("[OpenAI] Request URL: %s/chat/completions", c.baseURL)
+	llmDebug("[OpenAI] Request Model: %s", c.model)
+	llmDebug("[OpenAI] Request Body: %s", string(bodyBytes))
+
 	req, err := http.NewRequestWithContext(ctx, "POST",
 		c.baseURL+"/chat/completions", bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -132,8 +174,11 @@ func (c *OpenAIClient) Generate(ctx context.Context, messages []Message) (string
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
+	llmDebug("[OpenAI] Sending request...")
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		llmDebug("[OpenAI] Request failed: %v", err)
 		return "", fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -142,6 +187,9 @@ func (c *OpenAIClient) Generate(ctx context.Context, messages []Message) (string
 	if err != nil {
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
+
+	llmDebug("[OpenAI] Response Status: %d", resp.StatusCode)
+	llmDebug("[OpenAI] Response Body: %s", string(respBody))
 
 	if resp.StatusCode != http.StatusOK {
 		var errorResp OpenAIResponse
@@ -243,6 +291,10 @@ func (c *AnthropicClient) Generate(ctx context.Context, messages []Message) (str
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	llmDebug("[Anthropic] Request URL: https://api.anthropic.com/v1/messages")
+	llmDebug("[Anthropic] Request Model: %s", c.model)
+	llmDebug("[Anthropic] Request Body: %s", string(bodyBytes))
+
 	req, err := http.NewRequestWithContext(ctx, "POST",
 		"https://api.anthropic.com/v1/messages", bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -253,8 +305,11 @@ func (c *AnthropicClient) Generate(ctx context.Context, messages []Message) (str
 	req.Header.Set("x-api-key", c.apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
+	llmDebug("[Anthropic] Sending request...")
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		llmDebug("[Anthropic] Request failed: %v", err)
 		return "", fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -263,6 +318,9 @@ func (c *AnthropicClient) Generate(ctx context.Context, messages []Message) (str
 	if err != nil {
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
+
+	llmDebug("[Anthropic] Response Status: %d", resp.StatusCode)
+	llmDebug("[Anthropic] Response Body: %s", string(respBody))
 
 	if resp.StatusCode != http.StatusOK {
 		var errorResp AnthropicResponse

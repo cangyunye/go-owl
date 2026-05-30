@@ -220,6 +220,7 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	// 设置日志详细模式
 	ai.SetLogVerbose(aiVerbose)
+	ai.SetLLMLogVerbose(aiVerbose)
 
 	store := common.GetNodeStore()
 	bridge := createBridgeFromStore(store)
