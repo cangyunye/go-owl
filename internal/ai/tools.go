@@ -529,7 +529,12 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 				nodeNames = append(nodeNames, s)
 			}
 		}
-		args = append(args, "--nodes", strings.Join(nodeNames, ","))
+		// 处理 ALL_NODES 特殊值
+		if len(nodeNames) == 1 && nodeNames[0] == "ALL_NODES" {
+			// 不传递 --nodes，这样 owl exec 会使用所有节点
+		} else {
+			args = append(args, "--nodes", strings.Join(nodeNames, ","))
+		}
 	} else if group, _ := params["group"].(string); group != "" {
 		args = append(args, "--group", group)
 	} else if label, _ := params["label"].(string); label != "" {
@@ -564,11 +569,16 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 				nodeNames = append(nodeNames, s)
 			}
 		}
-		allNodes := t.nodeMgr.List()
-		for _, n := range allNodes {
-			for _, name := range nodeNames {
-				if n.Name == name {
-					nodes = append(nodes, n)
+		// 处理 ALL_NODES 特殊值
+		if len(nodeNames) == 1 && nodeNames[0] == "ALL_NODES" {
+			nodes = t.nodeMgr.List()
+		} else {
+			allNodes := t.nodeMgr.List()
+			for _, n := range allNodes {
+				for _, name := range nodeNames {
+					if n.Name == name {
+						nodes = append(nodes, n)
+					}
 				}
 			}
 		}

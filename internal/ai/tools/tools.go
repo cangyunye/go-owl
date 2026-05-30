@@ -240,6 +240,24 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 		}
 	}
 
+	// 处理 ALL_NODES 特殊值
+	var targetNodes []*model.Node
+	if len(nodeNames) == 1 && nodeNames[0] == "ALL_NODES" {
+		targetNodes = t.nodeMgr.List()
+	} else {
+		for _, name := range nodeNames {
+			nodeInfo, err := t.nodeMgr.GetByID(name)
+			if err != nil {
+				continue
+			}
+			targetNodes = append(targetNodes, nodeInfo)
+		}
+	}
+
+	if len(targetNodes) == 0 {
+		return "No matching nodes found", nil
+	}
+
 	if err := t.validateCommand(command); err != nil {
 		return "", fmt.Errorf("dangerous command: %w", err)
 	}
@@ -252,12 +270,7 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 	sb.WriteString(strings.Repeat("-", 60))
 	sb.WriteString("\n")
 
-	for _, name := range nodeNames {
-		nodeInfo, err := t.nodeMgr.GetByID(name)
-		if err != nil {
-			sb.WriteString(fmt.Sprintf("[%s] Error: Node not found\n", name))
-			continue
-		}
+	for _, nodeInfo := range targetNodes {
 		sb.WriteString(fmt.Sprintf("\n>>> %s (%s:%d) <<<\n", nodeInfo.Name, nodeInfo.Address, nodeInfo.Port))
 		sb.WriteString(fmt.Sprintf("Status: %s\n", nodeInfo.Status))
 	}
