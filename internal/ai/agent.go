@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"text/template"
@@ -20,11 +19,15 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var debugLogger *zap.SugaredLogger
+var (
+	debugLogger *zap.SugaredLogger
+	logLevel    zap.AtomicLevel
+)
 
 func init() {
+	logLevel = zap.NewAtomicLevelAt(zap.WarnLevel) // 默认只输出 Warning 及以上
 	config := zap.Config{
-		Level:            zap.NewAtomicLevelAt(zap.InfoLevel),
+		Level:            logLevel,
 		Development:      false,
 		Encoding:         "console",
 		EncoderConfig:    zap.NewDevelopmentEncoderConfig(),
@@ -39,15 +42,24 @@ func init() {
 	debugLogger = logger.Sugar().Named("ai-debug")
 }
 
+// SetLogVerbose 设置日志为详细模式（debug 级别）
+func SetLogVerbose(verbose bool) {
+	if verbose {
+		logLevel.SetLevel(zap.DebugLevel)
+	} else {
+		logLevel.SetLevel(zap.WarnLevel)
+	}
+}
+
 func debugPrint(debug bool, template string, keysAndValues ...interface{}) {
 	if !debug {
 		return
 	}
 	if len(keysAndValues) == 0 {
-		debugLogger.Info(template)
+		debugLogger.Debug(template)
 	} else {
 		formatted := fmt.Sprintf(template, keysAndValues...)
-		debugLogger.Info(formatted)
+		debugLogger.Debug(formatted)
 	}
 }
 
@@ -107,7 +119,6 @@ var toolHints = map[string]string{
 }
 
 func NewAgent(config *Config, nodeMgr node.Manager, playbookParser *playbook.Parser, debug ...bool) (*Agent, error) {
-	os.Stderr.WriteString("[DEBUG-NEWAGENT-START]\n")
 	registry := NewToolRegistry()
 	registry.Register(NewQueryNodesTool(nodeMgr))
 	registry.Register(NewExecuteCommandTool(nodeMgr))

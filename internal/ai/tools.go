@@ -33,7 +33,7 @@ func getOwlPath() string {
 // runOwlCommand executes an owl command and returns the output
 func runOwlCommand(ctx context.Context, args []string) (string, error) {
 	owlPath := getOwlPath()
-	debugLogger.Infow("执行 owl 命令",
+	debugLogger.Debugw("执行 owl 命令",
 		"path", owlPath,
 		"args", args)
 
@@ -53,7 +53,7 @@ func runOwlCommand(ctx context.Context, args []string) (string, error) {
 	}
 
 	output := stdout.String()
-	debugLogger.Infow("命令执行成功", "output_len", len(output))
+	debugLogger.Debugw("命令执行成功", "output_len", len(output))
 	return output, nil
 }
 
@@ -115,7 +115,7 @@ func (t *QueryNodesTool) Validate(params map[string]interface{}) error {
 }
 
 func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
-	debugLogger.Infow("QueryNodesTool 执行开始",
+	debugLogger.Debugw("QueryNodesTool 执行开始",
 		"params", fmt.Sprintf("%+v", params))
 
 	group, _ := params["group"].(string)
@@ -124,7 +124,7 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 	format, _ := params["format"].(string)
 	search, _ := params["search"].(string)
 
-	debugLogger.Infow("参数解析",
+	debugLogger.Debugw("参数解析",
 		"group", group,
 		"labels", labels,
 		"status", status,
@@ -183,7 +183,7 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 	var nodes []*model.Node
 
 	if group != "" {
-		debugLogger.Infow("按分组获取节点", "group", group)
+		debugLogger.Debugw("按分组获取节点", "group", group)
 		nodes = t.nodeMgr.GetByGroup(group)
 	} else if labels != nil {
 		labelMap := make(map[string]string)
@@ -192,10 +192,10 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 				labelMap[k] = vs
 			}
 		}
-		debugLogger.Infow("按标签获取节点", "labels", labelMap)
+		debugLogger.Debugw("按标签获取节点", "labels", labelMap)
 		nodes = t.nodeMgr.GetByLabels(labelMap)
 	} else if status != "" {
-		debugLogger.Infow("按状态获取节点", "status", status)
+		debugLogger.Debugw("按状态获取节点", "status", status)
 		allNodes := t.nodeMgr.List()
 		nodes = make([]*model.Node, 0)
 		for _, n := range allNodes {
@@ -204,12 +204,12 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 			}
 		}
 	} else {
-		debugLogger.Infow("获取所有节点")
+		debugLogger.Debugw("获取所有节点")
 		nodes = t.nodeMgr.List()
 	}
 
 	if search != "" {
-		debugLogger.Infow("按名称搜索", "search", search)
+		debugLogger.Debugw("按名称搜索", "search", search)
 		filtered := make([]*model.Node, 0)
 		lowerSearch := strings.ToLower(search)
 		for _, n := range nodes {
@@ -220,7 +220,7 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 		nodes = filtered
 	}
 
-	debugLogger.Infow("最终节点数量", "finalCount", len(nodes))
+	debugLogger.Debugw("最终节点数量", "finalCount", len(nodes))
 
 	if len(nodes) == 0 {
 		return "No matching nodes found", nil
@@ -508,7 +508,7 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 	}
 
 	// Execute the command
-	debugLogger.Infow("调用 owl exec run 命令", "args", args)
+	debugLogger.Debugw("调用 owl exec run 命令", "args", args)
 	result, err := runOwlCommand(ctx, args)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute command: %w", err)
@@ -736,7 +736,7 @@ func (t *ExecuteScriptTool) Execute(ctx context.Context, params map[string]inter
 	}
 
 	// Execute the command
-	debugLogger.Infow("调用 owl exec script 命令", "args", args)
+	debugLogger.Debugw("调用 owl exec script 命令", "args", args)
 	result, err := runOwlCommand(ctx, args)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute command: %w", err)
@@ -959,7 +959,7 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 	}
 
 	// Execute the command
-	debugLogger.Infow("调用 owl file 命令", "args", args)
+	debugLogger.Debugw("调用 owl file 命令", "args", args)
 	result, err := runOwlCommand(ctx, args)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute command: %w", err)
@@ -1147,7 +1147,7 @@ func (t *QueryDatabaseTool) Execute(ctx context.Context, params map[string]inter
 	}
 
 	// Execute the command
-	debugLogger.Infow("调用 owl node list 命令", "args", args)
+	debugLogger.Debugw("调用 owl node list 命令", "args", args)
 	result, err := runOwlCommand(ctx, args)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute command: %w", err)

@@ -24,7 +24,7 @@ var (
 	aiBaseURL  string
 	aiTimeout  int
 	aiSession  string
-	aiDebug    bool
+	aiVerbose  bool
 )
 
 func NewAICmd() *cobra.Command {
@@ -59,8 +59,11 @@ func NewAICmd() *cobra.Command {
 		"请求超时时间 (秒)")
 	aiCmd.Flags().StringVar(&aiSession, "session", "",
 		"会话 ID (用于恢复会话)")
-	aiCmd.Flags().BoolVarP(&aiDebug, "debug", "d", false,
-		"调试模式，记录完整的 AI 对话到数据库")
+	aiCmd.Flags().BoolVarP(&aiVerbose, "verbose", "v", false,
+		"详细模式，显示完整的调试日志")
+	// 保留 --debug 作为别名以保持向后兼容性
+	aiCmd.Flags().BoolVar(&aiVerbose, "debug", false,
+		"(别名) 详细模式，显示完整的调试日志")
 
 	aiCmd.AddCommand(NewModelsCmd())
 	aiCmd.AddCommand(NewConfigCmd())
@@ -215,6 +218,9 @@ func truncateForDB(s string, maxLen int) string {
 func runAI(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
+	// 设置日志详细模式
+	ai.SetLogVerbose(aiVerbose)
+
 	store := common.GetNodeStore()
 	bridge := createBridgeFromStore(store)
 
@@ -267,15 +273,14 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	sessionID := fmt.Sprintf("ai-%d", time.Now().UnixMilli())
 
-	agent, err := ai.NewAgent(config, nodeMgr, playbookParser, aiDebug)
-	fmt.Printf("[DEBUG-AIGO] agent=%p, err=%v\n", agent, err)
+	agent, err := ai.NewAgent(config, nodeMgr, playbookParser, aiVerbose)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize Eino LLM: %v, using fallback mode\n", err)
 	}
 
 	if len(args) > 0 {
 		query := strings.Join(args, " ")
-		debugLog(aiDebug, "用户输入: %s", query)
+		debugLog(aiVerbose, "用户输入: %s", query)
 		timestamp := time.Now().Format("15:04:05")
 		fmt.Fprintf(os.Stderr, "[%s] 用户：%s\n", timestamp, query)
 
@@ -288,7 +293,7 @@ func runAI(cmd *cobra.Command, args []string) {
 		})
 
 		onProgress := func(step string, detail string) {
-			progressLog(sessionID, aiDebug, step, detail)
+			progressLog(sessionID, aiVerbose, step, detail)
 		}
 
 		response, err := agent.Process(ctx, query, onProgress)
@@ -330,7 +335,7 @@ func runAI(cmd *cobra.Command, args []string) {
 	}
 	currentSession := session.CreateSession(sessionID, agent)
 	currentSession.OnProgress = func(step string, detail string) {
-		progressLog(sessionID, aiDebug, step, detail)
+		progressLog(sessionID, aiVerbose, step, detail)
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
