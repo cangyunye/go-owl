@@ -214,6 +214,10 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		routeLabel = "node_list"
 	}
 
+	if routeLabel == "node_groups" {
+		routeLabel = "node_list"
+	}
+
 	if onProgress != nil {
 		onProgress("route", routeLabel)
 	}
