@@ -202,7 +202,7 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		return "我不确定您要做什么", nil
 	}
 
-	if routeLabel == "exec" {
+	if routeLabel == "exec" || routeLabel == "execute" {
 		routeLabel = "exec_run"
 	}
 
@@ -250,6 +250,7 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 	var fullResponse strings.Builder
 	maxTurns := 10
 	var lastToolName string
+	var lastToolResult string // 保存最后一个工具结果
 
 	for turn := 0; turn < maxTurns; turn++ {
 		debugPrint(a.debug, "=== 第 %d 轮对话 ===", turn+1)
@@ -283,7 +284,11 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 			debugPrint(a.debug, "turn=%d, hasToolResult=%v, len(response)=%d", turn, hasToolResult, len(response))
 
 			if turn >= 1 {
-				debugPrint(a.debug, "多轮对话，直接返回 AI 响应")
+				debugPrint(a.debug, "多轮对话，检查是否有工具结果")
+				// 如果有工具结果且AI响应为空，返回工具结果
+				if lastToolResult != "" && (len(strings.TrimSpace(response)) == 0 || response == "") {
+					return lastToolResult, nil
+				}
 				return response, nil
 			}
 
@@ -311,6 +316,7 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 			if err != nil {
 				result = fmt.Sprintf("Tool execution failed: %v", err)
 			}
+			lastToolResult = result // 保存最后一个工具结果
 			toolResult := fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)
 			messages = append(messages, Message{Role: "user", Content: toolResult})
 		}

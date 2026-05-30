@@ -29,6 +29,7 @@ owl ai "检查所有节点的磁盘使用情况"
 owl ai --model gpt-4o
 owl ai --provider dashscope
 owl ai --session <session-id>
+owl ai "查询节点" --verbose  # 显示详细调试信息
 echo "查询所有在线节点" | owl ai
 ```
 
@@ -42,6 +43,8 @@ echo "查询所有在线节点" | owl ai
 | `--base-url` | API Base URL（用于代理或自定义端点） |
 | `--timeout` | 请求超时时间（秒），默认 120 |
 | `--session` | 会话 ID（用于恢复历史会话） |
+| `--verbose` / `-v` | 详细调试模式，显示完整的 AI 交互过程和日志 |
+| `--debug` | 详细调试模式（--verbose 的别名，保持向后兼容性） |
 
 ### AI 支持的功能
 
@@ -57,14 +60,15 @@ AI 助手通过工具调用实现以下功能：
 ### 工作原理
 
 ```
-用户输入 → AI 理解意图 → 选择工具 → 验证参数 → 执行操作 → 返回结果
+用户输入 → AI 理解意图 → 选择工具 → 验证参数 → 调用 owl 子命令 → 返回原始结果
 ```
 
 AI 会自动：
 1. 理解自然语言请求
 2. 选择合适的工具
 3. 验证参数有效性
-4. 执行操作并返回结果
+4. **直接调用对应的 owl 子命令**（如 `owl node list`, `owl exec run` 等）
+5. 返回与直接使用命令相同的原始输出，确保一致性
 
 ### 示例
 
@@ -92,37 +96,37 @@ owl ai "检查数据库状态" --provider dashscope --api-key sk-xxx
 
 # 恢复历史会话
 owl ai --session sess-abc123
+
+# 详细调试模式
+owl ai "查询所有节点" --verbose
 ```
 
 ### 示例输出
 
 ```
 $ owl ai "查询所有在线节点"
+[08:14:50] 用户：查询所有在线节点
+[08:14:51] owl-ai: 确认用户调用子命令为 node_list 相关
+[08:14:51] owl-ai: 请求模型生成执行 JSON...
+[08:14:52] owl-ai: JSON 校验通过 (query_nodes)
+[08:14:52] owl-ai: 开始执行操作
 
-🤖 AI 助手:
-正在查询节点信息...
+ID                   Name                      Address                   User       Status       Groups               Labels                         Last Check          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+web-01               web1                      192.168.1.10:22           root       online       web                  env=prod                       2026-05-22T23:22:48Z
+web-02               web2                      192.168.1.11:22           root       online       web                  env=prod                       2026-05-22T23:22:49Z
+db-01                db1                       192.168.1.20:22           root       online       db                   env=prod                       2026-05-22T23:22:50Z
 
-📊 查询结果:
-
-  ID       Name       Address          Status   Groups
- ─────────────────────────────────────────────────────────
-  web-01   web1       192.168.1.10    online   web
-  web-02   web2       192.168.1.11    online   web
-  db-01    db1        192.168.1.20    online   db
-
-找到 3 个在线节点
-
-是否还有其他需要查询的内容？
->
+Total: 3 nodes
 ```
 
 ```
 $ owl ai "在 web 分组执行 uptime"
-
-🤖 AI 助手:
-正在执行命令: uptime
-
-📊 执行结果:
+[08:14:53] 用户：在 web 分组执行 uptime
+[08:14:54] owl-ai: 确认用户调用子命令为 exec_run 相关
+[08:14:54] owl-ai: 请求模型生成执行 JSON...
+[08:14:55] owl-ai: JSON 校验通过 (execute_command)
+[08:14:55] owl-ai: 开始执行操作
 
 ✅ [web-01] 成功
    10:30:00 up 100 days,  1 user,  load average: 0.15, 0.20, 0.15
@@ -131,9 +135,18 @@ $ owl ai "在 web 分组执行 uptime"
    10:30:00 up 50 days,   2 users, load average: 0.25, 0.30, 0.25
 
 📊 总结: 2 成功, 0 失败
+```
 
-是否还有其他需要？
->
+#### 使用 --verbose 详细模式查看完整调试信息：
+```
+$ owl ai "查询所有节点" --verbose
+[08:14:53] DEBUG: 用户输入: 查询所有节点
+[08:14:53] 用户：查询所有节点
+2026-05-30T08:14:55.126+0800    DEBUG   ai-debug        internal/ai/agent.go:62  路由原始响应: node_list
+2026-05-30T08:14:55.126+0800    DEBUG   ai-debug        internal/ai/agent.go:62  路由标签: node_list
+[08:14:55] owl-ai: 确认用户调用子命令为 node_list 相关
+...
+# 完整的 AI 交互过程和所有调试日志
 ```
 
 ---

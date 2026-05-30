@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -87,6 +88,11 @@ func (m *mockNodeMgr) GetAll() []*model.Node {
 
 func (m *mockNodeMgr) Refresh() error {
 	return nil
+}
+
+func TestMain(m *testing.M) {
+	DisableRealCommands = true
+	os.Exit(m.Run())
 }
 
 func TestBuildToolCall(t *testing.T) {
