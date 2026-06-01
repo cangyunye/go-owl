@@ -151,8 +151,13 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 				labelMap[k] = vs
 			}
 		}
+		// 转换中文标签键名到英文
 		for k, v := range labelMap {
-			args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
+			if mappedKey, ok := labelKeyMap[k]; ok {
+				args = append(args, "--label", fmt.Sprintf("%s=%s", mappedKey, v))
+			} else {
+				args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
+			}
 		}
 	}
 
@@ -190,7 +195,16 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 					labelMap[k] = vs
 				}
 			}
-			nodes = t.nodeMgr.GetByLabels(labelMap)
+			// 转换中文标签键名到英文
+			convertedLabelMap := make(map[string]string)
+			for k, v := range labelMap {
+				if mappedKey, ok := labelKeyMap[k]; ok {
+					convertedLabelMap[mappedKey] = v
+				} else {
+					convertedLabelMap[k] = v
+				}
+			}
+			nodes = t.nodeMgr.GetByLabels(convertedLabelMap)
 		} else if status != "" {
 			allNodes := t.nodeMgr.List()
 			for _, n := range allNodes {
@@ -1212,8 +1226,13 @@ func (t *QueryDatabaseTool) Execute(ctx context.Context, params map[string]inter
 				labelMap[k] = vs
 			}
 		}
+		// 转换中文标签键名到英文
 		for k, v := range labelMap {
-			args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
+			if mappedKey, ok := labelKeyMap[k]; ok {
+				args = append(args, "--label", fmt.Sprintf("%s=%s", mappedKey, v))
+			} else {
+				args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
+			}
 		}
 	}
 

@@ -6,6 +6,37 @@ import (
 	"strings"
 )
 
+var labelKeyMap = map[string]string{
+	"使用人":   "owner",
+	"负责人":   "owner",
+	"责任人":   "owner",
+	"拥有者":   "owner",
+	"所有者":   "owner",
+	"环境":    "env",
+	"环境类型":  "env",
+	"环境分组":  "env",
+	"应用":    "app",
+	"应用名":   "app",
+	"应用名称":  "app",
+	"应用类型":  "app",
+	"服务":    "app",
+	"服务名":   "app",
+	"服务名称":  "app",
+	"区域":    "region",
+	"地区":    "region",
+	"位置":    "region",
+	"角色":    "role",
+	"身份":    "role",
+	"层级":    "tier",
+	"层级分组":  "tier",
+	"类型":    "type",
+	"数据类型":  "type",
+	"服务类型":  "type",
+	"数据库类型": "dbtype",
+	"数据库":   "dbtype",
+	"db":    "dbtype",
+}
+
 type ParamExtractor struct {
 	nodeNames []string
 	nodeAddrs []string
@@ -112,12 +143,63 @@ func (e *ParamExtractor) extractOwnerFilter(input string, params map[string]inte
 		if ownerValue != "" {
 			params["labels"] = map[string]interface{}{"owner": ownerValue}
 		}
-	} else {
-		name := e.extractPersonName(input)
-		if name != "" {
-			params["labels"] = map[string]interface{}{"owner": name}
+		return
+	}
+
+	if personName := e.extractPersonNameFromQuery(input); personName != "" {
+		params["labels"] = map[string]interface{}{"owner": personName}
+		return
+	}
+
+	name := e.extractPersonName(input)
+	if name != "" {
+		params["labels"] = map[string]interface{}{"owner": name}
+	}
+}
+
+func (e *ParamExtractor) extractPersonNameFromQuery(input string) string {
+	queryPatterns := []string{
+		"找下", "找", "查询", "查看", "看看", "搜下",
+		"找出", "看看", "看下", "找一下",
+		"列出", "获取",
+	}
+
+	for _, pattern := range queryPatterns {
+		idx := strings.Index(input, pattern)
+		if idx >= 0 {
+			remaining := input[idx+len(pattern):]
+			trimmed := strings.TrimSpace(remaining)
+
+			if strings.HasPrefix(trimmed, "的") {
+				trimmed = strings.TrimPrefix(trimmed, "的")
+			}
+
+			if strings.HasPrefix(trimmed, "一") && len(trimmed) > 1 {
+				trimmed = trimmed[1:]
+			}
+
+			trimmed = strings.TrimSpace(trimmed)
+
+			if len(trimmed) >= 2 && len(trimmed) <= 4 {
+				chinesePattern := regexp.MustCompile(`^[\u4e00-\u9fa5]+`)
+				match := chinesePattern.FindString(trimmed)
+
+				if match != "" && len(match) >= 2 && len(match) <= 4 {
+					excludeWords := map[string]bool{
+						"节点": true, "服务器": true, "主机": true,
+						"环境": true, "标签": true, "分组": true,
+						"信息": true, "列表": true, "在线": true, "离线": true,
+					}
+
+					if !excludeWords[match] {
+						return match
+					}
+				}
+			}
 		}
 	}
+
+	return ""
 }
 
 func (e *ParamExtractor) extractEnvFilter(input string, params map[string]interface{}) {
