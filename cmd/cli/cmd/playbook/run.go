@@ -31,7 +31,6 @@ var (
 	pbRunSkipTags                string
 	pbRunExtraVars               []string
 	pbRunCheck                   bool
-	pbRunDiff                    bool
 	pbRunDefaultConnectTimeout   time.Duration
 	pbRunDefaultCommandTimeout   time.Duration
 	pbRunDefaultRetry            int
@@ -161,8 +160,6 @@ func NewPlaybookRunCmd() *cobra.Command {
 		"额外变量 (格式: key=value)")
 	runCmd.Flags().BoolVar(&pbRunCheck, "check", false,
 		"检查模式（不实际执行）")
-	runCmd.Flags().BoolVar(&pbRunDiff, "diff", false,
-		"显示变更差异")
 	runCmd.Flags().DurationVar(&pbRunDefaultConnectTimeout, "default-connect-timeout", 10*time.Second,
 		"全局默认 SSH 连接超时时间")
 	runCmd.Flags().DurationVar(&pbRunDefaultCommandTimeout, "default-command-timeout", 5*time.Minute,
@@ -214,9 +211,6 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 	}
 	if pbRunCheck {
 		fmt.Println("Mode: CHECK (no changes will be made)")
-	}
-	if pbRunDiff {
-		fmt.Println("Mode: DIFF (showing changes)")
 	}
 
 	if pbRunDefaultConnectTimeout > 0 || pbRunDefaultCommandTimeout > 0 {

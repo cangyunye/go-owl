@@ -88,10 +88,7 @@ func displaySamplePlaybooks() {
 	fmt.Println("3. backup.yml  - Backup database and files")
 	fmt.Println()
 	fmt.Println("Create a playbook to get started:")
-	fmt.Println(`  $ owl playbook run --name deploy`)
-	fmt.Println()
-	fmt.Println(`  Or use the exec command:`)
-	fmt.Println(`  $ owl exec playbook deploy.yml`)
+	fmt.Println(`  $ owl playbook run deploy.yml`)
 }
 
 func displayPlaybookList(playbooks []PlaybookInfo) {
