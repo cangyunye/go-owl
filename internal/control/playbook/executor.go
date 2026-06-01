@@ -578,12 +578,51 @@ func (e *playbookExecutor) executeTaskInternal(exec *PlaybookExecution, task *Pa
 			}
 		}
 	} else {
-		for _, target := range exec.TargetNodes {
-			itemResults, err := e.executeTaskForNode(exec, task, target.ID, nil)
-			results = append(results, itemResults...)
-			if err != nil && !task.Options.IgnoreErrors {
-				if task.Options.AnyErrorsFatal {
-					return results, err
+		if len(exec.TargetNodes) == 1 {
+			for _, target := range exec.TargetNodes {
+				itemResults, err := e.executeTaskForNode(exec, task, target.ID, nil)
+				results = append(results, itemResults...)
+				if err != nil && !task.Options.IgnoreErrors {
+					if task.Options.AnyErrorsFatal {
+						return results, err
+					}
+				}
+			}
+		} else {
+			nodeCount := len(exec.TargetNodes)
+			resultsChan := make(chan *TaskResult, nodeCount)
+			errChan := make(chan error, nodeCount)
+			var wg sync.WaitGroup
+			wg.Add(nodeCount)
+
+			for _, target := range exec.TargetNodes {
+				go func(nodeID string) {
+					defer wg.Done()
+					itemResults, err := e.executeTaskForNode(exec, task, nodeID, nil)
+					if len(itemResults) > 0 {
+						resultsChan <- itemResults[0]
+					}
+					if err != nil {
+						errChan <- err
+					}
+				}(target.ID)
+			}
+
+			go func() {
+				wg.Wait()
+				close(resultsChan)
+				close(errChan)
+			}()
+
+			for result := range resultsChan {
+				results = append(results, result)
+			}
+
+			for err := range errChan {
+				if !task.Options.IgnoreErrors {
+					if task.Options.AnyErrorsFatal {
+						return results, err
+					}
 				}
 			}
 		}
