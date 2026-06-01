@@ -70,6 +70,21 @@ func (m *mockNodeMgr) SearchByName(pattern string) []*model.Node {
 	return result
 }
 
+func (m *mockNodeMgr) SearchByAddress(pattern string) []*model.Node {
+	if pattern == "" {
+		return nil
+	}
+	nodes := m.List()
+	result := make([]*model.Node, 0)
+	lowerPattern := strings.ToLower(pattern)
+	for _, n := range nodes {
+		if strings.Contains(strings.ToLower(n.Address), lowerPattern) {
+			result = append(result, n)
+		}
+	}
+	return result
+}
+
 func (m *mockNodeMgr) UpdateStatus(id string, status model.NodeStatus) error {
 	return nil
 }
@@ -356,7 +371,7 @@ func TestExecuteToolCallWithInvalidParams(t *testing.T) {
 	agent := &Agent{registry: registry}
 
 	invalidParams := map[string]interface{}{
-		"nodes": "not-an-array",
+		"nodes":   "not-an-array",
 		"command": "",
 	}
 
@@ -397,7 +412,7 @@ func TestExecuteToolCallWithValidParams(t *testing.T) {
 	agent := &Agent{registry: registry}
 
 	validParams := map[string]interface{}{
-		"nodes": []interface{}{"node1"},
+		"nodes":   []interface{}{"node1"},
 		"command": "echo hello",
 	}
 
@@ -441,7 +456,7 @@ func TestTransferFileValidation(t *testing.T) {
 			name: "valid params",
 			params: map[string]interface{}{
 				"source_file": "/tmp/test.txt",
-				"nodes":     []interface{}{"node1"},
+				"nodes":       []interface{}{"node1"},
 				"dest_dir":    "/tmp",
 			},
 			shouldError: false,
@@ -449,7 +464,7 @@ func TestTransferFileValidation(t *testing.T) {
 		{
 			name: "missing source file",
 			params: map[string]interface{}{
-				"nodes":  []interface{}{"node1"},
+				"nodes":    []interface{}{"node1"},
 				"dest_dir": "/tmp",
 			},
 			shouldError: true,
@@ -458,7 +473,7 @@ func TestTransferFileValidation(t *testing.T) {
 			name: "relative path for dest_dir",
 			params: map[string]interface{}{
 				"source_file": "/tmp/test.txt",
-				"nodes":     []interface{}{"node1"},
+				"nodes":       []interface{}{"node1"},
 				"dest_dir":    "relative/path",
 			},
 			shouldError: true,
@@ -526,6 +541,20 @@ func (m *mockNodeMgrForAI) SearchByName(pattern string) []*model.Node {
 	lowerPattern := strings.ToLower(pattern)
 	for _, n := range m.nodes {
 		if strings.Contains(strings.ToLower(n.Name), lowerPattern) {
+			result = append(result, n)
+		}
+	}
+	return result
+}
+
+func (m *mockNodeMgrForAI) SearchByAddress(pattern string) []*model.Node {
+	if pattern == "" {
+		return nil
+	}
+	result := make([]*model.Node, 0)
+	lowerPattern := strings.ToLower(pattern)
+	for _, n := range m.nodes {
+		if strings.Contains(strings.ToLower(n.Address), lowerPattern) {
 			result = append(result, n)
 		}
 	}

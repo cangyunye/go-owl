@@ -1,17 +1,24 @@
 package ai
 
 import (
+	"net"
+	"regexp"
 	"strings"
 )
 
 type ParamExtractor struct {
 	nodeNames []string
+	nodeAddrs []string
 }
 
 func NewParamExtractor(nodeNames []string) *ParamExtractor {
 	return &ParamExtractor{
 		nodeNames: nodeNames,
 	}
+}
+
+func (e *ParamExtractor) SetNodeAddresses(addrs []string) {
+	e.nodeAddrs = addrs
 }
 
 func (e *ParamExtractor) ExtractParams(intent IntentType, input string) map[string]interface{} {
@@ -48,6 +55,118 @@ func (e *ParamExtractor) extractQueryNodesParams(input string, params map[string
 	if strings.Contains(lowerInput, "summary") {
 		params["format"] = "summary"
 	}
+
+	e.extractLabelFilters(input, params)
+	e.extractOwnerFilter(input, params)
+	e.extractEnvFilter(input, params)
+}
+
+func (e *ParamExtractor) extractLabelFilters(input string, params map[string]interface{}) {
+	lowerInput := strings.ToLower(input)
+
+	if strings.Contains(lowerInput, "标签") {
+		idx := strings.Index(lowerInput, "标签")
+		labelPart := input[idx+4:]
+		labelPart = strings.TrimSpace(labelPart)
+
+		if strings.Contains(labelPart, "=") {
+			parts := strings.SplitN(labelPart, "=", 2)
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			if key != "" && value != "" {
+				if labels, ok := params["labels"].(map[string]interface{}); ok {
+					labels[key] = value
+				} else {
+					params["labels"] = map[string]interface{}{key: value}
+				}
+			}
+		} else if labelPart != "" {
+			params["search"] = labelPart
+		}
+	}
+}
+
+func (e *ParamExtractor) extractOwnerFilter(input string, params map[string]interface{}) {
+	lowerInput := strings.ToLower(input)
+
+	if strings.Contains(lowerInput, "使用人") ||
+		strings.Contains(lowerInput, "负责人") ||
+		strings.Contains(lowerInput, "拥有者") ||
+		strings.Contains(lowerInput, "owner") {
+
+		var ownerValue string
+		if strings.Contains(lowerInput, "使用人") {
+			idx := strings.Index(lowerInput, "使用人")
+			ownerValue = strings.TrimSpace(input[idx+4:])
+		} else if strings.Contains(lowerInput, "负责人") {
+			idx := strings.Index(lowerInput, "负责人")
+			ownerValue = strings.TrimSpace(input[idx+4:])
+		} else if strings.Contains(lowerInput, "拥有者") {
+			idx := strings.Index(lowerInput, "拥有者")
+			ownerValue = strings.TrimSpace(input[idx+4:])
+		} else if strings.Contains(lowerInput, "owner=") {
+			idx := strings.Index(lowerInput, "owner=")
+			ownerValue = strings.TrimSpace(input[idx+6:])
+		}
+
+		if ownerValue != "" {
+			params["labels"] = map[string]interface{}{"owner": ownerValue}
+		}
+	} else {
+		name := e.extractPersonName(input)
+		if name != "" {
+			params["labels"] = map[string]interface{}{"owner": name}
+		}
+	}
+}
+
+func (e *ParamExtractor) extractEnvFilter(input string, params map[string]interface{}) {
+	lowerInput := strings.ToLower(input)
+
+	if strings.Contains(lowerInput, "环境") {
+		idx := strings.Index(lowerInput, "环境")
+		envPart := input[idx+4:]
+		envPart = strings.TrimSpace(envPart)
+
+		if envPart == "" {
+			parts := strings.Fields(input)
+			for i, part := range parts {
+				if strings.ToLower(part) == "环境" && i > 0 {
+					envPart = parts[i-1]
+					break
+				}
+			}
+		}
+
+		if envPart != "" {
+			params["labels"] = map[string]interface{}{"env": envPart}
+		}
+	}
+}
+
+func (e *ParamExtractor) extractPersonName(input string) string {
+	chineseNamePattern := regexp.MustCompile(`[\u4e00-\u9fa5]{2,4}`)
+	matches := chineseNamePattern.FindAllString(input, -1)
+
+	for _, match := range matches {
+		excludeWords := []string{"节点", "环境", "标签", "使用人", "负责人", "拥有者", "查询", "查看", "列出", "在线", "离线"}
+		isExcluded := false
+		for _, exclude := range excludeWords {
+			if strings.Contains(input, exclude) && strings.Contains(input, match) {
+				if strings.Index(input, exclude) < strings.Index(input, match) {
+					continue
+				}
+			}
+			if match == exclude {
+				isExcluded = true
+				break
+			}
+		}
+		if !isExcluded {
+			return match
+		}
+	}
+	return ""
 }
 
 func (e *ParamExtractor) extractExecuteScriptParams(input string, params map[string]interface{}) {
@@ -123,7 +242,12 @@ func (e *ParamExtractor) extractTransferParams(input string, params map[string]i
 		params["source_file"] = sourceFile
 	}
 
-	params["nodes"] = e.extractNodes(input)
+	ipAddr := e.extractIPAddress(input)
+	if ipAddr != "" {
+		params["search"] = ipAddr
+	} else {
+		params["nodes"] = e.extractNodes(input)
+	}
 
 	destDir := e.extractDestDir(input)
 	if destDir != "" {
@@ -140,6 +264,17 @@ func (e *ParamExtractor) extractTransferParams(input string, params map[string]i
 	if _, ok := params["dest_dir"]; !ok {
 		params["dest_dir"] = "/tmp"
 	}
+}
+
+func (e *ParamExtractor) extractIPAddress(input string) string {
+	words := strings.Fields(input)
+	for _, word := range words {
+		ip := net.ParseIP(word)
+		if ip != nil {
+			return word
+		}
+	}
+	return ""
 }
 
 func (e *ParamExtractor) extractNodes(input string) []interface{} {

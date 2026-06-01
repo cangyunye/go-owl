@@ -130,6 +130,20 @@ func (m *adapterNodeManager) SearchByName(pattern string) []*model.Node {
 	return result
 }
 
+func (m *adapterNodeManager) SearchByAddress(pattern string) []*model.Node {
+	if pattern == "" {
+		return nil
+	}
+	var result []*model.Node
+	lowerPattern := strings.ToLower(pattern)
+	for _, n := range m.nodes {
+		if strings.Contains(strings.ToLower(n.Address), lowerPattern) {
+			result = append(result, n)
+		}
+	}
+	return result
+}
+
 // NewPlaybookRunCmd 创建剧本执行命令
 func NewPlaybookRunCmd() *cobra.Command {
 	runCmd := &cobra.Command{

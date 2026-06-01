@@ -1032,31 +1032,44 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 		return "", fmt.Errorf("missing source file path")
 	}
 
-	nodeList, ok := params["nodes"].([]interface{})
-	if !ok || len(nodeList) == 0 {
-		return "", fmt.Errorf("missing nodes")
-	}
-
 	destDir, ok := params["dest_dir"].(string)
 	if !ok || destDir == "" {
 		return "", fmt.Errorf("missing target directory")
+	}
+
+	var nodeNames []string
+
+	if search, ok := params["search"].(string); ok && search != "" {
+		nodes := t.nodeMgr.SearchByName(search)
+		if len(nodes) == 0 {
+			nodes = t.nodeMgr.SearchByAddress(search)
+		}
+		if len(nodes) == 0 {
+			return "No matching nodes found for search: " + search, nil
+		}
+		for _, n := range nodes {
+			nodeNames = append(nodeNames, n.Name)
+		}
+	} else {
+		nodeList, ok := params["nodes"].([]interface{})
+		if !ok || len(nodeList) == 0 {
+			return "", fmt.Errorf("missing nodes")
+		}
+		for _, node := range nodeList {
+			if s, ok := node.(string); ok {
+				nodeNames = append(nodeNames, s)
+			}
+		}
 	}
 
 	permission, _ := params["permission"].(string)
 
 	mode, _ := params["mode"].(string)
 	if mode == "" {
-		if len(nodeList) >= 5 {
+		if len(nodeNames) >= 5 {
 			mode = "diffusion"
 		} else {
 			mode = "direct"
-		}
-	}
-
-	var nodeNames []string
-	for _, node := range nodeList {
-		if s, ok := node.(string); ok {
-			nodeNames = append(nodeNames, s)
 		}
 	}
 

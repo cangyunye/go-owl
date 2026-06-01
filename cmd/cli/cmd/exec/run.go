@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/google/uuid"
+	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/control/async"
@@ -22,30 +22,30 @@ import (
 )
 
 var (
-	execNodes              string
-	execGroup              string
-	execLabel              []string
-	execStatus             string
-	execTimeout            time.Duration
-	execConnectTimeout     time.Duration
-	execCommandTimeout     time.Duration
-	execRetry              int
-	execRetryInterval      time.Duration
-	execRetryMaxInterval   time.Duration
-	execNoRetry            bool
-	execAsync              bool
-	execAsyncTimeout       time.Duration
-	execAsyncPollInterval  time.Duration
-	execAsyncMaxPollCount  int
-	execAsyncRemoteDir     string
-	execFormat             string
-	execNoColor            bool
-	execParallel           bool
-	execSerial             bool
-	execDebug              bool
-	execForce              bool
-	execSyncNodes          bool
-	execSilent             bool
+	execNodes             string
+	execGroup             string
+	execLabel             []string
+	execStatus            string
+	execTimeout           time.Duration
+	execConnectTimeout    time.Duration
+	execCommandTimeout    time.Duration
+	execRetry             int
+	execRetryInterval     time.Duration
+	execRetryMaxInterval  time.Duration
+	execNoRetry           bool
+	execAsync             bool
+	execAsyncTimeout      time.Duration
+	execAsyncPollInterval time.Duration
+	execAsyncMaxPollCount int
+	execAsyncRemoteDir    string
+	execFormat            string
+	execNoColor           bool
+	execParallel          bool
+	execSerial            bool
+	execDebug             bool
+	execForce             bool
+	execSyncNodes         bool
+	execSilent            bool
 )
 
 func NewRunCmd() *cobra.Command {
@@ -285,17 +285,17 @@ func runExecRun(cmd *cobra.Command, args []string) {
 
 	if !execNoRetry && execRetry > 0 {
 		opts.RetryConfig = &command.RetryConfig{
-			MaxRetries:    execRetry,
+			MaxRetries:      execRetry,
 			InitialInterval: execRetryInterval,
-			MaxInterval:   execRetryMaxInterval,
+			MaxInterval:     execRetryMaxInterval,
 		}
 	}
 
 	if execAsync {
 		asyncOpts := &async.AsyncOptions{
-			Timeout:      execAsyncTimeout,
-			PollInterval: execAsyncPollInterval,
-			MaxPollCount: execAsyncMaxPollCount,
+			Timeout:       execAsyncTimeout,
+			PollInterval:  execAsyncPollInterval,
+			MaxPollCount:  execAsyncMaxPollCount,
 			RemoteBaseDir: execAsyncRemoteDir,
 		}
 
