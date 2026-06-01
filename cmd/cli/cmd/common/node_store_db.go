@@ -173,12 +173,18 @@ func (s *NodeStoreDB) Update(node *NodeInfo) error {
 		return fmt.Errorf("marshal labels: %w", err)
 	}
 	node.UpdatedAt = time.Now().Format(time.RFC3339)
+	var lastCheckAt interface{}
+	if node.LastCheckAt == "" {
+		lastCheckAt = nil
+	} else {
+		lastCheckAt = node.LastCheckAt
+	}
 	result, err := s.db.Exec(
-		`UPDATE nodes SET name=?, address=?, port=?, user=?, password=?, ssh_key=?, status=?, groups=?, labels=?, proxy_jump=?, updated_at=? WHERE id=?`,
+		`UPDATE nodes SET name=?, address=?, port=?, user=?, password=?, ssh_key=?, status=?, groups=?, labels=?, proxy_jump=?, updated_at=?, last_check_at=? WHERE id=?`,
 		node.Name, node.Address, node.Port,
 		node.User, node.Password, node.SSHKey, node.Status,
 		string(groupsJSON), string(labelsJSON), node.ProxyJump,
-		node.UpdatedAt, node.ID,
+		node.UpdatedAt, lastCheckAt, node.ID,
 	)
 	if err != nil {
 		return err
