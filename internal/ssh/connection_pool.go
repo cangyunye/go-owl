@@ -43,7 +43,7 @@ func (p *ConnectionPool) Get(nodeInfo *node.ResolvedNode) (NodeExecutor, error) 
 		e.mu.Lock()
 		defer e.mu.Unlock()
 
-		if time.Since(e.lastUsed) < p.idleTimeout && e.refCount >= 0 {
+		if e.refCount == 0 && time.Since(e.lastUsed) < p.idleTimeout {
 			e.lastUsed = time.Now()
 			e.refCount++
 			return e.executor, nil
@@ -81,10 +81,7 @@ func (p *ConnectionPool) Put(nodeID string) {
 		e := entry.(*poolEntry)
 		e.mu.Lock()
 		e.refCount--
-		if e.refCount <= 0 {
-			e.executor = nil
-			p.pool.Delete(nodeID)
-		}
+		e.lastUsed = time.Now()
 		e.mu.Unlock()
 	}
 }

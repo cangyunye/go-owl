@@ -75,18 +75,31 @@ func (e *Executor) runWithRetry(ctx context.Context, nodeIDs []string, command s
 }
 
 func (e *Executor) runParallel(ctx context.Context, nodeIDs []string, command string, opts *ExecuteOptions) []CommandResult {
-	results := make([]CommandResult, len(nodeIDs))
+	resultsChan := make(chan CommandResult, len(nodeIDs))
 	var wg sync.WaitGroup
 	wg.Add(len(nodeIDs))
 
-	for i, nodeID := range nodeIDs {
-		go func(idx int, id string) {
+	for _, nodeID := range nodeIDs {
+		go func(id string) {
 			defer wg.Done()
-			results[idx] = e.runOnNode(ctx, id, command, opts)
-		}(i, nodeID)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				resultsChan <- e.runOnNode(ctx, id, command, opts)
+			}
+		}(nodeID)
 	}
 
-	wg.Wait()
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	results := make([]CommandResult, 0, len(nodeIDs))
+	for result := range resultsChan {
+		results = append(results, result)
+	}
 	return results
 }
 
@@ -293,9 +306,34 @@ func (e *Executor) RunStreaming(ctx context.Context, nodeIDs []string, command s
 
 	go func() {
 		defer close(results)
-		for _, nodeID := range nodeIDs {
-			result := e.runOnNode(ctx, nodeID, command, opts)
-			results <- result
+
+		if opts != nil && opts.Parallel {
+			var wg sync.WaitGroup
+			wg.Add(len(nodeIDs))
+
+			for _, nodeID := range nodeIDs {
+				go func(id string) {
+					defer wg.Done()
+					select {
+					case <-ctx.Done():
+						return
+					default:
+						results <- e.runOnNode(ctx, id, command, opts)
+					}
+				}(nodeID)
+			}
+
+			wg.Wait()
+		} else {
+			for _, nodeID := range nodeIDs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					result := e.runOnNode(ctx, nodeID, command, opts)
+					results <- result
+				}
+			}
 		}
 	}()
 

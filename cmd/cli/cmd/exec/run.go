@@ -267,7 +267,7 @@ func runExecRun(cmd *cobra.Command, args []string) {
 	}
 	defer executor.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), execTimeout*time.Duration(len(targetNodeIDs)))
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
 	defer cancel()
 
 	opts := &command.ExecuteOptions{
@@ -369,16 +369,9 @@ func runExecRun(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	if !isParallel {
-		resultChan := executor.RunStreaming(ctx, targetNodeIDs, execmd, opts)
-		for result := range resultChan {
-			processResult(result)
-		}
-	} else {
-		results := executor.Run(ctx, targetNodeIDs, execmd, opts)
-		for _, result := range results {
-			processResult(result)
-		}
+	resultChan := executor.RunStreaming(ctx, targetNodeIDs, execmd, opts)
+	for result := range resultChan {
+		processResult(result)
 	}
 
 	if silent {
