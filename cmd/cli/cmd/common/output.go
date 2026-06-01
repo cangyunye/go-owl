@@ -5,12 +5,178 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"gopkg.in/yaml.v3"
 )
+
+// HeaderField 定义表格列
+type HeaderField struct {
+	Name   string
+	Width  int
+	Label  string
+}
+
+// FieldWidthMap 定义字段的默认宽度和显示名称
+var FieldWidthMap = map[string]struct{ Width int; Label string }{
+	"id":         {20, "ID"},
+	"name":       {25, "Name"},
+	"address":    {25, "Address"},
+	"port":       {8, "Port"},
+	"user":       {10, "User"},
+	"status":     {12, "Status"},
+	"groups":     {20, "Groups"},
+	"labels":     {30, "Labels"},
+	"last_check": {20, "Last Check"},
+	"metadata":   {30, "Metadata"},
+}
+
+// ParseHeaderFields 解析字段定义字符串
+// 格式: id,address,labels:60
+// 返回解析后的字段列表，无效字段会被忽略
+func ParseHeaderFields(header string) []HeaderField {
+	if header == "" {
+		return nil
+	}
+
+	parts := strings.Split(header, ",")
+	fields := make([]HeaderField, 0, len(parts))
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// 解析宽度: fieldname:width
+		name := part
+		width := 0
+		if idx := strings.Index(part, ":"); idx != -1 {
+			name = strings.TrimSpace(part[:idx])
+			widthStr := strings.TrimSpace(part[idx+1:])
+			if w, err := strconv.Atoi(widthStr); err == nil && w > 0 {
+				width = w
+			}
+		}
+
+		// 检查字段是否有效
+		fieldInfo, ok := FieldWidthMap[name]
+		if !ok {
+			continue
+		}
+
+		// 如果没有指定宽度，使用默认值
+		if width == 0 {
+			width = fieldInfo.Width
+		}
+
+		fields = append(fields, HeaderField{
+			Name:  name,
+			Width: width,
+			Label: fieldInfo.Label,
+		})
+	}
+
+	return fields
+}
+
+// FormatNodesWithFields 使用自定义字段格式化节点列表
+func (f *OutputFormatter) FormatNodesWithFields(nodes []*model.Node, fields []HeaderField) {
+	if len(nodes) == 0 {
+		fmt.Println("No nodes found.")
+		return
+	}
+
+	if len(fields) == 0 {
+		f.printTable(nodes)
+		return
+	}
+
+	// 打印表头
+	headerParts := make([]string, len(fields))
+	for i, field := range fields {
+		headerParts[i] = PadRight(field.Label, field.Width)
+	}
+	fmt.Println(strings.Join(headerParts, " "))
+
+	// 打印分隔线
+	totalWidth := 0
+	for _, field := range fields {
+		totalWidth += field.Width + 1
+	}
+	fmt.Println(strings.Repeat("-", totalWidth))
+
+	// 打印数据行
+	for _, n := range nodes {
+		rowParts := make([]string, len(fields))
+		for i, field := range fields {
+			rowParts[i] = PadRight(f.getFieldValue(n, field.Name), field.Width)
+		}
+		fmt.Println(strings.Join(rowParts, " "))
+	}
+
+	fmt.Printf("\nTotal: %d nodes\n", len(nodes))
+}
+
+// getFieldValue 获取节点的指定字段值
+func (f *OutputFormatter) getFieldValue(n *model.Node, fieldName string) string {
+	switch fieldName {
+	case "id":
+		return n.ID
+	case "name":
+		return TruncateByWidth(n.Name, 25)
+	case "address":
+		return truncate(fmt.Sprintf("%s:%d", n.Address, n.Port), 25)
+	case "port":
+		return fmt.Sprintf("%d", n.Port)
+	case "user":
+		if n.User == "" {
+			return "-"
+		}
+		return n.User
+	case "status":
+		status := string(n.Status)
+		if f.Color {
+			switch n.Status {
+			case model.NodeStatusOnline:
+				status = greenStr(status)
+			case model.NodeStatusOffline:
+				status = redStr(status)
+			default:
+				status = yellowStr(status)
+			}
+		}
+		return status
+	case "groups":
+		groups := strings.Join(n.Groups, ",")
+		if groups == "" {
+			return "-"
+		}
+		return TruncateByWidth(groups, 20)
+	case "labels":
+		labels := formatLabelsStr(n.Labels)
+		if labels == "" {
+			return "-"
+		}
+		return labels
+	case "last_check":
+		if n.LastCheckAt == "" {
+			return "-"
+		}
+		return truncate(n.LastCheckAt, 20)
+	case "metadata":
+		metadata := formatLabelsStr(n.Metadata)
+		if metadata == "" {
+			return "-"
+		}
+		return metadata
+	default:
+		return ""
+	}
+}
 
 // OutputFormatter 输出格式化器
 type OutputFormatter struct {

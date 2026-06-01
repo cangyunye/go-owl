@@ -17,6 +17,7 @@ var (
 	listLabel   []string
 	listStatus  string
 	listNoColor bool
+	listHeader  string
 )
 
 // NewListCmd 创建节点列表命令
@@ -26,12 +27,17 @@ func NewListCmd() *cobra.Command {
 		Short: "列出所有节点",
 		Long: `列出所有已注册的节点，支持按分组、标签、状态过滤。
 
+可用字段：
+  id, name, address, port, user, status, groups, labels, last_check
+
 示例：
   owl node list                           # 列出所有节点
   owl node list --group web               # 列出 web 分组的节点
   owl node list --label env=prod          # 列出 env=prod 的节点
   owl node list --status online           # 列出在线节点
-  owl node list -o json                   # JSON 格式输出`,
+  owl node list -o json                   # JSON 格式输出
+  owl node list --header id,address       # 只显示 id 和 address 列
+  owl node list --header id,name,labels:60  # 只显示3列，labels列宽度60`,
 		Run: runList,
 	}
 
@@ -45,6 +51,8 @@ func NewListCmd() *cobra.Command {
 		"按状态过滤: online, offline, unknown")
 	listCmd.Flags().BoolVar(&listNoColor, "no-color", false,
 		"禁用颜色输出")
+	listCmd.Flags().StringVar(&listHeader, "header", "",
+		"自定义显示字段和宽度 (格式: id,address,labels:60)")
 
 	return listCmd
 }
@@ -66,8 +74,22 @@ func runList(cmd *cobra.Command, args []string) {
 	// 转换为 model.Node 格式
 	modelNodes := toModelNodes(nodes)
 
+	// 解析自定义字段
+	var fields []common.HeaderField
+	if listHeader != "" {
+		fields = common.ParseHeaderFields(listHeader)
+		if len(fields) == 0 {
+			fmt.Fprintf(os.Stderr, "Invalid header format: %s\n", listHeader)
+			os.Exit(1)
+		}
+	}
+
 	// 输出
-	formatter.FormatNodes(modelNodes)
+	if len(fields) > 0 {
+		formatter.FormatNodesWithFields(modelNodes, fields)
+	} else {
+		formatter.FormatNodes(modelNodes)
+	}
 }
 
 func filterNodes(nodes []*common.NodeInfo) []*common.NodeInfo {
