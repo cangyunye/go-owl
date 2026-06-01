@@ -14,7 +14,7 @@ func TestPlaybookCmdExists(t *testing.T) {
 		t.Errorf("expected Use 'playbook', got '%s'", parent.Use)
 	}
 
-	expected := []string{"list", "run", "info", "validate"}
+	expected := []string{"list", "run", "info", "validate", "template"}
 	testutil.AssertSubCommands(t, parent, expected)
 }
 
@@ -93,4 +93,31 @@ func TestPlaybookHelpContainsSubcommands(t *testing.T) {
 	testutil.AssertHelpContains(t, parent, "run")
 	testutil.AssertHelpContains(t, parent, "info")
 	testutil.AssertHelpContains(t, parent, "validate")
+	testutil.AssertHelpContains(t, parent, "template")
+}
+
+func TestPlaybookTemplateCmd(t *testing.T) {
+	cmd := playbook.NewPlaybookTemplateCmd()
+
+	if cmd.Use != "template" {
+		t.Errorf("expected Use 'template', got '%s'", cmd.Use)
+	}
+
+	testutil.AssertFlagExists(t, cmd, "output")
+	testutil.AssertFlagShorthand(t, cmd, "output", "o")
+	testutil.AssertFlagDefault(t, cmd, "output", "")
+}
+
+func TestActionTemplatesCount(t *testing.T) {
+	templates := playbook.GetActionTemplates()
+	if len(templates) != 5 {
+		t.Errorf("expected 5 action templates, got %d", len(templates))
+	}
+
+	expectedActions := []string{"command", "script", "upload", "download", "include"}
+	for i, expected := range expectedActions {
+		if templates[i].Name != expected {
+			t.Errorf("expected action template[%d] name '%s', got '%s'", i, expected, templates[i].Name)
+		}
+	}
 }

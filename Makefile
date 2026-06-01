@@ -21,7 +21,9 @@ BUILD_DIR := build
 GO := go
 
 # 编译标志
-LDFLAGS := -ldflags "-s -w"
+COMMIT_ID := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME := $(shell date "+%Y-%m-%d %H:%M:%S")
+LDFLAGS := -ldflags "-s -w -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.version=1.0.0' -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.commitID=$(COMMIT_ID)' -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.buildTime=$(BUILD_TIME)'"
 
 # 颜色定义
 BOLD := \033[1m
