@@ -37,7 +37,10 @@ func NewListCmd() *cobra.Command {
   owl node list --status online           # 列出在线节点
   owl node list -o json                   # JSON 格式输出
   owl node list --header id,address       # 只显示 id 和 address 列
-  owl node list --header id,name,labels:60  # 只显示3列，labels列宽度60`,
+  owl node list --header id,name,labels:60  # 只显示3列，labels列宽度60
+  owl node list --header *                # 显示默认8个字段
+  owl node list --header *,id              # 默认字段 + id放最后
+  owl node list --header labels:60,*        # labels先显示，然后其他默认字段`,
 		Run: runList,
 	}
 
@@ -52,7 +55,7 @@ func NewListCmd() *cobra.Command {
 	listCmd.Flags().BoolVar(&listNoColor, "no-color", false,
 		"禁用颜色输出")
 	listCmd.Flags().StringVar(&listHeader, "header", "",
-		"自定义显示字段和宽度 (格式: id,address,labels:60)")
+		"自定义显示字段和宽度 (格式: id,address,labels:60,*,id)")
 
 	return listCmd
 }

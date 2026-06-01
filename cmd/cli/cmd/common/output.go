@@ -34,8 +34,15 @@ var FieldWidthMap = map[string]struct{ Width int; Label string }{
 	"metadata":   {30, "Metadata"},
 }
 
+// DefaultFields 定义默认的8个字段及其显示顺序
+var DefaultFields = []string{"id", "name", "address", "user", "status", "groups", "labels", "last_check"}
+
 // ParseHeaderFields 解析字段定义字符串
-// 格式: id,address,labels:60
+// 格式支持:
+//   - id,address,labels:60 (仅显示指定字段)
+//   - * (显示默认8个字段)
+//   - *,id (默认字段 + id放最后)
+//   - labels:60,* (labels先显示，然后其他默认字段)
 // 返回解析后的字段列表，无效字段会被忽略
 func ParseHeaderFields(header string) []HeaderField {
 	if header == "" {
@@ -43,11 +50,27 @@ func ParseHeaderFields(header string) []HeaderField {
 	}
 
 	parts := strings.Split(header, ",")
-	fields := make([]HeaderField, 0, len(parts))
 
-	for _, part := range parts {
+	// 解析各个部分，同时记录是否包含通配符
+	type parsedPart struct {
+		name  string
+		width int
+		isWildcard bool
+	}
+
+	var parsedParts []parsedPart
+	hasWildcard := false
+	wildcardIndex := -1
+
+	for i, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
+			continue
+		}
+		if part == "*" {
+			hasWildcard = true
+			wildcardIndex = i
+			parsedParts = append(parsedParts, parsedPart{isWildcard: true})
 			continue
 		}
 
@@ -63,24 +86,93 @@ func ParseHeaderFields(header string) []HeaderField {
 		}
 
 		// 检查字段是否有效
-		fieldInfo, ok := FieldWidthMap[name]
-		if !ok {
+		if _, ok := FieldWidthMap[name]; !ok {
 			continue
 		}
 
-		// 如果没有指定宽度，使用默认值
-		if width == 0 {
-			width = fieldInfo.Width
-		}
-
-		fields = append(fields, HeaderField{
-			Name:  name,
-			Width: width,
-			Label: fieldInfo.Label,
-		})
+		parsedParts = append(parsedParts, parsedPart{name: name, width: width})
 	}
 
-	return fields
+	// 构建最终字段列表
+	seenFields := make(map[string]bool)
+	var resultFields []HeaderField
+
+	// 先添加通配符前的字段
+	for _, p := range parsedParts[:wildcardIndex+1] {
+		if p.isWildcard {
+			// 继续
+		} else {
+			if !seenFields[p.name] {
+				fieldInfo := FieldWidthMap[p.name]
+				width := p.width
+				if width == 0 {
+					width = fieldInfo.Width
+				}
+				resultFields = append(resultFields, HeaderField{
+					Name:  p.name,
+					Width: width,
+					Label: fieldInfo.Label,
+				})
+				seenFields[p.name] = true
+			}
+		}
+	}
+
+	// 添加通配符的默认字段
+	if hasWildcard {
+		for _, fieldName := range DefaultFields {
+			if !seenFields[fieldName] {
+				fieldInfo := FieldWidthMap[fieldName]
+				resultFields = append(resultFields, HeaderField{
+					Name:  fieldName,
+					Width: fieldInfo.Width,
+					Label: fieldInfo.Label,
+				})
+				seenFields[fieldName] = true
+			}
+		}
+	}
+
+	// 添加通配符后的字段
+	if hasWildcard && wildcardIndex+1 < len(parsedParts) {
+		for _, p := range parsedParts[wildcardIndex+1:] {
+			if !p.isWildcard && !seenFields[p.name] {
+				fieldInfo := FieldWidthMap[p.name]
+				width := p.width
+				if width == 0 {
+					width = fieldInfo.Width
+				}
+				resultFields = append(resultFields, HeaderField{
+					Name:  p.name,
+					Width: width,
+					Label: fieldInfo.Label,
+				})
+				seenFields[p.name] = true
+			}
+		}
+	}
+
+	// 如果没有通配符，就用原来的逻辑
+	if !hasWildcard {
+		resultFields = nil
+		for _, p := range parsedParts {
+			if !seenFields[p.name] {
+				fieldInfo := FieldWidthMap[p.name]
+				width := p.width
+				if width == 0 {
+					width = fieldInfo.Width
+				}
+				resultFields = append(resultFields, HeaderField{
+					Name:  p.name,
+					Width: width,
+					Label: fieldInfo.Label,
+				})
+				seenFields[p.name] = true
+			}
+		}
+	}
+
+	return resultFields
 }
 
 // FormatNodesWithFields 使用自定义字段格式化节点列表
