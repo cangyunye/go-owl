@@ -223,7 +223,9 @@ func runAI(cmd *cobra.Command, args []string) {
 	ai.SetLLMLogVerbose(aiVerbose)
 
 	store := common.GetNodeStore()
-	bridge := createBridgeFromStore(store)
+	nodeStoreAdapter := createBridgeAdapter(store)
+	bridge := ai.NewNodeStoreBridge()
+	bridge.SyncFromStore(nodeStoreAdapter)
 
 	nodeMgr := ai.InitNodeManager(bridge)
 	if nodeMgr == nil {
@@ -274,7 +276,7 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	sessionID := fmt.Sprintf("ai-%d", time.Now().UnixMilli())
 
-	agent, err := ai.NewAgent(config, nodeMgr, playbookParser, aiVerbose)
+	agent, err := ai.NewAgent(config, nodeMgr, nodeStoreAdapter, playbookParser, aiVerbose)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize Eino LLM: %v, using fallback mode\n", err)
 	}
@@ -396,14 +398,18 @@ func runAI(cmd *cobra.Command, args []string) {
 	}
 }
 
-func createBridgeFromStore(store common.NodeStore) *ai.NodeStoreBridge {
-	bridge := ai.NewNodeStoreBridge()
-	nodes, err := store.List()
+type storeAdapter struct {
+	store common.NodeStore
+}
+
+func (a *storeAdapter) List() ([]*ai.NodeInfoAdapter, error) {
+	nodes, err := a.store.List()
 	if err != nil {
-		return bridge
+		return nil, err
 	}
+	result := make([]*ai.NodeInfoAdapter, 0, len(nodes))
 	for _, n := range nodes {
-		bridge.Add(&ai.NodeInfoAdapter{
+		result = append(result, &ai.NodeInfoAdapter{
 			ID:        n.ID,
 			Name:      n.Name,
 			Address:   n.Address,
@@ -415,7 +421,71 @@ func createBridgeFromStore(store common.NodeStore) *ai.NodeStoreBridge {
 			UpdatedAt: n.UpdatedAt,
 		})
 	}
-	return bridge
+	return result, nil
+}
+
+func (a *storeAdapter) Get(id string) (*ai.NodeInfoAdapter, error) {
+	node, err := a.store.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	return &ai.NodeInfoAdapter{
+		ID:        node.ID,
+		Name:      node.Name,
+		Address:   node.Address,
+		Port:      node.Port,
+		Status:    node.Status,
+		Groups:    node.Groups,
+		Labels:    node.Labels,
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: node.UpdatedAt,
+	}, nil
+}
+
+func (a *storeAdapter) Add(node *ai.NodeInfoAdapter) error {
+	return a.store.Add(&common.NodeInfo{
+		ID:        node.ID,
+		Name:      node.Name,
+		Address:   node.Address,
+		Port:      node.Port,
+		User:      "",
+		Status:    node.Status,
+		Groups:    node.Groups,
+		Labels:    node.Labels,
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: node.UpdatedAt,
+	})
+}
+
+func (a *storeAdapter) Remove(id string) error {
+	return a.store.Remove(id)
+}
+
+func (a *storeAdapter) Update(node *ai.NodeInfoAdapter) error {
+	return a.store.Update(&common.NodeInfo{
+		ID:        node.ID,
+		Name:      node.Name,
+		Address:   node.Address,
+		Port:      node.Port,
+		User:      "",
+		Status:    node.Status,
+		Groups:    node.Groups,
+		Labels:    node.Labels,
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: node.UpdatedAt,
+	})
+}
+
+func (a *storeAdapter) Save() error {
+	return a.store.Save()
+}
+
+func (a *storeAdapter) Load() error {
+	return a.store.Load()
+}
+
+func createBridgeAdapter(store common.NodeStore) ai.NodeStoreAdapter {
+	return &storeAdapter{store: store}
 }
 
 func getAPIKey() string {

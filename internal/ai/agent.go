@@ -66,6 +66,7 @@ func debugPrint(debug bool, template string, keysAndValues ...interface{}) {
 type Agent struct {
 	config         *Config
 	nodeMgr        node.Manager
+	nodeStore      NodeStoreAdapter
 	registry       *ToolRegistry
 	playbookParser *playbook.Parser
 	chatModel      ChatModel
@@ -118,9 +119,9 @@ var toolHints = map[string]string{
 	"transfer_file":     aiPrompts.TransferPrompt,
 }
 
-func NewAgent(config *Config, nodeMgr node.Manager, playbookParser *playbook.Parser, debug ...bool) (*Agent, error) {
+func NewAgent(config *Config, nodeMgr node.Manager, nodeStore NodeStoreAdapter, playbookParser *playbook.Parser, debug ...bool) (*Agent, error) {
 	registry := NewToolRegistry()
-	registry.Register(NewQueryNodesTool(nodeMgr))
+	registry.Register(NewQueryNodesTool(nodeMgr, nodeStore))
 	registry.Register(NewExecuteCommandTool(nodeMgr))
 	registry.Register(NewGeneratePlaybookTool(nodeMgr))
 	registry.Register(NewTransferFileTool(nodeMgr))
@@ -136,6 +137,7 @@ func NewAgent(config *Config, nodeMgr node.Manager, playbookParser *playbook.Par
 	agent := &Agent{
 		config:         config,
 		nodeMgr:        nodeMgr,
+		nodeStore:      nodeStore,
 		registry:       registry,
 		playbookParser: playbookParser,
 		systemPrompt:   aiPrompts.ExecRunSystemPrompt,
@@ -993,6 +995,18 @@ func (b *NodeStoreBridge) List() ([]*NodeInfoAdapter, error) {
 	return result, nil
 }
 
+func (b *NodeStoreBridge) SyncFromStore(store NodeStoreAdapter) error {
+	nodes, err := store.List()
+	if err != nil {
+		return err
+	}
+	b.nodes = make(map[string]*NodeInfoAdapter)
+	for _, n := range nodes {
+		b.nodes[n.ID] = n
+	}
+	return nil
+}
+
 func (b *NodeStoreBridge) Get(id string) (*NodeInfoAdapter, error) {
 	node, ok := b.nodes[id]
 	if !ok {
@@ -1028,6 +1042,10 @@ func (b *NodeStoreBridge) Save() error {
 
 func (b *NodeStoreBridge) Load() error {
 	return nil
+}
+
+func (b *NodeStoreBridge) Refresh() {
+	b.nodes = make(map[string]*NodeInfoAdapter)
 }
 
 func InitNodeManager(store NodeStoreAdapter) node.Manager {

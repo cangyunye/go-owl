@@ -72,11 +72,12 @@ type Tool interface {
 }
 
 type QueryNodesTool struct {
-	nodeMgr node.Manager
+	nodeMgr   node.Manager
+	nodeStore NodeStoreAdapter
 }
 
-func NewQueryNodesTool(nodeMgr node.Manager) *QueryNodesTool {
-	return &QueryNodesTool{nodeMgr: nodeMgr}
+func NewQueryNodesTool(nodeMgr node.Manager, nodeStore NodeStoreAdapter) *QueryNodesTool {
+	return &QueryNodesTool{nodeMgr: nodeMgr, nodeStore: nodeStore}
 }
 
 func (t *QueryNodesTool) Name() string {
@@ -120,9 +121,21 @@ func (t *QueryNodesTool) Validate(params map[string]interface{}) error {
 	return validator.ValidateQueryNodes(params)
 }
 
+func (t *QueryNodesTool) refreshNodeData() {
+	if t.nodeStore != nil {
+		if bridge, ok := t.nodeStore.(*NodeStoreBridge); ok {
+			if err := bridge.SyncFromStore(t.nodeStore); err != nil {
+				debugLogger.Debugw("刷新节点数据失败", "error", err)
+			}
+		}
+	}
+}
+
 func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	debugLogger.Debugw("QueryNodesTool 执行开始",
 		"params", fmt.Sprintf("%+v", params))
+
+	t.refreshNodeData()
 
 	group, _ := params["group"].(string)
 	labels, _ := params["labels"].(map[string]interface{})
@@ -137,141 +150,45 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 		"format", format,
 		"search", search)
 
-	// Build owl node list command arguments
-	args := []string{"node", "list", "--no-color"}
-
-	if group != "" {
-		args = append(args, "--group", group)
-	}
-
+	// 转换标签格式并处理中文标签键名
+	convertedLabels := make(map[string]string)
 	if labels != nil {
-		labelMap := make(map[string]string)
 		for k, v := range labels {
 			if vs, ok := v.(string); ok {
-				labelMap[k] = vs
+				if mappedKey, ok := labelKeyMap[k]; ok {
+					convertedLabels[mappedKey] = vs
+				} else {
+					convertedLabels[k] = vs
+				}
 			}
 		}
-		// 转换中文标签键名到英文
-		for k, v := range labelMap {
-			if mappedKey, ok := labelKeyMap[k]; ok {
-				args = append(args, "--label", fmt.Sprintf("%s=%s", mappedKey, v))
-			} else {
-				args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
-			}
-		}
+	}
+
+	// 获取所有节点作为基础数据集
+	allNodes := t.nodeMgr.List()
+	nodes := make([]*model.Node, len(allNodes))
+	copy(nodes, allNodes)
+
+	// 步骤1: 如果有搜索条件，先在所有节点中搜索（不限制范围）
+	if search != "" {
+		debugLogger.Debugw("按名称搜索（全量节点）", "search", search)
+		nodes = t.filterByName(nodes, search)
+	}
+
+	// 步骤2: 应用精确过滤条件（在搜索结果上过滤）
+	if group != "" {
+		debugLogger.Debugw("按分组过滤", "group", group)
+		nodes = t.filterByGroup(nodes, group)
+	}
+
+	if len(convertedLabels) > 0 {
+		debugLogger.Debugw("按标签过滤", "labels", convertedLabels)
+		nodes = t.filterByLabels(nodes, convertedLabels)
 	}
 
 	if status != "" {
-		args = append(args, "--status", status)
-	}
-
-	if format != "" {
-		args = append(args, "--format", format)
-	}
-
-	// Note: owl node list doesn't have --search flag,
-	// so we need to first get all nodes and then filter by name
-	// But since we're calling the actual command, let's see...
-	// Actually, let's keep the current logic for search, but use the actual command for formatting
-
-	// First check if we need to search - if so, use current logic, then format
-	// But actually, let's just use the command directly and see if we can handle search differently
-	// For now, let's simplify:
-	if search == "" {
-		// No search, try to use owl node list
-		output, err := runOwlCommand(ctx, args)
-		if err == nil {
-			return output, nil
-		}
-		debugLogger.Debugw("调用 owl node list 失败，回退到内部实现", "error", err)
-		// Fallback to old implementation
-		var nodes []*model.Node
-		if group != "" {
-			nodes = t.nodeMgr.GetByGroup(group)
-		} else if labels != nil {
-			labelMap := make(map[string]string)
-			for k, v := range labels {
-				if vs, ok := v.(string); ok {
-					labelMap[k] = vs
-				}
-			}
-			// 转换中文标签键名到英文
-			convertedLabelMap := make(map[string]string)
-			for k, v := range labelMap {
-				if mappedKey, ok := labelKeyMap[k]; ok {
-					convertedLabelMap[mappedKey] = v
-				} else {
-					convertedLabelMap[k] = v
-				}
-			}
-			nodes = t.nodeMgr.GetByLabels(convertedLabelMap)
-		} else if status != "" {
-			allNodes := t.nodeMgr.List()
-			for _, n := range allNodes {
-				if string(n.Status) == status {
-					nodes = append(nodes, n)
-				}
-			}
-		} else {
-			nodes = t.nodeMgr.List()
-		}
-		if len(nodes) == 0 {
-			return "No matching nodes found", nil
-		}
-		switch format {
-		case "json":
-			data, _ := json.MarshalIndent(nodesToInfo(nodes), "", "  ")
-			return string(data), nil
-		case "summary":
-			return fmt.Sprintf("Total %d nodes, %d online", len(nodes), t.countOnline(nodes)), nil
-		default:
-			return t.formatAsTable(nodes), nil
-		}
-	}
-
-	// For search case, we need to get nodes, filter, then format
-	// But this is more complex - let's use current logic but use the actual formatter
-	// Actually, let's just use the current logic for now, but we can improve later
-
-	// Keep the current logic for search case
-	var nodes []*model.Node
-
-	if group != "" {
-		debugLogger.Debugw("按分组获取节点", "group", group)
-		nodes = t.nodeMgr.GetByGroup(group)
-	} else if labels != nil {
-		labelMap := make(map[string]string)
-		for k, v := range labels {
-			if vs, ok := v.(string); ok {
-				labelMap[k] = vs
-			}
-		}
-		debugLogger.Debugw("按标签获取节点", "labels", labelMap)
-		nodes = t.nodeMgr.GetByLabels(labelMap)
-	} else if status != "" {
-		debugLogger.Debugw("按状态获取节点", "status", status)
-		allNodes := t.nodeMgr.List()
-		nodes = make([]*model.Node, 0)
-		for _, n := range allNodes {
-			if string(n.Status) == status {
-				nodes = append(nodes, n)
-			}
-		}
-	} else {
-		debugLogger.Debugw("获取所有节点")
-		nodes = t.nodeMgr.List()
-	}
-
-	if search != "" {
-		debugLogger.Debugw("按名称搜索", "search", search)
-		filtered := make([]*model.Node, 0)
-		lowerSearch := strings.ToLower(search)
-		for _, n := range nodes {
-			if strings.Contains(strings.ToLower(n.Name), lowerSearch) {
-				filtered = append(filtered, n)
-			}
-		}
-		nodes = filtered
+		debugLogger.Debugw("按状态过滤", "status", status)
+		nodes = t.filterByStatus(nodes, status)
 	}
 
 	debugLogger.Debugw("最终节点数量", "finalCount", len(nodes))
@@ -280,10 +197,7 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 		return "No matching nodes found", nil
 	}
 
-	// Now format using the actual command - let's try to call owl node list with filtered IDs
-	// But this is complex - for now, let's just use the command without search
-	// Actually, let's just use our current formatting, since it's already fixed
-	// We can improve later
+	// 格式化输出
 	switch format {
 	case "json":
 		data, _ := json.MarshalIndent(nodesToInfo(nodes), "", "  ")
@@ -293,6 +207,48 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 	default:
 		return t.formatAsTable(nodes), nil
 	}
+}
+
+func (t *QueryNodesTool) filterByName(nodes []*model.Node, search string) []*model.Node {
+	filtered := make([]*model.Node, 0)
+	lowerSearch := strings.ToLower(search)
+	for _, n := range nodes {
+		if strings.Contains(strings.ToLower(n.Name), lowerSearch) ||
+			strings.Contains(strings.ToLower(n.Address), lowerSearch) {
+			filtered = append(filtered, n)
+		}
+	}
+	return filtered
+}
+
+func (t *QueryNodesTool) filterByGroup(nodes []*model.Node, group string) []*model.Node {
+	filtered := make([]*model.Node, 0)
+	for _, n := range nodes {
+		if n.HasGroup(group) {
+			filtered = append(filtered, n)
+		}
+	}
+	return filtered
+}
+
+func (t *QueryNodesTool) filterByLabels(nodes []*model.Node, labels map[string]string) []*model.Node {
+	filtered := make([]*model.Node, 0)
+	for _, n := range nodes {
+		if n.MatchLabels(labels) {
+			filtered = append(filtered, n)
+		}
+	}
+	return filtered
+}
+
+func (t *QueryNodesTool) filterByStatus(nodes []*model.Node, status string) []*model.Node {
+	filtered := make([]*model.Node, 0)
+	for _, n := range nodes {
+		if strings.EqualFold(string(n.Status), status) {
+			filtered = append(filtered, n)
+		}
+	}
+	return filtered
 }
 
 func (t *QueryNodesTool) countOnline(nodes []*model.Node) int {
