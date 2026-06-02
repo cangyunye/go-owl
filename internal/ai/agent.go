@@ -288,10 +288,75 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 				return response, nil
 			}
 
-			if len(response) > 100 && !strings.Contains(response, "tool_calls") {
-				debugPrint(a.debug, "首轮无工具调用且响应无效，返回不确定")
-				return "我不确定您要做什么", nil
+			if (len(response) > 100 && !strings.Contains(response, "tool_calls")) || strings.Contains(response, "我不确定您要做什么") {
+				debugPrint(a.debug, "LLM 无法生成有效工具调用，尝试使用本地参数提取器")
+
+				nodes := a.nodeMgr.List()
+				nodeNames := make([]string, 0, len(nodes))
+				for _, n := range nodes {
+					nodeNames = append(nodeNames, n.Name)
+				}
+
+				classifier := NewIntentClassifier()
+				intentResult := classifier.Classify(userInput)
+
+				if intentResult.Type == IntentUncertain || intentResult.Confidence < 30 {
+					debugPrint(a.debug, "本地分类器也无法确定，返回不确定")
+					return "我不确定您要做什么", nil
+				}
+
+				extractor := NewParamExtractor(nodeNames)
+				params := extractor.ExtractParams(intentResult.Type, userInput)
+
+				validator := NewValidator()
+				if err := validator.ValidateParams(intentResult.Type, params); err != nil {
+					debugPrint(a.debug, "参数验证失败: %v", err)
+					return "我不确定您要做什么", nil
+				}
+
+				debugPrint(a.debug, "使用本地参数提取成功: %v", params)
+
+				var toolCallJSON string
+				switch intentResult.Type {
+				case IntentQueryNodes:
+					toolCallJSON = a.buildToolCall("query_nodes", params)
+				case IntentExecuteCmd:
+					toolCallJSON = a.buildToolCall("execute_command", params)
+				case IntentExecuteScript:
+					toolCallJSON = a.buildToolCall("execute_script", params)
+				case IntentGeneratePlaybook:
+					toolCallJSON = a.buildToolCall("generate_playbook", params)
+				case IntentTransferFile:
+					toolCallJSON = a.buildToolCall("transfer_file", params)
+				default:
+					return "我不确定您要做什么", nil
+				}
+
+				if toolCallJSON != "" {
+					debugPrint(a.debug, "使用本地提取的工具调用")
+					toolCalls := a.parseToolCalls(toolCallJSON)
+					if len(toolCalls) > 0 {
+						if onProgress != nil {
+							onProgress("generate", toolCalls[0].Name)
+						}
+						lastToolName = toolCalls[0].Name
+						messages = append(messages, Message{Role: "assistant", Content: toolCallJSON})
+
+						for _, call := range toolCalls {
+							if onProgress != nil {
+								onProgress("execute", call.Name)
+							}
+							result, err := a.executeToolCall(ctx, call)
+							if err != nil {
+								result = fmt.Sprintf("Tool execution failed: %v", err)
+							}
+							lastToolResult = result
+							return result, nil
+						}
+					}
+				}
 			}
+
 			fullResponse.WriteString(response)
 			break
 		}

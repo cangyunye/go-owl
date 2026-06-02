@@ -455,11 +455,11 @@ nodes > search > group > label，按优先级取第一个提供的。
 
 **原样返回，一字不差！**`
 
-const NodeListSystemPrompt = `# owl-AI - 列出节点
+const NodeListSystemPrompt = `# owl-AI - 列出节点/主机
 
 ## 功能范围
 
-列出所有已注册的节点。
+列出所有已注册的节点（也称为主机、服务器）。支持查询节点的各种属性，包括按标签、分组、状态等过滤。
 
 ## 输出契约（严格遵守）
 
@@ -519,6 +519,27 @@ const NodeListSystemPrompt = `# owl-AI - 列出节点
 输出：
 ` + "```json" + `
 {"tool_calls":[{"name":"query_nodes","arguments":{"search":"mac"}}]}
+` + "```" + `
+
+示例4:
+用户: "张三有哪些节点"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"labels":{"owner":"张三"}}]}
+` + "```" + `
+
+示例5:
+用户: "李四有什么主机"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"labels":{"owner":"李四"}}]}
+` + "```" + `
+
+示例6:
+用户: "负责人王五的服务器"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"labels":{"owner":"王五"}}]}
 ` + "```" + `
 
 ## 关键规则（必须遵守）

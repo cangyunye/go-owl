@@ -118,28 +118,31 @@ func (e *ParamExtractor) extractLabelFilters(input string, params map[string]int
 }
 
 func (e *ParamExtractor) extractOwnerFilter(input string, params map[string]interface{}) {
-	lowerInput := strings.ToLower(input)
-
-	if strings.Contains(lowerInput, "使用人") ||
-		strings.Contains(lowerInput, "负责人") ||
-		strings.Contains(lowerInput, "拥有者") ||
-		strings.Contains(lowerInput, "owner") {
+	if strings.Contains(input, "使用人") ||
+		strings.Contains(input, "负责人") ||
+		strings.Contains(input, "拥有者") {
 
 		var ownerValue string
-		if strings.Contains(lowerInput, "使用人") {
-			idx := strings.Index(lowerInput, "使用人")
-			ownerValue = strings.TrimSpace(input[idx+4:])
-		} else if strings.Contains(lowerInput, "负责人") {
-			idx := strings.Index(lowerInput, "负责人")
-			ownerValue = strings.TrimSpace(input[idx+4:])
-		} else if strings.Contains(lowerInput, "拥有者") {
-			idx := strings.Index(lowerInput, "拥有者")
-			ownerValue = strings.TrimSpace(input[idx+4:])
-		} else if strings.Contains(lowerInput, "owner=") {
-			idx := strings.Index(lowerInput, "owner=")
+		if idx := strings.Index(input, "使用人"); idx != -1 {
+			ownerValue = strings.TrimSpace(input[idx+6:])
+		} else if idx := strings.Index(input, "负责人"); idx != -1 {
+			ownerValue = strings.TrimSpace(input[idx+6:])
+		} else if idx := strings.Index(input, "拥有者"); idx != -1 {
 			ownerValue = strings.TrimSpace(input[idx+6:])
 		}
 
+		if ownerValue != "" {
+			ownerValue = e.extractPersonName(ownerValue)
+			if ownerValue != "" {
+				params["labels"] = map[string]interface{}{"owner": ownerValue}
+			}
+		}
+		return
+	}
+
+	if strings.Contains(strings.ToLower(input), "owner=") {
+		idx := strings.Index(strings.ToLower(input), "owner=")
+		ownerValue := strings.TrimSpace(input[idx+6:])
 		if ownerValue != "" {
 			params["labels"] = map[string]interface{}{"owner": ownerValue}
 		}
@@ -181,8 +184,8 @@ func (e *ParamExtractor) extractPersonNameFromQuery(input string) string {
 			trimmed = strings.TrimSpace(trimmed)
 
 			if len(trimmed) >= 2 && len(trimmed) <= 4 {
-				chinesePattern := regexp.MustCompile(`^[\u4e00-\u9fa5]+`)
-				match := chinesePattern.FindString(trimmed)
+					chinesePattern := regexp.MustCompile(`^[一-龥]+`)
+					match := chinesePattern.FindString(trimmed)
 
 				if match != "" && len(match) >= 2 && len(match) <= 4 {
 					excludeWords := map[string]bool{
@@ -206,8 +209,8 @@ func (e *ParamExtractor) extractEnvFilter(input string, params map[string]interf
 	lowerInput := strings.ToLower(input)
 
 	if strings.Contains(lowerInput, "环境") {
-		idx := strings.Index(lowerInput, "环境")
-		envPart := input[idx+4:]
+		idx := strings.Index(input, "环境")
+		envPart := input[idx+6:]
 		envPart = strings.TrimSpace(envPart)
 
 		if envPart == "" {
@@ -221,34 +224,67 @@ func (e *ParamExtractor) extractEnvFilter(input string, params map[string]interf
 		}
 
 		if envPart != "" {
-			params["labels"] = map[string]interface{}{"env": envPart}
+			if labels, ok := params["labels"].(map[string]interface{}); ok {
+				labels["env"] = envPart
+			} else {
+				params["labels"] = map[string]interface{}{"env": envPart}
+			}
 		}
 	}
 }
 
 func (e *ParamExtractor) extractPersonName(input string) string {
-	chineseNamePattern := regexp.MustCompile(`[\u4e00-\u9fa5]{2,4}`)
-	matches := chineseNamePattern.FindAllString(input, -1)
+	excludeWords := map[string]bool{
+		"节点": true, "环境": true, "标签": true, "使用人": true, "负责人": true,
+		"拥有者": true, "查询": true, "查看": true, "列出": true, "在线": true,
+		"离线": true, "服务器": true, "主机": true, "信息": true, "列表": true,
+		"分组": true, "一下": true, "负责": true, "获取": true, "找出": true,
+		"看看": true, "搜下": true, "找下": true, "看下": true,
+		"点列": true, "线节": true, "节点列": true, "在线节": true,
+		"点列表": true, "线节点": true, "节点列表": true, "在线节点": true,
+	}
+	
+	excludeSingleChars := map[rune]bool{
+		'人': true, '找': true, '看': true, '列': true, '查': true,
+		'获': true, '搜': true, '下': true,
+	}
 
-	for _, match := range matches {
-		excludeWords := []string{"节点", "环境", "标签", "使用人", "负责人", "拥有者", "查询", "查看", "列出", "在线", "离线"}
-		isExcluded := false
-		for _, exclude := range excludeWords {
-			if strings.Contains(input, exclude) && strings.Contains(input, match) {
-				if strings.Index(input, exclude) < strings.Index(input, match) {
-					continue
-				}
+	runes := []rune(input)
+	
+	for length := 2; length <= 4; length++ {
+		for i := 0; i <= len(runes)-length; i++ {
+			if excludeSingleChars[runes[i]] {
+				continue
 			}
-			if match == exclude {
-				isExcluded = true
-				break
+			
+			name := string(runes[i : i+length])
+			
+			if !isAllChinese(name) {
+				continue
 			}
-		}
-		if !isExcluded {
-			return match
+			
+			if excludeWords[name] {
+				continue
+			}
+			
+			return name
 		}
 	}
+
 	return ""
+}
+
+func isAllChinese(s string) bool {
+	for _, r := range s {
+		if !isChineseRune(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isChineseRune(r rune) bool {
+	return r >= '\u4e00' && r <= '\u9fa5'
 }
 
 func (e *ParamExtractor) extractExecuteScriptParams(input string, params map[string]interface{}) {
