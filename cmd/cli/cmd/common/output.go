@@ -34,6 +34,30 @@ var FieldWidthMap = map[string]struct{ Width int; Label string }{
 	"metadata":   {30, "Metadata"},
 }
 
+// DisplayWidth 计算字符串的显示宽度，忽略 ANSI 转义序列
+func DisplayWidth(s string) int {
+	w := 0
+	inEscape := false
+	for _, r := range s {
+		if r == '\033' {
+			inEscape = true
+			continue
+		}
+		if inEscape {
+			if r == 'm' {
+				inEscape = false
+			}
+			continue
+		}
+		if r > 127 {
+			w += 2
+		} else {
+			w += 1
+		}
+	}
+	return w
+}
+
 // DefaultFields 定义默认的8个字段及其显示顺序
 var DefaultFields = []string{"id", "name", "address", "user", "status", "groups", "labels", "last_check"}
 
@@ -509,18 +533,6 @@ func TruncateByWidth(s string, maxWidth int) string {
 		}
 	}
 	return s
-}
-
-func DisplayWidth(s string) int {
-	w := 0
-	for _, r := range s {
-		if r > 127 {
-			w += 2
-		} else {
-			w += 1
-		}
-	}
-	return w
 }
 
 func PadRight(s string, width int) string {
