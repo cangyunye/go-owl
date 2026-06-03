@@ -563,6 +563,27 @@ const NodeListSystemPrompt = `# owl-AI - 列出节点/主机
 {"tool_calls":[{"name":"query_nodes","arguments":{"labels":{"env":"prod"}}]}
 ` + "```" + `
 
+示例10:
+用户: "在线状态主机有哪些"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"status":"online"}}]}
+` + "```" + `
+
+示例11:
+用户: "离线服务器列表"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"status":"offline"}}]}
+` + "```" + `
+
+示例12:
+用户: "未知状态的节点"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"status":"unknown"}}]}
+` + "```" + `
+
 ## 关键规则（必须遵守）
 
 当对话历史包含工具执行结果时，你必须直接原样返回该工具结果，**绝对不要**：

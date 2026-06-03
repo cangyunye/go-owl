@@ -74,11 +74,14 @@ func (e *ParamExtractor) ExtractParams(intent IntentType, input string) map[stri
 func (e *ParamExtractor) extractQueryNodesParams(input string, params map[string]interface{}) {
 	lowerInput := strings.ToLower(input)
 
-	if strings.Contains(lowerInput, "online") {
+	if strings.Contains(lowerInput, "online") || strings.Contains(input, "在线") {
 		params["status"] = "online"
 	}
-	if strings.Contains(lowerInput, "offline") {
+	if strings.Contains(lowerInput, "offline") || strings.Contains(input, "离线") {
 		params["status"] = "offline"
+	}
+	if strings.Contains(input, "未知") {
+		params["status"] = "unknown"
 	}
 	if strings.Contains(lowerInput, "json") {
 		params["format"] = "json"
