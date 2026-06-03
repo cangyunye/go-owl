@@ -542,6 +542,27 @@ const NodeListSystemPrompt = `# owl-AI - 列出节点/主机
 {"tool_calls":[{"name":"query_nodes","arguments":{"labels":{"owner":"王五"}}]}
 ` + "```" + `
 
+示例7:
+用户: "查询所有root用户的主机"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"labels":{"user":"root"}}]}
+` + "```" + `
+
+示例8:
+用户: "查看user=admin的节点"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"labels":{"user":"admin"}}]}
+` + "```" + `
+
+示例9:
+用户: "列出所有环境=prod的主机"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"labels":{"env":"prod"}}]}
+` + "```" + `
+
 ## 关键规则（必须遵守）
 
 当对话历史包含工具执行结果时，你必须直接原样返回该工具结果，**绝对不要**：

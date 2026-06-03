@@ -88,8 +88,30 @@ func (e *ParamExtractor) extractQueryNodesParams(input string, params map[string
 	}
 
 	e.extractLabelFilters(input, params)
-	e.extractOwnerFilter(input, params)
+	
+	// 检查是否已经有了 user 或 owner 标签，如果有就不再尝试提取 owner
+	hasUserLabel := false
+	hasOwnerLabel := false
+	if labels, ok := params["labels"].(map[string]interface{}); ok {
+		_, hasUserLabel = labels["user"]
+		_, hasOwnerLabel = labels["owner"]
+	}
+	
+	if !hasUserLabel && !hasOwnerLabel {
+		e.extractOwnerFilter(input, params)
+	}
+	
 	e.extractEnvFilter(input, params)
+	
+	// 同样，检查是否已经有了 user 标签，如果有就不再尝试用 extractGenericLabelFilters
+	if !hasUserLabel {
+		if labels, ok := params["labels"].(map[string]interface{}); ok {
+			_, hasUserLabel = labels["user"]
+		}
+		if !hasUserLabel {
+			e.extractGenericLabelFilters(input, params)
+		}
+	}
 }
 
 func (e *ParamExtractor) extractLabelFilters(input string, params map[string]interface{}) {
@@ -113,6 +135,54 @@ func (e *ParamExtractor) extractLabelFilters(input string, params map[string]int
 			}
 		} else if labelPart != "" {
 			params["search"] = labelPart
+		}
+	}
+
+	// 识别通用的 label=value 模式
+	labelPatterns := []string{
+		"user=", "env=", "owner=", 
+		"role=", "group=", "os=",
+		"region=", "env=", "region=", "role=",
+		"USER=", "ENV=", "OWNER=",
+	}
+	for _, pattern := range labelPatterns {
+		if strings.Contains(lowerInput, pattern) {
+			patternLower := strings.ToLower(pattern)
+			idx := strings.Index(lowerInput, patternLower)
+			if idx >= 0 {
+				// 提取 key from the pattern
+				valuePart := input[idx+len(patternLower):]
+				// 提取值部分，直到遇到非字母数字字符停止
+				runes := []rune(valuePart)
+				var value string
+				endIdx := -1
+				for i := 0; i < len(runes); i++ {
+					r := runes[i]
+					isAlnum := (r >= 'a' && r <= 'z') || 
+						(r >= 'A' && r <= 'Z') || 
+						(r >= '0' && r <= '9') || 
+						r == '_' || r == '-'
+					if isAlnum {
+						endIdx = i
+					} else {
+						break
+					}
+				}
+				if endIdx >= 0 {
+					value = string(runes[:endIdx+1])
+				} else {
+					value = valuePart
+				}
+				
+				key := strings.TrimRight(pattern, "=")
+				if value != "" && key != "" {
+					if labels, ok := params["labels"].(map[string]interface{}); ok {
+						labels[key] = value
+					} else {
+						params["labels"] = map[string]interface{}{key: value}
+					}
+				}
+			}
 		}
 	}
 }
@@ -231,6 +301,122 @@ func (e *ParamExtractor) extractEnvFilter(input string, params map[string]interf
 			}
 		}
 	}
+}
+
+func (e *ParamExtractor) extractGenericLabelFilters(input string, params map[string]interface{}) {
+	lowerInput := strings.ToLower(input)
+
+	// 处理 "XXX用户" 模式 -> user=XXX
+	if strings.Contains(lowerInput, "用户") {
+		idx := strings.Index(lowerInput, "用户")
+		if idx > 0 {
+			userPart := input[0:idx]
+			userPart = strings.TrimSpace(userPart)
+			// 使用更智能的方式提取最后一个有效的英文单词或数字
+			// 查找最后一个连续的字母数字序列
+			runes := []rune(userPart)
+			var userValue string
+			startIdx := -1
+			for i := len(runes) - 1; i >= 0; i-- {
+				r := runes[i]
+				isAlnum := (r >= 'a' && r <= 'z') || 
+					(r >= 'A' && r <= 'Z') || 
+					(r >= '0' && r <= '9') || 
+					r == '_' || r == '-'
+				
+				if isAlnum {
+					if startIdx == -1 {
+						startIdx = i
+					}
+				} else {
+					if startIdx != -1 {
+						userValue = string(runes[i+1 : startIdx+1])
+						break
+					}
+				}
+			}
+			// 如果没有找到有效字符，检查整个字符串
+			if userValue == "" && startIdx != -1 {
+				userValue = string(runes[0 : startIdx+1])
+			}
+			// 如果还是空，尝试直接用Fields提取最后一个词
+			if userValue == "" {
+				parts := strings.Fields(userPart)
+				if len(parts) > 0 {
+					userValue = parts[len(parts)-1]
+				}
+			}
+			
+			if userValue != "" {
+				if labels, ok := params["labels"].(map[string]interface{}); ok {
+					labels["user"] = userValue
+				} else {
+					params["labels"] = map[string]interface{}{"user": userValue}
+				}
+			}
+		}
+	}
+
+	// 处理 "用户为XXX" 或 "用户是XXX" 模式
+	if strings.Contains(lowerInput, "用户为") || 
+		strings.Contains(lowerInput, "用户是") {
+		var idx int
+		var markerLen int
+		if strings.Contains(lowerInput, "用户为") {
+			idx = strings.Index(lowerInput, "用户为")
+			markerLen = 6
+		} else {
+			idx = strings.Index(lowerInput, "用户是")
+			markerLen = 6
+		}
+		userPart := input[idx+markerLen:]
+		userPart = strings.TrimSpace(userPart)
+		
+		// 提取第一个连续的字母数字序列
+		runes := []rune(userPart)
+		var userValue string
+		endIdx := -1
+		for i := 0; i < len(runes); i++ {
+			r := runes[i]
+			isAlnum := (r >= 'a' && r <= 'z') || 
+				(r >= 'A' && r <= 'Z') || 
+				(r >= '0' && r <= '9') || 
+				r == '_' || r == '-'
+			
+			if isAlnum {
+				if endIdx == -1 {
+					endIdx = i
+				}
+			} else {
+				if endIdx != -1 {
+					userValue = string(runes[endIdx : i])
+					break
+				}
+			}
+		}
+		// 如果一直到结尾都是有效字符
+		if userValue == "" && endIdx != -1 {
+			userValue = string(runes[endIdx:])
+		}
+		// 如果还是空，尝试直接用Fields提取第一个词
+		if userValue == "" {
+			parts := strings.Fields(userPart)
+			if len(parts) > 0 {
+				userValue = parts[0]
+			}
+		}
+		
+		if userValue != "" {
+			if labels, ok := params["labels"].(map[string]interface{}); ok {
+				labels["user"] = userValue
+			} else {
+				params["labels"] = map[string]interface{}{"user": userValue}
+			}
+		}
+	}
+
+	// 处理 "所有XXX" 模式
+	// 先判断一下是否有其他可能的模式可以扩展
 }
 
 func (e *ParamExtractor) extractPersonName(input string) string {

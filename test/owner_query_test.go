@@ -112,3 +112,42 @@ func TestExtractPersonName(t *testing.T) {
 		})
 	}
 }
+
+func TestParamExtractor_UserFilter(t *testing.T) {
+	extractor := ai.NewParamExtractor([]string{})
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"查询所有root用户的主机", "查询所有root用户的主机", "root"},
+		{"root用户的服务器", "root用户的服务器", "root"},
+		{"用户为admin的节点", "用户为admin的节点", "admin"},
+		{"用户是deploy的主机", "用户是deploy的主机", "deploy"},
+		{"查看user=test的节点", "查看user=test的节点", "test"},
+		{"查看user=prod的主机列表", "查看user=prod的主机列表", "prod"},
+		{"所有主机", "所有主机", ""}, // 不应该提取
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := extractor.ExtractParams(ai.IntentQueryNodes, tt.input)
+			labels, ok := params["labels"].(map[string]interface{})
+			if tt.expected != "" {
+				if !ok {
+					t.Errorf("Expected labels param, got: %v", params)
+					return
+				}
+				user, ok := labels["user"]
+				if !ok {
+					t.Errorf("Expected user label, got: %v", labels)
+					return
+				}
+				if user != tt.expected {
+					t.Errorf("Expected user '%s', got: '%s'", tt.expected, user)
+				}
+			}
+		})
+	}
+}
