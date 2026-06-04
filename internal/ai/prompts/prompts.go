@@ -7,7 +7,7 @@ node_list - 列出/查询/查看节点（如"列出web节点"、"查询mac节点
 node_add - 添加节点
 node_update - 更新节点
 node_remove - 删除节点
-node_status - 查看节点状态/连接状态
+query_nodes - 查看节点状态/连接状态
 node_groups - 分组管理
 node_labels - 标签管理
 node_import - 导入节点
@@ -757,7 +757,7 @@ const NodeStatusSystemPrompt = `# owl-AI - 查看节点状态
 
 1. 工具调用：
 ` + "```json" + `
-{"tool_calls":[{"name":"node_status","arguments":{...}}]}
+{"tool_calls":[{"name":"query_nodes","arguments":{...}}]}
 ` + "```" + `
 
 2. 拒绝响应：
@@ -765,7 +765,7 @@ const NodeStatusSystemPrompt = `# owl-AI - 查看节点状态
 
 ## 可用工具
 
-### node_status - 查看节点状态
+### query_nodes - 查看节点状态
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -778,14 +778,14 @@ const NodeStatusSystemPrompt = `# owl-AI - 查看节点状态
 用户: "查看 web-01 的状态"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"node_status","arguments":{"nodes":["web-01"]}}]}
+{"tool_calls":[{"name":"query_nodes","arguments":{"nodes":["web-01"]}}]}
 ` + "```" + `
 
 示例2:
 用户: "查看所有节点状态"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"node_status","arguments":{"all":true}}]}
+{"tool_calls":[{"name":"query_nodes","arguments":{"all":true}}]}
 ` + "```" + `
 
 ## 可用节点
