@@ -14,7 +14,7 @@ func TestPlaybookCmdExists(t *testing.T) {
 		t.Errorf("expected Use 'playbook', got '%s'", parent.Use)
 	}
 
-	expected := []string{"list", "run", "info", "validate", "template"}
+	expected := []string{"list", "run", "validate", "template"}
 	testutil.AssertSubCommands(t, parent, expected)
 }
 
@@ -51,9 +51,6 @@ func TestPlaybookRunFlags(t *testing.T) {
 	testutil.AssertFlagExists(t, cmd, "check")
 	testutil.AssertFlagDefault(t, cmd, "check", "false")
 
-	testutil.AssertFlagExists(t, cmd, "diff")
-	testutil.AssertFlagDefault(t, cmd, "diff", "false")
-
 	testutil.AssertFlagExists(t, cmd, "default-connect-timeout")
 	testutil.AssertFlagDefault(t, cmd, "default-connect-timeout", "10s")
 
@@ -70,14 +67,6 @@ func TestPlaybookRunFlags(t *testing.T) {
 	testutil.AssertFlagDefault(t, cmd, "default-retry-max-interval", "30s")
 }
 
-func TestPlaybookInfoCmd(t *testing.T) {
-	cmd := playbook.NewPlaybookInfoCmd()
-
-	if cmd.Use == "" {
-		t.Error("expected non-empty Use for playbook info")
-	}
-}
-
 func TestPlaybookValidateCmd(t *testing.T) {
 	cmd := playbook.NewPlaybookValidateCmd()
 
@@ -91,7 +80,6 @@ func TestPlaybookHelpContainsSubcommands(t *testing.T) {
 
 	testutil.AssertHelpContains(t, parent, "list")
 	testutil.AssertHelpContains(t, parent, "run")
-	testutil.AssertHelpContains(t, parent, "info")
 	testutil.AssertHelpContains(t, parent, "validate")
 	testutil.AssertHelpContains(t, parent, "template")
 }

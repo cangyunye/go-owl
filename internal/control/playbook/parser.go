@@ -402,9 +402,7 @@ func (p *Parser) interpolateString(s string) string {
 }
 
 func (p *Parser) validatePlaybook(playbook *Playbook) error {
-	if len(playbook.Hosts) == 0 {
-		return fmt.Errorf("hosts cannot be empty")
-	}
+	// hosts 可以为空，执行时会使用命令行参数或默认所有节点
 	return nil
 }
 

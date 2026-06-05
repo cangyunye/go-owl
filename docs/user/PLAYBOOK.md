@@ -10,9 +10,8 @@
 owl playbook - 剧本管理
 ├── owl playbook list     - 列出剧本
 ├── owl playbook run     - 执行剧本
-├── owl playbook info    - 查看剧本详情
 ├── owl playbook validate - 验证剧本
-└── owl playbook create  - 创建剧本（未来版本）
+└── owl playbook template - 创建剧本
 ```
 
 ---
@@ -61,16 +60,35 @@ owl playbook run <playbook-name> --nodes node1,node2
 owl playbook run deploy-app --vars version=v1.2.0
 ```
 
+### 目标节点选择优先级
+
+执行剧本时，目标节点的选择按以下优先级：
+
+1. **命令行 `--nodes` 参数** - 最高优先级，指定具体的节点 ID
+2. **命令行 `--group` 参数** - 按分组选择节点
+3. **命令行 `--label` 参数** - 按标签选择节点
+4. **剧本中的 `hosts` 配置** - 如果指定了 hosts，使用其中的节点
+5. **所有可用节点** - 如果都没有指定，则对所有节点执行
+
+> **注意**：`hosts` 可以为空数组或省略，此时会使用命令行参数或全部节点。
+
 ### 参数说明
 
 | 参数 | 说明 |
 |------|------|
-| `<playbook-name>` | 剧本名称（必填） |
-| `--nodes` | 目标节点 |
-| `--limit` | 限制执行的节点 |
+| `<playbook-file>` | 剧本文件路径（必填） |
+| `--nodes` | 目标节点 ID（逗号分隔） |
+| `--group` | 按分组选择节点 |
+| `--label` | 按标签选择节点 |
 | `--vars` | 传递变量 |
 | `--tags` | 只执行指定标签的步骤 |
+| `--skip-tags` | 跳过指定标签的步骤 |
 | `--check` | 检查模式（不实际执行） |
+| `--default-connect-timeout` | SSH 连接超时（默认 10s） |
+| `--default-command-timeout` | 命令执行超时（默认 5m） |
+| `--default-retry` | 最大重试次数 |
+| `--default-retry-interval` | 初始重试间隔（默认 1s） |
+| `--default-retry-max-interval` | 最大重试间隔（默认 30s） |
 
 ### 示例
 
@@ -116,51 +134,7 @@ owl playbook run deploy-app --tags pre-deploy
 
 ---
 
-## 4. owl playbook info
-
-查看剧本详细信息。
-
-### 使用方法
-
-```bash
-owl playbook info <playbook-name>
-```
-
-### 示例输出
-
-```
-剧本: deploy-app
-────────────────────────────────────────
-
-描述: 完整的应用部署流程
-
-变量:
-  version  - 应用版本 (必填)
-  env     - 环境名称 (默认: prod)
-
-步骤:
-  1. [pre-deploy] 备份配置
-     命令: tar -czf /backup/app-$(date +%Y%m%d).tar.gz /opt/app/
-
-  2. [pre-deploy] 停止服务
-     命令: systemctl stop myapp
-
-  3. [deploy] 部署应用
-     命令: |
-       curl -O http://repo/app-{{version}}.tar.gz
-       tar -xzf app-{{version}}.tar.gz -C /opt/
-       mv /opt/app-{{version}} /opt/app
-
-  4. [post-deploy] 启动服务
-     命令: systemctl start myapp
-
-  5. [post-deploy] 健康检查
-     命令: curl -f http://localhost:8080/health
-```
-
----
-
-## 5. owl playbook validate
+## 4. owl playbook validate
 
 验证剧本语法。
 
@@ -189,7 +163,9 @@ name: deploy-app
 description: 应用部署流程
 version: "1.0"
 
-hosts: ["web-01", "web-02"]
+# hosts 可以为空，默认为所有节点
+# hosts: ["web-01", "web-02"]
+hosts: []
 
 vars:
   version: "1.0.0"
@@ -203,13 +179,20 @@ tasks:
     args:
       playbook: ./common/setup.yaml
 
-  - name: 上传应用包
+  - name: 上传应用包（使用 PLAYBOOK_DIR 变量）
     action: upload
     args:
-      src: ./dist/app-{{version}}.tar.gz
+      src: "${PLAYBOOK_DIR}/dist/app-{{version}}.tar.gz"
       dest: /opt/app/
       overwrite: true
       resume: true
+
+  - name: 上传脚本（dest 以 / 结尾会自动拼接文件名）
+    action: upload
+    args:
+      src: ./scripts/deploy.sh
+      dest: /tmp/
+      overwrite: true
 
   - name: 执行部署脚本
     action: script
@@ -249,7 +232,7 @@ post_tasks: []
 |---------|------|------|
 | `command` / `cmd` / `shell` | 执行命令 | `cmd` 或 `command` - 要执行的命令 |
 | `script` | 执行脚本文件 | `script` - 脚本文件路径（本地文件或 URL）<br>`dest` - 远程存放目录（默认 /tmp）<br>`args` - 传递给脚本的参数<br>`inline` - 是否直接发送内容执行（不留文件）<br>`keep` - 是否保留远程脚本文件 |
-| `upload` | 上传文件到节点 | `src` - 本地源文件<br>`dest` - 远程目标路径<br>`overwrite` - 是否覆盖<br>`resume` - 是否断点续传 |
+| `upload` | 上传文件到节点 | `src` - 本地源文件（支持相对路径）<br>`dest` - 远程目标路径<br>`overwrite` - 是否覆盖<br>`resume` - 是否断点续传<br>`**dest 以 / 结尾会自动拼接原文件名**` |
 | `download` | 从节点下载文件 | `src` - 远程源文件<br>`dest` - 本地目标路径<br>`subdir` - 是否按节点创建子目录<br>`name_format` - 文件命名格式（支持 `{node}` 和 `{file}` 占位符） |
 | `include` | 包含其他剧本 | `playbook` - 要包含的剧本文件路径（支持相对路径） |
 
@@ -267,6 +250,32 @@ tasks:
     args:
       src: ./dist/app-{{version}}.tar.gz
       dest: /opt/app/
+```
+
+### 特殊变量
+
+系统提供以下特殊变量：
+
+| 变量 | 说明 | 示例 |
+|------|------|------|
+| `{{PLAYBOOK_DIR}}` 或 `${PLAYBOOK_DIR}` | 剧本文件所在目录 | `{{PLAYBOOK_DIR}}/scripts/deploy.sh` |
+| `{{item}}` | 循环任务中的当前项 | `{{item}}` |
+
+```yaml
+tasks:
+  # 使用 PLAYBOOK_DIR 引用剧本同目录下的文件
+  - name: 上传脚本
+    action: upload
+    args:
+      src: "{{PLAYBOOK_DIR}}/scripts/deploy.sh"
+      dest: /tmp/
+
+  # 使用相对路径（相对于剧本目录）
+  - name: 上传配置
+    action: upload
+    args:
+      src: ./config/app.conf
+      dest: /etc/app/
 ```
 
 ### 模块化与包含
@@ -311,17 +320,17 @@ $ owl playbook list
 # 显示所有可用剧本
 ```
 
-### TC-PLAY-002: 查看剧本信息
+### TC-PLAY-002: 执行剧本（无 hosts 配置）
 
 ```bash
 # 步骤
-$ owl playbook info deploy-app
+$ owl playbook run deploy-app
 
 # 预期结果
-# 显示剧本详细信息和步骤
+# 对所有可用节点执行剧本
 ```
 
-### TC-PLAY-003: 执行剧本
+### TC-PLAY-003: 执行剧本（指定节点）
 
 ```bash
 # 步骤
@@ -351,11 +360,15 @@ $ owl playbook validate ./my-playbook.yaml
 # ✅ 验证通过 或 显示错误
 ```
 
-### TC-PLAY-006: 测试文件上传
+### TC-PLAY-006: 测试文件上传（dest 以 / 结尾）
 
 ```bash
-# 步骤
-$ owl playbook run upload-test --nodes test-01
+# 剧本配置
+# - name: 上传脚本
+#   action: upload
+#   args:
+#     src: ./scripts/deploy.sh
+#     dest: /tmp/  # 会自动拼接为 /tmp/deploy.sh
 
 # 预期结果
 # 成功上传文件到目标节点
@@ -371,24 +384,59 @@ $ owl playbook run include-test --nodes test-01
 # 成功执行包含的剧本
 ```
 
+### TC-PLAY-008: 使用 PLAYBOOK_DIR 变量
+
+```bash
+# 剧本配置
+# - name: 上传脚本
+#   action: upload
+#   args:
+#     src: "${PLAYBOOK_DIR}/scripts/deploy.sh"
+#     dest: /tmp/
+
+# 预期结果
+# 使用剧本所在目录作为基准上传脚本
+```
+
+### TC-PLAY-009: 创建剧本模板
+
+```bash
+# 步骤
+$ owl playbook template
+
+# 预期结果
+# 进入交互式创建剧本向导
+```
+
 ---
 
 ## 8. 常见问题
 
 ### Q: 如何创建自定义剧本？
-A: 在 `~/.owl/playbooks/` 目录下创建 YAML 文件
+A: 使用 `owl playbook template` 进入交互式创建向导，或在 `~/.owl/playbooks/` 目录下创建 YAML 文件
+
+### Q: 剧本的 hosts 可以为空吗？
+A: 可以。如果 hosts 为空或省略，会使用命令行参数（`--nodes`、`--group`、`--label`）或对所有可用节点执行
 
 ### Q: 支持变量插值吗？
-A: 支持，使用 `{{variable}}` 语法
+A: 支持，使用 `{{variable}}` 语法。还支持特殊变量 `{{PLAYBOOK_DIR}}` 或 `${PLAYBOOK_DIR}`
 
-### Q: 步骤失败会怎样？
-A: 默认停止执行，使用 `--continue-on-error` 继续
+### Q: 上传文件时 dest 路径如何处理？
+A: 
+- 如果 `dest` 以 `/` 结尾，会自动拼接原文件名，例如 `dest: /tmp/` + `src: ./a.sh` = `/tmp/a.sh`
+- 如果 `dest` 不是以 `/` 结尾，则视为完整的目标路径
 
-### Q: 如何重试失败的步骤？
-A: 使用 `retry: N` 定义重试次数
+### Q: relative paths are resolved relative to which directory?
+A: All relative paths are resolved relative to the directory where the playbook file is located. You can also use `{{PLAYBOOK_DIR}}` or `${PLAYBOOK_DIR}` to explicitly reference the playbook's directory.
 
-### Q: 如何复用剧本片段？
-A: 使用 `include` 动作包含其他剧本文件
+### Q: What happens when a step fails?
+A: By default, execution stops. Use `ignore_errors: true` or `any_errors_fatal: false` to continue on error.
 
-### Q: include 的路径如何解析？
-A: 相对于主剧本所在目录解析相对路径
+### Q: How to retry failed steps?
+A: Use `retry: {max: N}` to define the maximum number of retries
+
+### Q: How to reuse playbook fragments?
+A: Use the `include` action to include other playbook files
+
+### Q: How are include paths resolved?
+A: Relative to the directory of the main playbook file

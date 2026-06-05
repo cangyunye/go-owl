@@ -296,6 +296,15 @@ func (r *defaultActionRunner) runUpload(result *TaskResult, args map[string]inte
 	src = r.resolvePath(r.interpolateVariables(src, vars))
 	dest = r.interpolateVariables(dest, vars)
 
+	// 检查 dest 是否以 / 结尾，如果是则拼接原文件名
+	if len(dest) > 0 && dest[len(dest)-1] == '/' {
+		// 获取原文件名
+		fileName := getFileNameFromPath(src)
+		if fileName != "" {
+			dest = dest + fileName
+		}
+	}
+
 	// 构建上传选项
 	opts := &transfer.UploadOptions{
 		Parallel:  true,
@@ -396,6 +405,12 @@ func (r *defaultActionRunner) interpolateVariables(s string, vars map[string]int
 		placeholder := fmt.Sprintf("{{%s}}", k)
 		s = strings.ReplaceAll(s, placeholder, fmt.Sprintf("%v", v))
 	}
+	// 添加 PLAYBOOK_DIR 变量支持
+	playbookDirPlaceholder := "{{PLAYBOOK_DIR}}"
+	s = strings.ReplaceAll(s, playbookDirPlaceholder, r.playbookBaseDir)
+	// 也支持 ${PLAYBOOK_DIR} 格式
+	playbookDirPlaceholder2 := "${PLAYBOOK_DIR}"
+	s = strings.ReplaceAll(s, playbookDirPlaceholder2, r.playbookBaseDir)
 	return s
 }
 
@@ -774,4 +789,13 @@ func (e *PlaybookExecution) Duration() time.Duration {
 		*end = time.Now()
 	}
 	return end.Sub(e.StartTime)
+}
+
+func getFileNameFromPath(path string) string {
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' {
+			return path[i+1:]
+		}
+	}
+	return path
 }

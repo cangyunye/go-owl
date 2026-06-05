@@ -204,7 +204,19 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 
 	nodeResolver := node.NewNodeResolver()
 
-	targetNodes := selectPlaybookRunTargetNodes(nodeResolver)
+	// 从剧本中获取 hosts 配置
+	var playbookHosts []string
+	// 检查剧本文件是否存在
+	if _, err := os.Stat(playbookFile); !os.IsNotExist(err) {
+		// 解析剧本文件获取 hosts
+		parser := pbexec.NewParser()
+		parsedPlaybook, err := parser.ParseFromFile(playbookFile)
+		if err == nil && parsedPlaybook.Raw != nil {
+			playbookHosts = parsedPlaybook.Raw.Hosts
+		}
+	}
+
+	targetNodes := selectPlaybookRunTargetNodes(nodeResolver, playbookHosts)
 	if len(targetNodes) == 0 {
 		fmt.Println("未找到目标节点")
 		return
@@ -429,7 +441,7 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 	}
 }
 
-func selectPlaybookRunTargetNodes(resolver *node.NodeResolver) []*model.Node {
+func selectPlaybookRunTargetNodes(resolver *node.NodeResolver, playbookHosts []string) []*model.Node {
 	var result []*model.Node
 	var nodes []*node.ResolvedNode
 	var err error
@@ -452,7 +464,16 @@ func selectPlaybookRunTargetNodes(resolver *node.NodeResolver) []*model.Node {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "警告: 按标签查询节点失败: %v\n", err)
 		}
+	} else if len(playbookHosts) > 0 {
+		// 使用剧本中的 hosts 配置
+		for _, host := range playbookHosts {
+			rn, resolveErr := resolver.Resolve(host)
+			if resolveErr == nil {
+				nodes = append(nodes, rn)
+			}
+		}
 	} else {
+		// 如果没有任何配置，则使用所有节点
 		nodes, err = resolver.ListNodes(nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "警告: 获取节点列表失败: %v\n", err)

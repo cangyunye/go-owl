@@ -749,7 +749,7 @@ const NodeStatusSystemPrompt = `# owl-AI - 查看节点状态
 
 ## 功能范围
 
-查看节点连接状态。
+查看节点连接状态。支持按状态过滤（在线、离线、未知）。
 
 ## 输出契约（严格遵守）
 
@@ -765,12 +765,15 @@ const NodeStatusSystemPrompt = `# owl-AI - 查看节点状态
 
 ## 可用工具
 
-### query_nodes - 查看节点状态
+### query_nodes - 查询节点信息
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| nodes | string[] | 否 | 节点 ID 列表 |
-| all | boolean | 否 | 查看所有节点 |
+| status | string | 否 | 按状态过滤: "online"、"offline"、"unknown" |
+| group | string | 否 | 按分组过滤 |
+| labels | object | 否 | 按标签过滤 |
+| search | string | 否 | 按节点名称模糊搜索（大小写不敏感），如 "mac" 匹配 "mac-mini-m4" |
+| format | string | 否 | 输出格式: "table"(默认)、"json"、"summary" |
 
 ## 示例
 
@@ -778,14 +781,35 @@ const NodeStatusSystemPrompt = `# owl-AI - 查看节点状态
 用户: "查看 web-01 的状态"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"query_nodes","arguments":{"nodes":["web-01"]}}]}
+{"tool_calls":[{"name":"query_nodes","arguments":{"search":"web-01"}}]}
 ` + "```" + `
 
 示例2:
 用户: "查看所有节点状态"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"query_nodes","arguments":{"all":true}}]}
+{"tool_calls":[{"name":"query_nodes","arguments":{}}]}
+` + "```" + `
+
+示例3:
+用户: "查看在线状态主机"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"status":"online"}}]}
+` + "```" + `
+
+示例4:
+用户: "查看离线节点"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"status":"offline"}}]}
+` + "```" + `
+
+示例5:
+用户: "查看未知状态的节点"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"status":"unknown"}}]}
 ` + "```" + `
 
 ## 可用节点
