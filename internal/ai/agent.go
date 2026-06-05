@@ -131,6 +131,7 @@ func NewAgent(config *Config, nodeMgr node.Manager, nodeStore NodeStoreAdapter, 
 	registry.Register(NewRunPlaybookTool(nodeMgr))
 	registry.Register(NewPlaybookInfoTool())
 	registry.Register(NewValidatePlaybookTool())
+	registry.Register(NewNodeCheckTool(nodeMgr))
 
 	isDebug := len(debug) > 0 && debug[0]
 

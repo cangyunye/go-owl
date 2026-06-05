@@ -264,10 +264,15 @@ func promptForTasks(reader *bufio.Reader) []TemplateTask {
 
 		selectedTemplate := actionTemplates[choice-1]
 
+		argsCopy := make(map[string]interface{})
+		for k, v := range selectedTemplate.Template {
+			argsCopy[k] = v
+		}
+
 		task := TemplateTask{
 			Name:   fmt.Sprintf("任务 %d", taskIndex),
 			Action: selectedTemplate.Name,
-			Args:   selectedTemplate.Template,
+			Args:   argsCopy,
 		}
 
 		tasks = append(tasks, task)

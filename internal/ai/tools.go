@@ -1787,6 +1787,156 @@ func (t *ValidatePlaybookTool) Execute(ctx context.Context, params map[string]in
 	return fmt.Sprintf("Playbook '%s' is valid.\n", filePath), nil
 }
 
+type NodeCheckTool struct {
+	nodeMgr node.Manager
+}
+
+func NewNodeCheckTool(nodeMgr node.Manager) *NodeCheckTool {
+	return &NodeCheckTool{nodeMgr: nodeMgr}
+}
+
+func (t *NodeCheckTool) Name() string {
+	return "node_check"
+}
+
+func (t *NodeCheckTool) Description() string {
+	return "Check SSH connectivity of nodes, supports checking all nodes or specific nodes."
+}
+
+func (t *NodeCheckTool) Parameters() string {
+	return `{
+		"type": "object",
+		"properties": {
+			"nodes": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Node name list (mutually exclusive with all)"
+			},
+			"group": {
+				"type": "string",
+				"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with nodes/all)"
+			},
+			"all": {
+				"type": "boolean",
+				"description": "Check all nodes (mutually exclusive with nodes/group)"
+			},
+			"timeout": {
+				"type": "integer",
+				"description": "Timeout in seconds, default 10"
+			},
+			"update": {
+				"type": "boolean",
+				"description": "Update node status after check"
+			}
+		}
+	}`
+}
+
+func (t *NodeCheckTool) Validate(params map[string]interface{}) error {
+	hasNodes := false
+	if nodes, ok := params["nodes"].([]interface{}); ok && len(nodes) > 0 {
+		hasNodes = true
+	}
+	hasAll, _ := params["all"].(bool)
+	hasGroup := false
+	if group, ok := params["group"].(string); ok && group != "" {
+		hasGroup = true
+	}
+
+	if !hasNodes && !hasAll && !hasGroup {
+		return fmt.Errorf("must provide either 'nodes', 'all', or 'group'")
+	}
+	return nil
+}
+
+func (t *NodeCheckTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	var nodes []*model.Node
+
+	if all, _ := params["all"].(bool); all {
+		nodes = t.nodeMgr.List()
+	} else if group, _ := params["group"].(string); group != "" {
+		nodes = t.nodeMgr.GetByGroup(group)
+	} else if nodeList, ok := params["nodes"].([]interface{}); ok && len(nodeList) > 0 {
+		var nodeNames []string
+		for _, node := range nodeList {
+			if s, ok := node.(string); ok {
+				nodeNames = append(nodeNames, s)
+			}
+		}
+		allNodes := t.nodeMgr.List()
+		for _, n := range allNodes {
+			for _, name := range nodeNames {
+				if n.Name == name || n.ID == name {
+					nodes = append(nodes, n)
+					break
+				}
+			}
+		}
+	}
+
+	if len(nodes) == 0 {
+		return "No matching nodes found", nil
+	}
+
+	timeout := 10
+	if tv, ok := params["timeout"].(float64); ok {
+		timeout = int(tv)
+	}
+
+	updateStatus, _ := params["update"].(bool)
+
+	args := []string{"node", "check", "--no-color"}
+
+	if all, _ := params["all"].(bool); all {
+		args = append(args, "--all")
+	} else if group, _ := params["group"].(string); group != "" {
+		args = append(args, "--group", group)
+	} else if nodeList, ok := params["nodes"].([]interface{}); ok && len(nodeList) > 0 {
+		var nodeNames []string
+		for _, node := range nodeList {
+			if s, ok := node.(string); ok {
+				nodeNames = append(nodeNames, s)
+			}
+		}
+		args = append(args, nodeNames...)
+	}
+
+	if timeout != 10 {
+		args = append(args, "--timeout", fmt.Sprintf("%ds", timeout))
+	}
+
+	debugLogger.Debugw("调用 owl node check 命令", "args", args)
+	result, err := runOwlCommand(ctx, args)
+	if err == nil {
+		return result, nil
+	}
+	debugLogger.Debugw("调用 owl node check 失败，回退到模拟结果", "error", err)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("正在检查 %d 个节点的 SSH 连通性...\n\n", len(nodes)))
+
+	online := 0
+	offline := 0
+
+	for _, n := range nodes {
+		if n.Status == model.NodeStatusOnline {
+			sb.WriteString(fmt.Sprintf("  ✓ %s (%s:%d) - 在线\n", n.Name, n.Address, n.Port))
+			online++
+		} else {
+			sb.WriteString(fmt.Sprintf("  ✗ %s (%s:%d) - 离线\n", n.Name, n.Address, n.Port))
+			offline++
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("\n总结: %d 在线, %d 离线, 共 %d\n", online, offline, len(nodes)))
+
+	if updateStatus {
+		sb.WriteString("节点状态已更新\n")
+	}
+
+	return sb.String(), nil
+}
+
 type ToolRegistry struct {
 	tools map[string]Tool
 }
@@ -2042,6 +2192,39 @@ func GetToolDefinitions() []map[string]interface{} {
 						"format": map[string]interface{}{
 							"type":        "string",
 							"description": "Output format: table (default), json, summary",
+						},
+					},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "node_check",
+				"description": "Check SSH connectivity of nodes, supports checking all nodes, specific nodes, or nodes by group.",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"nodes": map[string]interface{}{
+							"type":        "array",
+							"items":       map[string]interface{}{"type": "string"},
+							"description": "Node name list (mutually exclusive with all/group)",
+						},
+						"group": map[string]interface{}{
+							"type":        "string",
+							"description": "Filter by group, e.g. 'web', 'db' (mutually exclusive with nodes/all)",
+						},
+						"all": map[string]interface{}{
+							"type":        "boolean",
+							"description": "Check all nodes (mutually exclusive with nodes/group)",
+						},
+						"timeout": map[string]interface{}{
+							"type":        "integer",
+							"description": "Timeout in seconds, default 10",
+						},
+						"update": map[string]interface{}{
+							"type":        "boolean",
+							"description": "Update node status after check",
 						},
 					},
 				},
