@@ -10,7 +10,7 @@
 #   make install           # 安装到系统
 #   make clean             # 清理构建文件
 
-.PHONY: help build build/linux build/linux-amd64 build/windows build/windows-amd64 build/darwin build/darwin-arm64 build/all build-duckdb build-sqlite3 clean install test test-quick test-unit test-integration test-bash test-all test-clean test-coverage fmt lint all
+.PHONY: help build build/linux build/linux-amd64 build/windows build/windows-amd64 build/darwin build/darwin-arm64 build/all build-duckdb build-sqlite3 build-metrics build-all-metrics clean install test test-quick test-unit test-integration test-bash test-all test-clean test-coverage fmt lint all
 
 # 变量定义
 BINARY_NAME := owl
@@ -130,6 +130,40 @@ all: build-duckdb build-sqlite3
 	@printf ""
 	@printf "$(BOLD)$(GREEN)✓$(NC) 所有版本构建完成！\n"
 	@ls -lh $(BUILD_DIR)/$(BINARY_NAME)* 2>/dev/null | awk '{print "  " $$9 ": " $$5}'
+
+# ====================
+# Metrics 功能编译
+# ====================
+
+## build-metrics: 使用 DuckDB + Metrics 功能构建
+build-metrics:
+	@printf "$(BOLD)$(BLUE)==>$(NC) 使用 DuckDB + Metrics 功能构建...\n"
+	@mkdir -p $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)-metrics
+ifneq ($(shell go env GOOS),windows)
+	$(GO) build -tags metrics $(LDFLAGS) -o $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)-metrics/$(BINARY_NAME) $(MAIN_PATH)
+else
+	$(GO) build -tags metrics $(LDFLAGS) -o $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)-metrics/$(BINARY_NAME).exe $(MAIN_PATH)
+endif
+	@printf "$(BOLD)$(GREEN)✓$(NC) Metrics 版本构建完成\n"
+
+## build-metrics-linux: Linux AMD64 + Metrics
+build-metrics-linux:
+	@mkdir -p $(BUILD_DIR)/linux-amd64-metrics
+	GOOS=linux GOARCH=amd64 $(GO) build -tags metrics $(LDFLAGS) -o $(BUILD_DIR)/linux-amd64-metrics/$(BINARY_NAME) $(MAIN_PATH)
+	@printf "$(BOLD)$(GREEN)✓$(NC) Linux AMD64 Metrics 版本已编译\n"
+
+## build-metrics-darwin: macOS + Metrics
+build-metrics-darwin:
+	@mkdir -p $(BUILD_DIR)/darwin-amd64-metrics $(BUILD_DIR)/darwin-arm64-metrics
+	GOOS=darwin GOARCH=amd64 $(GO) build -tags metrics $(LDFLAGS) -o $(BUILD_DIR)/darwin-amd64-metrics/$(BINARY_NAME) $(MAIN_PATH)
+	GOOS=darwin GOARCH=arm64 $(GO) build -tags metrics $(LDFLAGS) -o $(BUILD_DIR)/darwin-arm64-metrics/$(BINARY_NAME) $(MAIN_PATH)
+	@printf "$(BOLD)$(GREEN)✓$(NC) macOS Metrics 版本已编译\n"
+
+## build-all-metrics: 编译所有平台 + Metrics 版本
+build-all-metrics: build-metrics-linux build-metrics-darwin
+	@printf ""
+	@printf "$(BOLD)$(GREEN)✓$(NC) 所有平台 Metrics 版本编译完成\n"
+	@find $(BUILD_DIR) -type f -name "$(BINARY_NAME)" | grep metrics | head -10
 
 # ====================
 # Windows 分发包
@@ -325,6 +359,12 @@ help:
 	@printf "$(BOLD)数据库版本:$(NC)\n"
 	@printf "  $(GREEN)build-duckdb$(NC)        使用 DuckDB 构建（默认）\n"
 	@printf "  $(GREEN)build-sqlite3$(NC)       使用 SQLite3 构建\n"
+	@printf ""
+	@printf "$(BOLD)Metrics 功能:$(NC)\n"
+	@printf "  $(GREEN)build-metrics$(NC)         编译当前平台 + Metrics 功能\n"
+	@printf "  $(GREEN)build-metrics-linux$(NC)  编译 Linux AMD64 + Metrics\n"
+	@printf "  $(GREEN)build-metrics-darwin$(NC) 编译 macOS + Metrics\n"
+	@printf "  $(GREEN)build-all-metrics$(NC)    编译所有平台 + Metrics\n"
 	@printf ""
 	@printf "$(BOLD)分发包:$(NC)\n"
 	@printf "  $(GREEN)dist/windows$(NC)        创建 Windows 分发包\n"
