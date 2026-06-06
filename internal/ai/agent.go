@@ -183,6 +183,20 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		{Role: "user", Content: userInput},
 	}
 
+	// 调试：打印路由消息
+	debugPrint(a.debug, "路由消息数量: %d", len(routerMessages))
+	for i, msg := range routerMessages {
+		roleStr := "system"
+		if msg.Role == "user" {
+			roleStr = "user"
+		}
+		contentLen := len(msg.Content)
+		debugPrint(a.debug, "  路由消息[%d] role=%s, 内容长度=%d", i, roleStr, contentLen)
+		if a.debug && contentLen < 500 {
+			debugPrint(a.debug, "  路由消息[%d] 内容前200字符: %.200s", i, msg.Content)
+		}
+	}
+
 	routeResp, err := generateWithRetry(ctx, chatModel, routerMessages, "路由")
 	if err != nil {
 		if onProgress != nil {
@@ -191,7 +205,8 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		return "", fmt.Errorf("路由失败: %w", err)
 	}
 
-	debugPrint(a.debug, "路由原始响应: %s", routeResp)
+	debugPrint(a.debug, "路由原始响应长度: %d", len(routeResp))
+	debugPrint(a.debug, "路由原始响应前200字符: %.200s", routeResp)
 
 	routeLabel := strings.TrimSpace(strings.ToLower(routeResp))
 	routeLabel = strings.TrimRight(routeLabel, ".")
@@ -915,6 +930,19 @@ func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	s.lastActive = time.Now()
 	s.history = append(s.history, fmt.Sprintf("User: %s", userInput))
 
+	// 如果 messages 为空（首次交互），使用 Process 方法（会调用路由器）
+	if len(s.messages) == 0 {
+		response, err := s.agent.Process(ctx, userInput, s.OnProgress)
+		if err != nil {
+			return "", err
+		}
+
+		s.maybeSetPendingContext(response)
+		s.history = append(s.history, fmt.Sprintf("Assistant: %s", response))
+		return response, nil
+	}
+
+	// 多轮对话，继续使用 ProcessWithContext
 	if s.pendingContext != nil && s.pendingContext.State == "awaiting_confirmation" {
 		lowerInput := strings.TrimSpace(strings.ToLower(userInput))
 		if affirmativeReplies[lowerInput] {
@@ -933,15 +961,12 @@ func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 
 	var response string
 	var err error
-	if len(s.messages) > 0 {
-		var updatedMessages []Message
-		updatedMessages, response, err = s.agent.ProcessWithContext(ctx, s.messages, s.OnProgress)
-		if err == nil {
-			s.messages = updatedMessages
-		}
-	} else {
-		response, err = s.agent.Process(ctx, userInput, s.OnProgress)
+	var updatedMessages []Message
+	updatedMessages, response, err = s.agent.ProcessWithContext(ctx, s.messages, s.OnProgress)
+	if err == nil {
+		s.messages = updatedMessages
 	}
+
 	if err != nil {
 		return "", err
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/exec"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/file"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/history"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/metrics"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/node"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/playbook"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/session"
@@ -49,14 +50,13 @@ func NewRootCmd() *cobra.Command {
 		Short: "owl - 智能分布式运维工具",
 		Long: `owl 是一个智能 Linux 分布式运维工具，支持：
 
-- 节点管理：节点注册、分组、标签管理
-- 批量命令执行：支持按节点、分组、标签选择目标
-- 脚本传输执行：批量传输并执行 Shell 脚本
-- 剧本执行：Ansible-like YAML 剧本流程执行
-- 文件传输：支持自扩散传输（P2P 模式）
-- AI 助手：通过自然语言执行运维操作
+	- 节点管理：节点注册、分组、标签管理
+	- 批量命令执行：支持按节点、分组、标签选择目标
+	- 脚本传输执行：批量传输并执行 Shell 脚本
+	- 剧本执行：Ansible-like YAML 剧本流程执行
+	- 文件传输：支持自扩散传输（P2P 模式）
+	- AI 助手：通过自然语言执行运维操作`,
 
-完整文档：https://github.com/cangyunye/go-owl`,
 		Version: version,
 	}
 
@@ -71,6 +71,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(session.NewCmd())
 	rootCmd.AddCommand(async.NewAsyncCmd())
 	rootCmd.AddCommand(tui.NewTuiCmd())
+	rootCmd.AddCommand(metrics.NewMetricsCmd())
 
 	// 添加版本信息
 	rootCmd.SetVersionTemplate(fmt.Sprintf(`owl version: %s

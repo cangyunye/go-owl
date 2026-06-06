@@ -12,7 +12,7 @@ node_groups - 分组管理
 node_labels - 标签管理
 node_import - 导入节点
 node_ping - ping节点
-node_check - ssh检查节点
+node_check - ssh检查节点（如"检查状态"、"检查是否在线"、"测试连接"、"SSH连接"）
 
 【命令执行】
 exec_run - 执行命令（如uptime、df -h、systemctl restart）
@@ -30,7 +30,13 @@ playbook_validate - 验证剧本
 直接输出标签，不要其他内容。
 "查询节点" → node_list
 "查看web节点" → node_list
-"列出所有节点" → node_list`
+"列出所有节点" → node_list
+"检查所有节点状态" → node_check
+"检查huyuhui组机器状态" → node_check
+"检查node-01的SSH连接" → node_check
+"查看节点是否在线" → node_check
+"测试节点连通性" → node_check
+"检查机器状态" → node_check`
 
 const ExecSystemPrompt = `# owl-AI - 命令执行
 
