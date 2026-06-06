@@ -46,7 +46,7 @@ func (c *Checker) Check(user, command string) *CheckResult {
 					continue
 				}
 				stripped := stripQuoted(trimmed)
-				if strings.Contains(stripped, pattern) {
+				if matchesCommand(stripped, pattern) {
 					result.Matches = append(result.Matches, MatchItem{
 						Pattern: pattern,
 						Line:    trimmed,
@@ -58,6 +58,45 @@ func (c *Checker) Check(user, command string) *CheckResult {
 
 	result.Blocked = len(result.Matches) > 0
 	return result
+}
+
+// matchesCommand 检查命令是否匹配模式，只匹配命令开始部分
+// pattern 应该以命令分隔符结尾（如空格、|、&等）以确保匹配完整命令
+func matchesCommand(cmd, pattern string) bool {
+	// 直接包含匹配（用于复杂模式如 "rm -rf"）
+	if strings.Contains(cmd, pattern) {
+		// 如果模式以空格结尾，检查是否在单词边界
+		if strings.HasSuffix(pattern, " ") || strings.HasSuffix(pattern, "=") {
+			idx := strings.Index(cmd, pattern)
+			// 确保匹配在命令开始或前面是分隔符
+			if idx == 0 {
+				return true
+			}
+			// 检查前面是否是分隔符
+			before := cmd[:idx]
+			if len(before) > 0 {
+				lastChar := before[len(before)-1]
+				if lastChar == ' ' || lastChar == ';' || lastChar == '&' || lastChar == '|' || lastChar == '\n' || lastChar == '\t' {
+					return true
+				}
+			}
+		} else {
+			// 对于没有空格后缀的模式，检查是否在开始或前面有分隔符
+			idx := strings.Index(cmd, pattern)
+			if idx == 0 {
+				return true
+			}
+			// 检查前面是否是分隔符
+			before := cmd[:idx]
+			if len(before) > 0 {
+				lastChar := before[len(before)-1]
+				if lastChar == ' ' || lastChar == ';' || lastChar == '&' || lastChar == '|' || lastChar == '\n' || lastChar == '\t' {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func stripQuoted(s string) string {

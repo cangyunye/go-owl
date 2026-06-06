@@ -22,40 +22,66 @@ func DefaultRules() []Rule {
 		{
 			User: "root",
 			Patterns: []string{
-				"rm ",
-				"mv ",
-				"su",
-				"sudo ",
-				"ssh ",
-				"scp ",
-				"dd ",
-				"mkfs",
+				// 文件操作（危险）
+				"rm -rf ",
+				"rm -fr ",
+				"rm -r ",
+				"rm -f ",
+				"mkfs.",
+				"dd if=",
+				"dd of=",
 				"fdisk ",
+				"parted ",
+				"mkswap",
+				"mount --bind ",
+				"umount -f ",
+
+				// 用户权限提升（需要确认）
+				" su ",
+				" sudo ",
+
+				// 远程操作（需要确认）
+				"ssh -",
+				"scp -",
+				"rsync -",
+
+				// 系统控制（危险）
 				"shutdown",
 				"reboot",
 				"halt",
 				"poweroff",
-				"init ",
-				"chmod ",
-				"chown ",
-				"chattr ",
-				"iptables ",
-				"ufw ",
-				"firewall-cmd ",
+				"init 0",
+				"init 6",
+
+				// 权限修改（危险）
+				"chmod -R 777 ",
+				"chmod 777 /",
+				"chown -R ",
+				"chown .*:[0-9]+ ",
+				"chattr -",
+
+				// 网络/防火墙（需要确认）
+				"iptables -",
+				"ufw -",
+				"firewall-cmd -",
+
+				// 服务控制（需要确认）
 				"systemctl stop ",
 				"systemctl disable ",
 				"systemctl mask ",
+				"service .* stop",
+
+				// 进程控制（危险）
 				"killall ",
-				"pkill ",
-				"parted ",
-				"mkswap",
-				"mount ",
-				"umount ",
+				"pkill -",
+				"kill -9 ",
+				"kill -SIGKILL",
 			},
 		},
 		{
 			User: "*",
 			Patterns: []string{
+				// 全局危险命令
 				"rm -rf /",
 				"rm -rf /*",
 				"dd if=/dev/",
@@ -63,6 +89,8 @@ func DefaultRules() []Rule {
 				":(){ :|:& };:",
 				">/dev/sd",
 				"chmod 777 /",
+				">/etc/",
+				"dd if=/dev/zero of=/dev/",
 			},
 		},
 	}
