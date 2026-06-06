@@ -67,6 +67,10 @@ func (d *DuckDB) InitSchema() error {
 			op_type VARCHAR,
 			command VARCHAR,
 			targets JSON,
+			execution_mode VARCHAR DEFAULT '',
+			playbook_path VARCHAR DEFAULT '',
+			current_task_index INTEGER DEFAULT 0,
+			current_task_phase VARCHAR DEFAULT '',
 			status VARCHAR,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		);`,
@@ -141,6 +145,10 @@ func (d *DuckDB) InitSchema() error {
 			session_id VARCHAR,
 			command VARCHAR,
 			targets JSON,
+tttttttcurrent_task_phase VARCHAR DEFAULT '',
+tttttttcurrent_task_index INTEGER DEFAULT 0,
+tttttttplaybook_path VARCHAR DEFAULT '',
+tttttttexecution_mode VARCHAR DEFAULT '',
 			results JSON,
 			executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (session_id) REFERENCES sessions(id)

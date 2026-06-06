@@ -89,6 +89,7 @@ owl playbook run deploy-app --vars version=v1.2.0
 | `--default-retry` | 最大重试次数 |
 | `--default-retry-interval` | 初始重试间隔（默认 1s） |
 | `--default-retry-max-interval` | 最大重试间隔（默认 30s） |
+| `--resume` | 从上次失败处断点续跑（仅 pipeline 模式） |
 
 ### 示例
 
@@ -167,6 +168,10 @@ version: "1.0"
 # hosts: ["web-01", "web-02"]
 hosts: []
 
+# 执行模式: fail_continue(默认)/pipeline
+# pipeline 模式下任一任务失败立即终止，且不允许 post_tasks
+execution_mode: fail_continue
+
 vars:
   version: "1.0.0"
   env: "prod"
@@ -224,6 +229,53 @@ tasks:
       name_format: "{node}-app.log"
 
 post_tasks: []
+```
+
+### 执行模式
+
+Playbook 支持两种执行模式，通过 `execution_mode` 字段配置：
+
+| 模式 | 名称 | 行为 | 适用场景 |
+|------|------|------|---------|
+| `fail_continue` | 失败继续模式（默认） | 所有任务依次执行，失败不阻断 | 批处理、监控检查 |
+| `pipeline` | 流水线模式 | 任一任务失败立即终止后续任务 | 部署流程、依赖链任务 |
+
+**pipeline 模式限制：**
+- 不允许使用 `post_tasks`
+- 不允许在任务上设置 `ignore_errors` 或 `any_errors_fatal`
+- 任务如果被 `when` 条件跳过，不计为失败
+
+**示例：**
+```yaml
+# pipeline 模式：部署流水线，任一环节失败即终止
+execution_mode: pipeline
+tasks:
+  - name: 备份配置
+    action: shell
+    args:
+      cmd: backup.sh
+  - name: 部署应用
+    action: shell
+    args:
+      cmd: deploy.sh
+  - name: 启动服务
+    action: shell
+    args:
+      cmd: start.sh
+```
+
+```yaml
+# fail_continue 模式：监控检查，继续收集所有节点数据
+execution_mode: fail_continue
+tasks:
+  - name: 检查节点1
+    action: shell
+    args:
+      cmd: check.sh
+  - name: 检查节点2
+    action: shell
+    args:
+      cmd: check.sh
 ```
 
 ### 支持的动作类型
@@ -429,8 +481,12 @@ A:
 ### Q: relative paths are resolved relative to which directory?
 A: All relative paths are resolved relative to the directory where the playbook file is located. You can also use `{{PLAYBOOK_DIR}}` or `${PLAYBOOK_DIR}` to explicitly reference the playbook's directory.
 
-### Q: What happens when a step fails?
-A: By default, execution stops. Use `ignore_errors: true` or `any_errors_fatal: false` to continue on error.
+### Q: 任务失败时会怎样？
+A: 取决于执行模式:
+- `fail_continue`（默认）: 失败任务的后续任务仍会继续执行，最后汇总失败状态
+- `pipeline`: 任一任务失败立即终止后续所有任务
+
+可通过 `--resume` 从上次失败处断点续跑。
 
 ### Q: How to retry failed steps?
 A: Use `retry: {max: N}` to define the maximum number of retries

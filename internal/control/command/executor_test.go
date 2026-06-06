@@ -73,6 +73,14 @@ func (m *MockNodeManager) GetByLabels(labels map[string]string) []*model.Node {
 	return nil
 }
 
+func (m *MockNodeManager) SearchByName(pattern string) []*model.Node {
+	return nil
+}
+
+func (m *MockNodeManager) SearchByAddress(pattern string) []*model.Node {
+	return nil
+}
+
 func (m *MockNodeManager) UpdateStatus(id string, status model.NodeStatus) error {
 	n, ok := m.nodes[id]
 	if !ok {

@@ -1,0 +1,16 @@
+name: Pipeline模式测试
+hosts: ["mac"]
+execution_mode: pipeline
+tasks:
+  - name: step1_success
+    action: shell
+    args:
+      cmd: echo "step1 ok"
+  - name: step2_fail
+    action: shell
+    args:
+      cmd: exit 1
+  - name: step3_should_not_run
+    action: shell
+    args:
+      cmd: echo "should not reach here"

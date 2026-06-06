@@ -69,14 +69,15 @@ var actionTemplates = []ActionTemplate{
 }
 
 type TemplatePlaybook struct {
-	Name        string                 `yaml:"name"`
-	Description string                 `yaml:"description,omitempty"`
-	Version     string                 `yaml:"version,omitempty"`
-	Hosts       []string               `yaml:"hosts"`
-	Vars        map[string]interface{} `yaml:"vars,omitempty"`
-	PreTasks    []TemplateTask         `yaml:"pre_tasks"`
-	Tasks       []TemplateTask         `yaml:"tasks"`
-	PostTasks   []TemplateTask         `yaml:"post_tasks"`
+	Name          string                 `yaml:"name"`
+	Description   string                 `yaml:"description,omitempty"`
+	Version       string                 `yaml:"version,omitempty"`
+	Hosts         []string               `yaml:"hosts"`
+	ExecutionMode string                 `yaml:"execution_mode,omitempty"`
+	Vars          map[string]interface{} `yaml:"vars,omitempty"`
+	PreTasks      []TemplateTask         `yaml:"pre_tasks"`
+	Tasks         []TemplateTask         `yaml:"tasks"`
+	PostTasks     []TemplateTask         `yaml:"post_tasks"`
 }
 
 type TemplateTask struct {
@@ -114,18 +115,19 @@ func runPlaybookTemplate(cmd *cobra.Command, args []string) {
 	description := promptForDescription(reader)
 	version := promptForVersion(reader)
 	vars := promptForVars(reader)
-
+	mode := promptForExecutionMode(reader)
 	tasks := promptForTasks(reader)
 
 	playbook := TemplatePlaybook{
-		Name:        name,
-		Description: description,
-		Version:     version,
-		Hosts:       []string{},
-		Vars:        vars,
-		PreTasks:    []TemplateTask{},
-		Tasks:       tasks,
-		PostTasks:   []TemplateTask{},
+		Name:          name,
+		Description:   description,
+		Version:       version,
+		Hosts:         []string{},
+		ExecutionMode: mode,
+		Vars:          vars,
+		PreTasks:      []TemplateTask{},
+		Tasks:         tasks,
+		PostTasks:     []TemplateTask{},
 	}
 
 	playbookYAML, err := yaml.Marshal(&playbook)
@@ -239,6 +241,21 @@ func displayActionChoices() {
 		fmt.Printf("%d. %s  - %s\n", i+1, t.Name, t.Description)
 	}
 	fmt.Println()
+}
+
+func promptForExecutionMode(reader *bufio.Reader) string {
+	fmt.Print("执行模式 (默认 fail_continue, 输入 pipeline 切换为流水线模式): ")
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		os.Exit(1)
+	}
+	mode := strings.ToLower(strings.TrimSpace(input))
+	if mode == "pipeline" || mode == "p" {
+		fmt.Println("  → 流水线模式: 任一任务失败即终止后续执行")
+		return "pipeline"
+	}
+	return ""
 }
 
 func promptForTasks(reader *bufio.Reader) []TemplateTask {

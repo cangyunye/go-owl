@@ -36,6 +36,7 @@ var (
 	pbRunDefaultRetry            int
 	pbRunDefaultRetryInterval    time.Duration
 	pbRunDefaultRetryMaxInterval time.Duration
+	pbRunResume                  bool
 )
 
 // adapterNodeManager 包装 node.NodeResolver 实现 controlnode.Manager
@@ -342,10 +343,35 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		Command:   string(meta),
 		Targets:   targetNodeIDs,
 		Status:    "running",
+		ExecutionMode: string(parsedPlaybook.ExecutionMode),
+		PlaybookPath:  playbookFile,
 		CreatedAt: startTime,
 	})
 
 	// 执行 Playbook
+	// 断点续跑
+	if pbRunResume {
+		lastFailed, err := history.FindLastFailedByPlaybookPath(playbookFile)
+		if err == nil && lastFailed != nil {
+			fmt.Printf("发现上次失败记录(task_id=%s)，从 %s[%d] 开始续跑\n",
+				lastFailed.TaskID, lastFailed.CurrentTaskPhase, lastFailed.CurrentTaskIndex)
+			if r, ok := pbExecutor.(interface{ SetResumeFrom(string, int) }); ok {
+				r.SetResumeFrom(lastFailed.CurrentTaskPhase, lastFailed.CurrentTaskIndex)
+			}
+		} else if err != nil {
+			fmt.Printf("警告: 查找断点失败: %v\n", err)
+		} else {
+			fmt.Println("未找到上次失败的执行记录，从头开始执行")
+		}
+	}
+
+	// 设置 checkpoint 回调
+	if c, ok := pbExecutor.(interface{ SetCheckpointFunc(func(string, int)) }); ok {
+		c.SetCheckpointFunc(func(phase string, index int) {
+			history.RecordCheckpoint(taskID, index, phase)
+		})
+	}
+
 	fmt.Println("\n执行剧本...")
 	execution, err := pbExecutor.Execute(parsedPlaybook, targetModelNodes, extraVars)
 	if err != nil {

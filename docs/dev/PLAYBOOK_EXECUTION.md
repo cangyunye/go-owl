@@ -90,24 +90,25 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 
 #### 3.2.2 失败处理策略
 
-| 任务类型 | 默认行为 | 配置选项 |
-|----------|----------|----------|
-| PreTasks | 失败即终止 | `ignore_errors: true` 可忽略 |
-| Tasks | 继续执行 | `any_errors_fatal: true` 可终止 |
-| PostTasks | 失败即终止 | `ignore_errors: true` 可忽略 |
+| 任务类型 | 默认行为 | fail_continue 模式 | pipeline 模式 |
+|----------|----------|-------------------|--------------|
+| PreTasks | 失败即终止 | 失败即终止 | 失败即终止 |
+| Tasks | 继续执行 | 失败继续，最后汇总 | 失败即终止 |
+| PostTasks | 失败即终止 | 失败即终止 | 不允许存在 |
 
-**核心代码**（executor.go:496-512）：
+**pipeline 模式核心代码**（executor.go 简化）：
 
 ```go
 for i := range playbook.Tasks {
-    mainTask := playbook.Tasks[i]
+    if playbook.ExecutionMode == ExecutionModePipeline && exec.Status == ExecutionStatusFailed {
+        break
+    }
     results, err := e.executeTaskInternal(exec, mainTask)
-    
     if err != nil && !mainTask.Options.IgnoreErrors {
-        if mainTask.Options.AnyErrorsFatal {
+        if playbook.ExecutionMode == ExecutionModePipeline || mainTask.Options.AnyErrorsFatal {
             exec.Status = ExecutionStatusFailed
             exec.Error = err.Error()
-            return exec, err  // 立即终止，不再执行后续任务
+            break  // break 退出循环，落入最终状态判定
         }
     }
     exec.Results[mainTask.Name] = append(exec.Results[mainTask.Name], results...)
@@ -141,6 +142,46 @@ if len(exec.TargetNodes) > 1 {
     // ...
 }
 ```
+
+## 3.3 执行模式
+
+### 3.3.1 模式定义
+
+Playbook 支持两种执行模式：
+
+| 模式 | 说明 |
+|------|------|
+| `fail_continue`（默认） | 所有任务依次执行，失败不阻断，最后汇总失败状态 |
+| `pipeline` | 任一任务失败立即终止后续任务 |
+
+模式在 YAML 中通过 `execution_mode` 字段配置，在 `parser.go` 的 `Parse()` 中解析为 `ExecutionMode` 类型。
+
+### 3.3.2 pipeline 模式校验
+
+`validatePlaybook()` 在解析时对 pipeline 模式做三项校验：
+1. **PostTasks 必须为空** — pipeline 的语义是"任一失败即终止全部后续"
+2. **不允许 `ignore_errors: true`** — pipeline 下所有任务都是 fatal 的
+3. **不允许 `any_errors_fatal: true`** — pipeline 本身就是全线 fatal，无需重复声明
+
+### 3.3.3 pipeline 模式终止逻辑
+
+当 `execution_mode: pipeline` 且任务执行错误时：
+
+1. `executeTaskInternal()` 检测 `exec.Playbook.ExecutionMode == ExecutionModePipeline`，将错误向上传播
+2. `Execute()` 中 Tasks 循环检查到错误，设置 `exec.Status = ExecutionStatusFailed` 并 `break`
+3. PostTasks 不会执行（因 pipeline 模式下 validate 已确保 PostTasks 为空）
+
+### 3.3.4 多节点并行
+
+在多节点并行执行时，pipeline 模式下任一节点失败即终止该任务的所有节点分发，错误向上传播到 Tasks 循环。
+
+### 3.3.5 断点续跑
+
+通过 `--resume` CLI 标志启用：
+- 查询 `operations` 表，匹配 `playbook_path` 且 `status = 'failed'` 的最新记录
+- 读取 `current_task_phase` 和 `current_task_index`
+- 在 `Execute()` 中跳过已完成的阶段和任务索引
+- checkpoint 通过回调函数写入历史数据库
 
 ## 4. 任务选项
 

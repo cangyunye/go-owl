@@ -7,13 +7,17 @@ import (
 
 // Operation 主机操作记录
 type Operation struct {
-	ID        int64
-	TaskID    string
-	OpType    string
-	Command   string
-	Targets   []string
-	Status    string
-	CreatedAt time.Time
+	ID              int64
+	TaskID          string
+	OpType          string
+	Command         string
+	Targets         []string
+	Status          string
+	ExecutionMode   string     // pipeline / fail_continue
+	PlaybookPath    string     // Playbook 文件路径（用于断点续跑）
+	CurrentTaskIndex int       // 断点续跑：当前任务索引
+	CurrentTaskPhase string   // 断点续跑：pre_tasks / tasks / post_tasks
+	CreatedAt       time.Time
 }
 
 // NodeCommunication 节点通信记录
@@ -71,9 +75,9 @@ func (db *DB) RecordOperation(op *Operation) error {
 	targetsJSON, _ := json.Marshal(op.Targets)
 
 	_, err := db.impl.Connection().Exec(`
-		INSERT INTO operations (task_id, op_type, command, targets, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.CreatedAt)
+		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, op.CreatedAt)
 	return err
 }
 
@@ -308,10 +312,44 @@ func RecordOperation(op *Operation) error {
 	}
 	targetsJSON, _ := json.Marshal(op.Targets)
 	_, err := GetGlobalDB().Connection().Exec(`
-		INSERT INTO operations (task_id, op_type, command, targets, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.CreatedAt)
+		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, op.CreatedAt)
 	return err
+}
+
+// UpdateOperationStatus 更新操作状态和 checkpoint
+func RecordCheckpoint(taskID string, index int, phase string) error {
+	if GetGlobalDB() == nil {
+		return nil
+	}
+	_, err := GetGlobalDB().Connection().Exec(`
+		UPDATE operations SET current_task_index = ?, current_task_phase = ? WHERE task_id = ? AND op_type = 'playbook'
+	`, index, phase, taskID)
+	return err
+}
+
+// FindLastFailedByPlaybookPath 查找指定 Playbook 最近一次失败执行
+func FindLastFailedByPlaybookPath(playbookPath string) (*Operation, error) {
+	if GetGlobalDB() == nil {
+		return nil, nil
+	}
+	row := GetGlobalDB().Connection().QueryRow(`
+		SELECT id, task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, created_at
+		FROM operations
+		WHERE op_type = 'playbook' AND playbook_path = ? AND status = 'failed'
+		ORDER BY created_at DESC LIMIT 1
+	`, playbookPath)
+
+	var op Operation
+	var targetsStr string
+	err := row.Scan(&op.ID, &op.TaskID, &op.OpType, &op.Command, &targetsStr, &op.Status,
+		&op.ExecutionMode, &op.PlaybookPath, &op.CurrentTaskIndex, &op.CurrentTaskPhase, &op.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	json.Unmarshal([]byte(targetsStr), &op.Targets)
+	return &op, nil
 }
 
 func RecordCommandExecution(exec *CommandExecution) error {

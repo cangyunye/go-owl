@@ -73,6 +73,10 @@ func (s *SQLite3) InitSchema() error {
 			command TEXT,
 			targets TEXT,
 			status TEXT,
+			execution_mode TEXT DEFAULT '',
+			playbook_path TEXT DEFAULT '',
+			current_task_index INTEGER DEFAULT 0,
+			current_task_phase TEXT DEFAULT '',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_operations_task_id ON operations (task_id);`,

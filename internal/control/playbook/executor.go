@@ -29,6 +29,13 @@ const (
 	ExecutionStatusAborted  ExecutionStatus = "aborted"
 )
 
+type ExecutionMode string
+
+const (
+	ExecutionModeFailContinue ExecutionMode = "fail_continue"
+	ExecutionModePipeline     ExecutionMode = "pipeline"
+)
+
 type TaskResult struct {
 	TaskName  string
 	NodeID    string
@@ -64,6 +71,11 @@ type Executor interface {
 	Stop(execID string) error
 }
 
+type checkpoint struct {
+	Phase string // pre_tasks / tasks / post_tasks
+	Index int    // task index
+}
+
 type playbookExecutor struct {
 	nodeMgr      controlnode.Manager
 	cmdExec      command.CommandExecutor
@@ -71,6 +83,20 @@ type playbookExecutor struct {
 	runner       ActionRunner
 	options      *PlaybookOptions
 	nodeResolver *node.NodeResolver
+
+	// 断点续跑
+	resumeFrom     *checkpoint // 非 nil 时从此处跳过已执行任务
+	checkpointFunc func(phase string, index int) // 保存 checkpoint 的回调
+}
+
+// SetResumeFrom 设置断点续跑的起始位置
+func (e *playbookExecutor) SetResumeFrom(phase string, index int) {
+	e.resumeFrom = &checkpoint{Phase: phase, Index: index}
+}
+
+// SetCheckpointFunc 设置 checkpoint 保存回调
+func (e *playbookExecutor) SetCheckpointFunc(fn func(phase string, index int)) {
+	e.checkpointFunc = fn
 }
 
 func NewExecutor(nodeMgr controlnode.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, nodeResolver *node.NodeResolver) Executor {
@@ -496,12 +522,18 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 	}
 
 	for i := range playbook.PreTasks {
+		if e.resumeFrom != nil && e.resumeFrom.Phase == "pre_tasks" && i < e.resumeFrom.Index {
+			continue
+		}
 		preTask := playbook.PreTasks[i]
 		results, err := e.executeTaskInternal(exec, preTask)
 		if err != nil {
 			if !preTask.Options.IgnoreErrors {
 				exec.Status = ExecutionStatusFailed
 				exec.Error = err.Error()
+				if e.checkpointFunc != nil {
+					e.checkpointFunc("pre_tasks", i)
+				}
 				return exec, err
 			}
 		}
@@ -509,6 +541,9 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 	}
 
 	for i := range playbook.Tasks {
+		if e.resumeFrom != nil && e.resumeFrom.Phase == "tasks" && i < e.resumeFrom.Index {
+			continue
+		}
 		mainTask := playbook.Tasks[i]
 		shouldContinue := e.shouldContinueExecution(exec)
 		if !shouldContinue && exec.Status == ExecutionStatusAborted {
@@ -518,10 +553,13 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 		results, err := e.executeTaskInternal(exec, mainTask)
 		if err != nil {
 			if !mainTask.Options.IgnoreErrors {
-				if mainTask.Options.AnyErrorsFatal {
+				if playbook.ExecutionMode == ExecutionModePipeline || mainTask.Options.AnyErrorsFatal {
 					exec.Status = ExecutionStatusFailed
 					exec.Error = err.Error()
-					return exec, err
+					if e.checkpointFunc != nil {
+						e.checkpointFunc("tasks", i)
+					}
+					break
 				}
 			}
 		}
@@ -535,12 +573,18 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 	}
 
 	for i := range playbook.PostTasks {
+		if e.resumeFrom != nil && e.resumeFrom.Phase == "post_tasks" && i < e.resumeFrom.Index {
+			continue
+		}
 		postTask := playbook.PostTasks[i]
 		results, err := e.executeTaskInternal(exec, postTask)
 		if err != nil {
 			if !postTask.Options.IgnoreErrors {
 				exec.Status = ExecutionStatusFailed
 				exec.Error = err.Error()
+				if e.checkpointFunc != nil {
+					e.checkpointFunc("post_tasks", i)
+				}
 				return exec, err
 			}
 		}
@@ -584,12 +628,16 @@ func (e *playbookExecutor) executeTaskInternal(exec *PlaybookExecution, task *Pa
 
 	var results []*TaskResult
 
+	isPipeline := exec.Playbook != nil && exec.Playbook.ExecutionMode == ExecutionModePipeline
+
 	if task.Loop != nil {
 		for _, item := range task.Loop.Items {
 			itemResults, err := e.executeTaskForNode(exec, task, "", item)
 			results = append(results, itemResults...)
 			if err != nil && !task.Options.IgnoreErrors {
-				return results, err
+				if isPipeline || task.Options.AnyErrorsFatal {
+					return results, err
+				}
 			}
 		}
 	} else {
@@ -598,7 +646,7 @@ func (e *playbookExecutor) executeTaskInternal(exec *PlaybookExecution, task *Pa
 				itemResults, err := e.executeTaskForNode(exec, task, target.ID, nil)
 				results = append(results, itemResults...)
 				if err != nil && !task.Options.IgnoreErrors {
-					if task.Options.AnyErrorsFatal {
+					if isPipeline || task.Options.AnyErrorsFatal {
 						return results, err
 					}
 				}
@@ -635,7 +683,7 @@ func (e *playbookExecutor) executeTaskInternal(exec *PlaybookExecution, task *Pa
 
 			for err := range errChan {
 				if !task.Options.IgnoreErrors {
-					if task.Options.AnyErrorsFatal {
+					if isPipeline || task.Options.AnyErrorsFatal {
 						return results, err
 					}
 				}

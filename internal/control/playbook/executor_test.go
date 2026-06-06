@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
+	"github.com/cangyunye/go-owl/internal/control/node"
+	"github.com/cangyunye/go-owl/internal/control/task"
 )
 
 type MockExecutor struct{}
@@ -315,6 +317,14 @@ func (m *MockNodeManager) GetByLabels(labels map[string]string) []*model.Node {
 	return nil
 }
 
+func (m *MockNodeManager) SearchByName(pattern string) []*model.Node {
+	return nil
+}
+
+func (m *MockNodeManager) SearchByAddress(pattern string) []*model.Node {
+	return nil
+}
+
 func (m *MockNodeManager) UpdateStatus(id string, status model.NodeStatus) error {
 	return nil
 }
@@ -511,5 +521,128 @@ func TestExecutor_Execute(t *testing.T) {
 	}
 	if exec.Status != ExecutionStatusRunning && exec.Status != ExecutionStatusCompleted {
 		t.Errorf("expected status running or completed, got '%s'", exec.Status)
+	}
+}
+
+type mockCmdExecutor struct {
+	callCount      int
+	failOnCall     int
+	executedCmds   []string
+}
+
+func (m *mockCmdExecutor) ExecuteOnNode(nodeID string, command string, timeout time.Duration) (*task.TaskResult, error) {
+	m.callCount++
+	m.executedCmds = append(m.executedCmds, command)
+	if m.callCount >= m.failOnCall {
+		return &task.TaskResult{ExitCode: 1, Output: "mock failure"}, fmt.Errorf("mock failure")
+	}
+	return &task.TaskResult{ExitCode: 0, Output: "ok"}, nil
+}
+
+func (m *mockCmdExecutor) Execute(tk *task.Task, nodeMgr node.Manager) error {
+	return nil
+}
+
+func TestExecutor_Execute_PipelineModeFailsFast(t *testing.T) {
+	mockNodeMgr := &MockNodeManager{}
+	mockCmd := &mockCmdExecutor{
+		failOnCall: 2, // 2nd task fails
+	}
+	executor := NewExecutor(mockNodeMgr, mockCmd, nil, nil)
+
+	playbook := &ParsedPlaybook{
+		Raw: &Playbook{
+			Name:  "pipeline test",
+			Hosts: []string{"web"},
+		},
+		ExecutionMode: ExecutionModePipeline,
+		Variables:     make(map[string]interface{}),
+		Tasks: []*ParsedTask{
+			{
+				Name:   "task 1",
+				Action: "shell",
+				Args:   map[string]interface{}{"cmd": "echo ok"},
+				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
+			},
+			{
+				Name:   "task 2",
+				Action: "shell",
+				Args:   map[string]interface{}{"cmd": "fail"},
+				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
+			},
+			{
+				Name:   "task 3",
+				Action: "shell",
+				Args:   map[string]interface{}{"cmd": "should not run"},
+				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
+			},
+		},
+	}
+
+	exec, _ := executor.Execute(playbook, []*model.Node{{ID: "node-1"}}, nil)
+	if exec.Error == "" {
+		t.Error("expected error for pipeline failure")
+	}
+	if exec.Status != ExecutionStatusFailed {
+		t.Errorf("expected Status Failed, got '%s'", exec.Status)
+	}
+	if len(mockCmd.executedCmds) != 2 {
+		t.Errorf("expected 2 commands executed (task3 skipped), got %d: %v", len(mockCmd.executedCmds), mockCmd.executedCmds)
+	}
+	_, task3Executed := exec.Results["task 3"]
+	if task3Executed {
+		t.Error("task 3 should not have been executed in pipeline mode")
+	}
+}
+
+func TestExecutor_Execute_FailContinueRunsAll(t *testing.T) {
+	mockNodeMgr := &MockNodeManager{}
+	mockCmd := &mockCmdExecutor{
+		failOnCall: 2,
+	}
+	executor := NewExecutor(mockNodeMgr, mockCmd, nil, nil)
+
+	playbook := &ParsedPlaybook{
+		Raw: &Playbook{
+			Name:  "fail_continue test",
+			Hosts: []string{"web"},
+		},
+		ExecutionMode: ExecutionModeFailContinue,
+		Variables:     make(map[string]interface{}),
+		Tasks: []*ParsedTask{
+			{
+				Name:   "task 1",
+				Action: "shell",
+				Args:   map[string]interface{}{"cmd": "ok"},
+				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
+			},
+			{
+				Name:   "task 2",
+				Action: "shell",
+				Args:   map[string]interface{}{"cmd": "fail"},
+				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
+			},
+			{
+				Name:   "task 3",
+				Action: "shell",
+				Args:   map[string]interface{}{"cmd": "should also run"},
+				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
+			},
+		},
+	}
+
+	exec, err := executor.Execute(playbook, []*model.Node{{ID: "node-1"}}, nil)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(mockCmd.executedCmds) != 3 {
+		t.Errorf("expected 3 commands executed (fail_continue), got %d: %v", len(mockCmd.executedCmds), mockCmd.executedCmds)
+	}
+	_, task3Executed := exec.Results["task 3"]
+	if !task3Executed {
+		t.Error("task 3 should have been executed in fail_continue mode")
+	}
+	if exec.Status != ExecutionStatusCompleted {
+		t.Errorf("expected Status Completed (fail_continue swallows error), got '%s'", exec.Status)
 	}
 }

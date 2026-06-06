@@ -82,9 +82,12 @@ tasks:
     action: command
 `
 
-	_, err := parser.Parse(content)
-	if err == nil {
-		t.Error("expected error for empty hosts")
+	parsed, err := parser.Parse(content)
+	if err != nil {
+		t.Fatalf("unexpected error for empty hosts: %v", err)
+	}
+	if len(parsed.Raw.Hosts) != 0 {
+		t.Errorf("expected empty hosts, got %v", parsed.Raw.Hosts)
 	}
 }
 
@@ -356,7 +359,66 @@ tasks:
 	}
 }
 
+func TestParser_ParseExecutionMode(t *testing.T) {
+	parser := NewParser()
+
+	t.Run("pipeline mode", func(t *testing.T) {
+		content := `
+name: Pipeline Playbook
+hosts:
+  - web
+execution_mode: pipeline
+tasks:
+  - name: task 1
+    action: command
+`
+		parsed, err := parser.Parse(content)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if parsed.ExecutionMode != ExecutionModePipeline {
+			t.Errorf("expected ExecutionModePipeline, got '%s'", parsed.ExecutionMode)
+		}
+	})
+
+	t.Run("default mode", func(t *testing.T) {
+		content := `
+name: Default Playbook
+hosts:
+  - web
+tasks:
+  - name: task 1
+    action: command
+`
+		parsed, err := parser.Parse(content)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if parsed.ExecutionMode != ExecutionModeFailContinue {
+			t.Errorf("expected ExecutionModeFailContinue, got '%s'", parsed.ExecutionMode)
+		}
+	})
+}
+
+func TestParser_ParseInvalidExecutionMode(t *testing.T) {
+	parser := NewParser()
+
+	content := `
+name: Invalid Playbook
+hosts:
+  - web
+execution_mode: invalid_mode
+tasks:
+  - name: task 1
+    action: command
+`
+	_, err := parser.Parse(content)
+	if err == nil {
+		t.Error("expected error for invalid execution_mode")
+	}
+}
 func TestParser_extractAction(t *testing.T) {
+
 	parser := NewParser()
 
 	tests := []struct {
@@ -734,6 +796,63 @@ func TestConditionEvaluator_StringComparison(t *testing.T) {
 		result, _ := evaluator.evaluateExpression("env != staging")
 		if !result {
 			t.Error("expected true")
+		}
+	})
+}
+
+func TestParser_ValidatePipelineMode(t *testing.T) {
+	parser := NewParser()
+
+	t.Run("pipeline with post_tasks", func(t *testing.T) {
+		content := `
+name: Test
+hosts:
+  - web
+execution_mode: pipeline
+tasks:
+  - name: task 1
+    action: debug
+post_tasks:
+  - name: cleanup
+    action: debug
+`
+		_, err := parser.Parse(content)
+		if err == nil {
+			t.Error("expected error for pipeline with post_tasks")
+		}
+	})
+
+	t.Run("pipeline with ignore_errors", func(t *testing.T) {
+		content := `
+name: Test
+hosts:
+  - web
+execution_mode: pipeline
+tasks:
+  - name: task 1
+    action: debug
+    ignore_errors: true
+`
+		_, err := parser.Parse(content)
+		if err == nil {
+			t.Error("expected error for pipeline with ignore_errors")
+		}
+	})
+
+	t.Run("pipeline with any_errors_fatal", func(t *testing.T) {
+		content := `
+name: Test
+hosts:
+  - web
+execution_mode: pipeline
+tasks:
+  - name: task 1
+    action: debug
+    any_errors_fatal: true
+`
+		_, err := parser.Parse(content)
+		if err == nil {
+			t.Error("expected error for pipeline with any_errors_fatal")
 		}
 	})
 }

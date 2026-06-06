@@ -12,12 +12,13 @@ import (
 )
 
 type Playbook struct {
-	Name      string                 `yaml:"name"`
-	Hosts     []string               `yaml:"hosts"`
-	Vars      map[string]interface{} `yaml:"vars"`
-	PreTasks  []PlaybookTask         `yaml:"pre_tasks"`
-	Tasks     []PlaybookTask         `yaml:"tasks"`
-	PostTasks []PlaybookTask         `yaml:"post_tasks"`
+	Name          string                 `yaml:"name"`
+	Hosts         []string               `yaml:"hosts"`
+	Vars          map[string]interface{} `yaml:"vars"`
+	ExecutionMode string                 `yaml:"execution_mode"`
+	PreTasks      []PlaybookTask         `yaml:"pre_tasks"`
+	Tasks         []PlaybookTask         `yaml:"tasks"`
+	PostTasks     []PlaybookTask         `yaml:"post_tasks"`
 }
 
 type PlaybookTask struct {
@@ -49,11 +50,12 @@ type RetryConfigYAML struct {
 }
 
 type ParsedPlaybook struct {
-	Raw       *Playbook
-	Variables map[string]interface{}
-	Tasks     []*ParsedTask
-	PreTasks  []*ParsedTask
-	PostTasks []*ParsedTask
+	Raw           *Playbook
+	Variables     map[string]interface{}
+	ExecutionMode ExecutionMode
+	Tasks         []*ParsedTask
+	PreTasks      []*ParsedTask
+	PostTasks     []*ParsedTask
 }
 
 type ParsedTask struct {
@@ -151,6 +153,16 @@ func (p *Parser) Parse(content string) (*ParsedPlaybook, error) {
 		Tasks:     make([]*ParsedTask, 0),
 		PreTasks:  make([]*ParsedTask, 0),
 		PostTasks: make([]*ParsedTask, 0),
+	}
+
+	// 解析执行模式
+	switch strings.ToLower(raw.ExecutionMode) {
+	case "pipeline":
+		parsed.ExecutionMode = ExecutionModePipeline
+	case "", "fail_continue":
+		parsed.ExecutionMode = ExecutionModeFailContinue
+	default:
+		return nil, fmt.Errorf("invalid execution_mode '%s': must be 'pipeline' or 'fail_continue'", raw.ExecutionMode)
 	}
 
 	for i := range expandedPreTasks {
@@ -403,6 +415,27 @@ func (p *Parser) interpolateString(s string) string {
 
 func (p *Parser) validatePlaybook(playbook *Playbook) error {
 	// hosts 可以为空，执行时会使用命令行参数或默认所有节点
+
+	mode := strings.ToLower(playbook.ExecutionMode)
+	if mode != "pipeline" {
+		return nil
+	}
+
+	if len(playbook.PostTasks) > 0 {
+		return fmt.Errorf("pipeline mode does not allow post_tasks")
+	}
+
+	allTasks := append(playbook.PreTasks[:0:0], playbook.PreTasks...)
+	allTasks = append(allTasks, playbook.Tasks...)
+	for _, task := range allTasks {
+		if task.IgnoreErrors {
+			return fmt.Errorf("pipeline mode does not allow ignore_errors on task '%s'", task.Name)
+		}
+		if task.AnyErrorsFatal {
+			return fmt.Errorf("pipeline mode does not allow any_errors_fatal on task '%s'", task.Name)
+		}
+	}
+
 	return nil
 }
 
