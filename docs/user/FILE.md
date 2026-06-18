@@ -39,6 +39,7 @@ owl file upload app.tar.gz --dest /opt/app/
 | `--parallel` | 并行上传，默认 true |
 | `--overwrite` | 如果远程文件已存在则覆盖，默认 true |
 | `--no-overwrite` | 如果远程文件已存在则跳过，不覆盖 |
+| `--resume` | 启用断点续传（rsync 优先），默认 true |
 
 ### 文件已存在策略
 
@@ -76,11 +77,13 @@ owl file upload backup.tar.gz --nodes web-01 --no-overwrite
 📍 目标: /opt/app/
 🎯 节点: 2 个
 ⚡ 模式: 并行上传
-⚡ 覆盖: true
+🔄 断点续传: 已启用
 
 正在上传...
-✅ [web-01] 成功: /opt/app/app.tar.gz
-✅ [web-02] 成功: /opt/app/app.tar.gz
+[node1] rsync 可用，将使用断点续传
+✅ [node1] 成功 [rsync, 12.5 MB/s]: /opt/app/app.tar.gz
+[node2] 节点使用密码认证，改用 SSH 原生传输
+✅ [node2] 成功 [scp]: /opt/app/app.tar.gz
 
 📊 总结: 2 成功, 0 失败
 ```
@@ -268,13 +271,42 @@ owl file transfer app.tar.gz --nodes node1,node2 --dest /opt/app/
   Node 2 -> Node 3
 
 正在传输...
-  [node1] 成功 [scp, 12.5 MB/s]
+  [node1] rsync 可用，将使用断点续传
+  [node1] 成功 [rsync, 12.5 MB/s]
   [node2] 成功 [scp, 10.2 MB/s]
   [node3] 成功 [scp, 11.1 MB/s]
   进度: [========----------] 60% (3/5)
+  正在部署中继脚本到 [node1]...
   [node1] 正在向 node4, node5 中继传输...
   [node4] 成功 [relay, 980ms]
   [node5] 成功 [relay, 1250ms]
+  进度: [===================] 100% (5/5)
+
+总结: 5 成功, 0 失败
+```
+
+中继失败降级示例输出：
+
+```
+  [node1] 正在向 node4, node5 中继传输...
+  警告: [node1] 中继部分失败: 1/2 个目标失败 (node4)
+  [node4] 失败 [relay]: Permission denied, 降级为直接传输
+  [node5] 成功 [relay, 1250ms]
+  进度: [===============----] 80% (4/5)
+  [node1] 1 个节点中继失败，正降级为直接传输: [node4]
+  [node4] 降级直传成功 [scp]
+  进度: [===================] 100% (5/5)
+
+总结: 5 成功, 0 失败
+```
+
+部署脚本失败降级示例输出：
+
+```
+  正在部署中继脚本到 [node1]...
+  警告: 部署中继脚本到 [node1] 失败: ... , 降级为直接传输
+  [node4] 部署失败→降级直传→成功 [scp]
+  [node5] 部署失败→降级直传→成功 [scp]
   进度: [===================] 100% (5/5)
 
 总结: 5 成功, 0 失败
@@ -396,6 +428,23 @@ $ owl file upload /nonexistent/file.txt --nodes test-01
 ---
 
 ## 6. 常见问题
+
+### Q: 为什么先看到 "rsync 可用" 又看到 "改用 SSH 原生传输"？
+A: 如果您配置了密码认证的节点，`CheckRsyncAvailable()` 先检查远程节点是否安装了 rsync（此时不知道认证方式），发现安装了就打印"rsync 可用"。随后 `smartUpload()` 检查到节点使用密码认证，因 rsync CLI 不支持非交互式密码传递，自动切换为 SCP。
+从 v2 开始，这一现象已修复——rsync 可用消息仅在**真正使用 rsync** 时打印，密码节点看到的是单一消息"节点使用密码认证，改用 SSH 原生传输"。
+
+### Q: 为什么密码节点不能用 rsync？
+A: rsync 的 `--rsh=ssh` 参数只接受 SSH 密钥文件（`-i` 参数），没有接口传递密码。而 SCP 降级使用的是 Go 的 `crypto/ssh` 库，原生支持密码认证。如需 rsync 断点续传，建议用密钥认证配置节点。
+
+### Q: 出现 "中继传输失败" 的警告，但最终统计显示成功？
+A: 这是 v2 之前的已知问题。当 `owl-relay.sh` 部分成功（exit=1）时，CSV 结果中既有成功的也有失败的目标，但旧版 `ExecuteRelay()` 在退出码非零时直接丢弃全部结果，并将所有目标降级直传（包括已成功的）。从 v2 开始，`ExecuteRelay()` 先解析 CSV 结果，仅对中继失败的目标降级，成功目标保留中继结果。
+
+### Q: 中继失败后降级为直接传输，最终用的是 relay 还是 scp？
+A: 看每个节点的结果行：
+- `[node4] 成功 [relay, 980ms]` → 通过 relay 中继成功
+- `[node4] 降级直传成功 [scp]` → relay 失败后由控制节点直传成功
+- `[node4] 无中继源→降级直传→成功 [scp]` → 无可用中继源，直接由控制节点传
+最终总结的计数与方法说明一致。
 
 ### Q: 上传大文件很慢？
 A: 使用并行模式（默认），或增加 `--fan-out` 参数
