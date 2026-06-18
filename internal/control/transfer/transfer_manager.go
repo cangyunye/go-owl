@@ -94,10 +94,6 @@ func (tm *TransferManager) CheckRsyncAvailable(ctx context.Context, nodeID strin
 	available := tm.checkRsyncRemotely(nodeInfo, connInfo)
 	tm.rsyncAvailable[nodeID] = available
 
-	if available {
-		fmt.Printf("[%s] rsync 可用，将使用断点续传\n", nodeID)
-	}
-
 	return connInfo, available
 }
 
@@ -145,11 +141,12 @@ func (tm *TransferManager) smartUpload(ctx context.Context, nodeID, localPath, r
 	connInfo, rsyncOK := tm.CheckRsyncAvailable(ctx, nodeID)
 	// 密码认证时跳过 rsync（rsync CLI 不支持密码传递）
 	if opts.Resume && rsyncOK && connInfo != nil && connInfo.Password == "" {
+		fmt.Printf("[%s] rsync 可用，将使用断点续传\n", nodeID)
 		return tm.rsyncUpload(ctx, nodeID, localPath, remotePath, opts, connInfo, startTime)
 	}
 
 	if rsyncOK && connInfo != nil && connInfo.Password != "" {
-		fmt.Printf("[%s] 节点使用密码认证，跳过 rsync，改用 SSH 原生传输\n", nodeID)
+		fmt.Printf("[%s] 节点使用密码认证，改用 SSH 原生传输\n", nodeID)
 	}
 
 	return tm.scpFallback(ctx, nodeID, localPath, remotePath, opts, startTime)
@@ -268,11 +265,12 @@ func (tm *TransferManager) smartDownload(ctx context.Context, nodeID, remotePath
 	connInfo, rsyncOK := tm.CheckRsyncAvailable(ctx, nodeID)
 	// 密码认证时跳过 rsync（rsync CLI 不支持密码传递）
 	if opts.Resume && rsyncOK && connInfo != nil && connInfo.Password == "" {
+		fmt.Printf("[%s] rsync 可用，将使用断点续传\n", nodeID)
 		return tm.rsyncDownload(ctx, nodeID, remotePath, localPath, opts, connInfo, startTime)
 	}
 
 	if rsyncOK && connInfo != nil && connInfo.Password != "" {
-		fmt.Printf("[%s] 节点使用密码认证，跳过 rsync，改用 SSH 原生传输\n", nodeID)
+		fmt.Printf("[%s] 节点使用密码认证，改用 SSH 原生传输\n", nodeID)
 	}
 
 	return tm.scpDownloadFallback(ctx, nodeID, remotePath, localPath, opts, startTime)

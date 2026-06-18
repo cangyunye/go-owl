@@ -113,16 +113,37 @@ func (e *RelayExecutor) ExecuteRelay(ctx context.Context, nodeID string, task *R
 	if err != nil {
 		return nil, fmt.Errorf("节点 %s 执行中继命令失败: %w", nodeID, err)
 	}
-	if exitCode != 0 {
-		return nil, fmt.Errorf("节点 %s 中继命令退出码非零 (%d): %s", nodeID, exitCode, output)
+
+	// 始终先尝试解析 CSV 结果——即使退出码非零
+	results, parseErr := ParseRelayResults(output)
+	if parseErr != nil {
+		return nil, fmt.Errorf("解析中继结果失败: %w", parseErr)
 	}
 
-	results, err := ParseRelayResults(output)
-	if err != nil {
-		return nil, fmt.Errorf("解析中继结果失败: %w", err)
+	if exitCode == 0 {
+		return results, nil
 	}
 
-	return results, nil
+	// 统计成功和失败数，用于构造错误消息
+	successCount := 0
+	failCount := 0
+	var failedTargets []string
+	for _, r := range results {
+		if r.Status == "success" {
+			successCount++
+		} else {
+			failCount++
+			failedTargets = append(failedTargets, r.Target)
+		}
+	}
+
+	if failCount > 0 && successCount > 0 {
+		// 部分成功（owl-relay.sh exit 1）
+		return results, fmt.Errorf("中继部分失败: %d/%d 个目标失败 (%s)", failCount, len(results), strings.Join(failedTargets, ","))
+	}
+
+	// 全部失败（owl-relay.sh exit 2）
+	return results, fmt.Errorf("中继命令退出码非零 (%d)，全部 %d 个目标失败", exitCode, len(results))
 }
 
 func shellEscape(s string) string {
