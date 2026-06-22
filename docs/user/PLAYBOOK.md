@@ -143,14 +143,16 @@ owl playbook run deploy-app --tags pre-deploy
 
 ```bash
 owl playbook validate <playbook-file>
+owl playbook validate ./playbooks/*.yml
+owl playbook validate a.yml b.yml
 ```
 
 ### 示例输出
 
 ```
-✅ 剧本语法正确
-✅ 变量定义完整
-✅ 命令语法正确
+  ✅ site.yml: 有效
+  ✅ playbooks/app.yaml: 有效
+  ❌ playbooks/bad.yaml: invalid execution_mode 'invalid_mode': must be 'pipeline' or 'fail_continue'
 ```
 
 ---
@@ -171,6 +173,20 @@ hosts: []
 # 执行模式: fail_continue(默认)/pipeline
 # pipeline 模式下任一任务失败立即终止，且不允许 post_tasks
 execution_mode: fail_continue
+
+# 默认配置（可选，可被 CLI 参数覆盖）
+# CLI 参数显式指定时完全替换默认值（不做并集）
+default:
+  groups: ["web"]        # 默认目标分组，可被 --group 覆盖
+  tags: ["deploy"]       # 默认执行标签，可被 --tags 覆盖
+  # skip_tags: ["debug"] # 默认跳过标签，可被 --skip-tags 覆盖
+  # timeout:             # 默认超时，可被 --default-*-timeout 覆盖
+  #   connect: 10s
+  #   command: 5m
+  # retry:                # 默认重试，可被 --default-retry-* 覆盖
+  #   max: 3
+  #   interval: 1s
+  #   max_interval: 30s
 
 vars:
   version: "1.0.0"
@@ -277,6 +293,32 @@ tasks:
     args:
       cmd: check.sh
 ```
+
+### 默认配置块（`default`）
+
+Playbook 可以包含可选的 `default` 块，用于提供节点选择和任务过滤的默认值。CLI 参数显式指定时完全替换对应默认值（不做并集）：
+
+```yaml
+default:
+  groups: ["web", "db"]    # 默认目标分组，可被 --group 覆盖。支持多个分组，节点自动去重
+  tags: ["deploy"]          # 默认执行标签，可被 --tags 覆盖
+  skip_tags: ["debug"]      # 默认跳过标签，可被 --skip-tags 覆盖
+  timeout:                  # 默认超时配置，可被 --default-*-timeout 覆盖
+    connect: 10s
+    command: 5m
+  retry:                    # 默认重试配置，可被 --default-retry-* 覆盖
+    max: 3
+    interval: 1s
+    max_interval: 30s
+```
+
+**优先级（从高到低）：**
+
+1. CLI 参数（`--group` / `--tags` / `--skip-tags` / `--default-*-timeout` / `--default-retry-*`）
+2. YAML `default` 块
+3. 程序内置默认值
+
+**注意：** `groups` 支持指定多个分组，节点来自所有分组的并集，重复节点会自动去重。
 
 ### 支持的动作类型
 
