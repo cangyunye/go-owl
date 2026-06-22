@@ -13,9 +13,11 @@ import (
 
 type Playbook struct {
 	Name          string                 `yaml:"name"`
+	Description   string                 `yaml:"description,omitempty"`
 	Hosts         []string               `yaml:"hosts"`
 	Vars          map[string]interface{} `yaml:"vars"`
 	ExecutionMode string                 `yaml:"execution_mode"`
+	Default       *PlaybookDefaultConfig `yaml:"default,omitempty"`
 	PreTasks      []PlaybookTask         `yaml:"pre_tasks"`
 	Tasks         []PlaybookTask         `yaml:"tasks"`
 	PostTasks     []PlaybookTask         `yaml:"post_tasks"`
@@ -49,10 +51,19 @@ type RetryConfigYAML struct {
 	MaxInterval string `yaml:"max_interval"`
 }
 
+type PlaybookDefaultConfig struct {
+	Groups    []string           `yaml:"groups,omitempty"`
+	Tags      []string           `yaml:"tags,omitempty"`
+	SkipTags  []string           `yaml:"skip_tags,omitempty"`
+	Timeout   *TimeoutConfigYAML `yaml:"timeout,omitempty"`
+	Retry     *RetryConfigYAML   `yaml:"retry,omitempty"`
+}
+
 type ParsedPlaybook struct {
 	Raw           *Playbook
 	Variables     map[string]interface{}
 	ExecutionMode ExecutionMode
+	DefaultConfig *PlaybookDefaultConfig
 	Tasks         []*ParsedTask
 	PreTasks      []*ParsedTask
 	PostTasks     []*ParsedTask
@@ -148,11 +159,12 @@ func (p *Parser) Parse(content string) (*ParsedPlaybook, error) {
 	}
 
 	parsed := &ParsedPlaybook{
-		Raw:       &raw,
-		Variables: p.processVariables(raw.Vars),
-		Tasks:     make([]*ParsedTask, 0),
-		PreTasks:  make([]*ParsedTask, 0),
-		PostTasks: make([]*ParsedTask, 0),
+		Raw:           &raw,
+		Variables:     p.processVariables(raw.Vars),
+		DefaultConfig: raw.Default,
+		Tasks:         make([]*ParsedTask, 0),
+		PreTasks:      make([]*ParsedTask, 0),
+		PostTasks:     make([]*ParsedTask, 0),
 	}
 
 	// 解析执行模式

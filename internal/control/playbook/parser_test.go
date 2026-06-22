@@ -800,6 +800,164 @@ func TestConditionEvaluator_StringComparison(t *testing.T) {
 	})
 }
 
+func TestParser_ParseWithDescription(t *testing.T) {
+	parser := NewParser()
+
+	content := `
+name: Test Playbook
+description: 这是一个测试剧本
+hosts:
+  - web
+tasks:
+  - name: task 1
+    action: command
+    args:
+      cmd: echo hello
+`
+
+	parsed, err := parser.Parse(content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if parsed.Raw.Description != "这是一个测试剧本" {
+		t.Errorf("expected description '这是一个测试剧本', got '%s'", parsed.Raw.Description)
+	}
+}
+
+func TestParser_ParseWithDefaultBlock(t *testing.T) {
+	parser := NewParser()
+
+	content := `
+name: Test Playbook
+hosts:
+  - web
+default:
+  groups:
+    - web
+    - db
+  tags:
+    - deploy
+  skip_tags:
+    - debug
+tasks:
+  - name: task 1
+    action: command
+    args:
+      cmd: echo hello
+`
+
+	parsed, err := parser.Parse(content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if parsed.DefaultConfig == nil {
+		t.Fatal("expected DefaultConfig to be parsed")
+	}
+
+	if len(parsed.DefaultConfig.Groups) != 2 {
+		t.Errorf("expected 2 groups, got %d", len(parsed.DefaultConfig.Groups))
+	}
+	if parsed.DefaultConfig.Groups[0] != "web" {
+		t.Errorf("expected first group 'web', got '%s'", parsed.DefaultConfig.Groups[0])
+	}
+	if parsed.DefaultConfig.Groups[1] != "db" {
+		t.Errorf("expected second group 'db', got '%s'", parsed.DefaultConfig.Groups[1])
+	}
+
+	if len(parsed.DefaultConfig.Tags) != 1 {
+		t.Errorf("expected 1 tag, got %d", len(parsed.DefaultConfig.Tags))
+	}
+	if parsed.DefaultConfig.Tags[0] != "deploy" {
+		t.Errorf("expected tag 'deploy', got '%s'", parsed.DefaultConfig.Tags[0])
+	}
+
+	if len(parsed.DefaultConfig.SkipTags) != 1 {
+		t.Errorf("expected 1 skip_tag, got %d", len(parsed.DefaultConfig.SkipTags))
+	}
+	if parsed.DefaultConfig.SkipTags[0] != "debug" {
+		t.Errorf("expected skip_tag 'debug', got '%s'", parsed.DefaultConfig.SkipTags[0])
+	}
+}
+
+func TestParser_ParseWithDefaultTimeoutRetry(t *testing.T) {
+	parser := NewParser()
+
+	content := `
+name: Test Playbook
+hosts:
+  - web
+default:
+  timeout:
+    connect: 10s
+    command: 5m
+  retry:
+    max: 3
+    interval: 2s
+    max_interval: 30s
+tasks:
+  - name: task 1
+    action: command
+    args:
+      cmd: echo hello
+`
+
+	parsed, err := parser.Parse(content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if parsed.DefaultConfig == nil {
+		t.Fatal("expected DefaultConfig to be parsed")
+	}
+
+	if parsed.DefaultConfig.Timeout == nil {
+		t.Fatal("expected Timeout in default block")
+	}
+	if parsed.DefaultConfig.Timeout.Connect != "10s" {
+		t.Errorf("expected connect timeout '10s', got '%s'", parsed.DefaultConfig.Timeout.Connect)
+	}
+	if parsed.DefaultConfig.Timeout.Command != "5m" {
+		t.Errorf("expected command timeout '5m', got '%s'", parsed.DefaultConfig.Timeout.Command)
+	}
+
+	if parsed.DefaultConfig.Retry == nil {
+		t.Fatal("expected Retry in default block")
+	}
+	if parsed.DefaultConfig.Retry.Max != 3 {
+		t.Errorf("expected max retries 3, got %d", parsed.DefaultConfig.Retry.Max)
+	}
+	if parsed.DefaultConfig.Retry.Interval != "2s" {
+		t.Errorf("expected retry interval '2s', got '%s'", parsed.DefaultConfig.Retry.Interval)
+	}
+	if parsed.DefaultConfig.Retry.MaxInterval != "30s" {
+		t.Errorf("expected max retry interval '30s', got '%s'", parsed.DefaultConfig.Retry.MaxInterval)
+	}
+}
+
+func TestParser_ParseWithoutDefaultBlock(t *testing.T) {
+	parser := NewParser()
+
+	content := `
+name: Test Playbook
+hosts:
+  - web
+tasks:
+  - name: task 1
+    action: command
+`
+
+	parsed, err := parser.Parse(content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if parsed.DefaultConfig != nil {
+		t.Error("expected DefaultConfig to be nil when no default block in YAML")
+	}
+}
+
 func TestParser_ValidatePipelineMode(t *testing.T) {
 	parser := NewParser()
 
