@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	common "github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 )
@@ -49,18 +50,15 @@ func runPlaybookList(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// 查找所有 YAML 文件
+	// 查找所有 YAML 文件，并解析元数据
 	var playbooks []PlaybookInfo
 	err := filepath.Walk(library, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() && (strings.HasSuffix(path, ".yml") || strings.HasSuffix(path, ".yaml")) {
-			playbooks = append(playbooks, PlaybookInfo{
-				Name: info.Name(),
-				Path: path,
-				Size: info.Size(),
-			})
+			meta := ReadPlaybookMeta(path)
+			playbooks = append(playbooks, meta)
 		}
 		return nil
 	})
@@ -106,13 +104,23 @@ func displayPlaybookList(playbooks []PlaybookInfo) {
 }
 
 func displayPlaybooksTable(playbooks []PlaybookInfo) {
-	fmt.Printf("%s %s %s\n",
-		common.PadRight("Name", 30), common.PadRight("Path", 50), common.PadRight("Size", 10))
-	fmt.Println(strings.Repeat("-", 93))
+	fmt.Printf("%s %s %s %s %s\n",
+		common.PadRight("Name", 25), common.PadRight("Description", 35), common.PadRight("Tasks", 8), common.PadRight("Path", 50), common.PadRight("Size", 10))
+	fmt.Println(strings.Repeat("-", 130))
 	for _, pb := range playbooks {
 		size := formatSize(pb.Size)
-		fmt.Printf("%s %s %s\n",
-			common.PadRight(common.TruncateByWidth(pb.Name, 30), 30),
+		desc := pb.Description
+		if desc == "" {
+			desc = "-"
+		}
+		tasks := fmt.Sprintf("%d", pb.TasksCount)
+		if pb.TasksCount == 0 {
+			tasks = "-"
+		}
+		fmt.Printf("%s %s %s %s %s\n",
+			common.PadRight(common.TruncateByWidth(pb.Name, 25), 25),
+			common.PadRight(common.TruncateByWidth(desc, 35), 35),
+			common.PadRight(tasks, 8),
 			common.PadRight(common.TruncateByWidth(pb.Path, 50), 50),
 			common.PadRight(size, 10))
 	}
@@ -128,7 +136,9 @@ func displayPlaybooksJSON(playbooks []PlaybookInfo) {
 		if i == len(playbooks)-1 {
 			comma = ""
 		}
-		fmt.Printf("    {\"name\": \"%s\", \"path\": \"%s\", \"size\": %d}%s\n", pb.Name, pb.Path, pb.Size, comma)
+		desc := pb.Description
+		fmt.Printf("    {\"name\": \"%s\", \"description\": \"%s\", \"tasks\": %d, \"path\": \"%s\", \"size\": %d}%s\n",
+			pb.Name, desc, pb.TasksCount, pb.Path, pb.Size, comma)
 	}
 	fmt.Println("  ]")
 	fmt.Println("}")
@@ -140,6 +150,8 @@ func displayPlaybooksYAML(playbooks []PlaybookInfo) {
 	fmt.Println("playbooks:")
 	for _, pb := range playbooks {
 		fmt.Printf("  - name: %s\n", pb.Name)
+		fmt.Printf("    description: \"%s\"\n", pb.Description)
+		fmt.Printf("    tasks: %d\n", pb.TasksCount)
 		fmt.Printf("    path: %s\n", pb.Path)
 		fmt.Printf("    size: %d\n", pb.Size)
 	}
@@ -147,9 +159,47 @@ func displayPlaybooksYAML(playbooks []PlaybookInfo) {
 
 // PlaybookInfo 剧本信息
 type PlaybookInfo struct {
-	Name string
-	Path string
-	Size int64
+	Name        string
+	Description string
+	TasksCount  int
+	Path        string
+	Size        int64
+}
+
+// playbookMeta 轻量级 YAML 元数据结构，用于 list 命令解析
+// 只读取顶层字段，不做完整验证
+type playbookMeta struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	Tasks       []any  `yaml:"tasks"`
+}
+
+// ReadPlaybookMeta 轻量读取 playbook 元数据（name, description, tasks 数量）
+func ReadPlaybookMeta(path string) PlaybookInfo {
+	info := PlaybookInfo{
+		Name: filepath.Base(path),
+		Path: path,
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return info
+	}
+
+	var meta playbookMeta
+	if err := yaml.Unmarshal(data, &meta); err != nil {
+		return info
+	}
+
+	info.Description = meta.Description
+	info.TasksCount = len(meta.Tasks)
+
+	// 获取文件大小
+	if fi, err := os.Stat(path); err == nil {
+		info.Size = fi.Size()
+	}
+
+	return info
 }
 
 func formatSize(size int64) string {

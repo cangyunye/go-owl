@@ -68,12 +68,19 @@ var actionTemplates = []ActionTemplate{
 	},
 }
 
+type TemplateDefaultConfig struct {
+	Groups   []string `yaml:"groups,omitempty"`
+	Tags     []string `yaml:"tags,omitempty"`
+	SkipTags []string `yaml:"skip_tags,omitempty"`
+}
+
 type TemplatePlaybook struct {
 	Name          string                 `yaml:"name"`
 	Description   string                 `yaml:"description,omitempty"`
 	Version       string                 `yaml:"version,omitempty"`
 	Hosts         []string               `yaml:"hosts"`
 	ExecutionMode string                 `yaml:"execution_mode,omitempty"`
+	Default       *TemplateDefaultConfig `yaml:"default,omitempty"`
 	Vars          map[string]interface{} `yaml:"vars,omitempty"`
 	PreTasks      []TemplateTask         `yaml:"pre_tasks"`
 	Tasks         []TemplateTask         `yaml:"tasks"`
@@ -116,6 +123,7 @@ func runPlaybookTemplate(cmd *cobra.Command, args []string) {
 	version := promptForVersion(reader)
 	vars := promptForVars(reader)
 	mode := promptForExecutionMode(reader)
+	defaultConfig := promptForDefaultConfig(reader)
 	tasks := promptForTasks(reader)
 
 	playbook := TemplatePlaybook{
@@ -124,6 +132,7 @@ func runPlaybookTemplate(cmd *cobra.Command, args []string) {
 		Version:       version,
 		Hosts:         []string{},
 		ExecutionMode: mode,
+		Default:       defaultConfig,
 		Vars:          vars,
 		PreTasks:      []TemplateTask{},
 		Tasks:         tasks,
@@ -256,6 +265,71 @@ func promptForExecutionMode(reader *bufio.Reader) string {
 		return "pipeline"
 	}
 	return ""
+}
+
+func promptForDefaultConfig(reader *bufio.Reader) *TemplateDefaultConfig {
+	fmt.Print("是否配置默认值（分组/标签）？(y/n，默认 n): ")
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		os.Exit(1)
+	}
+	choice := strings.ToLower(strings.TrimSpace(input))
+	if choice != "y" && choice != "yes" {
+		return nil
+	}
+
+	cfg := &TemplateDefaultConfig{}
+
+	fmt.Print("默认目标分组 (group，多个用逗号分隔，可选): ")
+	input, err = reader.ReadString('\n')
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		os.Exit(1)
+	}
+	groups := strings.TrimSpace(input)
+	if groups != "" {
+		for _, g := range strings.Split(groups, ",") {
+			g = strings.TrimSpace(g)
+			if g != "" {
+				cfg.Groups = append(cfg.Groups, g)
+			}
+		}
+	}
+
+	fmt.Print("默认执行标签 (tags，多个用逗号分隔，可选): ")
+	input, err = reader.ReadString('\n')
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		os.Exit(1)
+	}
+	tags := strings.TrimSpace(input)
+	if tags != "" {
+		for _, t := range strings.Split(tags, ",") {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				cfg.Tags = append(cfg.Tags, t)
+			}
+		}
+	}
+
+	fmt.Print("默认跳过标签 (skip_tags，多个用逗号分隔，可选): ")
+	input, err = reader.ReadString('\n')
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		os.Exit(1)
+	}
+	skipTags := strings.TrimSpace(input)
+	if skipTags != "" {
+		for _, t := range strings.Split(skipTags, ",") {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				cfg.SkipTags = append(cfg.SkipTags, t)
+			}
+		}
+	}
+
+	return cfg
 }
 
 func promptForTasks(reader *bufio.Reader) []TemplateTask {

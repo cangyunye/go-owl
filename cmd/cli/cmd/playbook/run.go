@@ -205,15 +205,25 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 
 	nodeResolver := node.NewNodeResolver()
 
-	// 从剧本中获取 hosts 配置
+	// 从剧本中获取 hosts 和默认配置
 	var playbookHosts []string
+	var parsedPlaybook *pbexec.ParsedPlaybook
 	// 检查剧本文件是否存在
 	if _, err := os.Stat(playbookFile); !os.IsNotExist(err) {
-		// 解析剧本文件获取 hosts
+		// 解析剧本文件获取 hosts 和默认配置
 		parser := pbexec.NewParser()
-		parsedPlaybook, err := parser.ParseFromFile(playbookFile)
+		parsedPlaybook, err = parser.ParseFromFile(playbookFile)
 		if err == nil && parsedPlaybook.Raw != nil {
 			playbookHosts = parsedPlaybook.Raw.Hosts
+
+			// 将 YAML default 配置合并到 CLI 参数中（CLI 优先）
+			if parsedPlaybook.DefaultConfig != nil {
+				defaultCfg := parsedPlaybook.DefaultConfig
+				pbRunGroup, pbRunTags, pbRunSkipTags = ApplyDefaultConfig(
+					pbRunGroup, pbRunTags, pbRunSkipTags,
+					defaultCfg.Groups, defaultCfg.Tags, defaultCfg.SkipTags,
+				)
+			}
 		}
 	}
 
@@ -257,18 +267,50 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		fmt.Printf("Retry: max=%d, interval=%v, max-interval=%v\n", retryCfg.MaxRetries, retryCfg.InitialInterval, retryCfg.MaxInterval)
 	}
 
-	// 检查剧本文件是否存在
-	if _, err := os.Stat(playbookFile); os.IsNotExist(err) {
-		runSamplePlaybook(targetNodes)
-		return
+	// 确保剧本已解析。如果第一次解析成功则复用，否则重新解析
+	if parsedPlaybook == nil || parsedPlaybook.Raw == nil {
+		if _, err := os.Stat(playbookFile); os.IsNotExist(err) {
+			runSamplePlaybook(targetNodes)
+			return
+		}
+		parser := pbexec.NewParser()
+		parsedPlaybook, err = parser.ParseFromFile(playbookFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 解析剧本文件失败: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
-	// 解析剧本文件
-	parser := pbexec.NewParser()
-	parsedPlaybook, err := parser.ParseFromFile(playbookFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "错误: 解析剧本文件失败: %v\n", err)
-		os.Exit(1)
+	// 从 YAML default 块合并 timeout/retry（如果 CLI 未指定）
+	if parsedPlaybook.DefaultConfig != nil {
+		defaultCfg := parsedPlaybook.DefaultConfig
+		if defaultCfg.Timeout != nil {
+			if !cmd.Flags().Changed("default-connect-timeout") && defaultCfg.Timeout.Connect != "" {
+				if d, err := time.ParseDuration(defaultCfg.Timeout.Connect); err == nil {
+					pbRunDefaultConnectTimeout = d
+				}
+			}
+			if !cmd.Flags().Changed("default-command-timeout") && defaultCfg.Timeout.Command != "" {
+				if d, err := time.ParseDuration(defaultCfg.Timeout.Command); err == nil {
+					pbRunDefaultCommandTimeout = d
+				}
+			}
+		}
+		if defaultCfg.Retry != nil {
+			if !cmd.Flags().Changed("default-retry") && defaultCfg.Retry.Max > 0 {
+				pbRunDefaultRetry = defaultCfg.Retry.Max
+			}
+			if !cmd.Flags().Changed("default-retry-interval") && defaultCfg.Retry.Interval != "" {
+				if d, err := time.ParseDuration(defaultCfg.Retry.Interval); err == nil {
+					pbRunDefaultRetryInterval = d
+				}
+			}
+			if !cmd.Flags().Changed("default-retry-max-interval") && defaultCfg.Retry.MaxInterval != "" {
+				if d, err := time.ParseDuration(defaultCfg.Retry.MaxInterval); err == nil {
+					pbRunDefaultRetryMaxInterval = d
+				}
+			}
+		}
 	}
 
 	// 解析节点完整信息
@@ -481,9 +523,21 @@ func selectPlaybookRunTargetNodes(resolver *node.NodeResolver, playbookHosts []s
 			}
 		}
 	} else if pbRunGroup != "" {
-		nodes, err = resolver.ListNodes(&node.ListOptions{Group: pbRunGroup})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 按分组查询节点失败: %v\n", err)
+		// 支持逗号分隔的多个分组，节点去重
+		groups := parseNodeIDsList(pbRunGroup)
+		seen := make(map[string]bool)
+		for _, group := range groups {
+			groupNodes, err := resolver.ListNodes(&node.ListOptions{Group: group})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "警告: 按分组 '%s' 查询节点失败: %v\n", group, err)
+				continue
+			}
+			for _, rn := range groupNodes {
+				if !seen[rn.ID] {
+					seen[rn.ID] = true
+					nodes = append(nodes, rn)
+				}
+			}
 		}
 	} else if len(pbRunLabel) > 0 {
 		nodes, err = resolver.ListNodes(&node.ListOptions{Label: pbRunLabel[0]})
@@ -613,6 +667,30 @@ func parsePlaybookRunExtraVars(vars []string) map[string]interface{} {
 		}
 	}
 	return result
+}
+
+// ApplyDefaultConfig 将 YAML default 块中的默认值应用到 CLI 参数上。
+// CLI 参数非空时优先使用 CLI 参数（完全替换），否则使用 YAML default。
+// 返回合并后的 group, tags, skip_tags 值（逗号分隔字符串形式）。
+func ApplyDefaultConfig(cliGroup, cliTags, cliSkipTags string,
+	defaultGroups, defaultTags, defaultSkipTags []string) (string, string, string) {
+
+	group := cliGroup
+	if group == "" && len(defaultGroups) > 0 {
+		group = strings.Join(defaultGroups, ",")
+	}
+
+	tags := cliTags
+	if tags == "" && len(defaultTags) > 0 {
+		tags = strings.Join(defaultTags, ",")
+	}
+
+	skipTags := cliSkipTags
+	if skipTags == "" && len(defaultSkipTags) > 0 {
+		skipTags = strings.Join(defaultSkipTags, ",")
+	}
+
+	return group, tags, skipTags
 }
 
 func runSamplePlaybook(nodes []*model.Node) {
