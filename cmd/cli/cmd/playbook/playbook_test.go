@@ -35,9 +35,11 @@ func TestPlaybookRunFlags(t *testing.T) {
 	cmd := playbook.NewPlaybookRunCmd()
 
 	testutil.AssertFlagExists(t, cmd, "nodes")
+	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
 	testutil.AssertFlagExists(t, cmd, "group")
+	testutil.AssertFlagShorthand(t, cmd, "group", "g")
 	testutil.AssertFlagDefault(t, cmd, "group", "")
 
 	testutil.AssertFlagExists(t, cmd, "label")

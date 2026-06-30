@@ -38,12 +38,14 @@ func TestSettingsTargetFlags(t *testing.T) {
 	cmd := settings.NewSettingsTargetCmd()
 
 	testutil.AssertFlagExists(t, cmd, "group")
+	testutil.AssertFlagShorthand(t, cmd, "group", "g")
 	testutil.AssertFlagDefault(t, cmd, "group", "")
 
 	testutil.AssertFlagExists(t, cmd, "label")
 	testutil.AssertFlagShorthand(t, cmd, "label", "l")
 
 	testutil.AssertFlagExists(t, cmd, "nodes")
+	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 }
 

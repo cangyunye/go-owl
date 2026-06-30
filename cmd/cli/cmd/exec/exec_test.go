@@ -31,9 +31,11 @@ func TestExecRunFlags(t *testing.T) {
 	testutil.AssertFlagShorthand(t, cmd, "label", "l")
 
 	testutil.AssertFlagExists(t, cmd, "status")
+	testutil.AssertFlagShorthand(t, cmd, "status", "S")
 	testutil.AssertFlagDefault(t, cmd, "status", "")
 
 	testutil.AssertFlagExists(t, cmd, "timeout")
+	testutil.AssertFlagShorthand(t, cmd, "timeout", "t")
 	testutil.AssertFlagDefault(t, cmd, "timeout", "1m0s")
 
 	testutil.AssertFlagExists(t, cmd, "connect-timeout")
@@ -80,6 +82,7 @@ func TestExecRunFlags(t *testing.T) {
 	testutil.AssertFlagDefault(t, cmd, "format", "simple")
 
 	testutil.AssertFlagExists(t, cmd, "no-color")
+	testutil.AssertFlagShorthand(t, cmd, "no-color", "C")
 	testutil.AssertFlagDefault(t, cmd, "no-color", "false")
 
 	testutil.AssertFlagExists(t, cmd, "debug")
@@ -98,9 +101,11 @@ func TestExecScriptFlags(t *testing.T) {
 	cmd := exec.NewScriptCmd()
 
 	testutil.AssertFlagExists(t, cmd, "nodes")
+	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
 	testutil.AssertFlagExists(t, cmd, "group")
+	testutil.AssertFlagShorthand(t, cmd, "group", "g")
 	testutil.AssertFlagDefault(t, cmd, "group", "")
 
 	testutil.AssertFlagExists(t, cmd, "label")
@@ -113,6 +118,7 @@ func TestExecScriptFlags(t *testing.T) {
 	testutil.AssertFlagDefault(t, cmd, "args", "")
 
 	testutil.AssertFlagExists(t, cmd, "timeout")
+	testutil.AssertFlagShorthand(t, cmd, "timeout", "t")
 	testutil.AssertFlagDefault(t, cmd, "timeout", "5m0s")
 
 	testutil.AssertFlagExists(t, cmd, "inline")

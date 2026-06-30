@@ -22,6 +22,7 @@ func TestSessionAttachFlags(t *testing.T) {
 	cmd := session.NewAttachCmd()
 
 	testutil.AssertFlagExists(t, cmd, "nodes")
+	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
 	testutil.AssertFlagExists(t, cmd, "ssh-config")

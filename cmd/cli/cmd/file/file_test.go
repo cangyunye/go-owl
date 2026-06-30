@@ -22,9 +22,11 @@ func TestFileUploadFlags(t *testing.T) {
 	cmd := file.NewUploadCmd()
 
 	testutil.AssertFlagExists(t, cmd, "nodes")
+	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
 	testutil.AssertFlagExists(t, cmd, "group")
+	testutil.AssertFlagShorthand(t, cmd, "group", "g")
 	testutil.AssertFlagDefault(t, cmd, "group", "")
 
 	testutil.AssertFlagExists(t, cmd, "label")
@@ -41,12 +43,14 @@ func TestFileUploadFlags(t *testing.T) {
 	testutil.AssertFlagDefault(t, cmd, "parallel", "true")
 
 	testutil.AssertFlagExists(t, cmd, "overwrite")
+	testutil.AssertFlagShorthand(t, cmd, "overwrite", "O")
 	testutil.AssertFlagDefault(t, cmd, "overwrite", "false")
 
 	testutil.AssertFlagExists(t, cmd, "no-overwrite")
 	testutil.AssertFlagDefault(t, cmd, "no-overwrite", "false")
 
 	testutil.AssertFlagExists(t, cmd, "resume")
+	testutil.AssertFlagShorthand(t, cmd, "resume", "r")
 	testutil.AssertFlagDefault(t, cmd, "resume", "true")
 }
 
@@ -54,9 +58,11 @@ func TestFileDownloadFlags(t *testing.T) {
 	cmd := file.NewDownloadCmd()
 
 	testutil.AssertFlagExists(t, cmd, "nodes")
+	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
 	testutil.AssertFlagExists(t, cmd, "group")
+	testutil.AssertFlagShorthand(t, cmd, "group", "g")
 	testutil.AssertFlagDefault(t, cmd, "group", "")
 
 	testutil.AssertFlagExists(t, cmd, "label")
@@ -79,6 +85,7 @@ func TestFileDownloadFlags(t *testing.T) {
 	testutil.AssertFlagDefault(t, cmd, "name-format", "")
 
 	testutil.AssertFlagExists(t, cmd, "resume")
+	testutil.AssertFlagShorthand(t, cmd, "resume", "r")
 	testutil.AssertFlagDefault(t, cmd, "resume", "true")
 }
 
@@ -86,12 +93,14 @@ func TestFileTransferFlags(t *testing.T) {
 	cmd := file.NewTransferCmd()
 
 	testutil.AssertFlagExists(t, cmd, "nodes")
+	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
 	testutil.AssertFlagExists(t, cmd, "all-nodes")
 	testutil.AssertFlagDefault(t, cmd, "all-nodes", "false")
 
 	testutil.AssertFlagExists(t, cmd, "group")
+	testutil.AssertFlagShorthand(t, cmd, "group", "g")
 	testutil.AssertFlagDefault(t, cmd, "group", "")
 
 	testutil.AssertFlagExists(t, cmd, "label")

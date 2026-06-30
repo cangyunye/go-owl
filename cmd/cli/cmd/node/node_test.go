@@ -43,6 +43,7 @@ func TestNodeAddFlags(t *testing.T) {
 	testutil.AssertFlagDefault(t, cmd, "user", "")
 
 	testutil.AssertFlagExists(t, cmd, "password")
+	testutil.AssertFlagShorthand(t, cmd, "password", "P")
 	testutil.AssertFlagExists(t, cmd, "ssh-key")
 	testutil.AssertFlagExists(t, cmd, "proxy-jump")
 	testutil.AssertFlagExists(t, cmd, "groups")
@@ -58,9 +59,12 @@ func TestNodeListFlags(t *testing.T) {
 	testutil.AssertFlagDefault(t, cmd, "format", "table")
 
 	testutil.AssertFlagExists(t, cmd, "group")
+	testutil.AssertFlagShorthand(t, cmd, "group", "g")
 	testutil.AssertFlagExists(t, cmd, "label")
 	testutil.AssertFlagExists(t, cmd, "status")
+	testutil.AssertFlagShorthand(t, cmd, "status", "S")
 	testutil.AssertFlagExists(t, cmd, "no-color")
+	testutil.AssertFlagShorthand(t, cmd, "no-color", "C")
 }
 
 func TestNodeUpdateFlags(t *testing.T) {
@@ -80,12 +84,14 @@ func TestNodeUpdateFlags(t *testing.T) {
 	testutil.AssertFlagShorthand(t, cmd, "user", "u")
 
 	testutil.AssertFlagExists(t, cmd, "password")
+	testutil.AssertFlagShorthand(t, cmd, "password", "P")
 	testutil.AssertFlagExists(t, cmd, "ssh-key")
 	testutil.AssertFlagExists(t, cmd, "proxy-jump")
 	testutil.AssertFlagExists(t, cmd, "groups")
 	testutil.AssertFlagExists(t, cmd, "labels")
 	testutil.AssertFlagShorthand(t, cmd, "labels", "l")
 	testutil.AssertFlagExists(t, cmd, "status")
+	testutil.AssertFlagShorthand(t, cmd, "status", "S")
 }
 
 func TestNodeRemoveCmd(t *testing.T) {
@@ -101,10 +107,12 @@ func TestNodeStatusFlags(t *testing.T) {
 	cmd := node.NewStatusCmd()
 
 	testutil.AssertFlagExists(t, cmd, "all")
+	testutil.AssertFlagShorthand(t, cmd, "all", "a")
 	testutil.AssertFlagExists(t, cmd, "output")
 	testutil.AssertFlagShorthand(t, cmd, "output", "o")
 	testutil.AssertFlagDefault(t, cmd, "output", "detail")
 	testutil.AssertFlagExists(t, cmd, "no-color")
+	testutil.AssertFlagShorthand(t, cmd, "no-color", "C")
 }
 
 func TestNodeGroupsSubcommands(t *testing.T) {
@@ -163,6 +171,7 @@ func TestNodeImportFlags(t *testing.T) {
 	testutil.AssertFlagShorthand(t, cmd, "file", "f")
 
 	testutil.AssertFlagExists(t, cmd, "overwrite")
+	testutil.AssertFlagShorthand(t, cmd, "overwrite", "O")
 	testutil.AssertFlagDefault(t, cmd, "overwrite", "false")
 
 	testutil.AssertFlagExists(t, cmd, "skip-existing")
@@ -198,6 +207,7 @@ func TestNodePingFlags(t *testing.T) {
 	cmd := node.NewPingCmd()
 
 	testutil.AssertFlagExists(t, cmd, "all")
+	testutil.AssertFlagShorthand(t, cmd, "all", "a")
 	testutil.AssertFlagDefault(t, cmd, "all", "false")
 
 	testutil.AssertFlagExists(t, cmd, "timeout")
@@ -209,6 +219,7 @@ func TestNodeCheckFlags(t *testing.T) {
 	cmd := node.NewCheckCmd()
 
 	testutil.AssertFlagExists(t, cmd, "all")
+	testutil.AssertFlagShorthand(t, cmd, "all", "a")
 	testutil.AssertFlagDefault(t, cmd, "all", "false")
 
 	testutil.AssertFlagExists(t, cmd, "timeout")
