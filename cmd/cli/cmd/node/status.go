@@ -31,11 +31,11 @@ func NewStatusCmd() *cobra.Command {
 		Run:  runStatus,
 	}
 
-	statusCmd.Flags().BoolVar(&statusAll, "all", false,
+	statusCmd.Flags().BoolVarP(&statusAll, "all", "a", false,
 		"显示所有节点状态")
 	statusCmd.Flags().StringVarP(&statusFormat, "output", "o", "detail",
 		"输出格式: detail, json, yaml")
-	statusCmd.Flags().BoolVar(&statusNoColor, "no-color", false,
+	statusCmd.Flags().BoolVarP(&statusNoColor, "no-color", "C", false,
 		"禁用颜色输出")
 
 	return statusCmd

@@ -27,11 +27,11 @@ func NewSettingsTargetCmd() *cobra.Command {
 		Run: runSettingsTarget,
 	}
 
-	targetCmd.Flags().StringVar(&targetGroup, "group", "",
+	targetCmd.Flags().StringVarP(&targetGroup, "group", "g", "",
 		"默认分组")
 	targetCmd.Flags().StringSliceVarP(&targetLabel, "label", "l", nil,
 		"默认标签")
-	targetCmd.Flags().StringVar(&targetNodes, "nodes", "",
+	targetCmd.Flags().StringVarP(&targetNodes, "nodes", "N", "",
 		"默认节点")
 
 	return targetCmd

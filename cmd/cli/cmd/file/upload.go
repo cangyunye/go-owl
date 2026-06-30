@@ -48,9 +48,9 @@ func NewUploadCmd() *cobra.Command {
 		Run:  runUpload,
 	}
 
-	uploadCmd.Flags().StringVar(&uploadNodes, "nodes", "",
+	uploadCmd.Flags().StringVarP(&uploadNodes, "nodes", "N", "",
 		"指定节点 ID (逗号分隔)")
-	uploadCmd.Flags().StringVar(&uploadGroup, "group", "",
+	uploadCmd.Flags().StringVarP(&uploadGroup, "group", "g", "",
 		"按分组选择节点")
 	uploadCmd.Flags().StringSliceVarP(&uploadLabel, "label", "l", nil,
 		"按标签选择节点")
@@ -60,11 +60,11 @@ func NewUploadCmd() *cobra.Command {
 		"文件权限")
 	uploadCmd.Flags().BoolVar(&uploadParallel, "parallel", true,
 		"并行上传到多个节点")
-	uploadCmd.Flags().BoolVar(&uploadOverwrite, "overwrite", false,
+	uploadCmd.Flags().BoolVarP(&uploadOverwrite, "overwrite", "O", false,
 		"覆盖已存在的文件")
 	uploadCmd.Flags().BoolVar(&uploadNoOverwrite, "no-overwrite", false,
 		"如果文件已存在则跳过上传")
-	uploadCmd.Flags().BoolVar(&uploadResume, "resume", true,
+	uploadCmd.Flags().BoolVarP(&uploadResume, "resume", "r", true,
 		"启用断点续传（rsync 优先）")
 
 	return uploadCmd

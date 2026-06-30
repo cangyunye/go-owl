@@ -56,7 +56,7 @@ func NewAddCmd() *cobra.Command {
 		"节点端口 (默认: 22)")
 	addCmd.Flags().StringVarP(&addUser, "user", "u", "",
 		"SSH 用户 (默认: 当前用户)")
-	addCmd.Flags().StringVar(&addPassword, "password", "",
+	addCmd.Flags().StringVarP(&addPassword, "password", "P", "",
 		"SSH 密码")
 	addCmd.Flags().StringVar(&addSSHKey, "ssh-key", "",
 		"SSH 私钥文件路径")

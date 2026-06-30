@@ -30,7 +30,7 @@ func NewAttachCmd() *cobra.Command {
 		RunE:  runAttach,
 	}
 
-	attachCmd.Flags().StringVar(&attachNodes, "nodes", "",
+	attachCmd.Flags().StringVarP(&attachNodes, "nodes", "N", "",
 		"多节点模式，指定节点列表（逗号分隔）")
 	attachCmd.Flags().StringVar(&attachSSHConfig, "ssh-config", "",
 		"SSH config 路径（默认: ~/.ssh/config）")

@@ -56,7 +56,7 @@ func NewUpdateCmd() *cobra.Command {
 		"节点端口")
 	updateCmd.Flags().StringVarP(&updateUser, "user", "u", "",
 		"SSH 用户")
-	updateCmd.Flags().StringVar(&updatePassword, "password", "",
+	updateCmd.Flags().StringVarP(&updatePassword, "password", "P", "",
 		"SSH 密码")
 	updateCmd.Flags().StringVar(&updateSSHKey, "ssh-key", "",
 		"SSH 私钥文件路径")
@@ -68,7 +68,7 @@ func NewUpdateCmd() *cobra.Command {
 		"标签 (格式: key=value)")
 	updateCmd.Flags().StringSliceVar(&updateLabels, "label", nil,
 		"标签 (格式: key=value) (alias)")
-	updateCmd.Flags().StringVar(&updateStatus, "status", "",
+	updateCmd.Flags().StringVarP(&updateStatus, "status", "S", "",
 		"节点状态 (online/offline)")
 
 	return updateCmd

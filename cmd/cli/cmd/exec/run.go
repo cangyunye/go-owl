@@ -71,15 +71,15 @@ func NewRunCmd() *cobra.Command {
 		Run:  runExecRun,
 	}
 
-	runCmd.Flags().StringVar(&execNodes, "nodes", "",
+	runCmd.Flags().StringVarP(&execNodes, "nodes", "N", "",
 		"指定节点 ID (逗号分隔)")
-	runCmd.Flags().StringVar(&execGroup, "group", "",
+	runCmd.Flags().StringVarP(&execGroup, "group", "g", "",
 		"按分组选择节点")
 	runCmd.Flags().StringSliceVarP(&execLabel, "label", "l", nil,
 		"按标签选择节点 (格式: key=value)")
-	runCmd.Flags().StringVar(&execStatus, "status", "",
+	runCmd.Flags().StringVarP(&execStatus, "status", "S", "",
 		"按状态选择节点: online, offline")
-	runCmd.Flags().DurationVar(&execTimeout, "timeout", 60*time.Second,
+	runCmd.Flags().DurationVarP(&execTimeout, "timeout", "t", 60*time.Second,
 		"命令执行超时时间 (已废弃，推荐使用 --connect-timeout 和 --command-timeout)")
 	runCmd.Flags().DurationVar(&execConnectTimeout, "connect-timeout", 10*time.Second,
 		"SSH 连接超时时间")
@@ -109,7 +109,7 @@ func NewRunCmd() *cobra.Command {
 		"异步任务远程工作目录")
 	runCmd.Flags().StringVarP(&execFormat, "format", "o", "simple",
 		"输出格式: simple, detail, json")
-	runCmd.Flags().BoolVar(&execNoColor, "no-color", false,
+	runCmd.Flags().BoolVarP(&execNoColor, "no-color", "C", false,
 		"禁用颜色输出")
 	runCmd.Flags().BoolVar(&execDebug, "debug", false,
 		"Debug 模式，显示详细的执行过程和错误信息")

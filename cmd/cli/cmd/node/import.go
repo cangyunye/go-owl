@@ -56,7 +56,7 @@ func NewImportCmd() *cobra.Command {
 
 	importCmd.Flags().StringVarP(&opts.filePath, "file", "f", "",
 		"导入文件路径 (YAML/JSON)")
-	importCmd.Flags().BoolVar(&opts.overwrite, "overwrite", false,
+	importCmd.Flags().BoolVarP(&opts.overwrite, "overwrite", "O", false,
 		"覆盖已存在的节点")
 	importCmd.Flags().BoolVar(&opts.skipExisting, "skip-existing", false,
 		"跳过已存在的节点")

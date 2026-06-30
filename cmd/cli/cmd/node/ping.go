@@ -39,7 +39,7 @@ func NewPingCmd() *cobra.Command {
 		},
 	}
 
-	pingCmd.Flags().BoolVar(&pingAll, "all", false, "检查所有节点")
+	pingCmd.Flags().BoolVarP(&pingAll, "all", "a", false, "检查所有节点")
 	pingCmd.Flags().DurationVarP(&pingTimeout, "timeout", "t", 3*time.Second, "每个 ping 的超时时间")
 	pingCmd.Flags().IntVarP(&pingCount, "count", "n", 1, "ping 次数（支持浮点数表示间隔时间）")
 

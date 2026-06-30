@@ -44,9 +44,9 @@ func NewScriptCmd() *cobra.Command {
 		Run:  runScript,
 	}
 
-	scriptCmd.Flags().StringVar(&scriptNodes, "nodes", "",
+	scriptCmd.Flags().StringVarP(&scriptNodes, "nodes", "N", "",
 		"指定节点 ID (逗号分隔)")
-	scriptCmd.Flags().StringVar(&scriptGroup, "group", "",
+	scriptCmd.Flags().StringVarP(&scriptGroup, "group", "g", "",
 		"按分组选择节点")
 	scriptCmd.Flags().StringSliceVarP(&scriptLabel, "label", "l", nil,
 		"按标签选择节点")
@@ -54,7 +54,7 @@ func NewScriptCmd() *cobra.Command {
 		"目标目录")
 	scriptCmd.Flags().StringVar(&scriptArgs, "args", "",
 		"传递给脚本的参数")
-	scriptCmd.Flags().DurationVar(&scriptTimeout, "timeout", 5*60*time.Second,
+	scriptCmd.Flags().DurationVarP(&scriptTimeout, "timeout", "t", 5*60*time.Second,
 		"脚本执行超时时间")
 	scriptCmd.Flags().BoolVar(&scriptInline, "inline", false,
 		"直接发送内容执行，不保存为文件")

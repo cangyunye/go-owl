@@ -49,9 +49,9 @@ func NewDownloadCmd() *cobra.Command {
 		Run:  runDownload,
 	}
 
-	downloadCmd.Flags().StringVar(&downloadNodes, "nodes", "",
+	downloadCmd.Flags().StringVarP(&downloadNodes, "nodes", "N", "",
 		"指定节点 ID (逗号分隔)")
-	downloadCmd.Flags().StringVar(&downloadGroup, "group", "",
+	downloadCmd.Flags().StringVarP(&downloadGroup, "group", "g", "",
 		"按分组选择节点")
 	downloadCmd.Flags().StringSliceVarP(&downloadLabel, "label", "l", nil,
 		"按标签选择节点")
@@ -65,7 +65,7 @@ func NewDownloadCmd() *cobra.Command {
 		"为每个节点创建子目录")
 	downloadCmd.Flags().StringVar(&downloadNameFormat, "name-format", "",
 		"文件命名格式 (支持 {node} 和 {file} 占位符)")
-	downloadCmd.Flags().BoolVar(&downloadResume, "resume", true,
+	downloadCmd.Flags().BoolVarP(&downloadResume, "resume", "r", true,
 		"启用断点续传（rsync 优先）")
 
 	return downloadCmd

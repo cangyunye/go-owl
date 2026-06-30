@@ -46,11 +46,11 @@ func NewTransferCmd() *cobra.Command {
 		Run:  runTransfer,
 	}
 
-	transferCmd.Flags().StringVar(&transferNodes, "nodes", "",
+	transferCmd.Flags().StringVarP(&transferNodes, "nodes", "N", "",
 		"指定节点列表 (逗号分隔)")
 	transferCmd.Flags().BoolVar(&transferAllNodes, "all-nodes", false,
 		"选择所有节点")
-	transferCmd.Flags().StringVar(&transferGroup, "group", "",
+	transferCmd.Flags().StringVarP(&transferGroup, "group", "g", "",
 		"按分组选择节点")
 	transferCmd.Flags().StringSliceVarP(&transferLabel, "label", "l", nil,
 		"按标签选择节点")

@@ -46,13 +46,13 @@ func NewListCmd() *cobra.Command {
 
 	listCmd.Flags().StringVarP(&listFormat, "format", "o", "table",
 		"输出格式: table, json, yaml")
-	listCmd.Flags().StringVar(&listGroup, "group", "",
+	listCmd.Flags().StringVarP(&listGroup, "group", "g", "",
 		"按分组过滤")
 	listCmd.Flags().StringSliceVarP(&listLabel, "label", "l", nil,
 		"按标签过滤 (格式: key=value)")
-	listCmd.Flags().StringVar(&listStatus, "status", "",
+	listCmd.Flags().StringVarP(&listStatus, "status", "S", "",
 		"按状态过滤: online, offline, unknown")
-	listCmd.Flags().BoolVar(&listNoColor, "no-color", false,
+	listCmd.Flags().BoolVarP(&listNoColor, "no-color", "C", false,
 		"禁用颜色输出")
 	listCmd.Flags().StringVar(&listHeader, "header", "",
 		"自定义显示字段和宽度 (格式: id,address,labels:60,*,id)")

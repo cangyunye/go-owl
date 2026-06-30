@@ -161,9 +161,9 @@ func NewPlaybookRunCmd() *cobra.Command {
 		Run:  runPlaybookRun,
 	}
 
-	runCmd.Flags().StringVar(&pbRunNodes, "nodes", "",
+	runCmd.Flags().StringVarP(&pbRunNodes, "nodes", "N", "",
 		"指定节点 ID (逗号分隔)")
-	runCmd.Flags().StringVar(&pbRunGroup, "group", "",
+	runCmd.Flags().StringVarP(&pbRunGroup, "group", "g", "",
 		"按分组选择节点")
 	runCmd.Flags().StringSliceVarP(&pbRunLabel, "label", "l", nil,
 		"按标签选择节点")

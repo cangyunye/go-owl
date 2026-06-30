@@ -45,7 +45,7 @@ func NewCheckCmd() *cobra.Command {
 		},
 	}
 
-	checkCmd.Flags().BoolVar(&checkAll, "all", false, "检查所有节点")
+	checkCmd.Flags().BoolVarP(&checkAll, "all", "a", false, "检查所有节点")
 	checkCmd.Flags().DurationVarP(&checkTimeout, "timeout", "t", 10*time.Second, "每个检查的超时时间")
 	checkCmd.Flags().IntVarP(&checkWorkers, "workers", "w", 5, "并发工作协程数")
 
