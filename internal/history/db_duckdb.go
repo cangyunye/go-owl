@@ -201,6 +201,9 @@ tttttttexecution_mode VARCHAR DEFAULT '',
 		}
 	}
 
+	// 迁移：兼容旧表缺少的列
+	_, _ = d.conn.Exec("ALTER TABLE nodes ADD COLUMN last_check_at TIMESTAMP")
+
 	return nil
 }
 

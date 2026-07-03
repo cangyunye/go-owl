@@ -202,6 +202,9 @@ func (s *SQLite3) InitSchema() error {
 		}
 	}
 
+	// 迁移：兼容旧表缺少的列
+	_, _ = s.conn.Exec("ALTER TABLE nodes ADD COLUMN last_check_at DATETIME")
+
 	return nil
 }
 

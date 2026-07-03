@@ -10,7 +10,7 @@
 #   make install           # 安装到系统
 #   make clean             # 清理构建文件
 
-.PHONY: help build build/linux build/linux-amd64 build/windows build/windows-amd64 build/darwin build/darwin-arm64 build/all build-duckdb build-sqlite3 build-metrics build-all-metrics clean install test test-quick test-unit test-integration test-bash test-all test-clean test-coverage fmt lint all
+.PHONY: help build build/linux build/linux-amd64 build/windows build/windows-amd64 build/darwin build/darwin-arm64 build/all build-duckdb build-sqlite3 build-metrics build-all-metrics build-serve build-serve/linux build-serve/darwin build-serve/darwin-arm64 build-serve/windows install-serve clean install test test-quick test-unit test-integration test-bash test-all test-clean test-coverage fmt lint all
 
 # 变量定义
 BINARY_NAME := owl
@@ -85,11 +85,11 @@ build/darwin-arm64:
 	GOOS=darwin GOARCH=arm64 $(GO) build -tags sqlite3 $(LDFLAGS) -o $(BUILD_DIR)/darwin-arm64-sqlite3/$(BINARY_NAME) $(MAIN_PATH)
 	@printf "$(BOLD)$(GREEN)✓$(NC) macOS ARM64 已编译\n"
 
-# 编译所有平台版本
-build/all: build/linux build/windows build/darwin build/darwin-arm64
+# 编译所有平台版本（含 CLI + Server）
+build/all: build/linux build/windows build/darwin build/darwin-arm64 build-serve/linux build-serve/darwin build-serve/darwin-arm64
 	@printf ""
 	@printf "$(BOLD)$(GREEN)✓$(NC) 所有平台版本编译完成\n"
-	@find $(BUILD_DIR) -type f -name "$(BINARY_NAME)*" | head -20
+	@find $(BUILD_DIR) -type f \( -name "$(BINARY_NAME)*" -o -name "owl-serve*" \) | head -30
 
 # 当前平台编译 (DuckDB)
 build:
@@ -187,6 +187,50 @@ dist/windows:
 	
 	@printf "$(BOLD)$(GREEN)✓$(NC) Windows 分发包已创建: $(BUILD_DIR)/windows-dist/\n"
 	@ls -lh $(BUILD_DIR)/windows-dist/
+
+# ====================
+# Web 控制台（owl-serve）
+# ====================
+
+SERVE_MAIN_PATH := ./cmd/owl-serve/main.go
+SERVE_BINARY := owl-serve
+
+## build-serve/linux: 编译 Linux AMD64 Server
+build-serve/linux:
+	@mkdir -p $(BUILD_DIR)/linux-amd64
+	GOOS=linux GOARCH=amd64 $(GO) build -o $(BUILD_DIR)/linux-amd64/$(SERVE_BINARY) $(SERVE_MAIN_PATH)
+	@printf "$(BOLD)$(GREEN)✓$(NC) Linux AMD64 Server 已编译\n"
+
+## build-serve/darwin: 编译 macOS AMD64 Server
+build-serve/darwin:
+	@mkdir -p $(BUILD_DIR)/darwin-amd64
+	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BUILD_DIR)/darwin-amd64/$(SERVE_BINARY) $(SERVE_MAIN_PATH)
+	@printf "$(BOLD)$(GREEN)✓$(NC) macOS AMD64 Server 已编译\n"
+
+## build-serve/darwin-arm64: 编译 macOS ARM64 Server
+build-serve/darwin-arm64:
+	@mkdir -p $(BUILD_DIR)/darwin-arm64
+	GOOS=darwin GOARCH=arm64 $(GO) build -o $(BUILD_DIR)/darwin-arm64/$(SERVE_BINARY) $(SERVE_MAIN_PATH)
+	@printf "$(BOLD)$(GREEN)✓$(NC) macOS ARM64 Server 已编译\n"
+
+## build-serve/windows: 编译 Windows AMD64 Server
+build-serve/windows:
+	@mkdir -p $(BUILD_DIR)/windows-amd64
+	GOOS=windows GOARCH=amd64 $(GO) build -o $(BUILD_DIR)/windows-amd64/$(SERVE_BINARY).exe $(SERVE_MAIN_PATH)
+	@printf "$(BOLD)$(GREEN)✓$(NC) Windows AMD64 Server 已编译\n"
+
+## build-serve: 构建当前平台 Server
+build-serve:
+	@printf "$(BOLD)$(BLUE)==>$(NC) 构建 Web 控制台服务...\n"
+	$(GO) build -o $(BUILD_DIR)/$(SERVE_BINARY) $(SERVE_MAIN_PATH)
+	@printf "$(BOLD)$(GREEN)✓$(NC) Web 控制台已构建: $(BUILD_DIR)/$(SERVE_BINARY)\n"
+
+## install-serve: 安装 Web 控制台到系统路径
+install-serve: build-serve
+	@mkdir -p ~/.local/bin
+	cp $(BUILD_DIR)/$(SERVE_BINARY) ~/.local/bin/
+	@printf "$(BOLD)$(GREEN)✓$(NC) Web 控制台已安装: ~/.local/bin/$(SERVE_BINARY)\n"
+	@printf "$(BOLD)$(YELLOW)提示:$(NC) 可通过 'owl serve' 命令启动\n"
 
 # ====================
 # 安装
@@ -365,6 +409,14 @@ help:
 	@printf "  $(GREEN)build-metrics-linux$(NC)  编译 Linux AMD64 + Metrics\n"
 	@printf "  $(GREEN)build-metrics-darwin$(NC) 编译 macOS + Metrics\n"
 	@printf "  $(GREEN)build-all-metrics$(NC)    编译所有平台 + Metrics\n"
+	@printf ""
+	@printf "$(BOLD)Web 控制台 (owl-serve):$(NC)\n"
+	@printf "  $(GREEN)build-serve$(NC)          编译当前平台 Server\n"
+	@printf "  $(GREEN)build-serve/linux$(NC)    编译 Linux AMD64 Server\n"
+	@printf "  $(GREEN)build-serve/darwin$(NC)   编译 macOS AMD64 Server\n"
+	@printf "  $(GREEN)build-serve/darwin-arm64$(NC) 编译 macOS ARM64 Server\n"
+	@printf "  $(GREEN)build-serve/windows$(NC)  编译 Windows AMD64 Server\n"
+	@printf "  $(GREEN)install-serve$(NC)        安装 Server 到系统\n"
 	@printf ""
 	@printf "$(BOLD)分发包:$(NC)\n"
 	@printf "  $(GREEN)dist/windows$(NC)        创建 Windows 分发包\n"

@@ -14,6 +14,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/metrics"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/node"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/playbook"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/serve"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/session"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui"
@@ -70,6 +71,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(history.NewHistoryCmd())
 	rootCmd.AddCommand(session.NewCmd())
 	rootCmd.AddCommand(async.NewAsyncCmd())
+	rootCmd.AddCommand(serve.NewServeCmd())
 	rootCmd.AddCommand(tui.NewTuiCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 
