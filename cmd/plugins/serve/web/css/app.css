@@ -1448,7 +1448,12 @@ tr:hover td { background: var(--surface-2); }
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
+.node-selector::-webkit-scrollbar { width: 4px; }
+.node-selector::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 .node-chip {
   display: inline-flex;
   align-items: center;
