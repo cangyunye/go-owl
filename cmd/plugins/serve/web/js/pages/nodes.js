@@ -1,5 +1,5 @@
 export function renderNodes(render, navigate, user, api, shell) {
-  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '' };
+  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', status: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '' };
   const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -50,6 +50,7 @@ export function renderNodes(render, navigate, user, api, shell) {
   async function loadNodes() {
     const params = { page: state.page, page_size: state.pageSize };
     if (state.query) params.q = state.query;
+    if (state.status) params.status = state.status;
     if (state.selectedGroups.length > 0) params.group = state.selectedGroups.join(',');
     try {
       const res = state.query ? await api.searchNodes(state.query) : await api.nodes(params);
@@ -237,7 +238,7 @@ export function renderNodes(render, navigate, user, api, shell) {
         <svg width="14" height="14" aria-hidden="true" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)"><use href="#icon-search"/></svg>
         <input type="text" id="search-input" placeholder="搜索节点名称 / IP / 标签…" aria-label="搜索节点" style="border:none;background:transparent;outline:none;color:var(--fg);width:100%;font:13px/1.5 var(--font-body)" value="${esc(state.query)}">
       </div>
-      <select class="select" id="status-filter"><option>全部状态</option><option>在线</option><option>离线</option><option>告警</option></select>
+      <select class="select" id="status-filter"><option value="">全部状态</option><option value="online" ${state.status === 'online' ? 'selected' : ''}>在线</option><option value="offline" ${state.status === 'offline' ? 'selected' : ''}>离线</option><option value="warn" ${state.status === 'warn' ? 'selected' : ''}>告警</option></select>
       <div class="spacer"></div>
       ${canWrite ? '<button class="btn btn-primary btn-sm" id="add-node-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 新建节点</button>' : ''}
     </div>
@@ -371,6 +372,12 @@ export function renderNodes(render, navigate, user, api, shell) {
         state.page = 1;
         loadNodes();
       }, 100);
+    });
+
+    document.getElementById('status-filter').addEventListener('change', (e) => {
+      state.status = e.target.value;
+      state.page = 1;
+      loadNodes();
     });
 
     document.getElementById('prev-btn').addEventListener('click', () => {
