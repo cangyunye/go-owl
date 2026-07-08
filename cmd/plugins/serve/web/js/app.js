@@ -108,7 +108,12 @@ function renderShell() {
     <div class="nav-avatar" title="个人设置">${esc(initials)}</div>
   </nav>
   <aside class="panel" id="sidePanel">
-    <div class="panel-header" id="panelTitle">概览</div>
+    <div class="panel-header" id="panelTitle">
+      <span>概览</span>
+      <button class="panel-toggle" id="panelToggle" title="折叠面板" aria-label="折叠面板">
+        <svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg>
+      </button>
+    </div>
     <ul class="panel-list" id="panelList"></ul>
   </aside>
   <main class="main-area">
@@ -164,6 +169,15 @@ function renderShell() {
   // Nav item click handlers
   document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
+  });
+
+  // Panel collapse toggle
+  document.getElementById('panelToggle').addEventListener('click', () => {
+    const panel = document.getElementById('sidePanel');
+    const btn = document.getElementById('panelToggle');
+    panel.classList.toggle('collapsed');
+    btn.title = panel.classList.contains('collapsed') ? '展开面板' : '折叠面板';
+    btn.setAttribute('aria-label', btn.title);
   });
 
   // Theme toggle
