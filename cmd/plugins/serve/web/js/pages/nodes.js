@@ -275,7 +275,7 @@ export function renderNodes(render, navigate, user, api, shell) {
 
     <div class="batch-bar" id="batchBar" style="display:none">
       <span>已选 <strong id="selectedCount">0</strong> 个节点</span>
-      <button class="btn btn-secondary btn-sm" onclick="window.location='/exec'">执行命令</button>
+      <button class="btn btn-secondary btn-sm" id="batch-exec-btn">执行命令</button>
       <button class="btn btn-secondary btn-sm" id="batch-label-merge-btn">依次标签</button>
       <button class="btn btn-secondary btn-sm" id="batch-label-replace-btn">同批标签</button>
       <button class="btn btn-secondary btn-sm" id="batch-delete-btn">删除</button>
@@ -422,6 +422,14 @@ export function renderNodes(render, navigate, user, api, shell) {
     document.getElementById('batch-label-merge-btn').addEventListener('click', () => showLabelModal('merge'));
     document.getElementById('batch-label-replace-btn').addEventListener('click', () => showLabelModal('replace'));
     document.getElementById('batch-delete-btn').addEventListener('click', handleDeleteNodes);
+    document.getElementById('batch-exec-btn').addEventListener('click', () => {
+      const ids = getSelectedIds();
+      const groups = state.selectedGroups;
+      const params = new URLSearchParams();
+      if (ids.length) params.set('nodes', ids.join(','));
+      if (groups.length) params.set('groups', groups.join(','));
+      window.location = '/exec?' + params.toString();
+    });
     document.getElementById('label-cancel').addEventListener('click', hideLabelModal);
     document.getElementById('label-submit').addEventListener('click', handleLabelSubmit);
     document.getElementById('label-modal-overlay').addEventListener('click', (e) => {
