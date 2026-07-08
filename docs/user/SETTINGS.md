@@ -96,7 +96,7 @@ owl settings set diffusion.fan-out 5
 ### 使用方法
 
 ```bash
-owl settings target --group web
+owl settings target --groups web
 owl settings target --label env=prod
 owl settings target --nodes node1,node2
 ```
@@ -105,7 +105,7 @@ owl settings target --nodes node1,node2
 
 | 参数 | 说明 |
 |------|------|
-| `--group` | 默认分组 |
+| `--groups` | 默认分组 |
 | `--label` | 默认标签 |
 | `--nodes` | 默认节点列表 |
 
@@ -113,7 +113,7 @@ owl settings target --nodes node1,node2
 
 ```bash
 # 设置默认分组
-owl settings target --group web
+owl settings target --groups web
 
 # 设置默认标签
 owl settings target --label env=prod --label app=nginx
@@ -151,7 +151,7 @@ $ owl settings show
 
 ```bash
 # 步骤
-$ owl settings target --group web
+$ owl settings target --groups web
 
 # 预期结果
 # 显示 Group: web

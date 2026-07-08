@@ -32,7 +32,7 @@ owl file upload app.tar.gz --dest /opt/app/
 |------|------|
 | `<local-file>` | 本地文件路径（必填） |
 | `--nodes` | 目标节点 ID（逗号分隔） |
-| `--group` | 按分组选择节点 |
+| `--groups` | 按分组选择节点 |
 | `--label` | 按标签选择节点 |
 | `--dest` | 远程目标目录，默认 /tmp |
 | `--mode` | 文件权限，默认 0644 |
@@ -58,7 +58,7 @@ owl file upload app.tar.gz --nodes web-01
 owl file upload config.yaml --nodes web-01,web-02,web-03
 
 # 按分组上传
-owl file upload deploy.sh --group web --dest /opt/scripts/
+owl file upload deploy.sh --groups web --dest /opt/scripts/
 
 # 指定目标目录
 owl file upload app.tar.gz --nodes web-01 --dest /opt/app/
@@ -107,7 +107,7 @@ owl file download <remote-file> --node node1 --dest ./downloads/
 | `<remote-file>` | 远程文件路径（必填） |
 | `--node` | 源节点 ID（单个） |
 | `--nodes` | 源节点 ID（逗号分隔，仅第一个生效） |
-| `--group` | 按分组选择（仅第一个生效） |
+| `--groups` | 按分组选择（仅第一个生效） |
 | `--label` | 按标签选择（仅第一个生效） |
 | `--dest` | 本地目标目录，默认 . |
 | `--name-format` | 多节点下载文件名格式，默认 `{name}.{node}` |
@@ -170,7 +170,7 @@ owl file download /var/log/app.log --node web-01 --dest ./logs/
 owl file download /tmp/data.json --node web-01
 
 # 按分组下载
-owl file download /var/log/nginx/access.log --group web --dest ./logs/
+owl file download /var/log/nginx/access.log --groups web --dest ./logs/
 
 # 多节点下载，使用子目录
 owl file download /var/log/app.log \
@@ -213,7 +213,7 @@ owl file transfer app.tar.gz --nodes n1,n2,n3,n4,n5 --source-count 2 --fan-out 3
 | `<file>` | 本地文件路径（必填） |
 | `--nodes` | 目标节点 ID（逗号分隔） |
 | `--all-nodes` | 选择所有注册节点 |
-| `--group` | 按分组选择节点 |
+| `--groups` | 按分组选择节点 |
 | `--label` | 按标签选择节点 |
 | `--dest` | 目标目录，默认 `/tmp` |
 | `--source-count` | 源节点数量（前 N 个节点作为源），默认 2 |
@@ -250,7 +250,7 @@ owl file transfer app.tar.gz \
 owl file transfer data.zip --all-nodes --dest /data/ --fan-out 3
 
 # 按分组扩散
-owl file transfer db.tar.gz --group database --source-count 1
+owl file transfer db.tar.gz --groups database --source-count 1
 
 # 少量节点自动走直接传输
 owl file transfer app.tar.gz --nodes node1,node2 --dest /opt/app/
@@ -344,7 +344,7 @@ $ owl file upload /tmp/test.txt --nodes test-01,test-02
 ```bash
 # 步骤
 $ owl node groups add test-group --nodes test-01,test-02
-$ owl file upload /tmp/test.txt --group test-group
+$ owl file upload /tmp/test.txt --groups test-group
 
 # 预期结果
 # ✅ [test-01] 成功

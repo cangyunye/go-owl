@@ -24,7 +24,7 @@ owl playbook - 剧本管理
 
 ```bash
 owl playbook list
-owl playbook list --group web
+owl playbook list --groups web
 owl playbook list --format json
 ```
 
@@ -32,7 +32,7 @@ owl playbook list --format json
 
 | 参数 | 说明 |
 |------|------|
-| `--group` | 按分组筛选 |
+| `--groups` | 按分组筛选 |
 | `--format` | 输出格式 |
 
 ### 示例输出
@@ -65,7 +65,7 @@ owl playbook run deploy-app --vars version=v1.2.0
 执行剧本时，目标节点的选择按以下优先级：
 
 1. **命令行 `--nodes` 参数** - 最高优先级，指定具体的节点 ID
-2. **命令行 `--group` 参数** - 按分组选择节点
+2. **命令行 `--groups` 参数** - 按分组选择节点
 3. **命令行 `--label` 参数** - 按标签选择节点
 4. **剧本中的 `hosts` 配置** - 如果指定了 hosts，使用其中的节点
 5. **所有可用节点** - 如果都没有指定，则对所有节点执行
@@ -78,7 +78,7 @@ owl playbook run deploy-app --vars version=v1.2.0
 |------|------|
 | `<playbook-file>` | 剧本文件路径（必填） |
 | `--nodes` | 目标节点 ID（逗号分隔） |
-| `--group` | 按分组选择节点 |
+| `--groups` | 按分组选择节点 |
 | `--label` | 按标签选择节点 |
 | `--vars` | 传递变量 |
 | `--tags` | 只执行指定标签的步骤 |
@@ -177,7 +177,7 @@ execution_mode: fail_continue
 # 默认配置（可选，可被 CLI 参数覆盖）
 # CLI 参数显式指定时完全替换默认值（不做并集）
 default:
-  groups: ["web"]        # 默认目标分组，可被 --group 覆盖
+  groups: ["web"]        # 默认目标分组，可被 --groups 覆盖
   tags: ["deploy"]       # 默认执行标签，可被 --tags 覆盖
   # skip_tags: ["debug"] # 默认跳过标签，可被 --skip-tags 覆盖
   # timeout:             # 默认超时，可被 --default-*-timeout 覆盖
@@ -300,7 +300,7 @@ Playbook 可以包含可选的 `default` 块，用于提供节点选择和任务
 
 ```yaml
 default:
-  groups: ["web", "db"]    # 默认目标分组，可被 --group 覆盖。支持多个分组，节点自动去重
+  groups: ["web", "db"]    # 默认目标分组，可被 --groups 覆盖。支持多个分组，节点自动去重
   tags: ["deploy"]          # 默认执行标签，可被 --tags 覆盖
   skip_tags: ["debug"]      # 默认跳过标签，可被 --skip-tags 覆盖
   timeout:                  # 默认超时配置，可被 --default-*-timeout 覆盖
@@ -314,7 +314,7 @@ default:
 
 **优先级（从高到低）：**
 
-1. CLI 参数（`--group` / `--tags` / `--skip-tags` / `--default-*-timeout` / `--default-retry-*`）
+1. CLI 参数（`--groups` / `--tags` / `--skip-tags` / `--default-*-timeout` / `--default-retry-*`）
 2. YAML `default` 块
 3. 程序内置默认值
 
@@ -510,7 +510,7 @@ $ owl playbook template
 A: 使用 `owl playbook template` 进入交互式创建向导，或在 `~/.owl/playbooks/` 目录下创建 YAML 文件
 
 ### Q: 剧本的 hosts 可以为空吗？
-A: 可以。如果 hosts 为空或省略，会使用命令行参数（`--nodes`、`--group`、`--label`）或对所有可用节点执行
+A: 可以。如果 hosts 为空或省略，会使用命令行参数（`--nodes`、`--groups`、`--label`）或对所有可用节点执行
 
 ### Q: 支持变量插值吗？
 A: 支持，使用 `{{variable}}` 语法。还支持特殊变量 `{{PLAYBOOK_DIR}}` 或 `${PLAYBOOK_DIR}`

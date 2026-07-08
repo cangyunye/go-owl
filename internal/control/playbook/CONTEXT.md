@@ -11,7 +11,7 @@ The strategy by which a Playbook handles task failures. Set at the Playbook leve
 ### Default Block (`default`)
 A YAML block at the Playbook level that provides default values for CLI-level execution parameters. Each field in the `default` block is overridden when the corresponding CLI flag is explicitly provided (CLI wins, full replacement not union).
 
-- **`default.groups`** — Default node groups to target. Overridden by `--group` CLI flag. When multiple groups are specified, nodes belonging to any of the groups are included (union), with duplicates removed.
+- **`default.groups`** — Default node groups to target. Overridden by `--groups` CLI flag. When multiple groups are specified, nodes belonging to any of the groups are included (union), with duplicates removed.
 - **`default.tags`** — Default task tags to execute. Only tasks matching these tags are run. Overridden by `--tags` CLI flag.
 - **`default.skip_tags`** — Default task tags to skip. Tasks matching these tags are not run. Overridden by `--skip-tags` CLI flag.
 - **`default.timeout`** — Default connect and command timeout values. Overridden by `--default-connect-timeout` / `--default-command-timeout` CLI flags.
@@ -20,7 +20,7 @@ A YAML block at the Playbook level that provides default values for CLI-level ex
 ### Node Selection
 The mechanism by which target nodes are chosen for a Playbook run. Priority (highest to lowest):
 1. `--nodes` — Explicit node IDs
-2. `--group` — Groups from CLI or `default.groups` from YAML
+2. `--groups` — Groups from CLI or `default.groups` from YAML
 3. `--label` — Label selectors
 4. `hosts` — Hosts list in the Playbook YAML
 5. All available nodes (fallback)

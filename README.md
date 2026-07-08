@@ -54,7 +54,7 @@ owl node add web-01 \
   --name "Web Server 1" \
   --address 192.168.1.10 \
   --user root \
-  --group web \
+  --groups web \
   --label env=prod
 ```
 
@@ -69,7 +69,7 @@ owl node list
 在所有节点执行命令：
 
 ```bash
-owl exec run "uptime" --group web
+owl exec run "uptime" --groups web
 ```
 
 指定节点执行：
@@ -121,11 +121,11 @@ owl session attach web-01
 
 ```bash
 # 添加 web 服务器
-owl node add web-01 --name web1 --address 192.168.1.10 --user root --group web
-owl node add web-02 --name web2 --address 192.168.1.11 --user root --group web
+owl node add web-01 --name web1 --address 192.168.1.10 --user root --groups web
+owl node add web-02 --name web2 --address 192.168.1.11 --user root --groups web
 
 # 添加数据库服务器
-owl node add db-01 --name db1 --address 192.168.1.20 --user admin --group db
+owl node add db-01 --name db1 --address 192.168.1.20 --user admin --groups db
 
 # 按标签分组
 owl node labels add web-01 --labels env=prod,tier=frontend
@@ -135,7 +135,7 @@ owl node labels add web-01 --labels env=prod,tier=frontend
 
 ```bash
 # 所有 web 节点执行命令
-owl exec run "systemctl status nginx" --group web
+owl exec run "systemctl status nginx" --groups web
 
 # 按标签筛选
 owl exec run "free -h" --label env=prod

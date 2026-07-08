@@ -268,7 +268,7 @@ export OWL_API_TIMEOUT="60"
 owl session attach web-server-01
 
 # 批量执行（从 API 获取分组节点）
-owl exec --group web --command "uptime"
+owl exec --groups web --command "uptime"
 
 # 查看节点列表（从 API 获取）
 owl node list

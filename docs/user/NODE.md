@@ -30,7 +30,7 @@ owl node - 节点管理
 
 ```bash
 owl node list
-owl node list --group web
+owl node list --groups web
 owl node list --label env=prod
 owl node list --format json
 ```
@@ -39,7 +39,7 @@ owl node list --format json
 
 | 参数 | 说明 |
 |------|------|
-| `--group` | 按分组筛选节点 |
+| `--groups` | 按分组筛选节点 |
 | `--label` | 按标签筛选节点 |
 | `--status` | 按状态筛选（online/offline） |
 | `--format` | 输出格式（table/json/yaml） |
@@ -109,7 +109,7 @@ owl node add db-01 \
   --name db1 \
   --address 192.168.1.20 \
   --ssh-key ~/.ssh/id_rsa \
-  --group db
+  --groups db
 ```
 
 ---
@@ -387,7 +387,7 @@ $ owl node remove test-01
 ```bash
 # 步骤
 $ owl node groups add test-group --nodes test-01
-$ owl node list --group test-group
+$ owl node list --groups test-group
 
 # 预期结果
 # 显示 test-group 分组中的节点

@@ -116,7 +116,7 @@ type ResolvedNode struct {
 | 参数 | 说明 | 示例 |
 |------|------|------|
 | `--nodes` | 指定节点 ID | `--nodes web-01,web-02` |
-| `--group` | 按分组选择 | `--group web` |
+| `--groups` | 按分组选择 | `--groups web` |
 | `--label` | 按标签选择 | `--label env=prod` |
 | `--status` | 按状态选择 | `--status online` |
 
@@ -157,7 +157,7 @@ exec/
 owl exec run "uptime" --nodes web-01,web-02
 
 # 按分组执行
-owl exec run "df -h" --group web
+owl exec run "df -h" --groups web
 
 # 并行/串行模式
 owl exec run "sleep 5" --parallel   # 默认
@@ -175,7 +175,7 @@ owl exec run "long-running.sh" --async
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `--nodes` | 目标节点 | 全部节点 |
-| `--group` | 目标分组 | - |
+| `--groups` | 目标分组 | - |
 | `--label` | 目标标签 | - |
 | `--status` | 节点状态筛选 | - |
 | `--parallel` | 并行执行 | true |
@@ -191,7 +191,7 @@ owl exec run "long-running.sh" --async
 owl exec script deploy.sh --nodes web-01,web-02
 
 # 指定目标目录
-owl exec script install.sh --dest /tmp --group web
+owl exec script install.sh --dest /tmp --groups web
 
 # 直接内容执行（不留痕迹）
 owl exec script init.sh --inline --nodes test-01
@@ -205,7 +205,7 @@ owl exec script setup.sh --keep --nodes all
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `--nodes` | 目标节点 | 全部节点 |
-| `--group` | 目标分组 | - |
+| `--groups` | 目标分组 | - |
 | `--dest` | 目标目录 | /tmp |
 | `--args` | 脚本参数 | - |
 | `--inline` | 直接内容执行 | false |

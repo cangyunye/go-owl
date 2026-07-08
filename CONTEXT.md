@@ -13,7 +13,7 @@ different concept — a step in a sequential pipeline within a playbook run.
 
 A "batch" is purely a **UI grouping concept** — there is no backend `Batch`
 entity. When a user executes a command on multiple nodes (via
-`--nodes`/`--group`/`--label`), each node gets its own `Task` record, and all
+`--nodes`/`--groups`/`--label`), each node gets its own `Task` record, and all
 are linked by a shared `batch_id`. The UI groups them for display.
 
 ## Node (节点)
