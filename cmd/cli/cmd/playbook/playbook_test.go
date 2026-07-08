@@ -38,9 +38,9 @@ func TestPlaybookRunFlags(t *testing.T) {
 	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
-	testutil.AssertFlagExists(t, cmd, "group")
-	testutil.AssertFlagShorthand(t, cmd, "group", "g")
-	testutil.AssertFlagDefault(t, cmd, "group", "")
+	testutil.AssertFlagExists(t, cmd, "groups")
+	testutil.AssertFlagShorthand(t, cmd, "groups", "g")
+	testutil.AssertFlagDefault(t, cmd, "groups", "[]")
 
 	testutil.AssertFlagExists(t, cmd, "label")
 	testutil.AssertFlagShorthand(t, cmd, "label", "l")
@@ -258,23 +258,23 @@ tasks:
 
 func TestApplyDefaultConfig(t *testing.T) {
 	t.Run("CLI group not set, default has groups", func(t *testing.T) {
-		group, _, _ := playbook.ApplyDefaultConfig("", "", "",
+		groups, _, _ := playbook.ApplyDefaultConfig(nil, "", "",
 			[]string{"web", "db"}, nil, nil)
-		if group != "web,db" {
-			t.Errorf("expected group 'web,db', got '%s'", group)
+		if len(groups) != 2 || groups[0] != "web" || groups[1] != "db" {
+			t.Errorf("expected groups [web, db], got %v", groups)
 		}
 	})
 
 	t.Run("CLI group set, default ignored", func(t *testing.T) {
-		group, _, _ := playbook.ApplyDefaultConfig("db", "", "",
+		groups, _, _ := playbook.ApplyDefaultConfig([]string{"db"}, "", "",
 			[]string{"web"}, nil, nil)
-		if group != "db" {
-			t.Errorf("expected group 'db', got '%s'", group)
+		if len(groups) != 1 || groups[0] != "db" {
+			t.Errorf("expected groups [db], got %v", groups)
 		}
 	})
 
 	t.Run("CLI tags not set, default has tags", func(t *testing.T) {
-		_, tags, _ := playbook.ApplyDefaultConfig("", "", "",
+		_, tags, _ := playbook.ApplyDefaultConfig(nil, "", "",
 			nil, []string{"deploy", "verify"}, nil)
 		if tags != "deploy,verify" {
 			t.Errorf("expected tags 'deploy,verify', got '%s'", tags)
@@ -282,7 +282,7 @@ func TestApplyDefaultConfig(t *testing.T) {
 	})
 
 	t.Run("CLI tags set, default ignored", func(t *testing.T) {
-		_, tags, _ := playbook.ApplyDefaultConfig("", "custom-tag", "",
+		_, tags, _ := playbook.ApplyDefaultConfig(nil, "custom-tag", "",
 			nil, []string{"deploy"}, nil)
 		if tags != "custom-tag" {
 			t.Errorf("expected tags 'custom-tag', got '%s'", tags)
@@ -290,7 +290,7 @@ func TestApplyDefaultConfig(t *testing.T) {
 	})
 
 	t.Run("CLI skip-tags not set, default has skip_tags", func(t *testing.T) {
-		_, _, skipTags := playbook.ApplyDefaultConfig("", "", "",
+		_, _, skipTags := playbook.ApplyDefaultConfig(nil, "", "",
 			nil, nil, []string{"debug"})
 		if skipTags != "debug" {
 			t.Errorf("expected skipTags 'debug', got '%s'", skipTags)
@@ -298,9 +298,9 @@ func TestApplyDefaultConfig(t *testing.T) {
 	})
 
 	t.Run("CLI values preserved with no defaults", func(t *testing.T) {
-		group, tags, _ := playbook.ApplyDefaultConfig("my-group", "my-tags", "", nil, nil, nil)
-		if group != "my-group" {
-			t.Errorf("expected group 'my-group', got '%s'", group)
+		groups, tags, _ := playbook.ApplyDefaultConfig([]string{"my-group"}, "my-tags", "", nil, nil, nil)
+		if len(groups) != 1 || groups[0] != "my-group" {
+			t.Errorf("expected groups [my-group], got %v", groups)
 		}
 		if tags != "my-tags" {
 			t.Errorf("expected tags 'my-tags', got '%s'", tags)
@@ -308,10 +308,10 @@ func TestApplyDefaultConfig(t *testing.T) {
 	})
 
 	t.Run("CLI group set, default also set", func(t *testing.T) {
-		group, _, _ := playbook.ApplyDefaultConfig("cli-group", "", "",
+		groups, _, _ := playbook.ApplyDefaultConfig([]string{"cli-group"}, "", "",
 			[]string{"default-group"}, nil, nil)
-		if group != "cli-group" {
-			t.Errorf("expected group 'cli-group' (CLI wins), got '%s'", group)
+		if len(groups) != 1 || groups[0] != "cli-group" {
+			t.Errorf("expected groups [cli-group] (CLI wins), got %v", groups)
 		}
 	})
 }

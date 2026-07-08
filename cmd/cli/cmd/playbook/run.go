@@ -25,7 +25,7 @@ import (
 // playbookRunFlags
 var (
 	pbRunNodes                   string
-	pbRunGroup                   string
+	pbRunGroup                   []string
 	pbRunLabel                   []string
 	pbRunTags                    string
 	pbRunSkipTags                string
@@ -163,8 +163,11 @@ func NewPlaybookRunCmd() *cobra.Command {
 
 	runCmd.Flags().StringVarP(&pbRunNodes, "nodes", "N", "",
 		"指定节点 ID (逗号分隔)")
-	runCmd.Flags().StringVarP(&pbRunGroup, "group", "g", "",
-		"按分组选择节点")
+	runCmd.Flags().StringSliceVarP(&pbRunGroup, "groups", "g", nil,
+		"按分组选择节点 (多个分组用逗号分隔或多次使用 -g)")
+	runCmd.Flags().StringSliceVar(&pbRunGroup, "group", nil,
+		"(已废弃，请使用 --groups)")
+	runCmd.Flags().MarkHidden("group")
 	runCmd.Flags().StringSliceVarP(&pbRunLabel, "label", "l", nil,
 		"按标签选择节点")
 	runCmd.Flags().StringVar(&pbRunTags, "tags", "",
@@ -522,22 +525,12 @@ func selectPlaybookRunTargetNodes(resolver *node.NodeResolver, playbookHosts []s
 				nodes = append(nodes, rn)
 			}
 		}
-	} else if pbRunGroup != "" {
-		// 支持逗号分隔的多个分组，节点去重
-		groups := parseNodeIDsList(pbRunGroup)
-		seen := make(map[string]bool)
-		for _, group := range groups {
-			groupNodes, err := resolver.ListNodes(&node.ListOptions{Group: group})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "警告: 按分组 '%s' 查询节点失败: %v\n", group, err)
-				continue
-			}
-			for _, rn := range groupNodes {
-				if !seen[rn.ID] {
-					seen[rn.ID] = true
-					nodes = append(nodes, rn)
-				}
-			}
+	} else if len(pbRunGroup) > 0 {
+		resolvedNodes, err := node.ListNodesByGroups(resolver, pbRunGroup)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "警告: 按分组查询节点失败: %v\n", err)
+		} else {
+			nodes = resolvedNodes
 		}
 	} else if len(pbRunLabel) > 0 {
 		nodes, err = resolver.ListNodes(&node.ListOptions{Label: pbRunLabel[0]})
@@ -562,15 +555,8 @@ func selectPlaybookRunTargetNodes(resolver *node.NodeResolver, playbookHosts []s
 
 	for _, rn := range nodes {
 		// 如果同时指定了多个筛选条件，在 Go 层做二次过滤
-		if pbRunGroup != "" {
-			found := false
-			for _, g := range rn.Groups {
-				if g == pbRunGroup {
-					found = true
-					break
-				}
-			}
-			if !found {
+		if len(pbRunGroup) > 0 {
+			if !node.ContainsAny(rn.Groups, pbRunGroup) {
 				continue
 			}
 		}
@@ -672,12 +658,12 @@ func parsePlaybookRunExtraVars(vars []string) map[string]interface{} {
 // ApplyDefaultConfig 将 YAML default 块中的默认值应用到 CLI 参数上。
 // CLI 参数非空时优先使用 CLI 参数（完全替换），否则使用 YAML default。
 // 返回合并后的 group, tags, skip_tags 值（逗号分隔字符串形式）。
-func ApplyDefaultConfig(cliGroup, cliTags, cliSkipTags string,
-	defaultGroups, defaultTags, defaultSkipTags []string) (string, string, string) {
+func ApplyDefaultConfig(cliGroups []string, cliTags, cliSkipTags string,
+	defaultGroups, defaultTags, defaultSkipTags []string) ([]string, string, string) {
 
-	group := cliGroup
-	if group == "" && len(defaultGroups) > 0 {
-		group = strings.Join(defaultGroups, ",")
+	groups := cliGroups
+	if len(groups) == 0 && len(defaultGroups) > 0 {
+		groups = defaultGroups
 	}
 
 	tags := cliTags
@@ -690,7 +676,7 @@ func ApplyDefaultConfig(cliGroup, cliTags, cliSkipTags string,
 		skipTags = strings.Join(defaultSkipTags, ",")
 	}
 
-	return group, tags, skipTags
+	return groups, tags, skipTags
 }
 
 func runSamplePlaybook(nodes []*model.Node) {
