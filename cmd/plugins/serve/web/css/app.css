@@ -883,6 +883,13 @@ tr:hover td { background: var(--surface-2); }
 .tag-yellow { background: color-mix(in oklch, var(--warn) 25%, var(--surface)); color: var(--warn); }
 .tag-red { background: color-mix(in oklch, var(--danger) 25%, var(--surface)); color: var(--danger); }
 .tag-gray { background: var(--surface-2); color: var(--muted); }
+.tag-r0 { background: oklch(65% 0.18 25 / 0.25); color: oklch(72% 0.18 25); }
+.tag-r1 { background: oklch(68% 0.18 55 / 0.25); color: oklch(75% 0.18 55); }
+.tag-r2 { background: oklch(72% 0.16 85 / 0.25); color: oklch(78% 0.16 85); }
+.tag-r3 { background: oklch(68% 0.16 145 / 0.25); color: oklch(74% 0.16 145); }
+.tag-r4 { background: oklch(66% 0.14 190 / 0.25); color: oklch(72% 0.14 190); }
+.tag-r5 { background: color-mix(in oklch, var(--accent) 25%, var(--surface)); color: var(--accent); }
+.tag-r6 { background: oklch(62% 0.18 290 / 0.25); color: oklch(68% 0.18 290); }
 
 .status-badge {
   display: inline-block;

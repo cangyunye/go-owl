@@ -3,6 +3,7 @@ export function renderNodes(render, navigate, user, api, shell) {
   const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+  function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 7); }
   function statusClass(s) { return 'status-badge status-' + (s || 'unknown'); }
   function statusDot(s) {
     if (s === 'online') return '<span class="status-dot online"></span>';
@@ -67,8 +68,8 @@ export function renderNodes(render, navigate, user, api, shell) {
       list.innerHTML = '<tr><td colspan="7"><div class="view-empty" style="padding:24px"><div class="empty-title">暂无节点</div></div></td></tr>';
     } else {
       list.innerHTML = state.nodes.map(n => {
-        const groups = (n.groups || []).map(g => `<span class="tag tag-gray">${esc(g)}</span>`).join('');
-        const labels = n.labels ? Object.entries(n.labels).map(([k, v]) => `<span class="tag tag-gray">${esc(k)}:${esc(v)}</span>`).join('') : '';
+        const groups = (n.groups || []).map(g => `<span class="tag ${tagColor(g)}">${esc(g)}</span>`).join('');
+        const labels = n.labels ? Object.entries(n.labels).map(([k, v]) => `<span class="tag ${tagColor(k + ':' + v)}">${esc(k)}:${esc(v)}</span>`).join('') : '';
         const onlineLabel = n.status === 'online' ? '刚刚' : n.last_seen ? timeAgo(n.last_seen) : '-';
         return `<tr>
           <td class="checkbox-col"><input type="checkbox" class="node-check" value="${esc(n.id)}" onchange="updateBatch()"></td>
