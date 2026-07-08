@@ -1486,6 +1486,121 @@ tr:hover td { background: var(--surface-2); }
 }
 
 /* ================================================================
+   COMPONENTS — Exec Filters (new)
+   ================================================================ */
+.status-filter {
+  display: flex;
+  gap: 4px;
+}
+.status-btn {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.status-btn:hover { border-color: var(--accent-dim); color: var(--fg); }
+.status-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.filter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+.filter-row label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.exec-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  color: var(--fg);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238b8b8b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+}
+.exec-select:focus { border-color: var(--accent); }
+.exec-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  color: var(--fg);
+  font-size: 12px;
+  outline: none;
+  font-family: var(--font-mono);
+}
+.exec-input:focus { border-color: var(--accent); }
+
+/* Mode toggle buttons (parallel/serial) */
+.mode-btn {
+  flex: 1;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+.mode-btn:hover { border-color: var(--accent-dim); color: var(--fg); }
+.mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Toggle switch */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-row input { display: none; }
+.toggle-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  background: var(--border);
+  border-radius: 10px;
+  transition: background var(--transition);
+  flex-shrink: 0;
+}
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--muted);
+  border-radius: 50%;
+  transition: all var(--transition);
+}
+.toggle-row input:checked + .toggle-track { background: var(--accent); }
+.toggle-row input:checked + .toggle-track .toggle-thumb {
+  left: 16px;
+  background: #fff;
+}
+
+/* ================================================================
    COMPONENTS — AI Agent Chat
    ================================================================ */
 .agent-layout {
