@@ -105,6 +105,73 @@ export function renderNodes(render, navigate, user, api, shell) {
     btn.textContent = '创建';
   }
 
+  function showLabelModal() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
+    const commonLabels = {};
+    let first = true;
+    for (const n of state.nodes) {
+      if (!ids.includes(n.id)) continue;
+      if (first) { Object.assign(commonLabels, n.labels || {}); first = false; }
+      else {
+        for (const key of Object.keys(commonLabels)) {
+          if (!n.labels || !(key in n.labels) || n.labels[key] !== commonLabels[key])
+            delete commonLabels[key];
+        }
+      }
+    }
+    document.getElementById('label-input').value = Object.entries(commonLabels).map(([k, v]) => `${k}:${v}`).join('\n');
+    document.getElementById('label-node-count').textContent = ids.length;
+    document.getElementById('label-error').textContent = '';
+    document.getElementById('label-modal-overlay').classList.add('open');
+  }
+
+  function hideLabelModal() {
+    document.getElementById('label-modal-overlay').classList.remove('open');
+  }
+
+  async function handleLabelSubmit() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
+    const text = document.getElementById('label-input').value.trim();
+    const newLabels = {};
+    if (text) {
+      for (const line of text.split('\n')) {
+        const idx = line.indexOf(':');
+        if (idx > 0) { const k = line.slice(0, idx).trim(), v = line.slice(idx + 1).trim(); if (k) newLabels[k] = v; }
+      }
+    }
+    if (text && Object.keys(newLabels).length === 0) {
+      document.getElementById('label-error').textContent = '格式无效，请使用 key:value 每行一个';
+      return;
+    }
+    const btn = document.getElementById('label-submit');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+      await Promise.all(ids.map(id => {
+        const node = state.nodes.find(n => n.id === id);
+        const merged = { ...(node?.labels || {}), ...newLabels };
+        return api.updateNode(id, { labels: merged });
+      }));
+      hideLabelModal(); await loadNodes();
+    } catch (e) { document.getElementById('label-error').textContent = e.message; }
+    btn.disabled = false; btn.textContent = '保存标签';
+  }
+
+  async function handleDeleteNodes() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
+    if (!confirm(`确定删除 ${ids.length} 个节点？此操作不可撤销。`)) return;
+    try {
+      await Promise.all(ids.map(id => api.deleteNode(id)));
+      window.clearSelection(); await loadNodes();
+    } catch (e) { alert('删除失败: ' + e.message); }
+  }
+
+  function getSelectedIds() {
+    return Array.from(document.querySelectorAll('.node-check:checked')).map(cb => cb.value);
+  }
+
   shell.setPanelContent(`
     <li class="panel-item active"><span class="dot" style="background:var(--accent)"></span>全部分组</li>
     <li class="panel-item"><span class="dot" style="background:var(--success)"></span>生产环境</li>
@@ -129,8 +196,8 @@ export function renderNodes(render, navigate, user, api, shell) {
     <div class="batch-bar" id="batchBar" style="display:none">
       <span>已选 <strong id="selectedCount">0</strong> 个节点</span>
       <button class="btn btn-secondary btn-sm" onclick="window.location='/exec'">执行命令</button>
-      <button class="btn btn-secondary btn-sm">打标签</button>
-      <button class="btn btn-secondary btn-sm">删除</button>
+      <button class="btn btn-secondary btn-sm" id="batch-label-btn">打标签</button>
+      <button class="btn btn-secondary btn-sm" id="batch-delete-btn">删除</button>
       <span style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" id="clearSelection">取消选择</button>
     </div>
@@ -215,6 +282,22 @@ export function renderNodes(render, navigate, user, api, shell) {
         </div>
       </div>
     </div>
+
+    <div class="modal-overlay" id="label-modal-overlay">
+      <div class="modal modal-sm">
+        <h3>批量打标签</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">已选 <strong id="label-node-count">0</strong> 个节点，每行一个标签</p>
+        <div class="form-row">
+          <label>标签 (key:value)</label>
+          <textarea class="input" id="label-input" rows="6" placeholder="env:production&#10;tier:frontend" style="font-family:var(--font-mono);font-size:12px;resize:vertical"></textarea>
+        </div>
+        <p class="error-msg" id="label-error"></p>
+        <div class="form-actions">
+          <button class="btn btn-secondary" id="label-cancel">取消</button>
+          <button class="btn btn-primary" id="label-submit">保存标签</button>
+        </div>
+      </div>
+    </div>
   `, () => {
     if (canWrite) {
       document.getElementById('add-node-btn').addEventListener('click', showAddModal);
@@ -245,6 +328,14 @@ export function renderNodes(render, navigate, user, api, shell) {
     document.getElementById('next-btn').addEventListener('click', () => {
       const totalPages = Math.ceil(state.total / state.pageSize);
       if (state.page < totalPages) { state.page++; loadNodes(); }
+    });
+
+    document.getElementById('batch-label-btn').addEventListener('click', showLabelModal);
+    document.getElementById('batch-delete-btn').addEventListener('click', handleDeleteNodes);
+    document.getElementById('label-cancel').addEventListener('click', hideLabelModal);
+    document.getElementById('label-submit').addEventListener('click', handleLabelSubmit);
+    document.getElementById('label-modal-overlay').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) hideLabelModal();
     });
   });
 }
