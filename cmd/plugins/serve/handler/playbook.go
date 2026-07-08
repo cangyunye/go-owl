@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
@@ -37,7 +38,7 @@ func (h *PlaybookHandler) Refresh(c *gin.Context) {
 
 	upsertSetting(h.db, "playbook_library_path", req.Path)
 
-	playbooks, err := h.playbooks.SyncFromDir(c.Request.Context(), req.Path)
+	playbooks, syncErrors, err := h.playbooks.SyncFromDir(c.Request.Context(), req.Path)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
@@ -48,6 +49,7 @@ func (h *PlaybookHandler) Refresh(c *gin.Context) {
 		"data":      all,
 		"refreshed": len(playbooks),
 		"total":     len(all),
+		"errors":    syncErrors,
 	})
 }
 
@@ -61,8 +63,8 @@ func (h *PlaybookHandler) List(c *gin.Context) {
 }
 
 func (h *PlaybookHandler) Get(c *gin.Context) {
-	name := c.Param("name")
-	pb, err := h.playbooks.Get(c.Request.Context(), name)
+	id := c.Param("id")
+	pb, err := h.playbooks.Get(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "playbook not found"})
 		return
@@ -77,8 +79,8 @@ type runRequest struct {
 }
 
 func (h *PlaybookHandler) Run(c *gin.Context) {
-	name := c.Param("name")
-	pb, err := h.playbooks.Get(c.Request.Context(), name)
+	id := c.Param("id")
+	pb, err := h.playbooks.Get(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "playbook not found"})
 		return
@@ -134,6 +136,12 @@ func (h *PlaybookHandler) RunGet(c *gin.Context) {
 func (h *PlaybookHandler) GetSettingsPath(c *gin.Context) {
 	var path string
 	h.db.QueryRow(`SELECT value FROM settings WHERE key = 'playbook_library_path'`).Scan(&path)
+	if path == "" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			path = filepath.Join(home, ".owl", "playbooks")
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"value": path})
 }
 

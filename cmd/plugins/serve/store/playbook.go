@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,154 +16,163 @@ import (
 )
 
 type PlaybookStore struct {
-	db *sql.DB
+	db    *sql.DB
+	cache map[string]*model.Playbook
 }
 
 func NewPlaybookStore(db *sql.DB) *PlaybookStore {
-	return &PlaybookStore{db: db}
+	return &PlaybookStore{db: db, cache: make(map[string]*model.Playbook)}
+}
+
+func playbookID(absPath string) string {
+	h := sha256.Sum256([]byte(absPath))
+	return fmt.Sprintf("%x", h[:6])
 }
 
 func (s *PlaybookStore) Init(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS playbooks (
-			name         TEXT PRIMARY KEY,
-			description  TEXT DEFAULT '',
-			file_path    TEXT NOT NULL,
-			tasks_count  INTEGER DEFAULT 0,
-			task_names   TEXT DEFAULT '[]',
-			file_exists  INTEGER DEFAULT 1,
-			updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			id          TEXT PRIMARY KEY,
+			name        TEXT NOT NULL,
+			description TEXT DEFAULT '',
+			category    TEXT DEFAULT '',
+			file_path   TEXT NOT NULL,
+			tasks_count INTEGER DEFAULT 0,
+			task_names  TEXT DEFAULT '[]',
+			file_exists INTEGER DEFAULT 1,
+			updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
 	return err
 }
 
-type playbookRow struct {
-	name        string
-	description string
-	filePath    string
-	tasksCount  int
-	taskNames   string
-	fileExists  int
-	updatedAt   time.Time
-}
-
 func (s *PlaybookStore) scanRow(scanner interface {
 	Scan(dest ...interface{}) error
 }) (*model.Playbook, error) {
-	var r playbookRow
-	if err := scanner.Scan(&r.name, &r.description, &r.filePath, &r.tasksCount, &r.taskNames, &r.fileExists, &r.updatedAt); err != nil {
+	var id, name, desc, cat, fp string
+	var tc int
+	var tnJSON string
+	var fe int
+	var updated string
+	if err := scanner.Scan(&id, &name, &desc, &cat, &fp, &tc, &tnJSON, &fe, &updated); err != nil {
 		return nil, err
 	}
 	pb := &model.Playbook{
-		Name:        r.name,
-		Description: r.description,
-		FilePath:    r.filePath,
-		TasksCount:  r.tasksCount,
-		FileExists:  r.fileExists == 1,
-		UpdatedAt:   r.updatedAt.Format(time.RFC3339),
+		ID: id, Name: name, Description: desc, Category: cat,
+		FilePath: fp, TasksCount: tc, FileExists: fe == 1, UpdatedAt: updated,
 	}
-	json.Unmarshal([]byte(r.taskNames), &pb.TaskNames)
+	json.Unmarshal([]byte(tnJSON), &pb.TaskNames)
 	if pb.TaskNames == nil {
 		pb.TaskNames = []string{}
 	}
 	return pb, nil
 }
 
-func (s *PlaybookStore) List(ctx context.Context) ([]*model.Playbook, error) {
+func (s *PlaybookStore) buildCache(ctx context.Context) error {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT name, description, file_path, tasks_count, task_names, file_exists, updated_at FROM playbooks ORDER BY name`)
+		`SELECT id, name, description, category, file_path, tasks_count, task_names, file_exists, updated_at FROM playbooks`)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
-
-	result := make([]*model.Playbook, 0)
+	s.cache = make(map[string]*model.Playbook)
 	for rows.Next() {
 		pb, err := s.scanRow(rows)
 		if err != nil {
 			continue
 		}
+		s.cache[pb.ID] = pb
+	}
+	return nil
+}
+
+func (s *PlaybookStore) List(ctx context.Context) ([]*model.Playbook, error) {
+	if len(s.cache) == 0 {
+		if err := s.buildCache(ctx); err != nil {
+			return nil, err
+		}
+	}
+	result := make([]*model.Playbook, 0, len(s.cache))
+	for _, pb := range s.cache {
 		result = append(result, pb)
 	}
 	return result, nil
 }
 
-func (s *PlaybookStore) Get(ctx context.Context, name string) (*model.Playbook, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT name, description, file_path, tasks_count, task_names, file_exists, updated_at FROM playbooks WHERE name = ?`, name)
-	return s.scanRow(row)
+func (s *PlaybookStore) Get(ctx context.Context, id string) (*model.Playbook, error) {
+	if len(s.cache) == 0 {
+		s.buildCache(ctx)
+	}
+	if pb, ok := s.cache[id]; ok {
+		return pb, nil
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (s *PlaybookStore) ListByCategory(ctx context.Context, category string) ([]*model.Playbook, error) {
+	if len(s.cache) == 0 {
+		if err := s.buildCache(ctx); err != nil {
+			return nil, err
+		}
+	}
+	var result []*model.Playbook
+	for _, pb := range s.cache {
+		if pb.Category == category {
+			result = append(result, pb)
+		}
+	}
+	return result, nil
+}
+
+func (s *PlaybookStore) GetCategoryCounts(ctx context.Context) (map[string]int, error) {
+	if len(s.cache) == 0 {
+		if err := s.buildCache(ctx); err != nil {
+			return nil, err
+		}
+	}
+	counts := make(map[string]int)
+	for _, pb := range s.cache {
+		counts[pb.Category]++
+	}
+	return counts, nil
 }
 
 func (s *PlaybookStore) Upsert(ctx context.Context, pb *model.Playbook) error {
-	taskNamesJSON, _ := json.Marshal(pb.TaskNames)
-	fileExists := 0
+	tnJSON, _ := json.Marshal(pb.TaskNames)
+	fe := 0
 	if pb.FileExists {
-		fileExists = 1
+		fe = 1
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO playbooks (name, description, file_path, tasks_count, task_names, file_exists, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(name) DO UPDATE SET
+		INSERT INTO playbooks (id, name, description, category, file_path, tasks_count, task_names, file_exists, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
 			description = excluded.description,
+			category = excluded.category,
 			file_path = excluded.file_path,
 			tasks_count = excluded.tasks_count,
 			task_names = excluded.task_names,
 			file_exists = excluded.file_exists,
 			updated_at = excluded.updated_at`,
-		pb.Name, pb.Description, pb.FilePath, pb.TasksCount, string(taskNamesJSON), fileExists, time.Now().UTC())
+		pb.ID, pb.Name, pb.Description, pb.Category, pb.FilePath,
+		pb.TasksCount, string(tnJSON), fe, time.Now().UTC())
+	if err == nil {
+		s.cache[pb.ID] = pb
+	}
 	return err
 }
 
-func (s *PlaybookStore) Delete(ctx context.Context, name string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM playbooks WHERE name = ?`, name)
+func (s *PlaybookStore) Delete(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM playbooks WHERE id = ?`, id)
+	delete(s.cache, id)
 	return err
-}
-
-func (s *PlaybookStore) SyncFromDir(ctx context.Context, dir string) ([]*model.Playbook, error) {
-	diskMap := make(map[string]*model.Playbook)
-
-	info, err := os.Stat(dir)
-	if err != nil || !info.IsDir() {
-		return nil, err
-	}
-
-	filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
-		if err != nil || fi.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(path, ".yml") && !strings.HasSuffix(path, ".yaml") {
-			return nil
-		}
-		pb := readPlaybookMeta(path)
-		if pb != nil {
-			diskMap[pb.Name] = pb
-		}
-		return nil
-	})
-
-	var results []*model.Playbook
-	for _, pb := range diskMap {
-		if err := s.Upsert(ctx, pb); err == nil {
-			results = append(results, pb)
-		}
-	}
-
-	existing, _ := s.List(ctx)
-	for _, pb := range existing {
-		if _, stillExists := diskMap[pb.Name]; !stillExists {
-			pb.FileExists = false
-			s.Upsert(ctx, pb)
-		}
-	}
-
-	return results, nil
 }
 
 type playbookYAMLMeta struct {
-	Name        string   `yaml:"name"`
-	Description string   `yaml:"description"`
-	Tasks       []any    `yaml:"tasks"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	Tasks       []any  `yaml:"tasks"`
 }
 
 func readPlaybookMeta(path string) *model.Playbook {
@@ -189,6 +200,7 @@ func readPlaybookMeta(path string) *model.Playbook {
 		}
 	}
 	return &model.Playbook{
+		ID:          playbookID(path),
 		Name:        name,
 		Description: meta.Description,
 		FilePath:    path,
@@ -196,4 +208,59 @@ func readPlaybookMeta(path string) *model.Playbook {
 		TaskNames:   taskNames,
 		FileExists:  true,
 	}
+}
+
+func (s *PlaybookStore) SyncFromDir(ctx context.Context, dir string) ([]*model.Playbook, []string, error) {
+	diskMap := make(map[string]*model.Playbook)
+	var errors []string
+
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return nil, nil, err
+	}
+
+	filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(path, ".yml") && !strings.HasSuffix(path, ".yaml") {
+			return nil
+		}
+		pb := readPlaybookMeta(path)
+		if pb == nil {
+			return nil
+		}
+
+		rel, _ := filepath.Rel(dir, filepath.Dir(path))
+		if rel != "." {
+			parts := strings.SplitN(rel, string(filepath.Separator), 2)
+			pb.Category = parts[0]
+		}
+
+		if existing, ok := diskMap[pb.ID]; ok {
+			errors = append(errors, fmt.Sprintf(
+				"hash collision: %q and %q have the same ID %q — rename one of them",
+				existing.FilePath, pb.FilePath, pb.ID))
+			return nil
+		}
+		diskMap[pb.ID] = pb
+		return nil
+	})
+
+	var results []*model.Playbook
+	for _, pb := range diskMap {
+		if err := s.Upsert(ctx, pb); err == nil {
+			results = append(results, pb)
+		}
+	}
+
+	existing, _ := s.List(ctx)
+	for _, pb := range existing {
+		if _, stillExists := diskMap[pb.ID]; !stillExists {
+			pb.FileExists = false
+			s.Upsert(ctx, pb)
+		}
+	}
+
+	return results, errors, nil
 }

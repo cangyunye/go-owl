@@ -3,8 +3,10 @@ package model
 import "time"
 
 type Playbook struct {
+	ID          string   `json:"id"`
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
+	Category    string   `json:"category,omitempty"`
 	FilePath    string   `json:"file_path"`
 	TasksCount  int      `json:"tasks_count"`
 	TaskNames   []string `json:"task_names,omitempty"`
