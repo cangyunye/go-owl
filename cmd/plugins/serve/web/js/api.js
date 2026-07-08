@@ -57,6 +57,63 @@ export const api = {
   deleteNode: (id) =>
     request('DELETE', `/nodes/${encodeURIComponent(id)}`),
 
+  batchGroup: (nodeIds, { add, remove }) =>
+    request('POST', '/nodes/batch/groups', { node_ids: nodeIds, add: add || [], remove: remove || [] }),
+
+  exportNodes: async (params) => {
+    const t = token();
+    const res = await fetch(`${API_BASE}/nodes/export`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    if (!res.ok) throw new Error('Export failed');
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename=(.+)/);
+    const filename = match ? match[1] : 'nodes.yaml';
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  importNodes: async (formData) => {
+    const t = token();
+    const res = await fetch(`${API_BASE}/nodes/import`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${t}` },
+      body: formData,
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || 'Import failed');
+    }
+    return res.json();
+  },
+
+  pingNodes: (nodeIds) =>
+    request('POST', '/nodes/ping', { node_ids: nodeIds }),
+
+  checkNodes: (nodeIds) =>
+    request('POST', '/nodes/check', { node_ids: nodeIds }),
+
   exec: (nodeId, command, force) =>
     request('POST', '/exec', { node_id: nodeId, command, ...(force ? { force: 'true' } : {}) }),
 
