@@ -7,6 +7,7 @@ export function renderExec(render, navigate, user, api, shell) {
   let allGroups = [];
   let allLabels = [];
   let labelInputs = [];
+  let statusFilter = '';
 
   const params = new URLSearchParams(window.location.search);
   const initNodes = params.get('nodes');
@@ -25,8 +26,9 @@ export function renderExec(render, navigate, user, api, shell) {
 
   async function loadNodes() {
     try {
-      const opts = { page: 1, page_size: 200 };
+      const opts = { page: 1, page_size: 100 };
       if (activeGroups.length) opts.group = activeGroups.join(',');
+      if (statusFilter) opts.status = statusFilter;
       const res = await api.nodes(opts);
       allNodes = res.data || [];
       renderNodeChips();
@@ -466,6 +468,10 @@ free -m</textarea>
       btn.addEventListener('click', function() {
         document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
+        statusFilter = this.dataset.status;
+        selectedNodes.clear();
+        loadNodes();
+        updateExecButton();
       });
     });
 
