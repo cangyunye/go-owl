@@ -22,7 +22,7 @@ func (s *PlaybookRunStore) Init(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS playbook_runs (
 			id              TEXT PRIMARY KEY,
-			playbook_id     TEXT NOT NULL DEFAULT '',
+			playbook_id     TEXT NOT NULL,
 			playbook_name   TEXT NOT NULL DEFAULT '',
 			playbook_file   TEXT NOT NULL DEFAULT '',
 			status          TEXT NOT NULL DEFAULT 'queued',
@@ -36,11 +36,7 @@ func (s *PlaybookRunStore) Init(ctx context.Context) error {
 			completed_at    TIMESTAMP
 		)
 	`)
-	if err != nil {
-		return err
-	}
-	s.db.ExecContext(ctx, `ALTER TABLE playbook_runs ADD COLUMN playbook_id TEXT NOT NULL DEFAULT ''`)
-	return nil
+	return err
 }
 
 func (s *PlaybookRunStore) Create(ctx context.Context, playbookID, name, file string, targetNodes []string, extraVars map[string]string, tags string) (*model.PlaybookRun, error) {
@@ -66,15 +62,16 @@ func (s *PlaybookRunStore) Create(ctx context.Context, playbookID, name, file st
 	return run, nil
 }
 
-func (s *PlaybookRunStore) Get(ctx context.Context, id string) (*model.PlaybookRun, error) {
+func (s *PlaybookRunStore) scanRow(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*model.PlaybookRun, error) {
 	run := &model.PlaybookRun{}
 	var targetNodesStr, extraVarsStr, resultsStr string
 	var startedAt, completedAt sql.NullTime
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at FROM playbook_runs WHERE id = ?`, id).
-		Scan(&run.ID, &run.PlaybookID, &run.PlaybookName, &run.PlaybookFile, &run.Status,
-			&targetNodesStr, &extraVarsStr, &run.Tags, &run.Error, &resultsStr,
-			&run.CreatedAt, &startedAt, &completedAt)
+	err := scanner.Scan(
+		&run.ID, &run.PlaybookID, &run.PlaybookName, &run.PlaybookFile,
+		&run.Status, &targetNodesStr, &extraVarsStr, &run.Tags,
+		&run.Error, &resultsStr, &run.CreatedAt, &startedAt, &completedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -93,12 +90,18 @@ func (s *PlaybookRunStore) Get(ctx context.Context, id string) (*model.PlaybookR
 	return run, nil
 }
 
+func (s *PlaybookRunStore) Get(ctx context.Context, id string) (*model.PlaybookRun, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at FROM playbook_runs WHERE id = ?`, id)
+	return s.scanRow(row)
+}
+
 func (s *PlaybookRunStore) List(ctx context.Context, limit, offset int) ([]*model.PlaybookRun, int, error) {
 	var total int
 	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playbook_runs`).Scan(&total)
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(error,''), created_at, started_at, completed_at
+		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at
 		FROM playbook_runs ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -107,21 +110,9 @@ func (s *PlaybookRunStore) List(ctx context.Context, limit, offset int) ([]*mode
 
 	runs := make([]*model.PlaybookRun, 0)
 	for rows.Next() {
-		run := &model.PlaybookRun{}
-		var targetNodesStr, extraVarsStr string
-		var startedAt, completedAt sql.NullTime
-		if err := rows.Scan(&run.ID, &run.PlaybookID, &run.PlaybookName, &run.PlaybookFile, &run.Status,
-			&targetNodesStr, &extraVarsStr, &run.Tags, &run.Error,
-			&run.CreatedAt, &startedAt, &completedAt); err != nil {
+		run, err := s.scanRow(rows)
+		if err != nil {
 			continue
-		}
-		json.Unmarshal([]byte(targetNodesStr), &run.TargetNodes)
-		json.Unmarshal([]byte(extraVarsStr), &run.ExtraVars)
-		if startedAt.Valid {
-			run.StartedAt = &startedAt.Time
-		}
-		if completedAt.Valid {
-			run.CompletedAt = &completedAt.Time
 		}
 		runs = append(runs, run)
 	}
