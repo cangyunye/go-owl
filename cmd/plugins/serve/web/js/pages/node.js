@@ -1,26 +1,14 @@
 export function renderNodeDetail(render, navigate, user, api, nodeId) {
-  const isEditing = location.search.includes('edit=1');
   const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
   const isAdmin = user.role === 'admin';
 
+  function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
   render(`
-    <div class="app-header">
-      <h1>OWL Console</h1>
-      <div class="header-right">
-        <a href="/" style="font-size:14px;color:var(--text-muted)">Nodes</a>
-        <a href="/tasks" style="font-size:14px;color:var(--text-muted)">Tasks</a>
-        ${user.role === 'admin' || user.role === 'operator' ? '<a href="/playbooks" style="font-size:14px;color:var(--text-muted)">Playbooks</a>' : ''}
-        ${user.role === 'admin' ? '<a href="/settings" style="font-size:14px;color:var(--text-muted)">Settings</a>' : ''}
-        ${user.role === 'admin' ? '<a href="/users" style="font-size:14px;color:var(--text-muted)">Users &amp; Permissions</a>' : ''}
-        <span>${esc(user.display_name || user.username)}</span>
-        <span class="role-badge">${esc(user.role)}</span>
-        <button class="logout-btn" id="logout-btn">Sign Out</button>
-      </div>
+    <div style="padding:12px 0">
+      <a href="/nodes" class="back-link">&larr; Back to Nodes</a>
     </div>
-    <div class="app-content">
-      <a href="/" class="back-link">&larr; Back to Nodes</a>
-      <div id="node-content" class="loading">Loading...</div>
-    </div>
+    <div id="node-content" class="loading">Loading...</div>
 
     <div class="modal-overlay" id="delete-modal">
       <div class="modal modal-sm">
@@ -33,12 +21,62 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
         </div>
       </div>
     </div>
+
+    <div class="modal-overlay" id="edit-modal-overlay" role="dialog" aria-modal="true" aria-label="编辑节点">
+      <div class="modal">
+        <h2>编辑节点</h2>
+        <div class="form-row">
+          <label>节点 ID</label>
+          <input type="text" class="input" id="edit-id" readonly disabled style="background:var(--bg);color:var(--muted)">
+        </div>
+        <div class="form-row">
+          <label>节点名称</label>
+          <input type="text" class="input" id="edit-name" placeholder="My Server">
+        </div>
+        <div class="form-row">
+          <label>IP 地址 *</label>
+          <input type="text" class="input" id="edit-address" placeholder="10.0.0.1">
+        </div>
+        <div class="form-row">
+          <label>端口</label>
+          <input type="number" class="input" id="edit-port" value="22">
+        </div>
+        <div class="form-row">
+          <label>SSH 用户 *</label>
+          <input type="text" class="input" id="edit-user" placeholder="root">
+        </div>
+        <div class="form-row">
+          <label>密码</label>
+          <input type="password" class="input" id="edit-password" placeholder="留空则不修改">
+        </div>
+        <div class="form-row">
+          <label>SSH 密钥</label>
+          <textarea class="input" id="edit-sshkey" placeholder="留空则不修改" rows="2" style="font-family:var(--font-mono);font-size:12px"></textarea>
+        </div>
+        <div class="form-row">
+          <label>状态</label>
+          <select class="select" id="edit-status">
+            <option value="unknown">未知</option>
+            <option value="online">在线</option>
+            <option value="offline">离线</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>分组</label>
+          <input type="text" class="input" id="edit-groups" placeholder="web, prod">
+        </div>
+        <div class="form-row">
+          <label>标签</label>
+          <input type="text" class="input" id="edit-labels" placeholder="env:prod, tier:frontend">
+        </div>
+        <p class="error-msg" id="edit-error"></p>
+        <div class="form-actions">
+          <button class="btn btn-secondary" id="edit-cancel">取消</button>
+          <button class="btn btn-primary" id="edit-save">保存</button>
+        </div>
+      </div>
+    </div>
   `, () => {
-    document.getElementById('logout-btn').addEventListener('click', () => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      navigate('/login');
-    });
     if (isAdmin) {
       document.getElementById('delete-cancel').addEventListener('click', () => {
         document.getElementById('delete-modal').classList.remove('open');
@@ -49,18 +87,89 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
         }
       });
     }
+    document.getElementById('edit-cancel').addEventListener('click', hideEditModal);
+    document.getElementById('edit-save').addEventListener('click', handleUpdate);
+    document.getElementById('edit-modal-overlay').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) hideEditModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const overlay = document.querySelector('.modal-overlay.open');
+        if (overlay) overlay.classList.remove('open');
+      }
+    });
     loadNode();
   });
+
+  let currentNode = null;
+
+  function hideEditModal() {
+    document.getElementById('edit-modal-overlay').classList.remove('open');
+  }
+
+  function showEditModal(n) {
+    currentNode = n;
+    document.getElementById('edit-id').value = n.id;
+    document.getElementById('edit-name').value = n.name || '';
+    document.getElementById('edit-address').value = n.address || '';
+    document.getElementById('edit-port').value = n.port || 22;
+    document.getElementById('edit-user').value = n.user || '';
+    document.getElementById('edit-password').value = '';
+    document.getElementById('edit-sshkey').value = '';
+    document.getElementById('edit-status').value = n.status || 'unknown';
+    document.getElementById('edit-groups').value = (n.groups || []).join(', ');
+    document.getElementById('edit-labels').value = Object.entries(n.labels || {}).map(([k, v]) => k + ':' + v).join(', ');
+    document.getElementById('edit-error').textContent = '';
+    document.getElementById('edit-modal-overlay').classList.add('open');
+  }
+
+  async function handleUpdate() {
+    const n = currentNode;
+    if (!n) return;
+    const data = {};
+    const name = document.getElementById('edit-name').value.trim();
+    if (name !== (n.name || '')) data.name = name;
+    const address = document.getElementById('edit-address').value.trim();
+    if (address !== (n.address || '')) data.address = address;
+    const port = parseInt(document.getElementById('edit-port').value) || 22;
+    if (port !== (n.port || 22)) data.port = port;
+    const user = document.getElementById('edit-user').value.trim();
+    if (user !== (n.user || '')) data.user = user;
+    const pw = document.getElementById('edit-password').value;
+    if (pw) data.password = pw;
+    const sshKey = document.getElementById('edit-sshkey').value;
+    if (sshKey) data.ssh_key = sshKey;
+    const status = document.getElementById('edit-status').value;
+    if (status !== (n.status || 'unknown')) data.status = status;
+    const groups = document.getElementById('edit-groups').value.split(',').map(s => s.trim()).filter(Boolean);
+    if (JSON.stringify(groups) !== JSON.stringify(n.groups || [])) data.groups = groups;
+    const labelsRaw = document.getElementById('edit-labels').value.trim();
+    const labels = {};
+    if (labelsRaw) {
+      labelsRaw.split(',').forEach(pair => {
+        const [k, ...vs] = pair.split(':');
+        if (k && vs.length) labels[k.trim()] = vs.join(':').trim();
+      });
+    }
+    if (JSON.stringify(labels) !== JSON.stringify(n.labels || {})) data.labels = labels;
+
+    if (Object.keys(data).length === 0) { hideEditModal(); return; }
+
+    const btn = document.getElementById('edit-save');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+      await api.updateNode(nodeId, data);
+      hideEditModal();
+      loadNode();
+    } catch (e) { document.getElementById('edit-error').textContent = e.message; }
+    btn.disabled = false; btn.textContent = '保存';
+  }
 
   async function loadNode() {
     const container = document.getElementById('node-content');
     try {
       const n = await api.node(nodeId);
-      if (isEditing && canWrite) {
-        renderEditForm(container, n);
-      } else {
-        renderDetail(container, n);
-      }
+      renderDetail(container, n);
     } catch (e) {
       container.innerHTML = `<p style="color:var(--danger)">${esc(e.message)}</p>`;
     }
@@ -75,6 +184,8 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
       <div class="page-header">
         <h2>${esc(n.name || n.id)}</h2>
         <span class="status-badge status-${n.status || 'unknown'}">${esc(n.status || 'unknown')}</span>
+        <span id="ping-result" style="font-size:13px;margin-left:8px"></span>
+        <span id="check-result" style="font-size:13px;margin-left:8px"></span>
       </div>
       <div class="node-detail-grid">
         <div class="card">
@@ -90,15 +201,48 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
           <div class="detail-field"><label>Updated</label><div class="value">${n.updated_at ? new Date(n.updated_at).toLocaleString() : '-'}</div></div>
         </div>
       </div>
-      <div style="display:flex;gap:8px">
-        ${canWrite ? `<button class="btn-primary" id="edit-btn">Edit</button>` : ''}
-        ${isAdmin ? `<button class="btn-danger" id="delete-btn">Delete</button>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${canWrite ? `<button class="btn-secondary" id="ping-btn">Ping</button>` : ''}
+        ${canWrite ? `<button class="btn-secondary" id="check-btn">SSH 检查</button>` : ''}
+        ${canWrite ? `<button class="btn-primary" id="edit-btn">编辑</button>` : ''}
+        ${isAdmin ? `<button class="btn-danger" id="delete-btn">删除</button>` : ''}
       </div>
     `;
 
     if (canWrite) {
-      document.getElementById('edit-btn').addEventListener('click', () => {
-        navigate(`/nodes/${encodeURIComponent(nodeId)}?edit=1`);
+      document.getElementById('edit-btn').addEventListener('click', () => showEditModal(n));
+      document.getElementById('ping-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('ping-btn');
+        const result = document.getElementById('ping-result');
+        btn.disabled = true; btn.textContent = 'Pinging…';
+        result.innerHTML = '<span style="color:var(--muted)">⏳</span>';
+        try {
+          const res = await api.pingNodes([nodeId]);
+          const r = res.results[0];
+          if (r && r.success) {
+            result.innerHTML = `<span style="color:var(--success)">✓ ${r.latency_ms}ms</span>`;
+          } else {
+            result.innerHTML = `<span style="color:var(--danger)">✗ ${r?.error || 'failed'}</span>`;
+          }
+        } catch (e) { result.innerHTML = `<span style="color:var(--danger)">${esc(e.message)}</span>`; }
+        btn.disabled = false; btn.textContent = 'Ping';
+      });
+      document.getElementById('check-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('check-btn');
+        const result = document.getElementById('check-result');
+        btn.disabled = true; btn.textContent = 'Checking…';
+        result.innerHTML = '<span style="color:var(--muted)">⏳</span>';
+        try {
+          const res = await api.checkNodes([nodeId]);
+          const r = res.results[0];
+          if (r && r.success) {
+            result.innerHTML = `<span style="color:var(--success)">✓ SSH ${r.method}</span>`;
+            loadNode();
+          } else {
+            result.innerHTML = `<span style="color:var(--danger)">✗ ${r?.error || 'failed'}</span>`;
+          }
+        } catch (e) { result.innerHTML = `<span style="color:var(--danger)">${esc(e.message)}</span>`; }
+        btn.disabled = false; btn.textContent = 'SSH 检查';
       });
     }
     if (isAdmin) {
@@ -108,7 +252,7 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
         document.getElementById('delete-confirm').onclick = async () => {
           try {
             await api.deleteNode(nodeId);
-            navigate('/');
+            navigate('/nodes');
           } catch (e) {
             document.getElementById('delete-error').textContent = e.message;
           }
@@ -116,88 +260,4 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
       });
     }
   }
-
-  function renderEditForm(container, n) {
-    container.innerHTML = `
-      <div class="page-header"><h2>Edit: ${esc(n.name || n.id)}</h2></div>
-      <div class="card" style="max-width:600px">
-        <div class="modal-form">
-          <div class="form-row"><label>Name</label><input id="edit-name" value="${esc(n.name || '')}"></div>
-          <div class="form-row"><label>Address</label><input id="edit-address" value="${esc(n.address || '')}"></div>
-          <div class="form-row"><label>Port</label><input id="edit-port" type="number" value="${n.port || 22}"></div>
-          <div class="form-row"><label>User</label><input id="edit-user" value="${esc(n.user || '')}"></div>
-          <div class="form-row"><label>Password</label><input id="edit-password" type="password" placeholder="leave blank to keep current"></div>
-          <div class="form-row"><label>SSH Key</label><textarea id="edit-sshkey" rows="3" placeholder="leave blank to keep current"></textarea></div>
-          <div class="form-row"><label>Status</label>
-            <select id="edit-status">
-              <option value="unknown" ${n.status === 'unknown' ? 'selected' : ''}>Unknown</option>
-              <option value="online" ${n.status === 'online' ? 'selected' : ''}>Online</option>
-              <option value="offline" ${n.status === 'offline' ? 'selected' : ''}>Offline</option>
-            </select>
-          </div>
-          <div class="form-row"><label>Groups</label><input id="edit-groups" value="${esc((n.groups || []).join(', '))}"></div>
-          <div class="form-row"><label>Labels</label><input id="edit-labels" value="${esc(Object.entries(n.labels || {}).map(([k,v]) => k+':'+v).join(', '))}"></div>
-        </div>
-        <p class="error-msg" id="edit-error"></p>
-        <div style="display:flex;gap:8px;margin-top:16px">
-          <button class="btn-cancel" id="edit-cancel">Cancel</button>
-          <button class="btn-primary" id="edit-save">Save</button>
-        </div>
-      </div>
-    `;
-
-    document.getElementById('edit-cancel').addEventListener('click', () => {
-      navigate(`/nodes/${encodeURIComponent(nodeId)}`);
-    });
-
-    document.getElementById('edit-save').addEventListener('click', async () => {
-      const data = {};
-      const fields = ['name', 'address', 'user', 'status'];
-      fields.forEach(f => {
-        const val = document.getElementById('edit-' + f).value.trim();
-        if (val !== (n[f] || '')) data[f] = val;
-      });
-
-      const port = parseInt(document.getElementById('edit-port').value);
-      if (port !== (n.port || 22)) data.port = port;
-
-      const pw = document.getElementById('edit-password').value;
-      if (pw) data.password = pw;
-
-      const sshKey = document.getElementById('edit-sshkey').value;
-      if (sshKey) data.ssh_key = sshKey;
-
-      const groups = document.getElementById('edit-groups').value.split(/[,\s]+/).filter(Boolean);
-      if (JSON.stringify(groups) !== JSON.stringify(n.groups || [])) data.groups = groups;
-
-      const labelsRaw = document.getElementById('edit-labels').value.trim();
-      const labels = {};
-      if (labelsRaw) {
-        labelsRaw.split(',').forEach(pair => {
-          const [k, ...vs] = pair.split(':');
-          if (k && vs.length) labels[k.trim()] = vs.join(':').trim();
-        });
-      }
-      if (JSON.stringify(labels) !== JSON.stringify(n.labels || {})) data.labels = labels;
-
-      if (Object.keys(data).length === 0) {
-        navigate(`/nodes/${encodeURIComponent(nodeId)}`);
-        return;
-      }
-
-      const btn = document.getElementById('edit-save');
-      btn.disabled = true;
-      btn.textContent = 'Saving...';
-      try {
-        await api.updateNode(nodeId, data);
-        navigate(`/nodes/${encodeURIComponent(nodeId)}`);
-      } catch (e) {
-        document.getElementById('edit-error').textContent = e.message;
-        btn.disabled = false;
-        btn.textContent = 'Save';
-      }
-    });
-  }
-
-  function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 }
