@@ -49,6 +49,7 @@ type execRequest struct {
 	ScriptName    string            `json:"script_name"`
 	ScriptArgs    string            `json:"script_args"`
 	Group         string            `json:"group"`
+	Groups        []string          `json:"groups"`
 	Labels        map[string]string `json:"labels"`
 	Status        string            `json:"status"`
 	Force         string            `json:"force,omitempty"`
@@ -98,8 +99,11 @@ func resolveNodeIDs(db *sql.DB, req execRequest) []string {
 	if req.NodeID != "" {
 		return []string{req.NodeID}
 	}
-	if req.Group != "" {
-		groupNames := strings.Split(req.Group, ",")
+	groupNames := req.Groups
+	if len(groupNames) == 0 && req.Group != "" {
+		groupNames = strings.Split(req.Group, ",")
+	}
+	if len(groupNames) > 0 {
 		var allIDs []string
 		seen := make(map[string]bool)
 		for _, gn := range groupNames {

@@ -43,18 +43,56 @@ export function renderExec(render, navigate, user, api, shell) {
     } catch {}
   }
 
+  function toggleGroup(g) {
+    const idx = activeGroups.indexOf(g);
+    if (idx >= 0) {
+      activeGroups.splice(idx, 1);
+    } else {
+      activeGroups.push(g);
+    }
+    renderGroupTags();
+    renderGroupChips();
+    loadNodes();
+  }
+
+  function renderGroupChips() {
+    const container = document.getElementById('group-chips');
+    if (!container) return;
+    container.innerHTML = allGroups.map(g => {
+      const active = activeGroups.includes(g);
+      return `<span class="node-chip ${active ? 'selected' : ''}" data-group="${esc(g)}">${esc(g)}</span>`;
+    }).join('');
+    container.querySelectorAll('.node-chip').forEach(chip => {
+      chip.addEventListener('click', () => toggleGroup(chip.dataset.group));
+    });
+  }
+
+  function renderGroupTags() {
+    const card = document.getElementById('group-filter-card');
+    const container = document.getElementById('group-tags');
+    if (!container) return;
+    if (activeGroups.length) {
+      card.style.display = '';
+      container.innerHTML = activeGroups.map(g =>
+        `<span class="tag ${tagColor(g)}">${esc(g)} <span class="tag-remove" data-group="${esc(g)}" style="cursor:pointer;margin-left:2px">×</span></span>`
+      ).join('');
+      document.querySelectorAll('.tag-remove').forEach(el => {
+        el.addEventListener('click', function() {
+          toggleGroup(this.dataset.group);
+        });
+      });
+    } else {
+      card.style.display = 'none';
+    }
+  }
+
   function renderFilterControls() {
     const container = document.getElementById('filter-controls');
     if (!container) return;
-    let groupOpts = '<option value="">所有分组</option>';
-    allGroups.forEach(g => {
-      const sel = activeGroups.includes(g) ? ' selected' : '';
-      groupOpts += `<option value="${esc(g)}"${sel}>${esc(g)}</option>`;
-    });
     container.innerHTML = `
       <div class="filter-row">
-        <label>分组</label>
-        <select id="filter-group" class="exec-select">${groupOpts}</select>
+        <label>分组（点击切换多选）</label>
+        <div style="display:flex;gap:4px;flex-wrap:wrap" id="group-chips"></div>
       </div>
       <div class="filter-row">
         <label>标签</label>
@@ -66,33 +104,8 @@ export function renderExec(render, navigate, user, api, shell) {
       </div>
     `;
 
-    document.getElementById('filter-group').addEventListener('change', function() {
-      activeGroups = this.value ? [this.value] : [];
-      const card = document.getElementById('group-filter-card');
-      if (activeGroups.length) {
-        card.style.display = '';
-        document.getElementById('group-tags').innerHTML = activeGroups.map(g =>
-          `<span class="tag ${tagColor(g)}">${esc(g)} <span class="tag-remove" data-group="${esc(g)}" style="cursor:pointer;margin-left:2px">×</span></span>`
-        ).join('');
-        document.querySelectorAll('.tag-remove').forEach(el => {
-          el.addEventListener('click', function() {
-            activeGroups = activeGroups.filter(g => g !== this.dataset.group);
-            document.getElementById('filter-group').value = '';
-            if (activeGroups.length === 0) {
-              document.getElementById('group-filter-card').style.display = 'none';
-            } else {
-              document.getElementById('group-tags').innerHTML = activeGroups.map(g =>
-                `<span class="tag ${tagColor(g)}">${esc(g)}</span>`
-              ).join('');
-            }
-            loadNodes();
-          });
-        });
-      } else {
-        card.style.display = 'none';
-      }
-      loadNodes();
-    });
+    renderGroupChips();
+    renderGroupTags();
 
     document.getElementById('add-label-btn').addEventListener('click', addLabel);
     document.getElementById('label-input').addEventListener('keydown', e => { if (e.key === 'Enter') addLabel(); });
@@ -216,7 +229,7 @@ export function renderExec(render, navigate, user, api, shell) {
     if (connectTimeout) payload.connect_timeout = connectTimeout + 's';
     if (commandTimeout) payload.command_timeout = commandTimeout + 's';
 
-    if (activeGroups.length) payload.group = activeGroups.join(',');
+    if (activeGroups.length) payload.groups = activeGroups;
     if (labelInputs.length) {
       payload.labels = {};
       labelInputs.forEach(l => {
