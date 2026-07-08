@@ -161,22 +161,60 @@ export function renderNodes(render, navigate, user, api, shell) {
     btn.textContent = '创建';
   }
 
-  function showLabelModal() {
+  let labelMode = 'merge';
+
+  function parseLabels(text) {
+    const labels = {};
+    const seen = new Set();
+    const errors = [];
+    if (!text.trim()) return { labels, errors };
+    for (const [i, line] of text.split('\n').entries()) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const idx = trimmed.indexOf(':');
+      if (idx <= 0) { errors.push(`第 ${i + 1} 行: 缺少 ':'，格式应为 key:value`); continue; }
+      const k = trimmed.slice(0, idx).trim();
+      const v = trimmed.slice(idx + 1).trim();
+      if (!k) { errors.push(`第 ${i + 1} 行: key 不能为空`); continue; }
+      if (!v) { errors.push(`第 ${i + 1} 行: value 不能为空`); continue; }
+      if (!/^[a-zA-Z0-9_.-]+$/.test(k)) { errors.push(`第 ${i + 1} 行: key "${k}" 包含非法字符，仅支持字母数字 _ . -`); continue; }
+      if (seen.has(k)) { errors.push(`第 ${i + 1} 行: key "${k}" 重复`); continue; }
+      seen.add(k);
+      labels[k] = v;
+    }
+    return { labels, errors };
+  }
+
+  function showLabelModal(mode) {
+    labelMode = mode || 'merge';
     const ids = getSelectedIds();
     if (ids.length === 0) return;
-    const commonLabels = {};
-    let first = true;
-    for (const n of state.nodes) {
-      if (!ids.includes(n.id)) continue;
-      if (first) { Object.assign(commonLabels, n.labels || {}); first = false; }
-      else {
-        for (const key of Object.keys(commonLabels)) {
-          if (!n.labels || !(key in n.labels) || n.labels[key] !== commonLabels[key])
-            delete commonLabels[key];
+    const title = document.getElementById('label-modal-title');
+    const desc = document.getElementById('label-mode-desc');
+    if (mode === 'replace') {
+      title.textContent = '同批打标签';
+      desc.textContent = '所有节点将替换为完全相同的标签';
+    } else {
+      title.textContent = '依次打标签';
+      desc.textContent = '新增标签合并到各节点，不覆盖已有标签';
+    }
+    if (mode === 'replace') {
+      document.getElementById('label-input').value = '';
+    } else {
+      const commonLabels = {};
+      let first = true;
+      for (const n of state.nodes) {
+        if (!ids.includes(n.id)) continue;
+        if (first) { Object.assign(commonLabels, n.labels || {}); first = false; }
+        else {
+          for (const key of Object.keys(commonLabels)) {
+            if (!n.labels || !(key in n.labels) || n.labels[key] !== commonLabels[key])
+              delete commonLabels[key];
+          }
         }
       }
+      document.getElementById('label-input').value = Object.entries(commonLabels).map(([k, v]) => `${k}:${v}`).join('\n');
     }
-    document.getElementById('label-input').value = Object.entries(commonLabels).map(([k, v]) => `${k}:${v}`).join('\n');
     document.getElementById('label-node-count').textContent = ids.length;
     document.getElementById('label-error').textContent = '';
     document.getElementById('label-modal-overlay').classList.add('open');
@@ -189,29 +227,25 @@ export function renderNodes(render, navigate, user, api, shell) {
   async function handleLabelSubmit() {
     const ids = getSelectedIds();
     if (ids.length === 0) return;
-    const text = document.getElementById('label-input').value.trim();
-    const newLabels = {};
-    if (text) {
-      for (const line of text.split('\n')) {
-        const idx = line.indexOf(':');
-        if (idx > 0) { const k = line.slice(0, idx).trim(), v = line.slice(idx + 1).trim(); if (k) newLabels[k] = v; }
-      }
-    }
-    if (text && Object.keys(newLabels).length === 0) {
-      document.getElementById('label-error').textContent = '格式无效，请使用 key:value 每行一个';
+    const text = document.getElementById('label-input').value;
+    const { labels: newLabels, errors } = parseLabels(text);
+    if (errors.length > 0) {
+      document.getElementById('label-error').textContent = errors.join('; ');
       return;
     }
     const btn = document.getElementById('label-submit');
     btn.disabled = true; btn.textContent = '保存中…';
     try {
-      await Promise.all(ids.map(id => {
+      await Promise.all(ids.map(async id => {
         const node = state.nodes.find(n => n.id === id);
-        const merged = { ...(node?.labels || {}), ...newLabels };
-        return api.updateNode(id, { labels: merged });
+        const labels = labelMode === 'replace'
+          ? { ...newLabels }
+          : { ...(node?.labels || {}), ...newLabels };
+        return api.updateNode(id, { labels });
       }));
       hideLabelModal(); await loadNodes();
     } catch (e) { document.getElementById('label-error').textContent = e.message; }
-    btn.disabled = false; btn.textContent = '保存标签';
+    btn.disabled = false; btn.textContent = '确定';
   }
 
   async function handleDeleteNodes() {
@@ -246,7 +280,8 @@ export function renderNodes(render, navigate, user, api, shell) {
     <div class="batch-bar" id="batchBar" style="display:none">
       <span>已选 <strong id="selectedCount">0</strong> 个节点</span>
       <button class="btn btn-secondary btn-sm" onclick="window.location='/exec'">执行命令</button>
-      <button class="btn btn-secondary btn-sm" id="batch-label-btn">打标签</button>
+      <button class="btn btn-secondary btn-sm" id="batch-label-merge-btn">依次标签</button>
+      <button class="btn btn-secondary btn-sm" id="batch-label-replace-btn">同批标签</button>
       <button class="btn btn-secondary btn-sm" id="batch-delete-btn">删除</button>
       <span style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" id="clearSelection">取消选择</button>
@@ -335,8 +370,8 @@ export function renderNodes(render, navigate, user, api, shell) {
 
     <div class="modal-overlay" id="label-modal-overlay">
       <div class="modal modal-sm">
-        <h3>批量打标签</h3>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">已选 <strong id="label-node-count">0</strong> 个节点，每行一个标签</p>
+        <h3 id="label-modal-title">打标签</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">已选 <strong id="label-node-count">0</strong> 个节点，<span id="label-mode-desc">每行一个标签</span></p>
         <div class="form-row">
           <label>标签 (key:value)</label>
           <textarea class="input" id="label-input" rows="6" placeholder="env:production&#10;tier:frontend" style="font-family:var(--font-mono);font-size:12px;resize:vertical"></textarea>
@@ -344,7 +379,7 @@ export function renderNodes(render, navigate, user, api, shell) {
         <p class="error-msg" id="label-error"></p>
         <div class="form-actions">
           <button class="btn btn-secondary" id="label-cancel">取消</button>
-          <button class="btn btn-primary" id="label-submit">保存标签</button>
+          <button class="btn btn-primary" id="label-submit">确定</button>
         </div>
       </div>
     </div>
@@ -388,7 +423,8 @@ export function renderNodes(render, navigate, user, api, shell) {
       if (state.page < totalPages) { state.page++; loadNodes(); }
     });
 
-    document.getElementById('batch-label-btn').addEventListener('click', showLabelModal);
+    document.getElementById('batch-label-merge-btn').addEventListener('click', () => showLabelModal('merge'));
+    document.getElementById('batch-label-replace-btn').addEventListener('click', () => showLabelModal('replace'));
     document.getElementById('batch-delete-btn').addEventListener('click', handleDeleteNodes);
     document.getElementById('label-cancel').addEventListener('click', hideLabelModal);
     document.getElementById('label-submit').addEventListener('click', handleLabelSubmit);
