@@ -147,6 +147,11 @@ func (s *Server) setupRoutes() {
 		{
 			writer.POST("/nodes", s.nodeHandler.Create)
 			writer.PUT("/nodes/:id", s.nodeHandler.Update)
+			writer.POST("/nodes/batch/groups", s.nodeHandler.BatchGroups)
+			writer.POST("/nodes/export", s.nodeHandler.Export)
+			writer.POST("/nodes/import", s.nodeHandler.Import)
+			writer.POST("/nodes/ping", s.nodeHandler.Ping)
+			writer.POST("/nodes/check", s.nodeHandler.Check)
 		}
 
 		operator := auth.Group("", s.authHandler.RBACMiddleware(model.RoleOperator, model.RoleAdmin))
