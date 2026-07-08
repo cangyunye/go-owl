@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -433,47 +432,6 @@ func (h *NodeHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
-}
-
-func (h *NodeHandler) Seed(c *gin.Context) {
-	mockGroups := []string{"web", "db", "cache", "worker", "monitor", "gateway"}
-	mockUsers := []string{"root", "admin", "deploy", "app"}
-	mockStatuses := []string{"online", "offline", "unknown", "online", "online"}
-	mockLabels := []map[string]string{
-		{"env": "prod", "tier": "frontend", "team": "platform"},
-		{"env": "prod", "tier": "backend", "team": "infra"},
-		{"env": "staging", "tier": "backend", "team": "platform"},
-		{"env": "dev", "tier": "frontend", "team": "fe-team"},
-		{"env": "prod", "tier": "data", "team": "data"},
-	}
-	rng := rand.New(rand.NewSource(42))
-	now := time.Now().UTC()
-	count := 0
-	for i := 0; i < 50; i++ {
-		id := fmt.Sprintf("node-%03d", i+1)
-		name := fmt.Sprintf("server-%03d", i+1)
-		address := fmt.Sprintf("10.0.%d.%d", 1+i/10, i%10+1)
-		port := 22
-		user := mockUsers[rng.Intn(len(mockUsers))]
-		status := mockStatuses[rng.Intn(len(mockStatuses))]
-		nGroups := 1 + rng.Intn(3)
-		selected := map[string]bool{}
-		groups := []string{}
-		for j := 0; j < nGroups; j++ {
-			g := mockGroups[rng.Intn(len(mockGroups))]
-			if !selected[g] { selected[g] = true; groups = append(groups, g) }
-		}
-		labelSet := mockLabels[rng.Intn(len(mockLabels))]
-		gJSON, _ := json.Marshal(groups)
-		lJSON, _ := json.Marshal(labelSet)
-		created := now.Add(-time.Duration(rng.Intn(720)) * time.Hour)
-		updated := created.Add(time.Duration(rng.Intn(48)) * time.Hour)
-		_, err := h.db.Exec(
-			`INSERT OR IGNORE INTO nodes (id, name, address, port, user, status, groups, labels, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, name, address, port, user, status, string(gJSON), string(lJSON), created.Format(time.RFC3339), updated.Format(time.RFC3339))
-		if err == nil { count++ }
-	}
-	c.JSON(http.StatusOK, gin.H{"code": 200, "message": fmt.Sprintf("seeded %d nodes", count)})
 }
 
 func keys(set map[string]bool) []string {

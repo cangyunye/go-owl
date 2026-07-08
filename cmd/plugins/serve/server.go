@@ -177,7 +177,6 @@ func (s *Server) setupRoutes() {
 			admin.DELETE("/users/:id", s.userHandler.Delete)
 			admin.POST("/playbook/refresh", s.playbookHandler.Refresh)
 			admin.DELETE("/playbook/runs/:id", s.playbookHandler.RunCancel)
-			admin.POST("/nodes/seed", s.nodeHandler.Seed)
 		}
 	}
 
