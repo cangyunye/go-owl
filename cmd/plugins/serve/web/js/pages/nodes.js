@@ -1,5 +1,5 @@
 export function renderNodes(render, navigate, user, api, shell) {
-  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', status: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '' };
+  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', status: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '', pingResults: {}, checkResults: {}, selectedIds: [] };
   const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -65,22 +65,32 @@ export function renderNodes(render, navigate, user, api, shell) {
   function renderTable() {
     const list = document.getElementById('node-list');
     if (state.nodes.length === 0) {
-      list.innerHTML = '<tr><td colspan="7"><div class="view-empty" style="padding:24px"><div class="empty-title">暂无节点</div></div></td></tr>';
+      list.innerHTML = '<tr><td colspan="8"><div class="view-empty" style="padding:24px"><div class="empty-title">暂无节点</div></div></td></tr>';
     } else {
       list.innerHTML = state.nodes.map(n => {
+        const checked = state.selectedIds.includes(n.id);
         const groups = (n.groups || []).map(g => `<span class="tag ${tagColor(g)}">${esc(g)}</span>`).join('');
         const labels = n.labels ? Object.entries(n.labels).map(([k, v]) => `<span class="tag ${tagColor(k + ':' + v)}">${esc(k)}:${esc(v)}</span>`).join('') : '';
         const onlineLabel = n.status === 'online' ? '刚刚' : n.last_seen ? timeAgo(n.last_seen) : '-';
+        const pingResult = state.pingResults[n.id];
+        const checkResult = state.checkResults[n.id];
+        let statusExtra = '';
+        if (pingResult) {
+          statusExtra = pingResult.success ? `<span style="color:var(--success);font-size:11px;margin-left:4px" title="Ping: ${pingResult.latency_ms}ms">✓${pingResult.latency_ms}ms</span>` : '<span style="color:var(--danger);font-size:11px;margin-left:4px" title="Ping failed">✗</span>';
+        }
+        if (checkResult) {
+          statusExtra += checkResult.success ? `<span style="color:var(--success);font-size:11px;margin-left:4px" title="SSH: ${checkResult.method}">🔑</span>` : '<span style="color:var(--danger);font-size:11px;margin-left:4px" title="SSH failed">🔒</span>';
+        }
         return `<tr>
-          <td class="checkbox-col"><input type="checkbox" class="node-check" value="${esc(n.id)}" onchange="updateBatch()"></td>
+          <td class="checkbox-col"><input type="checkbox" class="node-check" value="${esc(n.id)}" ${checked ? 'checked' : ''} onchange="updateBatch()"></td>
           <td><div class="cell-name"><a href="/nodes/${esc(n.id)}" style="color:var(--fg);text-decoration:none">${esc(n.name || n.id)}</a> <span class="sub">${esc(n.os || '')}</span></div></td>
           <td style="font-family:var(--font-mono);font-size:12px">${esc(n.address)}:${n.port}</td>
           <td>${groups ? groups : '<span style="color:var(--muted);font-size:12px">-</span>'}</td>
-          <td>${statusDot(n.status)}</td>
+          <td>${statusDot(n.status)}${statusExtra}</td>
           <td><div class="cell-tags">${labels || '<span style="color:var(--muted);font-size:12px">-</span>'}</div></td>
           <td style="font-size:12px;color:var(--muted)">${onlineLabel}</td>
           <td><div class="cell-actions">
-            <button class="btn btn-ghost btn-icon btn-sm" onclick="window.location='/nodes/${esc(n.id)}'" aria-label="详情"><svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg></button>
+            ${canWrite ? `<button class="btn btn-ghost btn-icon btn-sm" data-edit-id="${esc(n.id)}" aria-label="编辑"><svg width="14" height="14" aria-hidden="true"><use href="#icon-edit"/></svg></button>` : `<button class="btn btn-ghost btn-icon btn-sm" onclick="window.location='/nodes/${esc(n.id)}'" aria-label="详情"><svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg></button>`}
           </div></td>
         </tr>`;
       }).join('');
@@ -89,6 +99,7 @@ export function renderNodes(render, navigate, user, api, shell) {
     document.getElementById('page-info').textContent = `共 ${state.total} 条记录`;
     document.getElementById('prev-btn').disabled = state.page <= 1;
     document.getElementById('next-btn').disabled = state.page >= totalPages;
+    window.updateBatch();
   }
 
   function timeAgo(t) {
@@ -160,6 +171,71 @@ export function renderNodes(render, navigate, user, api, shell) {
     }
     btn.disabled = false;
     btn.textContent = '创建';
+  }
+
+  let editTarget = null;
+
+  function showEditModal(id) {
+    editTarget = state.nodes.find(n => n.id === id);
+    if (!editTarget) return;
+    document.getElementById('edit-title').textContent = '编辑节点';
+    document.getElementById('edit-id').value = editTarget.id;
+    document.getElementById('edit-name').value = editTarget.name || '';
+    document.getElementById('edit-address').value = editTarget.address || '';
+    document.getElementById('edit-port').value = editTarget.port || 22;
+    document.getElementById('edit-user').value = editTarget.user || '';
+    document.getElementById('edit-password').value = '';
+    document.getElementById('edit-sshkey').value = '';
+    document.getElementById('edit-status').value = editTarget.status || 'unknown';
+    document.getElementById('edit-groups').value = (editTarget.groups || []).join(', ');
+    document.getElementById('edit-labels').value = Object.entries(editTarget.labels || {}).map(([k, v]) => k + ':' + v).join(', ');
+    document.getElementById('edit-error').textContent = '';
+    document.getElementById('edit-modal-overlay').classList.add('open');
+  }
+
+  function hideEditModal() {
+    document.getElementById('edit-modal-overlay').classList.remove('open');
+  }
+
+  async function handleEditSubmit() {
+    const n = editTarget;
+    if (!n) return;
+    const data = {};
+    const name = document.getElementById('edit-name').value.trim();
+    if (name !== (n.name || '')) data.name = name;
+    const address = document.getElementById('edit-address').value.trim();
+    if (address !== (n.address || '')) data.address = address;
+    const port = parseInt(document.getElementById('edit-port').value) || 22;
+    if (port !== (n.port || 22)) data.port = port;
+    const user = document.getElementById('edit-user').value.trim();
+    if (user !== (n.user || '')) data.user = user;
+    const pw = document.getElementById('edit-password').value;
+    if (pw) data.password = pw;
+    const sshKey = document.getElementById('edit-sshkey').value;
+    if (sshKey) data.ssh_key = sshKey;
+    const status = document.getElementById('edit-status').value;
+    if (status !== (n.status || 'unknown')) data.status = status;
+    const groups = document.getElementById('edit-groups').value.split(',').map(s => s.trim()).filter(Boolean);
+    if (JSON.stringify(groups) !== JSON.stringify(n.groups || [])) data.groups = groups;
+    const labelsRaw = document.getElementById('edit-labels').value.trim();
+    const labels = {};
+    if (labelsRaw) {
+      labelsRaw.split(',').forEach(pair => {
+        const [k, ...vs] = pair.split(':');
+        if (k && vs.length) labels[k.trim()] = vs.join(':').trim();
+      });
+    }
+    if (JSON.stringify(labels) !== JSON.stringify(n.labels || {})) data.labels = labels;
+    if (Object.keys(data).length === 0) { hideEditModal(); return; }
+
+    const btn = document.getElementById('edit-save');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+      await api.updateNode(n.id, data);
+      hideEditModal();
+      await loadNodes();
+    } catch (e) { document.getElementById('edit-error').textContent = e.message; }
+    btn.disabled = false; btn.textContent = '保存';
   }
 
   let labelMode = 'merge';
@@ -255,7 +331,172 @@ export function renderNodes(render, navigate, user, api, shell) {
   }
 
   function getSelectedIds() {
-    return Array.from(document.querySelectorAll('.node-check:checked')).map(cb => cb.value);
+    state.selectedIds = Array.from(document.querySelectorAll('.node-check:checked')).map(cb => cb.value);
+    return state.selectedIds;
+  }
+
+  let groupModalState = { addGroups: [], removeGroups: [], currentGroups: [] };
+
+  function showGroupModal() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
+    const allGroups = new Set();
+    for (const n of state.nodes) {
+      if (!ids.includes(n.id)) continue;
+      for (const g of (n.groups || [])) allGroups.add(g);
+    }
+    groupModalState = { addGroups: [], removeGroups: [], currentGroups: Array.from(allGroups).sort() };
+    document.getElementById('group-node-count').textContent = ids.length;
+    document.getElementById('group-error').textContent = '';
+    document.getElementById('group-add-input').value = '';
+    renderGroupModalTags();
+    document.getElementById('group-modal-overlay').classList.add('open');
+  }
+
+  function hideGroupModal() {
+    document.getElementById('group-modal-overlay').classList.remove('open');
+  }
+
+  function renderGroupModalTags() {
+    const container = document.getElementById('group-tags-container');
+    const currentTags = groupModalState.currentGroups
+      .filter(g => !groupModalState.removeGroups.includes(g))
+      .map(g => `<span class="tag ${tagColor(g)}" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px" data-remove-group="${esc(g)}">${esc(g)} <span style="opacity:0.6">×</span></span>`)
+      .join('');
+    const addedTags = groupModalState.addGroups
+      .map(g => `<span class="tag ${tagColor(g)}" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;background:var(--success);color:white" data-remove-added="${esc(g)}">${esc(g)} <span style="opacity:0.6">×</span></span>`)
+      .join('');
+    container.innerHTML = (currentTags || '<span style="color:var(--muted);font-size:12px">无分组</span>') + (addedTags ? ' ' + addedTags : '');
+    container.querySelectorAll('[data-remove-group]').forEach(el => {
+      el.addEventListener('click', () => {
+        const g = el.dataset.removeGroup;
+        if (!groupModalState.removeGroups.includes(g)) groupModalState.removeGroups.push(g);
+        renderGroupModalTags();
+      });
+    });
+    container.querySelectorAll('[data-remove-added]').forEach(el => {
+      el.addEventListener('click', () => {
+        groupModalState.addGroups = groupModalState.addGroups.filter(x => x !== el.dataset.removeAdded);
+        renderGroupModalTags();
+      });
+    });
+  }
+
+  function addGroupFromInput() {
+    const input = document.getElementById('group-add-input');
+    const val = input.value.trim();
+    if (!val) return;
+    const newGroups = val.split(',').map(s => s.trim()).filter(Boolean);
+    for (const g of newGroups) {
+      if (!groupModalState.currentGroups.includes(g) && !groupModalState.addGroups.includes(g)) {
+        groupModalState.addGroups.push(g);
+      }
+      groupModalState.removeGroups = groupModalState.removeGroups.filter(x => x !== g);
+    }
+    input.value = '';
+    renderGroupModalTags();
+  }
+
+  async function handleGroupSubmit() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
+    if (groupModalState.addGroups.length === 0 && groupModalState.removeGroups.length === 0) {
+      hideGroupModal();
+      return;
+    }
+    const btn = document.getElementById('group-submit');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+      const res = await api.batchGroup(ids, { add: groupModalState.addGroups, remove: groupModalState.removeGroups });
+      if (res.errors && res.errors.length > 0) {
+        document.getElementById('group-error').textContent = res.errors.join('; ');
+      } else {
+        hideGroupModal();
+        await loadNodes();
+      }
+    } catch (e) { document.getElementById('group-error').textContent = e.message; }
+    btn.disabled = false; btn.textContent = '确定';
+  }
+
+  async function handleExport() {
+    const ids = getSelectedIds();
+    const params = { format: 'yaml' };
+    if (ids.length > 0) params.node_ids = ids;
+    if (state.selectedGroups.length > 0 && ids.length === 0) params.groups = state.selectedGroups;
+    try {
+      await api.exportNodes(params);
+    } catch (e) { alert('导出失败: ' + e.message); }
+  }
+
+  function showImportModal() {
+    document.getElementById('import-file').value = '';
+    document.getElementById('import-overwrite').checked = false;
+    document.getElementById('import-skip').checked = true;
+    document.getElementById('import-error').textContent = '';
+    document.getElementById('import-result').innerHTML = '';
+    document.getElementById('import-modal-overlay').classList.add('open');
+  }
+
+  function hideImportModal() {
+    document.getElementById('import-modal-overlay').classList.remove('open');
+  }
+
+  async function handleImport() {
+    const fileInput = document.getElementById('import-file');
+    if (!fileInput.files.length) {
+      document.getElementById('import-error').textContent = '请选择文件';
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    if (document.getElementById('import-overwrite').checked) formData.append('overwrite', 'true');
+    if (document.getElementById('import-skip').checked) formData.append('skip_existing', 'true');
+    const btn = document.getElementById('import-submit');
+    btn.disabled = true; btn.textContent = '导入中…';
+    try {
+      const res = await api.importNodes(formData);
+      document.getElementById('import-result').innerHTML = `
+        <div style="padding:12px;background:var(--surface);border-radius:var(--radius);margin-top:8px">
+          <div>成功: <strong>${res.success}</strong></div>
+          <div>跳过: <strong>${res.skipped}</strong></div>
+          <div>失败: <strong>${res.failed}</strong></div>
+          ${res.errors && res.errors.length > 0 ? `<div style="margin-top:8px;font-size:12px;color:var(--muted)">${res.errors.map(e => esc(e)).join('<br>')}</div>` : ''}
+        </div>
+      `;
+      if (res.success > 0 && res.failed === 0) {
+        await loadNodes();
+      }
+    } catch (e) { document.getElementById('import-error').textContent = e.message; }
+    btn.disabled = false; btn.textContent = '导入';
+  }
+
+  async function handlePing() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
+    state.pingResults = {};
+    renderTable();
+    try {
+      const res = await api.pingNodes(ids);
+      for (const r of res.results) {
+        state.pingResults[r.node_id] = r;
+      }
+      renderTable();
+    } catch (e) { alert('Ping 失败: ' + e.message); }
+  }
+
+  async function handleCheck() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
+    state.checkResults = {};
+    renderTable();
+    try {
+      const res = await api.checkNodes(ids);
+      for (const r of res.results) {
+        state.checkResults[r.node_id] = r;
+      }
+      renderTable();
+      await loadNodes();
+    } catch (e) { alert('SSH 检查失败: ' + e.message); }
   }
 
   shell.setPanelContent('<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载分组…</li>');
@@ -270,6 +511,8 @@ export function renderNodes(render, navigate, user, api, shell) {
       </div>
       <select class="select" id="status-filter"><option value="">全部状态</option><option value="online" ${state.status === 'online' ? 'selected' : ''}>在线</option><option value="offline" ${state.status === 'offline' ? 'selected' : ''}>离线</option><option value="warn" ${state.status === 'warn' ? 'selected' : ''}>告警</option></select>
       <div class="spacer"></div>
+      ${canWrite ? '<button class="btn btn-secondary btn-sm" id="export-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-download"/></svg> 导出</button>' : ''}
+      ${canWrite ? '<button class="btn btn-secondary btn-sm" id="import-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-upload"/></svg> 导入</button>' : ''}
       ${canWrite ? '<button class="btn btn-primary btn-sm" id="add-node-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 新建节点</button>' : ''}
     </div>
 
@@ -278,6 +521,9 @@ export function renderNodes(render, navigate, user, api, shell) {
       <button class="btn btn-secondary btn-sm" id="batch-exec-btn">执行命令</button>
       <button class="btn btn-secondary btn-sm" id="batch-label-merge-btn">依次标签</button>
       <button class="btn btn-secondary btn-sm" id="batch-label-replace-btn">同批标签</button>
+      <button class="btn btn-secondary btn-sm" id="batch-group-btn">管理分组</button>
+      <button class="btn btn-secondary btn-sm" id="batch-ping-btn">Ping</button>
+      <button class="btn btn-secondary btn-sm" id="batch-check-btn">SSH 检查</button>
       <button class="btn btn-secondary btn-sm" id="batch-delete-btn">删除</button>
       <span style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" id="clearSelection">取消选择</button>
@@ -364,6 +610,61 @@ export function renderNodes(render, navigate, user, api, shell) {
       </div>
     </div>
 
+    <div class="modal-overlay" id="edit-modal-overlay" role="dialog" aria-modal="true" aria-label="编辑节点">
+      <div class="modal">
+        <h2 id="edit-title">编辑节点</h2>
+        <div class="form-row">
+          <label>节点 ID</label>
+          <input type="text" class="input" id="edit-id" readonly disabled style="background:var(--bg);color:var(--muted)">
+        </div>
+        <div class="form-row">
+          <label>节点名称</label>
+          <input type="text" class="input" id="edit-name" placeholder="My Server">
+        </div>
+        <div class="form-row">
+          <label>IP 地址 *</label>
+          <input type="text" class="input" id="edit-address" placeholder="10.0.0.1">
+        </div>
+        <div class="form-row">
+          <label>端口</label>
+          <input type="number" class="input" id="edit-port" value="22">
+        </div>
+        <div class="form-row">
+          <label>SSH 用户 *</label>
+          <input type="text" class="input" id="edit-user" placeholder="root">
+        </div>
+        <div class="form-row">
+          <label>密码</label>
+          <input type="password" class="input" id="edit-password" placeholder="留空则不修改">
+        </div>
+        <div class="form-row">
+          <label>SSH 密钥</label>
+          <textarea class="input" id="edit-sshkey" placeholder="留空则不修改" rows="2" style="font-family:var(--font-mono);font-size:12px"></textarea>
+        </div>
+        <div class="form-row">
+          <label>状态</label>
+          <select class="select" id="edit-status">
+            <option value="unknown">未知</option>
+            <option value="online">在线</option>
+            <option value="offline">离线</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>分组</label>
+          <input type="text" class="input" id="edit-groups" placeholder="web, prod">
+        </div>
+        <div class="form-row">
+          <label>标签</label>
+          <input type="text" class="input" id="edit-labels" placeholder="env:prod, tier:frontend">
+        </div>
+        <p class="error-msg" id="edit-error"></p>
+        <div class="form-actions">
+          <button class="btn btn-secondary" id="edit-cancel">取消</button>
+          <button class="btn btn-primary" id="edit-save">保存</button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-overlay" id="label-modal-overlay">
       <div class="modal modal-sm">
         <h3 id="label-modal-title">打标签</h3>
@@ -376,6 +677,55 @@ export function renderNodes(render, navigate, user, api, shell) {
         <div class="form-actions">
           <button class="btn btn-secondary" id="label-cancel">取消</button>
           <button class="btn btn-primary" id="label-submit">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="group-modal-overlay">
+      <div class="modal modal-sm">
+        <h3>管理分组</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">已选 <strong id="group-node-count">0</strong> 个节点</p>
+        <div class="form-row">
+          <label>当前分组 <span style="font-size:11px;color:var(--muted)">(点击移除)</span></label>
+          <div id="group-tags-container" style="min-height:32px;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-wrap:wrap;gap:6px;align-items:center"></div>
+        </div>
+        <div class="form-row">
+          <label>添加分组</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" class="input" id="group-add-input" placeholder="web, prod (逗号分隔)" style="flex:1">
+            <button class="btn btn-secondary btn-sm" id="group-add-btn">添加</button>
+          </div>
+        </div>
+        <p class="error-msg" id="group-error"></p>
+        <div class="form-actions">
+          <button class="btn btn-secondary" id="group-cancel">取消</button>
+          <button class="btn btn-primary" id="group-submit">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="import-modal-overlay">
+      <div class="modal modal-sm">
+        <h3>导入节点</h3>
+        <div class="form-row">
+          <label>选择文件 (YAML/JSON)</label>
+          <input type="file" class="input" id="import-file" accept=".yaml,.yml,.json">
+        </div>
+        <div class="form-row" style="display:flex;gap:16px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="import-skip" checked style="accent-color:var(--accent)">
+            <span>跳过已存在</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="import-overwrite" style="accent-color:var(--accent)">
+            <span>覆盖已存在</span>
+          </label>
+        </div>
+        <p class="error-msg" id="import-error"></p>
+        <div id="import-result"></div>
+        <div class="form-actions">
+          <button class="btn btn-secondary" id="import-cancel">取消</button>
+          <button class="btn btn-primary" id="import-submit">导入</button>
         </div>
       </div>
     </div>
@@ -392,6 +742,13 @@ export function renderNodes(render, navigate, user, api, shell) {
           const overlay = document.querySelector('.modal-overlay.open');
           if (overlay) overlay.classList.remove('open');
         }
+      });
+      document.getElementById('export-btn').addEventListener('click', handleExport);
+      document.getElementById('import-btn').addEventListener('click', showImportModal);
+      document.getElementById('import-cancel').addEventListener('click', hideImportModal);
+      document.getElementById('import-submit').addEventListener('click', handleImport);
+      document.getElementById('import-modal-overlay').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) hideImportModal();
       });
     }
 
@@ -422,6 +779,9 @@ export function renderNodes(render, navigate, user, api, shell) {
     document.getElementById('batch-label-merge-btn').addEventListener('click', () => showLabelModal('merge'));
     document.getElementById('batch-label-replace-btn').addEventListener('click', () => showLabelModal('replace'));
     document.getElementById('batch-delete-btn').addEventListener('click', handleDeleteNodes);
+    document.getElementById('batch-group-btn').addEventListener('click', showGroupModal);
+    document.getElementById('batch-ping-btn').addEventListener('click', handlePing);
+    document.getElementById('batch-check-btn').addEventListener('click', handleCheck);
     document.getElementById('batch-exec-btn').addEventListener('click', () => {
       const ids = getSelectedIds();
       const groups = state.selectedGroups;
@@ -434,6 +794,24 @@ export function renderNodes(render, navigate, user, api, shell) {
     document.getElementById('label-submit').addEventListener('click', handleLabelSubmit);
     document.getElementById('label-modal-overlay').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) hideLabelModal();
+    });
+    document.getElementById('group-cancel').addEventListener('click', hideGroupModal);
+    document.getElementById('group-submit').addEventListener('click', handleGroupSubmit);
+    document.getElementById('group-add-btn').addEventListener('click', addGroupFromInput);
+    document.getElementById('group-add-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addGroupFromInput(); }
+    });
+    document.getElementById('group-modal-overlay').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) hideGroupModal();
+    });
+
+    document.querySelectorAll('[data-edit-id]').forEach(btn => {
+      btn.addEventListener('click', () => showEditModal(btn.dataset.editId));
+    });
+    document.getElementById('edit-cancel').addEventListener('click', hideEditModal);
+    document.getElementById('edit-save').addEventListener('click', handleEditSubmit);
+    document.getElementById('edit-modal-overlay').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) hideEditModal();
     });
   });
 }
@@ -459,7 +837,6 @@ window.clearSelection = function() {
   updateBatch();
 };
 
-// Clear selection on batch bar cancel
 document.addEventListener('click', (e) => {
   if (e.target.id === 'clearSelection') {
     window.clearSelection();
