@@ -125,7 +125,8 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	}
 	s.transferHandler = handler.NewTransferHandler(db, s.Tasks)
 	s.aiHandler = handler.NewAIHandler(db)
-	s.playbookHandler = handler.NewPlaybookHandler(db, playbookStore, playbookRunStore, s.wsHub)
+	nodeStore := store.NewNodeStore(db)
+	s.playbookHandler = handler.NewPlaybookHandler(db, playbookStore, playbookRunStore, nodeStore, s.wsHub)
 	s.setupRoutes()
 
 	return creds, nil
@@ -174,6 +175,7 @@ func (s *Server) setupRoutes() {
 			operator.POST("/ai/chat", s.aiHandler.Chat)
 			operator.GET("/playbooks", s.playbookHandler.List)
 			operator.GET("/playbooks/:id", s.playbookHandler.Get)
+			operator.GET("/playbooks/:id/file", s.playbookHandler.GetFile)
 			operator.POST("/playbooks/:id/run", s.playbookHandler.Run)
 			operator.GET("/playbook/runs", s.playbookHandler.RunList)
 			operator.GET("/playbook/runs/:id", s.playbookHandler.RunGet)

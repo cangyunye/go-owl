@@ -954,6 +954,8 @@ tr:hover td { background: var(--surface-2); }
 .modal p { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
 .modal-sm { min-width: 360px; max-width: 480px; }
 .modal-wide { max-width: 680px; }
+.modal-lg { width: 640px; max-width: 90vw; }
+.modal-header { display:flex; align-items:center; padding-bottom:12px; border-bottom:1px solid var(--border); margin-bottom:12px; }
 
 .modal .form-row,
 .modal-form .form-row {

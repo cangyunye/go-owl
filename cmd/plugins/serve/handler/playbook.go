@@ -18,11 +18,12 @@ type PlaybookHandler struct {
 	db        *sql.DB
 	playbooks *store.PlaybookStore
 	runs      *store.PlaybookRunStore
+	nodes     *store.NodeStore
 	hub       *WSHub
 }
 
-func NewPlaybookHandler(db *sql.DB, ps *store.PlaybookStore, rs *store.PlaybookRunStore, hub *WSHub) *PlaybookHandler {
-	return &PlaybookHandler{db: db, playbooks: ps, runs: rs, hub: hub}
+func NewPlaybookHandler(db *sql.DB, ps *store.PlaybookStore, rs *store.PlaybookRunStore, ns *store.NodeStore, hub *WSHub) *PlaybookHandler {
+	return &PlaybookHandler{db: db, playbooks: ps, runs: rs, nodes: ns, hub: hub}
 }
 
 type refreshRequest struct {
@@ -72,8 +73,28 @@ func (h *PlaybookHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, pb)
 }
 
+func (h *PlaybookHandler) GetFile(c *gin.Context) {
+	id := c.Param("id")
+	pb, err := h.playbooks.Get(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "playbook not found"})
+		return
+	}
+	if !pb.FileExists {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "file not found"})
+		return
+	}
+	data, err := os.ReadFile(pb.FilePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "read failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"name": pb.Name, "content": string(data)})
+}
+
 type runRequest struct {
 	TargetNodes []string          `json:"target_nodes"`
+	Groups      []string          `json:"groups,omitempty"`
 	ExtraVars   map[string]string `json:"extra_vars,omitempty"`
 	Tags        string            `json:"tags,omitempty"`
 }
@@ -91,8 +112,22 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 	}
 
 	var req runRequest
-	if err := c.ShouldBindJSON(&req); err != nil || len(req.TargetNodes) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "target_nodes is required"})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request"})
+		return
+	}
+
+	if len(req.TargetNodes) == 0 && len(req.Groups) > 0 {
+		nodeIDs, err := h.nodes.ListByGroups(c.Request.Context(), req.Groups)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "group resolve failed"})
+			return
+		}
+		req.TargetNodes = nodeIDs
+	}
+
+	if len(req.TargetNodes) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "target_nodes or groups is required"})
 		return
 	}
 

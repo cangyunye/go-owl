@@ -177,6 +177,9 @@ export const api = {
   playbookGet: (id) =>
     request('GET', `/playbooks/${encodeURIComponent(id)}`),
 
+  playbookFile: (id) =>
+    request('GET', `/playbooks/${encodeURIComponent(id)}/file`),
+
   playbookSettingsPath: () =>
     request('GET', '/playbook/settings/path'),
 
