@@ -237,7 +237,6 @@ export function renderNodes(render, navigate, user, api, shell) {
         <svg width="14" height="14" aria-hidden="true" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)"><use href="#icon-search"/></svg>
         <input type="text" id="search-input" placeholder="搜索节点名称 / IP / 标签…" aria-label="搜索节点" style="border:none;background:transparent;outline:none;color:var(--fg);width:100%;font:13px/1.5 var(--font-body)" value="${esc(state.query)}">
       </div>
-      <select class="select" id="group-filter"><option>全部分组</option></select>
       <select class="select" id="status-filter"><option>全部状态</option><option>在线</option><option>离线</option><option>告警</option></select>
       <div class="spacer"></div>
       ${canWrite ? '<button class="btn btn-primary btn-sm" id="add-node-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 新建节点</button>' : ''}
@@ -364,12 +363,14 @@ export function renderNodes(render, navigate, user, api, shell) {
       });
     }
 
-    document.getElementById('search-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+    let searchDebounceTimer;
+    document.getElementById('search-input').addEventListener('input', (e) => {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
         state.query = e.target.value.trim();
         state.page = 1;
         loadNodes();
-      }
+      }, 100);
     });
 
     document.getElementById('prev-btn').addEventListener('click', () => {
