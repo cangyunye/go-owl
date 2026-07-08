@@ -4,6 +4,9 @@ export function renderExec(render, navigate, user, api, shell) {
   let wsCleanup = null;
   let currentTaskIDs = [];
   let activeGroups = [];
+  let allGroups = [];
+  let allLabels = [];
+  let labelInputs = [];
 
   const params = new URLSearchParams(window.location.search);
   const initNodes = params.get('nodes');
@@ -29,6 +32,99 @@ export function renderExec(render, navigate, user, api, shell) {
       renderNodeChips();
       if (initNodes && initNodes.split(',').length) updateExecButton();
     } catch { allNodes = []; }
+  }
+
+  async function loadFilters() {
+    try {
+      const res = await api.filters();
+      if (res.groups) allGroups = res.groups;
+      if (res.labels) allLabels = res.labels;
+      renderFilterControls();
+    } catch {}
+  }
+
+  function renderFilterControls() {
+    const container = document.getElementById('filter-controls');
+    if (!container) return;
+    let groupOpts = '<option value="">所有分组</option>';
+    allGroups.forEach(g => {
+      const sel = activeGroups.includes(g) ? ' selected' : '';
+      groupOpts += `<option value="${esc(g)}"${sel}>${esc(g)}</option>`;
+    });
+    container.innerHTML = `
+      <div class="filter-row">
+        <label>分组</label>
+        <select id="filter-group" class="exec-select">${groupOpts}</select>
+      </div>
+      <div class="filter-row">
+        <label>标签</label>
+        <div style="display:flex;gap:4px;flex-wrap:wrap" id="label-tags"></div>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <input type="text" id="label-input" class="exec-input" placeholder="key=value" style="flex:1;min-width:0">
+          <button class="btn btn-ghost btn-sm" id="add-label-btn">+</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('filter-group').addEventListener('change', function() {
+      activeGroups = this.value ? [this.value] : [];
+      const card = document.getElementById('group-filter-card');
+      if (activeGroups.length) {
+        card.style.display = '';
+        document.getElementById('group-tags').innerHTML = activeGroups.map(g =>
+          `<span class="tag ${tagColor(g)}">${esc(g)} <span class="tag-remove" data-group="${esc(g)}" style="cursor:pointer;margin-left:2px">×</span></span>`
+        ).join('');
+        document.querySelectorAll('.tag-remove').forEach(el => {
+          el.addEventListener('click', function() {
+            activeGroups = activeGroups.filter(g => g !== this.dataset.group);
+            document.getElementById('filter-group').value = '';
+            if (activeGroups.length === 0) {
+              document.getElementById('group-filter-card').style.display = 'none';
+            } else {
+              document.getElementById('group-tags').innerHTML = activeGroups.map(g =>
+                `<span class="tag ${tagColor(g)}">${esc(g)}</span>`
+              ).join('');
+            }
+            loadNodes();
+          });
+        });
+      } else {
+        card.style.display = 'none';
+      }
+      loadNodes();
+    });
+
+    document.getElementById('add-label-btn').addEventListener('click', addLabel);
+    document.getElementById('label-input').addEventListener('keydown', e => { if (e.key === 'Enter') addLabel(); });
+
+    renderLabelTags();
+  }
+
+  function addLabel() {
+    const input = document.getElementById('label-input');
+    const val = input.value.trim();
+    if (!val || !val.includes('=')) return;
+    if (!labelInputs.includes(val)) {
+      labelInputs.push(val);
+      input.value = '';
+      renderLabelTags();
+    }
+  }
+
+  function removeLabel(l) {
+    labelInputs = labelInputs.filter(x => x !== l);
+    renderLabelTags();
+  }
+
+  function renderLabelTags() {
+    const container = document.getElementById('label-tags');
+    if (!container) return;
+    container.innerHTML = labelInputs.map(l =>
+      `<span class="tag tag-blue">${esc(l)} <span class="label-remove" data-label="${esc(l)}" style="cursor:pointer;margin-left:2px">×</span></span>`
+    ).join('');
+    document.querySelectorAll('.label-remove').forEach(el => {
+      el.addEventListener('click', function() { removeLabel(this.dataset.label); });
+    });
   }
 
   function renderNodeChips() {
@@ -89,29 +185,69 @@ export function renderExec(render, navigate, user, api, shell) {
     body.innerHTML = '<div class="line cursor-blink"></div>';
   }
 
+  function buildExecPayload() {
+    const nodeIDs = Array.from(selectedNodes);
+    const cmd = document.getElementById('cmd-input').value.trim();
+    const formatEl = document.getElementById('format-select');
+    const isAsync = document.getElementById('async-toggle')?.checked || false;
+    const isSerial = document.getElementById('mode-serial')?.checked || false;
+    const isDebug = document.getElementById('debug-toggle')?.checked || false;
+    const retryCount = parseInt(document.getElementById('retry-count')?.value) || 3;
+    const retryInterval = document.getElementById('retry-interval')?.value || '1';
+    const retryMaxInterval = document.getElementById('retry-max-interval')?.value || '30';
+    const noRetry = document.getElementById('no-retry')?.checked || false;
+    const connectTimeout = document.getElementById('connect-timeout')?.value || '';
+    const commandTimeout = document.getElementById('command-timeout')?.value || '';
+
+    const payload = {
+      node_ids: nodeIDs,
+      command: cmd,
+      force: 'true',
+    };
+
+    if (isAsync) payload.async = true;
+    if (formatEl && formatEl.value !== 'simple') payload.format = formatEl.value;
+    if (isSerial) payload.serial = true;
+    if (isDebug) payload.debug = true;
+    if (retryCount !== 3) payload.retry = retryCount;
+    if (retryInterval !== '1') payload.retry_interval = retryInterval + 's';
+    if (retryMaxInterval !== '30') payload.retry_max_interval = retryMaxInterval + 's';
+    if (noRetry) payload.no_retry = true;
+    if (connectTimeout) payload.connect_timeout = connectTimeout + 's';
+    if (commandTimeout) payload.command_timeout = commandTimeout + 's';
+
+    if (activeGroups.length) payload.group = activeGroups.join(',');
+    if (labelInputs.length) {
+      payload.labels = {};
+      labelInputs.forEach(l => {
+        const idx = l.indexOf('=');
+        if (idx > 0) payload.labels[l.substring(0, idx)] = l.substring(idx + 1);
+      });
+    }
+
+    return payload;
+  }
+
   async function handleExec() {
     const cmd = document.getElementById('cmd-input').value.trim();
     if (!cmd || selectedNodes.size === 0) return;
 
     const nodeIDs = Array.from(selectedNodes);
     const isSingle = nodeIDs.length === 1;
-    const timeout = parseInt(document.getElementById('timeout-val').textContent) || 30;
-    const parallel = parseInt(document.getElementById('parallel-val').textContent) || 5;
+    const isAsync = document.getElementById('async-toggle')?.checked || false;
 
     clearTerminal();
-    appendTerminal(`正在连连接 ${nodeIDs.length} 个节点…`, 'ts');
+    const modeLabel = isAsync ? '[异步]' : '';
+    appendTerminal(`${modeLabel}正在连接 ${nodeIDs.length} 个节点…`, 'ts');
 
     try {
-      const res = await api.execAdvanced({
-        node_ids: nodeIDs,
-        command: cmd,
-        force: 'true',
-      });
+      const payload = buildExecPayload();
+      const res = await api.execAdvanced(payload);
 
       const tasks = res.tasks || [];
       currentTaskIDs = tasks.map(t => t.id);
 
-      if (isSingle && tasks.length === 1) {
+      if (isSingle && tasks.length === 1 && !isAsync) {
         appendTerminal(`任务已创建: ${esc(tasks[0].id)}`, 'ok');
         appendTerminal('等待实时输出…', 'ts');
 
@@ -133,11 +269,19 @@ export function renderExec(render, navigate, user, api, shell) {
         tasks.forEach(t => {
           appendTerminal(`[${esc(t.node_id)}] 任务: ${esc(t.id)}`, 'out');
         });
-        appendTerminal('✓ 任务已提交', 'ok');
+        const count = tasks.length;
+        appendTerminal(`✓ 已提交 ${count} 个任务${isAsync ? ' (异步模式)' : ''}`, 'ok');
       }
     } catch (e) {
       appendTerminal('✗ 执行失败: ' + esc(e.message || '未知错误'), 'err');
     }
+  }
+
+  function toggleAdv(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('open');
+    const arrow = el?.previousElementSibling?.querySelector('.arrow');
+    if (arrow) arrow.classList.toggle('open');
   }
 
   render(`
@@ -177,33 +321,116 @@ free -m</textarea>
         <div class="card">
           <div class="card-header"><h3>目标节点</h3></div>
           <div class="card-body">
-            <div class="node-selector" id="node-chips">
+            <div class="node-selector" id="node-chips" style="margin-bottom:8px">
               <span style="color:var(--muted);font-size:12px">加载中…</span>
+            </div>
+            <div class="status-filter">
+              <button class="status-btn active" data-status="">全部</button>
+              <button class="status-btn" data-status="online">在线</button>
+              <button class="status-btn" data-status="offline">离线</button>
             </div>
           </div>
         </div>
+
+        <div class="card">
+          <div class="card-header"><h3>筛选条件</h3></div>
+          <div class="card-body" id="filter-controls"></div>
+        </div>
+
         <div class="card" id="group-filter-card" style="${activeGroups.length ? '' : 'display:none'}">
-          <div class="card-header"><h3>分组过滤</h3></div>
+          <div class="card-header"><h3>活跃分组</h3></div>
           <div class="card-body" id="group-tags" style="display:flex;gap:4px;flex-wrap:wrap">
             ${activeGroups.map(g => `<span class="tag ${tagColor(g)}">${esc(g)}</span>`).join('')}
           </div>
         </div>
+
         <div class="card">
-          <div class="card-header"><h3>执行参数</h3></div>
+          <div class="card-header"><h3>执行模式</h3></div>
+          <div class="card-body">
+            <div class="btn-group" style="display:flex;gap:4px;margin-bottom:8px">
+              <button class="btn btn-sm mode-btn active" id="mode-parallel" data-mode="parallel">并行</button>
+              <button class="btn btn-sm mode-btn" id="mode-serial" data-mode="serial">串行</button>
+            </div>
+            <label class="toggle-row">
+              <input type="checkbox" id="async-toggle">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span style="font-size:12px;color:var(--muted)">异步执行</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>输出选项</h3></div>
+          <div class="card-body">
+            <div class="filter-row">
+              <label>格式</label>
+              <select id="format-select" class="exec-select">
+                <option value="simple">simple</option>
+                <option value="detail">detail</option>
+                <option value="json">json</option>
+              </select>
+            </div>
+            <label class="toggle-row" style="margin-top:6px">
+              <input type="checkbox" id="debug-toggle">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span style="font-size:12px;color:var(--muted)">调试模式</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>超时设置</h3></div>
           <div class="card-body">
             <div class="param-group">
               <div class="param-row">
-                <label>超时时间</label>
-                <span class="val" id="timeout-val">30s</span>
+                <label>连接超时</label>
+                <div style="display:flex;gap:4px;align-items:center">
+                  <input type="number" id="connect-timeout" class="exec-input" value="10" min="1" style="width:50px;text-align:center">
+                  <span style="font-size:11px;color:var(--muted)">s</span>
+                </div>
               </div>
               <div class="param-row">
-                <label>并行数</label>
-                <input type="range" min="1" max="20" value="5" oninput="document.getElementById('parallel-val').textContent=this.value">
-                <span class="val" id="parallel-val">5</span>
+                <label>命令超时</label>
+                <div style="display:flex;gap:4px;align-items:center">
+                  <input type="number" id="command-timeout" class="exec-input" value="30" min="1" style="width:50px;text-align:center">
+                  <span style="font-size:11px;color:var(--muted)">s</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
+
+        <div class="card">
+          <div class="adv-toggle" onclick="document.getElementById('retry-options').classList.toggle('open');this.querySelector('.arrow').classList.toggle('open')">
+            <span class="arrow">▶</span> 重试设置
+          </div>
+          <div class="adv-options open" id="retry-options">
+            <div class="adv-option-group">
+              <label>最大重试次数</label>
+              <input type="number" id="retry-count" value="3" min="0" style="width:60px">
+            </div>
+            <div class="adv-option-group">
+              <label>重试间隔</label>
+              <div style="display:flex;gap:4px;align-items:center">
+                <input type="number" id="retry-interval" value="1" min="1" style="width:50px">
+                <span style="font-size:10px;color:var(--muted)">s</span>
+              </div>
+            </div>
+            <div class="adv-option-group">
+              <label>最大间隔</label>
+              <div style="display:flex;gap:4px;align-items:center">
+                <input type="number" id="retry-max-interval" value="30" min="1" style="width:50px">
+                <span style="font-size:10px;color:var(--muted)">s</span>
+              </div>
+            </div>
+            <div class="adv-option-group">
+              <label class="force-check" style="padding-top:14px">
+                <input type="checkbox" id="no-retry"> 禁用重试
+              </label>
+            </div>
+          </div>
+        </div>
+
         <button class="btn btn-primary" id="exec-btn" style="width:100%;justify-content:center;padding:10px" disabled>
           <svg width="16" height="16" aria-hidden="true"><use href="#icon-play"/></svg>
           选择目标节点
@@ -212,6 +439,7 @@ free -m</textarea>
     </div>
   `, () => {
     loadNodes();
+    loadFilters();
 
     document.getElementById('cmd-input').addEventListener('input', updateExecButton);
     document.getElementById('exec-btn').addEventListener('click', handleExec);
@@ -220,5 +448,28 @@ free -m</textarea>
       updateExecButton();
     });
     document.getElementById('clear-term-btn').addEventListener('click', clearTerminal);
+
+    document.querySelectorAll('.status-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+      });
+    });
+
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+      });
+    });
+
+    const noRetryCb = document.getElementById('no-retry');
+    if (noRetryCb) {
+      noRetryCb.addEventListener('change', function() {
+        document.getElementById('retry-count').disabled = this.checked;
+        document.getElementById('retry-interval').disabled = this.checked;
+        document.getElementById('retry-max-interval').disabled = this.checked;
+      });
+    }
   });
 }
