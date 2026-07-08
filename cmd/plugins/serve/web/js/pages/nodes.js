@@ -805,8 +805,9 @@ export function renderNodes(render, navigate, user, api, shell) {
       if (e.target === e.currentTarget) hideGroupModal();
     });
 
-    document.querySelectorAll('[data-edit-id]').forEach(btn => {
-      btn.addEventListener('click', () => showEditModal(btn.dataset.editId));
+    document.getElementById('node-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-edit-id]');
+      if (btn) showEditModal(btn.dataset.editId);
     });
     document.getElementById('edit-cancel').addEventListener('click', hideEditModal);
     document.getElementById('edit-save').addEventListener('click', handleEditSubmit);
