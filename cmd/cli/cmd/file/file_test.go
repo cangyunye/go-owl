@@ -25,9 +25,9 @@ func TestFileUploadFlags(t *testing.T) {
 	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
-	testutil.AssertFlagExists(t, cmd, "group")
-	testutil.AssertFlagShorthand(t, cmd, "group", "g")
-	testutil.AssertFlagDefault(t, cmd, "group", "")
+	testutil.AssertFlagExists(t, cmd, "groups")
+	testutil.AssertFlagShorthand(t, cmd, "groups", "g")
+	testutil.AssertFlagDefault(t, cmd, "groups", "[]")
 
 	testutil.AssertFlagExists(t, cmd, "label")
 	testutil.AssertFlagShorthand(t, cmd, "label", "l")
@@ -61,9 +61,9 @@ func TestFileDownloadFlags(t *testing.T) {
 	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
-	testutil.AssertFlagExists(t, cmd, "group")
-	testutil.AssertFlagShorthand(t, cmd, "group", "g")
-	testutil.AssertFlagDefault(t, cmd, "group", "")
+	testutil.AssertFlagExists(t, cmd, "groups")
+	testutil.AssertFlagShorthand(t, cmd, "groups", "g")
+	testutil.AssertFlagDefault(t, cmd, "groups", "[]")
 
 	testutil.AssertFlagExists(t, cmd, "label")
 	testutil.AssertFlagShorthand(t, cmd, "label", "l")
@@ -99,9 +99,9 @@ func TestFileTransferFlags(t *testing.T) {
 	testutil.AssertFlagExists(t, cmd, "all-nodes")
 	testutil.AssertFlagDefault(t, cmd, "all-nodes", "false")
 
-	testutil.AssertFlagExists(t, cmd, "group")
-	testutil.AssertFlagShorthand(t, cmd, "group", "g")
-	testutil.AssertFlagDefault(t, cmd, "group", "")
+	testutil.AssertFlagExists(t, cmd, "groups")
+	testutil.AssertFlagShorthand(t, cmd, "groups", "g")
+	testutil.AssertFlagDefault(t, cmd, "groups", "[]")
 
 	testutil.AssertFlagExists(t, cmd, "label")
 	testutil.AssertFlagShorthand(t, cmd, "label", "l")

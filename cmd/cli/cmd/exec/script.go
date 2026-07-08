@@ -35,7 +35,7 @@ func NewScriptCmd() *cobra.Command {
 
 示例：
   owl exec script deploy.sh --nodes web-01,web-02
-  owl exec script ./scripts/install.sh --group web --dest /tmp
+  owl exec script ./scripts/install.sh --groups web --dest /tmp
   owl exec script backup.sh --args "--env prod" --label env=prod
   owl exec script init.sh --inline --nodes test-01  # 直接内容执行
   owl exec script setup.sh --keep --nodes all  # 执行后保留脚本
@@ -46,8 +46,9 @@ func NewScriptCmd() *cobra.Command {
 
 	scriptCmd.Flags().StringVarP(&scriptNodes, "nodes", "N", "",
 		"指定节点 ID (逗号分隔)")
-	scriptCmd.Flags().StringVarP(&scriptGroup, "group", "g", "",
-		"按分组选择节点")
+	scriptCmd.Flags().StringSliceVarP(&scriptGroup, "groups", "g", nil, "按分组选择节点 (多个分组用逗号分隔或多次使用 -g)")
+	scriptCmd.Flags().StringSliceVar(&scriptGroup, "group", nil, "(已废弃，请使用 --groups)")
+	scriptCmd.Flags().MarkHidden("group")
 	scriptCmd.Flags().StringSliceVarP(&scriptLabel, "label", "l", nil,
 		"按标签选择节点")
 	scriptCmd.Flags().StringVar(&scriptDest, "dest", "/tmp",
@@ -71,7 +72,7 @@ func NewScriptCmd() *cobra.Command {
 // scriptFlags
 var (
 	scriptNodes   string
-	scriptGroup   string
+	scriptGroup   []string
 	scriptLabel   []string
 	scriptDest    string
 	scriptArgs    string
@@ -330,9 +331,9 @@ func selectScriptTargetNodesWithResolver(resolver *node.NodeResolver) []*node.Re
 			included = true
 		}
 
-		// 检查 --group 筛选
-		if scriptGroup != "" {
-			if !containsStringList(n.Groups, scriptGroup) {
+		// 检查 --groups 筛选
+		if len(scriptGroup) > 0 {
+			if !node.ContainsAny(n.Groups, scriptGroup) {
 				continue
 			}
 			included = true
@@ -358,7 +359,7 @@ func selectScriptTargetNodesWithResolver(resolver *node.NodeResolver) []*node.Re
 		}
 
 		// 如果没有指定任何筛选条件，默认包含所有
-		if scriptNodes == "" && scriptGroup == "" && len(scriptLabel) == 0 {
+		if scriptNodes == "" && len(scriptGroup) == 0 && len(scriptLabel) == 0 {
 			included = true
 		}
 

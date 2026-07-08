@@ -13,7 +13,7 @@ import (
 
 var (
 	listFormat  string
-	listGroup   string
+	listGroup   []string
 	listLabel   []string
 	listStatus  string
 	listNoColor bool
@@ -32,7 +32,7 @@ func NewListCmd() *cobra.Command {
 
 示例：
   owl node list                           # 列出所有节点
-  owl node list --group web               # 列出 web 分组的节点
+  owl node list --groups web              # 列出 web 分组的节点
   owl node list --label env=prod          # 列出 env=prod 的节点
   owl node list --status online           # 列出在线节点
   owl node list -o json                   # JSON 格式输出
@@ -46,8 +46,9 @@ func NewListCmd() *cobra.Command {
 
 	listCmd.Flags().StringVarP(&listFormat, "format", "o", "table",
 		"输出格式: table, json, yaml")
-	listCmd.Flags().StringVarP(&listGroup, "group", "g", "",
-		"按分组过滤")
+	listCmd.Flags().StringSliceVarP(&listGroup, "groups", "g", nil, "按分组过滤 (多个分组用逗号分隔或多次使用 -g)")
+	listCmd.Flags().StringSliceVar(&listGroup, "group", nil, "(已废弃，请使用 --groups)")
+	listCmd.Flags().MarkHidden("group")
 	listCmd.Flags().StringSliceVarP(&listLabel, "label", "l", nil,
 		"按标签过滤 (格式: key=value)")
 	listCmd.Flags().StringVarP(&listStatus, "status", "S", "",
@@ -100,8 +101,8 @@ func filterNodes(nodes []*common.NodeInfo) []*common.NodeInfo {
 
 	for _, n := range nodes {
 		// 按分组过滤
-		if listGroup != "" {
-			if !containsGroup(n.Groups, listGroup) {
+		if len(listGroup) > 0 {
+			if !containsAnyGroup(n.Groups, listGroup) {
 				continue
 			}
 		}
@@ -138,10 +139,15 @@ func filterNodes(nodes []*common.NodeInfo) []*common.NodeInfo {
 	return filtered
 }
 
-func containsGroup(groups []string, group string) bool {
+func containsAnyGroup(groups []string, targets []string) bool {
+	if len(targets) == 0 {
+		return true
+	}
 	for _, g := range groups {
-		if g == group {
-			return true
+		for _, t := range targets {
+			if g == t {
+				return true
+			}
 		}
 	}
 	return false

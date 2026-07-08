@@ -21,7 +21,7 @@ import (
 var (
 	transferNodes       string
 	transferAllNodes    bool
-	transferGroup       string
+	transferGroup       []string
 	transferLabel       []string
 	transferDest        string
 	transferSourceCount int
@@ -41,7 +41,7 @@ func NewTransferCmd() *cobra.Command {
   owl file transfer app.tar.gz --nodes node1,node2,node3,node4,node5 \
     --dest /opt/app/ --source-count 2
   owl file transfer data.zip --all-nodes --dest /data/ --fan-out 3
-  owl file transfer db.tar.gz --group database --source-count 1`,
+  owl file transfer db.tar.gz --groups database --source-count 1`,
 		Args: cobra.ExactArgs(1),
 		Run:  runTransfer,
 	}
@@ -50,8 +50,9 @@ func NewTransferCmd() *cobra.Command {
 		"指定节点列表 (逗号分隔)")
 	transferCmd.Flags().BoolVar(&transferAllNodes, "all-nodes", false,
 		"选择所有节点")
-	transferCmd.Flags().StringVarP(&transferGroup, "group", "g", "",
-		"按分组选择节点")
+	transferCmd.Flags().StringSliceVarP(&transferGroup, "groups", "g", nil, "按分组选择节点 (多个分组用逗号分隔或多次使用 -g)")
+	transferCmd.Flags().StringSliceVar(&transferGroup, "group", nil, "(已废弃，请使用 --groups)")
+	transferCmd.Flags().MarkHidden("group")
 	transferCmd.Flags().StringSliceVarP(&transferLabel, "label", "l", nil,
 		"按标签选择节点")
 	transferCmd.Flags().StringVarP(&transferDest, "dest", "d", "/tmp",
@@ -102,10 +103,8 @@ func runTransfer(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
 			os.Exit(1)
 		}
-	} else if transferGroup != "" {
-		resolvedNodes, err = nodeResolver.ListNodes(&node.ListOptions{
-			Group: transferGroup,
-		})
+	} else if len(transferGroup) > 0 {
+		resolvedNodes, err = node.ListNodesByGroups(nodeResolver, transferGroup)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
 			os.Exit(1)
@@ -119,7 +118,7 @@ func runTransfer(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "错误: 请指定 --nodes, --all-nodes, --group 或 --label")
+		fmt.Fprintln(os.Stderr, "错误: 请指定 --nodes, --all-nodes, --groups 或 --label")
 		os.Exit(1)
 	}
 

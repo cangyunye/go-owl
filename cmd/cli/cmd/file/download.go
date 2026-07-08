@@ -19,7 +19,7 @@ import (
 
 var (
 	downloadNodes       string
-	downloadGroup       string
+	downloadGroup       []string
 	downloadLabel       []string
 	downloadDest        string
 	downloadSource      string
@@ -42,7 +42,7 @@ func NewDownloadCmd() *cobra.Command {
 
 示例：
   owl file download /var/log/app.log --nodes node1 --dest ./logs/
-  owl file download /tmp/data.json --group web --dest ./data/
+  owl file download /tmp/data.json --groups web --dest ./data/
   owl file download /var/log/app.log --nodes node1,node2 --dest ./logs/ --subdir
   owl file download /var/log/app.log --nodes node1,node2 --dest ./logs/ --name-format "{node}-{file}"`,
 		Args: cobra.ExactArgs(1),
@@ -51,8 +51,9 @@ func NewDownloadCmd() *cobra.Command {
 
 	downloadCmd.Flags().StringVarP(&downloadNodes, "nodes", "N", "",
 		"指定节点 ID (逗号分隔)")
-	downloadCmd.Flags().StringVarP(&downloadGroup, "group", "g", "",
-		"按分组选择节点")
+	downloadCmd.Flags().StringSliceVarP(&downloadGroup, "groups", "g", nil, "按分组选择节点 (多个分组用逗号分隔或多次使用 -g)")
+	downloadCmd.Flags().StringSliceVar(&downloadGroup, "group", nil, "(已废弃，请使用 --groups)")
+	downloadCmd.Flags().MarkHidden("group")
 	downloadCmd.Flags().StringSliceVarP(&downloadLabel, "label", "l", nil,
 		"按标签选择节点")
 	downloadCmd.Flags().StringVarP(&downloadDest, "dest", "d", ".",
@@ -91,10 +92,8 @@ func runDownload(cmd *cobra.Command, args []string) {
 		targetNodeIDs = []string{downloadSource}
 	} else if downloadNodes != "" {
 		targetNodeIDs = parseNodeList(downloadNodes)
-	} else if downloadGroup != "" {
-		nodes, err := nodeResolver.ListNodes(&node.ListOptions{
-			Group: downloadGroup,
-		})
+	} else if len(downloadGroup) > 0 {
+		nodes, err := node.ListNodesByGroups(nodeResolver, downloadGroup)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
 			os.Exit(1)
@@ -116,7 +115,7 @@ func runDownload(cmd *cobra.Command, args []string) {
 	}
 
 	if len(targetNodeIDs) == 0 {
-		fmt.Fprintln(os.Stderr, "错误: 请指定 --nodes, --group, --label 或 --node")
+		fmt.Fprintln(os.Stderr, "错误: 请指定 --nodes, --groups, --label 或 --node")
 		os.Exit(1)
 	}
 

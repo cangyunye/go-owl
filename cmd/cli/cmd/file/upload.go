@@ -19,7 +19,7 @@ import (
 
 var (
 	uploadNodes       string
-	uploadGroup       string
+	uploadGroup       []string
 	uploadLabel       []string
 	uploadDest        string
 	uploadMode        string
@@ -42,7 +42,7 @@ func NewUploadCmd() *cobra.Command {
 
 示例：
   owl file upload app.tar.gz --nodes node1,node2 --dest /opt/app/
-  owl file upload config.yaml --group web --dest /etc/myapp/
+  owl file upload config.yaml --groups web --dest /etc/myapp/
   owl file upload data.json --label env=prod --no-resume`,
 		Args: cobra.ExactArgs(1),
 		Run:  runUpload,
@@ -50,8 +50,9 @@ func NewUploadCmd() *cobra.Command {
 
 	uploadCmd.Flags().StringVarP(&uploadNodes, "nodes", "N", "",
 		"指定节点 ID (逗号分隔)")
-	uploadCmd.Flags().StringVarP(&uploadGroup, "group", "g", "",
-		"按分组选择节点")
+	uploadCmd.Flags().StringSliceVarP(&uploadGroup, "groups", "g", nil, "按分组选择节点 (多个分组用逗号分隔或多次使用 -g)")
+	uploadCmd.Flags().StringSliceVar(&uploadGroup, "group", nil, "(已废弃，请使用 --groups)")
+	uploadCmd.Flags().MarkHidden("group")
 	uploadCmd.Flags().StringSliceVarP(&uploadLabel, "label", "l", nil,
 		"按标签选择节点")
 	uploadCmd.Flags().StringVarP(&uploadDest, "dest", "d", "/tmp",
@@ -93,10 +94,8 @@ func runUpload(cmd *cobra.Command, args []string) {
 
 	if uploadNodes != "" {
 		targetNodeIDs = parseNodeList(uploadNodes)
-	} else if uploadGroup != "" {
-		nodes, err := nodeResolver.ListNodes(&node.ListOptions{
-			Group: uploadGroup,
-		})
+	} else if len(uploadGroup) > 0 {
+		nodes, err := node.ListNodesByGroups(nodeResolver, uploadGroup)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
 			os.Exit(1)
@@ -116,7 +115,7 @@ func runUpload(cmd *cobra.Command, args []string) {
 			targetNodeIDs = append(targetNodeIDs, n.ID)
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "错误: 请指定 --nodes, --group 或 --label")
+		fmt.Fprintln(os.Stderr, "错误: 请指定 --nodes, --groups 或 --label")
 		os.Exit(1)
 	}
 

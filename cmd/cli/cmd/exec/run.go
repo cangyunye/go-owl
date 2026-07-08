@@ -23,7 +23,7 @@ import (
 
 var (
 	execNodes             string
-	execGroup             string
+	execGroup             []string
 	execLabel             []string
 	execStatus            string
 	execTimeout           time.Duration
@@ -56,7 +56,7 @@ func NewRunCmd() *cobra.Command {
 
 示例：
   owl exec run uptime --nodes node1,node2
-  owl exec run "df -h" --group web
+  owl exec run "df -h" --groups web
   owl exec run "systemctl status nginx" --label env=prod
   owl exec run uptime --status online
   owl exec run "sleep 30" --timeout 10s
@@ -73,8 +73,9 @@ func NewRunCmd() *cobra.Command {
 
 	runCmd.Flags().StringVarP(&execNodes, "nodes", "N", "",
 		"指定节点 ID (逗号分隔)")
-	runCmd.Flags().StringVarP(&execGroup, "group", "g", "",
-		"按分组选择节点")
+	runCmd.Flags().StringSliceVarP(&execGroup, "groups", "g", nil, "按分组选择节点 (多个分组用逗号分隔或多次使用 -g)")
+	runCmd.Flags().StringSliceVar(&execGroup, "group", nil, "(已废弃，请使用 --groups)")
+	runCmd.Flags().MarkHidden("group")
 	runCmd.Flags().StringSliceVarP(&execLabel, "label", "l", nil,
 		"按标签选择节点 (格式: key=value)")
 	runCmd.Flags().StringVarP(&execStatus, "status", "S", "",
@@ -143,10 +144,8 @@ func runExecRun(cmd *cobra.Command, args []string) {
 
 	if execNodes != "" {
 		targetNodeIDs = parseNodeList(execNodes)
-	} else if execGroup != "" {
-		nodes, err := nodeResolver.ListNodes(&node.ListOptions{
-			Group: execGroup,
-		})
+	} else if len(execGroup) > 0 {
+		nodes, err := node.ListNodesByGroups(nodeResolver, execGroup)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
 			os.Exit(1)
