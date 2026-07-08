@@ -29,7 +29,7 @@ export function renderSettings(render, navigate, user, api) {
         document.getElementById('setting-key').textContent = key;
         document.getElementById('setting-value-input').value = value;
         document.getElementById('settings-error').textContent = '';
-        document.getElementById('settings-modal').style.display = 'flex';
+        document.getElementById('settings-modal').classList.add('open');
       });
     });
   }
@@ -75,10 +75,10 @@ export function renderSettings(render, navigate, user, api) {
     </div>
   `, () => {
     document.getElementById('settings-cancel').addEventListener('click', () => {
-      document.getElementById('settings-modal').style.display = 'none';
+      document.getElementById('settings-modal').classList.remove('open');
     });
     document.getElementById('settings-modal').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) document.getElementById('settings-modal').style.display = 'none';
+      if (e.target === e.currentTarget) document.getElementById('settings-modal').classList.remove('open');
     });
     document.getElementById('settings-save').addEventListener('click', async () => {
       const key = document.getElementById('setting-key').textContent;
@@ -86,19 +86,19 @@ export function renderSettings(render, navigate, user, api) {
       if (!value) { document.getElementById('settings-error').textContent = 'Value required'; return; }
       try {
         await api.updateSetting(key, value);
-        document.getElementById('settings-modal').style.display = 'none';
+        document.getElementById('settings-modal').classList.remove('open');
         loadSettings();
       } catch (e) { document.getElementById('settings-error').textContent = e.message; }
     });
 
     document.getElementById('add-setting-btn').addEventListener('click', () => {
-      document.getElementById('add-setting-modal').style.display = 'flex';
+      document.getElementById('add-setting-modal').classList.add('open');
     });
     document.getElementById('add-setting-cancel').addEventListener('click', () => {
-      document.getElementById('add-setting-modal').style.display = 'none';
+      document.getElementById('add-setting-modal').classList.remove('open');
     });
     document.getElementById('add-setting-modal').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) document.getElementById('add-setting-modal').style.display = 'none';
+      if (e.target === e.currentTarget) document.getElementById('add-setting-modal').classList.remove('open');
     });
     document.getElementById('add-setting-submit').addEventListener('click', async () => {
       const key = document.getElementById('add-setting-key').value.trim();
@@ -106,7 +106,7 @@ export function renderSettings(render, navigate, user, api) {
       if (!key || !value) { document.getElementById('add-setting-error').textContent = 'Key and value required'; return; }
       try {
         await api.updateSetting(key, value);
-        document.getElementById('add-setting-modal').style.display = 'none';
+        document.getElementById('add-setting-modal').classList.remove('open');
         document.getElementById('add-setting-key').value = '';
         document.getElementById('add-setting-value').value = '';
         loadSettings();

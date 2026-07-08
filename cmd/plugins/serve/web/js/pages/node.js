@@ -41,11 +41,11 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
     });
     if (isAdmin) {
       document.getElementById('delete-cancel').addEventListener('click', () => {
-        document.getElementById('delete-modal').style.display = 'none';
+        document.getElementById('delete-modal').classList.remove('open');
       });
       document.getElementById('delete-modal').addEventListener('click', (e) => {
         if (e.target === e.currentTarget) {
-          document.getElementById('delete-modal').style.display = 'none';
+          document.getElementById('delete-modal').classList.remove('open');
         }
       });
     }
@@ -104,7 +104,7 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
     if (isAdmin) {
       document.getElementById('delete-btn').addEventListener('click', () => {
         document.getElementById('delete-name').textContent = n.name || n.id;
-        document.getElementById('delete-modal').style.display = 'flex';
+        document.getElementById('delete-modal').classList.add('open');
         document.getElementById('delete-confirm').onclick = async () => {
           try {
             await api.deleteNode(nodeId);

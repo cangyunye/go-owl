@@ -39,7 +39,7 @@ export function renderPlaybooks(render, navigate, user, api) {
         document.getElementById('run-playbook-name').value = btn.dataset.name;
         document.getElementById('run-playbook-target').value = '';
         document.getElementById('run-playbook-error').textContent = '';
-        document.getElementById('run-playbook-modal').style.display = 'flex';
+        document.getElementById('run-playbook-modal').classList.add('open');
       });
     });
   }
@@ -199,10 +199,10 @@ export function renderPlaybooks(render, navigate, user, api) {
     });
 
     document.getElementById('run-playbook-cancel').addEventListener('click', () => {
-      document.getElementById('run-playbook-modal').style.display = 'none';
+      document.getElementById('run-playbook-modal').classList.remove('open');
     });
     document.getElementById('run-playbook-modal').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) document.getElementById('run-playbook-modal').style.display = 'none';
+      if (e.target === e.currentTarget) document.getElementById('run-playbook-modal').classList.remove('open');
     });
     document.getElementById('run-playbook-submit').addEventListener('click', async () => {
       const name = document.getElementById('run-playbook-name').value;
@@ -212,7 +212,7 @@ export function renderPlaybooks(render, navigate, user, api) {
       const targetNodes = target.split(',').map(s => s.trim()).filter(Boolean);
       try {
         await api.runPlaybook(name, { target_nodes: targetNodes, tags: tags || undefined });
-        document.getElementById('run-playbook-modal').style.display = 'none';
+        document.getElementById('run-playbook-modal').classList.remove('open');
         loadRuns();
       } catch (e) { document.getElementById('run-playbook-error').textContent = e.message; }
     });

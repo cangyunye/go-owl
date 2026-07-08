@@ -198,12 +198,12 @@ export function renderTasks(render, navigate, user, api) {
 
   function showExecModal() {
     document.getElementById('exec-error').textContent = '';
-    document.getElementById('exec-modal').style.display = 'flex';
+    document.getElementById('exec-modal').classList.add('open');
     applyFilters();
   }
 
   function hideExecModal() {
-    document.getElementById('exec-modal').style.display = 'none';
+    document.getElementById('exec-modal').classList.remove('open');
   }
 
   function getExecRequest() {

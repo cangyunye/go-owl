@@ -34,7 +34,7 @@ export function renderUsers(render, navigate, user, api) {
         document.getElementById('edit-display-name').value = btn.dataset.display_name;
         document.getElementById('edit-user-password').value = '';
         document.getElementById('user-edit-error').textContent = '';
-        document.getElementById('user-edit-modal').style.display = 'flex';
+        document.getElementById('user-edit-modal').classList.add('open');
       });
     });
 
@@ -143,13 +143,13 @@ export function renderUsers(render, navigate, user, api) {
       document.getElementById('add-password').value = '';
       document.getElementById('add-role').value = 'viewer';
       document.getElementById('user-add-error').textContent = '';
-      document.getElementById('user-add-modal').style.display = 'flex';
+      document.getElementById('user-add-modal').classList.add('open');
     });
     document.getElementById('user-add-cancel').addEventListener('click', () => {
-      document.getElementById('user-add-modal').style.display = 'none';
+      document.getElementById('user-add-modal').classList.remove('open');
     });
     document.getElementById('user-add-modal').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) document.getElementById('user-add-modal').style.display = 'none';
+      if (e.target === e.currentTarget) document.getElementById('user-add-modal').classList.remove('open');
     });
     document.getElementById('user-add-submit').addEventListener('click', async () => {
       const username = document.getElementById('add-username').value.trim();
@@ -159,16 +159,16 @@ export function renderUsers(render, navigate, user, api) {
       if (!username || !password) { document.getElementById('user-add-error').textContent = 'Username and password required'; return; }
       try {
         await api.createUser({ username, password, role, display_name: display_name || undefined });
-        document.getElementById('user-add-modal').style.display = 'none';
+        document.getElementById('user-add-modal').classList.remove('open');
         loadUsers();
       } catch (e) { document.getElementById('user-add-error').textContent = e.message; }
     });
 
     document.getElementById('user-edit-cancel').addEventListener('click', () => {
-      document.getElementById('user-edit-modal').style.display = 'none';
+      document.getElementById('user-edit-modal').classList.remove('open');
     });
     document.getElementById('user-edit-modal').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) document.getElementById('user-edit-modal').style.display = 'none';
+      if (e.target === e.currentTarget) document.getElementById('user-edit-modal').classList.remove('open');
     });
     document.getElementById('user-edit-submit').addEventListener('click', async () => {
       const id = document.getElementById('edit-user-id').value;
@@ -180,7 +180,7 @@ export function renderUsers(render, navigate, user, api) {
       if (password) body.password = password;
       try {
         await api.updateUser(id, body);
-        document.getElementById('user-edit-modal').style.display = 'none';
+        document.getElementById('user-edit-modal').classList.remove('open');
         loadUsers();
       } catch (e) { document.getElementById('user-edit-error').textContent = e.message; }
     });
