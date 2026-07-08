@@ -51,6 +51,7 @@ type Server struct {
 	settingsHandler  *handler.SettingsHandler
 	execHandler      *handler.ExecHandler
 	playbookHandler  *handler.PlaybookHandler
+	transferHandler  *handler.TransferHandler
 	wsHub            *handler.WSHub
 }
 
@@ -109,6 +110,7 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	if err := playbookRunStore.Init(context.Background()); err != nil {
 		return nil, fmt.Errorf("init playbook run store: %w", err)
 	}
+	s.transferHandler = handler.NewTransferHandler(db, s.Tasks)
 	s.playbookHandler = handler.NewPlaybookHandler(db, playbookStore, playbookRunStore, s.wsHub)
 	s.setupRoutes()
 
@@ -148,6 +150,8 @@ func (s *Server) setupRoutes() {
 		operator := auth.Group("", s.authHandler.RBACMiddleware(model.RoleOperator, model.RoleAdmin))
 		{
 			operator.POST("/exec", s.execHandler.Create)
+			operator.POST("/transfer", s.transferHandler.Create)
+			operator.GET("/transfers", s.transferHandler.List)
 			operator.GET("/playbooks", s.playbookHandler.List)
 			operator.GET("/playbooks/:name", s.playbookHandler.Get)
 			operator.POST("/playbooks/:name/run", s.playbookHandler.Run)

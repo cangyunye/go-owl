@@ -120,6 +120,12 @@ const api = {
   playbookSettingsPath: () =>
     request('GET', '/playbook/settings/path'),
 
+  transfer: (data) =>
+    request('POST', '/transfer', data),
+
+  transfers: () =>
+    request('GET', '/transfers'),
+
   connectWebSocket(onMessage) {
     const token = localStorage.getItem('token');
     if (!token) return null;

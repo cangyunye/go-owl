@@ -1,6 +1,7 @@
 import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderExec } from './pages/exec.js';
+import { renderFiles } from './pages/files.js';
 import { renderNodes } from './pages/nodes.js';
 import { renderNodeDetail } from './pages/node.js';
 import { renderTasks } from './pages/tasks.js';
@@ -242,7 +243,7 @@ function switchView(viewId, pushState) {
       renderPlaybooks(render, navigate, user, api);
       break;
     case 'files':
-      renderPlaceholderView(viewId, '文件传输');
+      renderFiles(render, navigate, user, api, shell);
       break;
     case 'ai':
       renderPlaceholderView(viewId, 'AI 助手');
