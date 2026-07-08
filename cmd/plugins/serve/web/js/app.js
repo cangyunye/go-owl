@@ -186,6 +186,17 @@ function renderShell() {
     btn.classList.toggle('collapsed', collapsed);
   });
 
+  // Keyboard shortcuts: alt+1..7 for nav items
+  document.addEventListener('keydown', (e) => {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.key >= '1' && e.key <= '7') {
+      const idx = parseInt(e.key) - 1;
+      if (idx < NAV_ITEMS.length) {
+        e.preventDefault();
+        switchView(NAV_ITEMS[idx].id);
+      }
+    }
+  });
+
   // Theme toggle
   document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.addEventListener('click', () => setTheme(btn.dataset.themeVal));
