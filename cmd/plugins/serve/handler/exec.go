@@ -3,9 +3,12 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/gin-gonic/gin"
@@ -49,6 +52,43 @@ type execRequest struct {
 	Labels        map[string]string `json:"labels"`
 	Status        string            `json:"status"`
 	Force         string            `json:"force,omitempty"`
+
+	Async             bool   `json:"async"`
+	AsyncMaxPollCount int    `json:"async_max_poll_count"`
+	AsyncPollInterval string `json:"async_poll_interval"`
+	AsyncRemoteDir    string `json:"async_remote_dir"`
+	AsyncTimeout      string `json:"async_timeout"`
+	Format            string `json:"format"`
+	Debug             bool   `json:"debug"`
+	Parallel          bool   `json:"parallel"`
+	Serial            bool   `json:"serial"`
+	Retry             int    `json:"retry"`
+	RetryInterval     string `json:"retry_interval"`
+	RetryMaxInterval  string `json:"retry_max_interval"`
+	NoRetry           bool   `json:"no_retry"`
+	ConnectTimeout    string `json:"connect_timeout"`
+	CommandTimeout    string `json:"command_timeout"`
+	Timeout           string `json:"timeout"`
+	NoColor           bool   `json:"no_color"`
+	Silent            bool   `json:"silent"`
+}
+
+type ExecConfig struct {
+	Command          string
+	NodeIDs          []string
+	Force            bool
+	Async            bool
+	Format           string
+	Debug            bool
+	Parallel         bool
+	Retry            int
+	RetryInterval    string
+	RetryMaxInterval string
+	NoRetry          bool
+	ConnectTimeout   string
+	CommandTimeout   string
+	NoColor          bool
+	Silent           bool
 }
 
 func resolveNodeIDs(db *sql.DB, req execRequest) []string {
@@ -126,62 +166,81 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		return
 	}
 
-	force := req.Force == "true"
+	cfg := ExecConfig{
+		Command:          command,
+		NodeIDs:          nodeIDs,
+		Force:            req.Force == "true",
+		Async:            req.Async,
+		Format:           req.Format,
+		Debug:            req.Debug,
+		Parallel:         !req.Serial,
+		Retry:            req.Retry,
+		RetryInterval:    req.RetryInterval,
+		RetryMaxInterval: req.RetryMaxInterval,
+		NoRetry:          req.NoRetry,
+		ConnectTimeout:   req.ConnectTimeout,
+		CommandTimeout:   req.CommandTimeout,
+		NoColor:          req.NoColor,
+		Silent:           req.Silent,
+	}
+	if cfg.Retry == 0 && !cfg.NoRetry {
+		cfg.Retry = 3
+	}
+	if cfg.RetryInterval == "" {
+		cfg.RetryInterval = "1s"
+	}
+	if cfg.RetryMaxInterval == "" {
+		cfg.RetryMaxInterval = "30s"
+	}
 
 	var tasks []*store.Task
 	isMerge := false
 
-	for _, nid := range nodeIDs {
-		var exists bool
-		h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM nodes WHERE id = ?)", nid).Scan(&exists)
-		if !exists {
-			if len(nodeIDs) == 1 {
-				c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "node not found"})
-				return
-			}
-			continue
-		}
-
-		if !force {
-			running, _ := h.task.ListByNode(c.Request.Context(), nid, store.TaskStatusRunning)
-			conflict := false
-			for _, r := range running {
-				if strings.TrimSpace(r.Command) == strings.TrimSpace(command) {
-					tasks = append(tasks, r)
-					isMerge = true
-					conflict = true
-					break
-				}
-			}
-			if conflict {
-				continue
-			}
-			if len(running) > 0 {
+	if cfg.Parallel {
+		for _, nid := range nodeIDs {
+			task, err := h.createSingleTask(c, nid, command, cfg.Force)
+			if err != nil {
 				if len(nodeIDs) == 1 {
-					c.JSON(http.StatusConflict, gin.H{
-						"code":    409,
-						"message": "node has running tasks with different commands; use 'force': 'true' to override",
-						"running_tasks": running,
-					})
+					c.JSON(err.Code, gin.H{"code": err.Code, "message": err.Message})
 					return
 				}
 				continue
 			}
+			if task.merged {
+				isMerge = true
+				tasks = append(tasks, task.task)
+				continue
+			}
+			tasks = append(tasks, task.task)
+			if h.exec != nil {
+				go h.executeTask(task.task.ID, cfg)
+			}
+			if h.hub != nil {
+				h.hub.BroadcastTaskUpdate(task.task)
+			}
 		}
-
-		task, err := h.task.Create(c.Request.Context(), nid, command)
-		if err != nil {
-			continue
+	} else {
+		var serialTasks []*store.Task
+		for _, nid := range nodeIDs {
+			task, err := h.createSingleTask(c, nid, command, cfg.Force)
+			if err != nil {
+				continue
+			}
+			if task.merged {
+				isMerge = true
+			}
+			tasks = append(tasks, task.task)
+			if !task.merged {
+				serialTasks = append(serialTasks, task.task)
+			}
 		}
-
-		if h.exec != nil {
-			go h.executeTask(task.ID)
+		if len(serialTasks) > 0 && h.exec != nil {
+			go func() {
+				for _, t := range serialTasks {
+					h.executeTask(t.ID, cfg)
+				}
+			}()
 		}
-		if h.hub != nil {
-			h.hub.BroadcastTaskUpdate(task)
-		}
-
-		tasks = append(tasks, task)
 	}
 
 	if len(tasks) == 0 {
@@ -194,6 +253,42 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		statusCode = http.StatusOK
 	}
 	c.JSON(statusCode, gin.H{"tasks": tasks})
+}
+
+type taskResult struct {
+	task   *store.Task
+	merged bool
+}
+
+type apiError struct {
+	Code    int
+	Message string
+}
+
+func (h *ExecHandler) createSingleTask(c *gin.Context, nid, command string, force bool) (*taskResult, *apiError) {
+	var exists bool
+	h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM nodes WHERE id = ?)", nid).Scan(&exists)
+	if !exists {
+		return nil, &apiError{Code: http.StatusNotFound, Message: "node not found"}
+	}
+
+	if !force {
+		running, _ := h.task.ListByNode(c.Request.Context(), nid, store.TaskStatusRunning)
+		for _, r := range running {
+			if strings.TrimSpace(r.Command) == strings.TrimSpace(command) {
+				return &taskResult{task: r, merged: true}, nil
+			}
+		}
+		if len(running) > 0 {
+			return nil, &apiError{Code: http.StatusConflict, Message: "node has running tasks with different commands; use 'force': 'true' to override"}
+		}
+	}
+
+	task, err := h.task.Create(c.Request.Context(), nid, command)
+	if err != nil {
+		return nil, &apiError{Code: http.StatusInternalServerError, Message: "failed to create task"}
+	}
+	return &taskResult{task: task}, nil
 }
 
 func (h *ExecHandler) Get(c *gin.Context) {
@@ -246,7 +341,7 @@ func (h *ExecHandler) Cancel(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
 }
 
-func (h *ExecHandler) executeTask(taskID string) {
+func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 	if h.exec == nil {
 		return
 	}
@@ -256,15 +351,70 @@ func (h *ExecHandler) executeTask(taskID string) {
 		return
 	}
 
-	h.task.UpdateStatus(ctx, taskID, store.TaskStatusRunning, "", nil)
-	task, _ = h.task.Get(ctx, taskID)
+	debug := func(format string, args ...interface{}) {
+		if cfg.Debug {
+			msg := fmt.Sprintf("[DEBUG] "+format, args...)
+			h.task.UpdateStatus(ctx, taskID, store.TaskStatusRunning,
+				task.Output+"\n"+msg, task.ExitCode)
+		}
+	}
+
+	if err := h.task.UpdateStatus(ctx, taskID, store.TaskStatusRunning, "", nil); err != nil {
+		return
+	}
+	task, err = h.task.Get(ctx, taskID)
+	if err != nil || task == nil {
+		return
+	}
 	if h.hub != nil {
 		h.hub.BroadcastTaskUpdate(task)
 	}
 
-	output, exitCode, execErr := h.exec.Execute(ctx, task.NodeID, task.Command)
-	if execErr != nil {
-		h.task.UpdateStatus(ctx, taskID, store.TaskStatusFailed, execErr.Error(), nil)
+	retryCount := cfg.Retry
+	if cfg.NoRetry {
+		retryCount = 0
+	}
+	if retryCount < 0 {
+		retryCount = 0
+	}
+
+	retryInterval, _ := time.ParseDuration(cfg.RetryInterval)
+	if retryInterval <= 0 {
+		retryInterval = 1 * time.Second
+	}
+	retryMaxInterval, _ := time.ParseDuration(cfg.RetryMaxInterval)
+	if retryMaxInterval <= 0 {
+		retryMaxInterval = 30 * time.Second
+	}
+
+	var lastError error
+	var output string
+	var exitCode int
+
+	for attempt := 0; attempt <= retryCount; attempt++ {
+		if attempt > 0 {
+			debug("重试 %d/%d (等待 %v)...", attempt, retryCount, retryInterval)
+			time.Sleep(retryInterval)
+			retryInterval = time.Duration(math.Min(
+				float64(retryInterval*2),
+				float64(retryMaxInterval),
+			))
+		}
+
+		output, exitCode, lastError = h.exec.Execute(ctx, task.NodeID, task.Command)
+		if lastError == nil {
+			break
+		}
+
+		debug("尝试 %d/%d 失败: %s", attempt+1, retryCount+1, lastError.Error())
+	}
+
+	if lastError != nil {
+		errMsg := lastError.Error()
+		if cfg.Debug {
+			errMsg = fmt.Sprintf("所有 %d 次尝试均失败: %s", retryCount+1, errMsg)
+		}
+		h.task.UpdateStatus(ctx, taskID, store.TaskStatusFailed, errMsg, &exitCode)
 		task, _ = h.task.Get(ctx, taskID)
 		if h.hub != nil {
 			h.hub.BroadcastTaskUpdate(task)
@@ -272,7 +422,16 @@ func (h *ExecHandler) executeTask(taskID string) {
 		return
 	}
 
-	h.task.UpdateStatus(ctx, taskID, store.TaskStatusCompleted, output, &exitCode)
+	outputStr := output
+	if cfg.Format == "json" {
+		outputStr = fmt.Sprintf(`{"node_id":"%s","command":"%s","exit_code":%d,"output":%s}`,
+			task.NodeID, task.Command, exitCode, output)
+	} else if cfg.Format == "detail" {
+		outputStr = fmt.Sprintf("Node: %s\nCommand: %s\nExit Code: %d\n---\n%s",
+			task.NodeID, task.Command, exitCode, output)
+	}
+
+	h.task.UpdateStatus(ctx, taskID, store.TaskStatusCompleted, outputStr, &exitCode)
 	task, _ = h.task.Get(ctx, taskID)
 	if h.hub != nil {
 		h.hub.BroadcastTaskUpdate(task)
