@@ -126,54 +126,44 @@ export function renderPlaybooks(render, navigate, user, api) {
   }
 
   render(`
-    <div class="app-header">
-      <h1>OWL Console</h1>
-      <div class="header-right">
-        <a href="/" style="font-size:14px;color:var(--text-muted)">Nodes</a>
-        <a href="/tasks" style="font-size:14px;color:var(--text-muted)">Tasks</a>
-        <a href="/playbooks" style="font-size:14px;color:var(--text)">Playbooks</a>
-        ${user.role === 'admin' ? '<a href="/settings" style="font-size:14px;color:var(--text-muted)">Settings</a>' : ''}
-        ${user.role === 'admin' ? '<a href="/users" style="font-size:14px;color:var(--text-muted)">Users &amp; Permissions</a>' : ''}
-        <span>${esc(user.display_name || user.username)}</span>
-        <span class="role-badge">${esc(user.role)}</span>
-        <button class="logout-btn" id="logout-btn">Sign Out</button>
+    <div class="card" style="margin-bottom:0">
+      <div class="path-bar">
+        <label for="playbook-path">Library Path</label>
+        <input id="playbook-path" placeholder="/path/to/playbooks">
+        <button class="btn btn-secondary btn-sm" id="refresh-playbooks-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg> 刷新</button>
       </div>
     </div>
-    <div class="app-content">
-      <div class="card" style="margin-bottom:16px">
-        <div class="path-bar">
-          <label for="playbook-path">Library Path</label>
-          <input id="playbook-path" placeholder="/path/to/playbooks">
-          <button class="btn-primary" id="refresh-playbooks-btn">Refresh</button>
-        </div>
-      </div>
 
-      <div class="page-header">
-        <h2>Playbooks</h2>
+    <div class="card">
+      <div class="card-header">
+        <h3>剧本库</h3>
+        <button class="btn btn-ghost btn-sm" id="add-playbook-btn">+ 新建</button>
       </div>
-
-      <div class="card">
-        <table>
-          <thead><tr><th>Name</th><th>Description</th><th>Tasks</th><th>Actions</th></tr></thead>
-          <tbody id="playbook-list"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
+      <div class="card-body" style="padding:0">
+        <table class="data-table">
+          <thead><tr><th>名称</th><th>描述</th><th>任务</th><th></th></tr></thead>
+          <tbody id="playbook-list"><tr><td colspan="4" class="loading">加载中…</td></tr></tbody>
         </table>
       </div>
+    </div>
 
-      <div class="page-header" style="margin-top:24px">
-        <h2>Run History</h2>
+    <div class="card">
+      <div class="card-header">
+        <h3>运行历史</h3>
       </div>
-
-      <div class="card">
-        <table>
-          <thead><tr><th>Playbook</th><th>Target Nodes</th><th>Status</th><th>Started</th><th>Actions</th></tr></thead>
-          <tbody id="playbook-runs-list"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+      <div class="card-body" style="padding:0">
+        <table class="data-table">
+          <thead><tr><th>剧本</th><th>目标节点</th><th>状态</th><th>开始时间</th><th></th></tr></thead>
+          <tbody id="playbook-runs-list"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
         </table>
       </div>
+    </div>
 
-      <div class="card" id="run-detail-card" style="margin-top:16px">
-        <h3>Run Detail</h3>
-        <div id="run-detail" data-run-id=""><p class="empty-state">Select a run to view details</p></div>
+    <div class="card" id="run-detail-card">
+      <div class="card-header">
+        <h3>运行详情</h3>
       </div>
+      <div class="card-body" id="run-detail" data-run-id=""><p class="empty-state">选择一个运行记录查看详情</p></div>
     </div>
 
     <div class="modal-overlay" id="run-playbook-modal">
@@ -192,8 +182,6 @@ export function renderPlaybooks(render, navigate, user, api) {
       </div>
     </div>
   `, () => {
-    document.getElementById('logout-btn').addEventListener('click', () => { localStorage.removeItem('token'); localStorage.removeItem('user'); navigate('/login'); });
-
     loadSettingsPath();
     setupWebSocket();
 

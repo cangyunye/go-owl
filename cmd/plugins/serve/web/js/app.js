@@ -5,9 +5,11 @@ import { renderTasks } from './pages/tasks.js';
 import { renderSettings } from './pages/settings.js';
 import { renderUsers } from './pages/users.js';
 import { renderPlaybooks } from './pages/playbooks.js';
+import { renderHistory } from './pages/history.js';
 
 let currentCleanup = null;
 let shellRendered = false;
+let currentViewId = null;
 
 const VIEW_TITLES = {
   dashboard: '仪表盘', nodes: '节点管理', exec: '命令执行',
@@ -39,6 +41,23 @@ const NAV_BOTTOM = [
 function esc(s) {
   return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 }
+
+const shell = {
+  setPanelContent(html) {
+    const list = document.getElementById('panelList');
+    if (list) list.innerHTML = html;
+  },
+  setPanelTitle(title) {
+    const el = document.getElementById('panelTitle');
+    if (el) el.textContent = title;
+  },
+  setViewTitle(title) {
+    const el = document.getElementById('viewTitle');
+    if (el) el.textContent = title;
+    const bc = document.getElementById('breadcrumbCurrent');
+    if (bc) bc.textContent = title;
+  }
+};
 
 function render(html, afterRender) {
   const container = document.querySelector('.view-container');
@@ -149,13 +168,33 @@ function renderShell() {
   const savedTheme = localStorage.getItem('owl-theme');
   if (savedTheme) setTheme(savedTheme);
 
+  // User tag logout
+  const ut = document.querySelector('.user-tag');
+  if (ut) {
+    ut.addEventListener('click', () => {
+      if (confirm('确认退出登录？')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location = '/login';
+      }
+    });
+  }
+
   // Load stats
   loadTopbarStats();
+}
+
+function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  shellRendered = false;
+  navigate('/login');
 }
 
 function switchView(viewId, pushState) {
   const currentNav = document.querySelector('.nav-item.active');
   if (currentNav && currentNav.dataset.view === viewId) return;
+  currentViewId = viewId;
 
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.remove('active');
@@ -167,9 +206,8 @@ function switchView(viewId, pushState) {
     navBtn.setAttribute('aria-current', 'page');
   }
 
-  document.getElementById('viewTitle').textContent = VIEW_TITLES[viewId] || viewId;
-  document.getElementById('breadcrumbCurrent').textContent = VIEW_TITLES[viewId] || viewId;
-  document.getElementById('panelTitle').textContent = PANEL_TITLES[viewId] || '导航';
+  shell.setViewTitle(VIEW_TITLES[viewId] || viewId);
+  shell.setPanelTitle(PANEL_TITLES[viewId] || '导航');
 
   // Hide AI's context panel if leaving AI view
   if (viewId !== 'ai') {
@@ -190,7 +228,7 @@ function switchView(viewId, pushState) {
 
   switch (viewId) {
     case 'dashboard':
-      renderDashboard(render, navigate, user, api);
+      renderDashboard(render, navigate, user, api, shell);
       break;
     case 'nodes':
       renderDashboard(render, navigate, user, api);
@@ -208,7 +246,7 @@ function switchView(viewId, pushState) {
       renderPlaceholderView(viewId, 'AI 助手');
       break;
     case 'history':
-      renderPlaceholderView(viewId, '任务历史');
+      renderHistory(render, navigate, user, api, shell);
       break;
     case 'settings':
       renderSettings(render, navigate, user, api);
@@ -226,7 +264,16 @@ function switchView(viewId, pushState) {
 function updatePanelContent(viewId) {
   const list = document.getElementById('panelList');
   if (!list) return;
-  // Phase 1+: contextual panel content per view
+  const P = PANEL_TITLES[viewId] || '导航';
+  shell.setPanelTitle(P);
+  if (viewId === 'history') {
+    // history page manages its own panel via shell
+    return;
+  }
+  if (viewId === 'dashboard') {
+    // dashboard sets panel via shell
+    return;
+  }
   list.innerHTML = '<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载中…</li>';
 }
 

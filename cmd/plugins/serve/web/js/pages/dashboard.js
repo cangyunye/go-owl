@@ -1,204 +1,193 @@
-export function renderDashboard(render, navigate, user, api) {
-  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', filters: { groups: [], users: [] } };
-  const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
+export function renderDashboard(render, navigate, user, api, shell) {
+  let stats = { total: 0, online: 0, offline: 0, warn: 0 };
+  let recentTasks = [];
 
-  async function loadFilters() {
-    try { state.filters = await api.filters(); } catch {}
-  }
-
-  async function loadNodes() {
-    const params = { page: state.page, page_size: state.pageSize };
-    if (state.query) params.q = state.query;
-    try {
-      const res = state.query ? await api.searchNodes(state.query) : await api.nodes(params);
-      state.nodes = (res.data || []);
-      state.total = state.query ? state.nodes.length : (res.meta?.total || 0);
-    } catch { state.nodes = []; state.total = 0; }
-    renderTable();
-  }
-
-  function statusClass(s) { return 'status-badge status-' + (s || 'unknown'); }
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+  function timeAgo(t) { if (!t) return '-'; const s = Math.floor((Date.now() - new Date(t).getTime())/1000); if (s<60) return s+'s'; if (s<3600) return Math.floor(s/60)+'m'; return Math.floor(s/3600)+'h'; }
 
-  function renderTable() {
-    const list = document.getElementById('node-list');
-    if (state.nodes.length === 0) {
-      list.innerHTML = '<tr><td colspan="6" class="empty-state">No nodes found</td></tr>';
+  async function loadAll() {
+    try {
+      const [nodeRes, taskRes] = await Promise.all([
+        api.nodes({ page: 1, page_size: 100 }),
+        api.tasks({ page: 1, page_size: 5 })
+      ]);
+      const nodes = nodeRes.data || [];
+      stats.total = nodes.length;
+      stats.online = nodes.filter(n => n.status === 'online').length;
+      stats.offline = nodes.filter(n => n.status === 'offline' || n.status === 'unknown').length;
+      stats.warn = nodes.filter(n => n.status === 'warn' || n.status === 'warning').length;
+      recentTasks = taskRes.data || [];
+    } catch {}
+    renderCards();
+  }
+
+  function statusDot(s) {
+    if (s === 'completed') return 'var(--success)';
+    if (s === 'failed' || s === 'cancelled') return 'var(--danger)';
+    if (s === 'running') return 'var(--warn)';
+    return 'var(--muted)';
+  }
+
+  function statusText(s) {
+    const map = { completed: '成功', failed: '失败', cancelled: '已取消', running: '进行中', pending: '等待中' };
+    return map[s] || s;
+  }
+
+  function renderCards() {
+    const onlineRate = stats.total > 0 ? Math.round(stats.online / stats.total * 100) : 0;
+    const successRate = 98;
+
+    document.getElementById('stat-total').textContent = stats.total;
+    document.getElementById('stat-rate').textContent = onlineRate + '%';
+    document.getElementById('stat-online').textContent = stats.online;
+    document.getElementById('stat-offline').textContent = stats.offline;
+
+    renderDonut();
+    renderTasks();
+  }
+
+  function renderDonut() {
+    const total = stats.total || 1;
+    const online = stats.online;
+    const offline = stats.offline;
+    const warn = stats.warn;
+    const onlinePct = online / total;
+    const offlinePct = offline / total;
+    const warnPct = warn / total;
+    const onlineLen = Math.round(onlinePct * 339);
+    const offlineLen = Math.round(offlinePct * 339);
+    const warnLen = Math.round(warnPct * 339);
+    const remaining = 339 - onlineLen - offlineLen - warnLen;
+
+    const donut = document.getElementById('donut-svg');
+    if (!donut) return;
+    let segments = '';
+    if (onlineLen > 0) segments += `<circle cx="60" cy="60" r="54" fill="none" stroke="var(--success)" stroke-width="12" stroke-dasharray="${onlineLen} ${339 - onlineLen}" stroke-dashoffset="0" stroke-linecap="round"/>`;
+    if (warnLen > 0) segments += `<circle cx="60" cy="60" r="54" fill="none" stroke="var(--warn)" stroke-width="12" stroke-dasharray="${warnLen} ${339 - warnLen}" stroke-dashoffset="${-onlineLen}" stroke-linecap="round"/>`;
+    if (offlineLen > 0) segments += `<circle cx="60" cy="60" r="54" fill="none" stroke="var(--muted)" stroke-width="12" stroke-dasharray="${offlineLen} ${339 - offlineLen}" stroke-dashoffset="${-onlineLen - warnLen}" stroke-linecap="round"/>`;
+    if (remaining > 0) segments += `<circle cx="60" cy="60" r="54" fill="none" stroke="var(--border)" stroke-width="12" stroke-dasharray="${remaining} ${339 - remaining}" stroke-dashoffset="${-onlineLen - warnLen - offlineLen}" stroke-linecap="round"/>`;
+
+    donut.innerHTML = segments;
+    document.getElementById('donut-total').textContent = stats.total;
+    document.getElementById('legend-online').textContent = stats.online;
+    document.getElementById('legend-offline').textContent = stats.offline;
+    document.getElementById('legend-warn').textContent = stats.warn;
+  }
+
+  function renderTasks() {
+    const list = document.getElementById('recent-tasks');
+    if (!list) return;
+    if (recentTasks.length === 0) {
+      list.innerHTML = '<li class="task-item"><div class="task-info"><div class="task-name" style="color:var(--muted)">暂无最近任务</div></div></li>';
     } else {
-      list.innerHTML = state.nodes.map(n => {
-        const groups = (n.groups || []).map(g => `<span class="tag">${esc(g)}</span>`).join('');
-        return `<tr>
-          <td class="node-name"><a href="/nodes/${esc(n.id)}">${esc(n.name || n.id)}</a></td>
-          <td>${esc(n.address)}:${n.port}</td>
-          <td>${esc(n.user)}</td>
-          <td><span class="${statusClass(n.status)}">${esc(n.status || 'unknown')}</span></td>
-          <td>${groups}</td>
-          ${canWrite ? `<td><a href="/nodes/${esc(n.id)}?edit=1" style="font-size:13px;color:var(--text-muted)">Edit</a></td>` : ''}
-        </tr>`;
+      list.innerHTML = recentTasks.map(t => {
+        const isRunning = t.status === 'running';
+        return `<li class="task-item">
+          ${isRunning ? '<span class="status-pulse" style="background:var(--warn)"></span>' : `<span class="status-icon" style="background:${statusDot(t.status)}"></span>`}
+          <div class="task-info">
+            <div class="task-name">${esc(t.command || t.name || '')}</div>
+            <div class="task-meta">节点: ${esc(t.node_id)}</div>
+          </div>
+          <span class="task-time">${statusText(t.status)}</span>
+        </li>`;
       }).join('');
     }
-    const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
-    document.getElementById('page-info').textContent = `Page ${state.page} of ${totalPages} (${state.total} total)`;
-    document.getElementById('prev-btn').disabled = state.page <= 1;
-    document.getElementById('next-btn').disabled = state.page >= totalPages;
   }
 
-  function showAddModal() {
-    const overlay = document.getElementById('modal-overlay');
-    overlay.style.display = 'flex';
-  }
-
-  function hideAddModal() {
-    document.getElementById('modal-overlay').style.display = 'none';
-  }
-
-  async function handleAdd() {
-    const data = {
-      id: document.getElementById('add-id').value.trim(),
-      name: document.getElementById('add-name').value.trim(),
-      address: document.getElementById('add-address').value.trim(),
-      port: parseInt(document.getElementById('add-port').value) || 22,
-      user: document.getElementById('add-user').value.trim(),
-      password: document.getElementById('add-password').value || undefined,
-      ssh_key: document.getElementById('add-sshkey').value || undefined,
-      status: document.getElementById('add-status').value,
-      groups: document.getElementById('add-groups').value.split(',').map(s => s.trim()).filter(Boolean),
-      labels: {},
-    };
-
-    const labelsRaw = document.getElementById('add-labels').value.trim();
-    if (labelsRaw) {
-      labelsRaw.split(',').forEach(pair => {
-        const [k, ...vs] = pair.split(':');
-        if (k && vs.length) data.labels[k.trim()] = vs.join(':').trim();
-      });
-    }
-
-    const btn = document.getElementById('add-submit');
-    btn.disabled = true;
-    btn.textContent = 'Creating...';
-    try {
-      await api.createNode(data);
-      hideAddModal();
-      state.page = 1;
-      await loadNodes();
-    } catch (e) {
-      document.getElementById('add-error').textContent = e.message;
-    }
-    btn.disabled = false;
-    btn.textContent = 'Create';
-  }
-
-  loadFilters().then(loadNodes);
+  shell.setPanelContent(`
+    <li class="panel-item active"><span class="dot" style="background:var(--accent)"></span>全部节点 <span class="count" id="panel-total">${stats.total}</span></li>
+    <li class="panel-item"><span class="dot" style="background:var(--success)"></span>在线 <span class="count" id="panel-online">${stats.online}</span></li>
+    <li class="panel-item"><span class="dot" style="background:var(--muted)"></span>离线 <span class="count" id="panel-offline">${stats.offline}</span></li>
+    <li class="panel-item"><span class="dot" style="background:var(--warn)"></span>告警 <span class="count" id="panel-warn">${stats.warn}</span></li>
+  `);
 
   render(`
-    <div class="app-header">
-      <h1>OWL Console</h1>
-      <div class="header-right">
-        <a href="/" style="font-size:14px;color:var(--text)">Nodes</a>
-        <a href="/tasks" style="font-size:14px;color:var(--text-muted)">Tasks</a>
-        ${user.role === 'admin' || user.role === 'operator' ? '<a href="/playbooks" style="font-size:14px;color:var(--text-muted)">Playbooks</a>' : ''}
-        ${user.role === 'admin' ? '<a href="/settings" style="font-size:14px;color:var(--text-muted)">Settings</a>' : ''}
-        ${user.role === 'admin' ? '<a href="/users" style="font-size:14px;color:var(--text-muted)">Users &amp; Permissions</a>' : ''}
-        <span>${esc(user.display_name || user.username)}</span>
-        <span class="role-badge">${esc(user.role)}</span>
-        <button class="logout-btn" id="logout-btn">Sign Out</button>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="label"><svg width="14" height="14" aria-hidden="true"><use href="#icon-nodes"/></svg> 总节点</div>
+        <div class="value" id="stat-total">0</div>
       </div>
-    </div>
-    <div class="app-content">
-      <div class="page-header">
-        <h2>Nodes</h2>
-        ${canWrite ? '<button class="btn-primary" id="add-node-btn">+ Add Node</button>' : ''}
+      <div class="stat-card">
+        <div class="label"><span class="status-dot online" style="width:8px;height:8px"></span> 在线率</div>
+        <div class="value" id="stat-rate">0%</div>
       </div>
-      <div class="search-bar">
-        <input type="text" id="search-input" placeholder="Search nodes by name, address, user, or label..." value="${esc(state.query)}">
-        <button id="search-btn">Search</button>
+      <div class="stat-card">
+        <div class="label"><svg width="14" height="14" aria-hidden="true"><use href="#icon-play"/></svg> 在线节点</div>
+        <div class="value" id="stat-online">0</div>
       </div>
-      <div class="card">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Address</th>
-              <th>User</th>
-              <th>Status</th>
-              <th>Groups</th>
-              ${canWrite ? '<th>Actions</th>' : ''}
-            </tr>
-          </thead>
-          <tbody id="node-list">
-            <tr><td colspan="6" class="loading">Loading...</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="pagination">
-        <button id="prev-btn">Previous</button>
-        <span class="page-info" id="page-info"></span>
-        <button id="next-btn">Next</button>
+      <div class="stat-card">
+        <div class="label"><svg width="14" height="14" aria-hidden="true"><use href="#icon-alert-circle"/></svg> 离线节点</div>
+        <div class="value" id="stat-offline">0</div>
       </div>
     </div>
 
-    <div class="modal-overlay" id="modal-overlay">
-      <div class="modal">
-        <h3>Add Node</h3>
-        <div class="modal-form">
-          <div class="form-row"><label>ID *</label><input id="add-id" placeholder="unique-id"></div>
-          <div class="form-row"><label>Name</label><input id="add-name" placeholder="My Server"></div>
-          <div class="form-row"><label>Address *</label><input id="add-address" placeholder="10.0.0.1"></div>
-          <div class="form-row"><label>Port</label><input id="add-port" type="number" value="22"></div>
-          <div class="form-row"><label>User *</label><input id="add-user" placeholder="root"></div>
-          <div class="form-row"><label>Password</label><input id="add-password" type="password" placeholder="optional"></div>
-          <div class="form-row"><label>SSH Key</label><textarea id="add-sshkey" placeholder="optional ssh private key" rows="2"></textarea></div>
-          <div class="form-row"><label>Status</label>
-            <select id="add-status"><option value="unknown">Unknown</option><option value="online">Online</option><option value="offline">Offline</option></select>
-          </div>
-          <div class="form-row"><label>Groups</label><input id="add-groups" placeholder="web, prod"></div>
-          <div class="form-row"><label>Labels</label><input id="add-labels" placeholder="env:prod, tier:frontend"></div>
+    <div class="chart-row">
+      <div class="card">
+        <div class="card-header">
+          <h3>节点分布</h3>
         </div>
-        <p class="error-msg" id="add-error"></p>
-        <div class="modal-actions">
-          <button class="btn-cancel" id="add-cancel">Cancel</button>
-          <button class="btn-primary" id="add-submit">Create</button>
+        <div class="card-body">
+          <div class="donut-wrapper">
+            <div class="donut">
+              <svg width="120" height="120" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="54" fill="none" stroke="var(--border)" stroke-width="12"/>
+                <g id="donut-svg"></g>
+              </svg>
+              <div class="center-text" id="donut-total">0</div>
+            </div>
+            <div class="donut-legend">
+              <div class="legend-item"><span class="swatch" style="background:var(--success)"></span> 在线 <span class="l-val" id="legend-online">0</span></div>
+              <div class="legend-item"><span class="swatch" style="background:var(--muted)"></span> 离线 <span class="l-val" id="legend-offline">0</span></div>
+              <div class="legend-item"><span class="swatch" style="background:var(--warn)"></span> 告警 <span class="l-val" id="legend-warn">0</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>最近任务</h3>
+          <button class="btn btn-ghost btn-sm" onclick="window.location='/history'">查看全部</button>
+        </div>
+        <div class="card-body" style="padding:0 18px">
+          <ul class="task-list" id="recent-tasks">
+            <li class="task-item"><div class="task-info"><div class="task-name" style="color:var(--muted)">加载中…</div></div></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>快捷操作</h3>
+      </div>
+      <div class="card-body">
+        <div class="quick-grid">
+          <div class="quick-card" onclick="window.location='/exec'">
+            <div class="qc-icon"><svg width="18" height="18" aria-hidden="true"><use href="#icon-terminal"/></svg></div>
+            <div>
+              <div class="qc-text">快速执行命令</div>
+              <div class="qc-sub">在多个节点上运行</div>
+            </div>
+          </div>
+          <div class="quick-card" onclick="window.location='/playbooks'">
+            <div class="qc-icon"><svg width="18" height="18" aria-hidden="true"><use href="#icon-scroll"/></svg></div>
+            <div>
+              <div class="qc-text">运行剧本</div>
+              <div class="qc-sub">选择预定义剧本</div>
+            </div>
+          </div>
+          <div class="quick-card" onclick="window.location='/nodes'">
+            <div class="qc-icon"><svg width="18" height="18" aria-hidden="true"><use href="#icon-plus"/></svg></div>
+            <div>
+              <div class="qc-text">添加节点</div>
+              <div class="qc-sub">录入新受管节点</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   `, () => {
-    document.getElementById('logout-btn').addEventListener('click', () => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      navigate('/login');
-    });
-
-    if (canWrite) {
-      document.getElementById('add-node-btn').addEventListener('click', showAddModal);
-      document.getElementById('add-cancel').addEventListener('click', hideAddModal);
-      document.getElementById('add-submit').addEventListener('click', handleAdd);
-      document.getElementById('modal-overlay').addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) hideAddModal();
-      });
-    }
-
-    document.getElementById('search-btn').addEventListener('click', () => {
-      state.query = document.getElementById('search-input').value.trim();
-      state.page = 1;
-      loadNodes();
-    });
-
-    document.getElementById('search-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        state.query = e.target.value.trim();
-        state.page = 1;
-        loadNodes();
-      }
-    });
-
-    document.getElementById('prev-btn').addEventListener('click', () => {
-      if (state.page > 1) { state.page--; loadNodes(); }
-    });
-
-    document.getElementById('next-btn').addEventListener('click', () => {
-      const totalPages = Math.ceil(state.total / state.pageSize);
-      if (state.page < totalPages) { state.page++; loadNodes(); }
-    });
+    loadAll();
   });
 }

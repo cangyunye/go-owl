@@ -35,30 +35,14 @@ export function renderSettings(render, navigate, user, api) {
   }
 
   render(`
-    <div class="app-header">
-      <h1>OWL Console</h1>
-      <div class="header-right">
-        <a href="/" style="font-size:14px;color:var(--text-muted)">Nodes</a>
-        <a href="/tasks" style="font-size:14px;color:var(--text-muted)">Tasks</a>
-        <a href="/playbooks" style="font-size:14px;color:var(--text-muted)">Playbooks</a>
-        <a href="/settings" style="font-size:14px;color:var(--text)">Settings</a>
-        <a href="/users" style="font-size:14px;color:var(--text-muted)">Users &amp; Permissions</a>
-        <span>${esc(user.display_name || user.username)}</span>
-        <span class="role-badge">${esc(user.role)}</span>
-        <button class="logout-btn" id="logout-btn">Sign Out</button>
-      </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Key</th><th>Value</th><th>Actions</th></tr></thead>
+        <tbody id="settings-list"><tr><td colspan="3" class="loading">Loading...</td></tr></tbody>
+      </table>
     </div>
-    <div class="app-content">
-      <div class="page-header">
-        <h2>Settings</h2>
-        <button class="btn-primary" id="add-setting-btn">+ Add Setting</button>
-      </div>
-      <div class="card">
-        <table>
-          <thead><tr><th>Key</th><th>Value</th><th>Actions</th></tr></thead>
-          <tbody id="settings-list"><tr><td colspan="3" class="loading">Loading...</td></tr></tbody>
-        </table>
-      </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" id="add-setting-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 添加配置</button>
     </div>
 
     <div class="modal-overlay" id="settings-modal">
@@ -90,8 +74,6 @@ export function renderSettings(render, navigate, user, api) {
       </div>
     </div>
   `, () => {
-    document.getElementById('logout-btn').addEventListener('click', () => { localStorage.removeItem('token'); localStorage.removeItem('user'); navigate('/login'); });
-
     document.getElementById('settings-cancel').addEventListener('click', () => {
       document.getElementById('settings-modal').style.display = 'none';
     });

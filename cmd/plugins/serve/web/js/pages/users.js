@@ -50,26 +50,11 @@ export function renderUsers(render, navigate, user, api) {
   }
 
   render(`
-    <div class="app-header">
-      <h1>OWL Console</h1>
-      <div class="header-right">
-        <a href="/" style="font-size:14px;color:var(--text-muted)">Nodes</a>
-        <a href="/tasks" style="font-size:14px;color:var(--text-muted)">Tasks</a>
-        <a href="/playbooks" style="font-size:14px;color:var(--text-muted)">Playbooks</a>
-        <a href="/settings" style="font-size:14px;color:var(--text-muted)">Settings</a>
-        <a href="/users" style="font-size:14px;color:var(--text)">Users &amp; Permissions</a>
-        <span>${esc(user.display_name || user.username)}</span>
-        <span class="role-badge">${esc(user.role)}</span>
-        <button class="logout-btn" id="logout-btn">Sign Out</button>
-      </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-primary btn-sm" id="add-user-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 添加用户</button>
     </div>
-    <div class="app-content">
-      <div class="page-header">
-        <h2>Users</h2>
-        <button class="btn-primary" id="add-user-btn">+ Add User</button>
-      </div>
 
-      <details class="card matrix-card" id="matrix-toggle" open>
+    <details class="card matrix-card" id="matrix-toggle" open>
         <summary class="matrix-summary">Permission Matrix <span class="matrix-hint">(click to collapse)</span></summary>
         <div class="matrix-scroll">
           <table class="matrix-table">
@@ -103,7 +88,6 @@ export function renderUsers(render, navigate, user, api) {
           <tbody id="users-list"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
         </table>
       </div>
-    </div>
 
     <div class="modal-overlay" id="user-add-modal">
       <div class="modal modal-sm">
@@ -153,8 +137,6 @@ export function renderUsers(render, navigate, user, api) {
       </div>
     </div>
   `, () => {
-    document.getElementById('logout-btn').addEventListener('click', () => { localStorage.removeItem('token'); localStorage.removeItem('user'); navigate('/login'); });
-
     document.getElementById('add-user-btn').addEventListener('click', () => {
       document.getElementById('add-username').value = '';
       document.getElementById('add-display-name').value = '';
