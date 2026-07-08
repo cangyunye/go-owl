@@ -277,7 +277,7 @@ function switchView(viewId, pushState) {
       renderExec(render, navigate, user, api, shell);
       break;
     case 'playbooks':
-      renderPlaybooks(render, navigate, user, api);
+      renderPlaybooks(render, navigate, user, api, shell);
       break;
     case 'files':
       renderFiles(render, navigate, user, api, shell);
@@ -306,7 +306,7 @@ function updatePanelContent(viewId) {
   if (!list) return;
   const P = PANEL_TITLES[viewId] || '导航';
   shell.setPanelTitle(P);
-  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes' || viewId === 'exec') {
+  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes' || viewId === 'exec' || viewId === 'playbooks') {
     return;
   }
   list.innerHTML = '<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载中…</li>';

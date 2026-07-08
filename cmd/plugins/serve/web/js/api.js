@@ -174,6 +174,9 @@ export const api = {
   cancelPlaybookRun: (id) =>
     request('DELETE', `/playbook/runs/${encodeURIComponent(id)}`),
 
+  playbookGet: (id) =>
+    request('GET', `/playbooks/${encodeURIComponent(id)}`),
+
   playbookSettingsPath: () =>
     request('GET', '/playbook/settings/path'),
 
