@@ -1708,7 +1708,7 @@ func (t *PlaybookInfoTool) Validate(params map[string]interface{}) error {
 func (t *PlaybookInfoTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	name, _ := params["name"].(string)
 
-	library := "./playbooks"
+	library := defaultPlaybookDir()
 	playbookPath := filepath.Join(library, name)
 	if !strings.HasSuffix(playbookPath, ".yaml") && !strings.HasSuffix(playbookPath, ".yml") {
 		if _, err := os.Stat(playbookPath + ".yaml"); err == nil {
