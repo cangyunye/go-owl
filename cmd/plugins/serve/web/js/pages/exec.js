@@ -3,8 +3,17 @@ export function renderExec(render, navigate, user, api, shell) {
   let selectedNodes = new Set();
   let wsCleanup = null;
   let currentTaskIDs = [];
+  let activeGroups = [];
+
+  const params = new URLSearchParams(window.location.search);
+  const initNodes = params.get('nodes');
+  const initGroups = params.get('groups');
+  if (initGroups) activeGroups = initGroups.split(',').filter(Boolean);
+  if (initNodes) initNodes.split(',').filter(Boolean).forEach(id => selectedNodes.add(id));
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+  function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 7); }
 
   shell.setPanelContent(`
     <li class="panel-item active"><span class="dot" style="background:var(--accent)"></span>选择节点</li>
@@ -13,9 +22,12 @@ export function renderExec(render, navigate, user, api, shell) {
 
   async function loadNodes() {
     try {
-      const res = await api.nodes({ page: 1, page_size: 200 });
+      const opts = { page: 1, page_size: 200 };
+      if (activeGroups.length) opts.group = activeGroups.join(',');
+      const res = await api.nodes(opts);
       allNodes = res.data || [];
       renderNodeChips();
+      if (initNodes && initNodes.split(',').length) updateExecButton();
     } catch { allNodes = []; }
   }
 
@@ -168,6 +180,12 @@ free -m</textarea>
             <div class="node-selector" id="node-chips">
               <span style="color:var(--muted);font-size:12px">加载中…</span>
             </div>
+          </div>
+        </div>
+        <div class="card" id="group-filter-card" style="${activeGroups.length ? '' : 'display:none'}">
+          <div class="card-header"><h3>分组过滤</h3></div>
+          <div class="card-body" id="group-tags" style="display:flex;gap:4px;flex-wrap:wrap">
+            ${activeGroups.map(g => `<span class="tag ${tagColor(g)}">${esc(g)}</span>`).join('')}
           </div>
         </div>
         <div class="card">
