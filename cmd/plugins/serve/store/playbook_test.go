@@ -219,3 +219,57 @@ func TestPlaybookStore_DeleteRemovesFromCache(t *testing.T) {
 	list, _ := s.List(ctx)
 	assert.Empty(t, list)
 }
+
+func TestPlaybookStore_SyncFromDir_NoCollisionFalsePositives(t *testing.T) {
+	dir := t.TempDir()
+
+	writeYAML(t, filepath.Join(dir, "alpha.yaml"), `name: alpha
+tasks:
+  - name: task1
+    command: echo alpha
+`)
+	writeYAML(t, filepath.Join(dir, "beta.yaml"), `name: beta
+tasks:
+  - name: task1
+    command: echo beta
+`)
+	writeYAML(t, filepath.Join(dir, "sub", "gamma.yaml"), `name: gamma
+tasks:
+  - name: task1
+    command: echo gamma
+`)
+	writeYAML(t, filepath.Join(dir, "sub", "delta.yaml"), `name: delta
+tasks:
+  - name: task1
+    command: echo delta
+`)
+
+	s := openPlaybookTestDB(t)
+	ctx := context.Background()
+
+	results, errs, err := s.SyncFromDir(ctx, dir)
+	require.NoError(t, err)
+	assert.Empty(t, errs, "no hash collisions should be reported for distinct file paths")
+	assert.Len(t, results, 4)
+
+	list, err := s.List(ctx)
+	require.NoError(t, err)
+	assert.Len(t, list, 4)
+
+	ids := make(map[string]bool)
+	for _, pb := range list {
+		assert.False(t, ids[pb.ID], "each playbook should have a unique ID")
+		ids[pb.ID] = true
+	}
+}
+
+func TestPlaybookStore_SyncFromDir_FilePathReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "notadir.yaml")
+	require.NoError(t, os.WriteFile(filePath, []byte("name: test\n"), 0644))
+
+	s := openPlaybookTestDB(t)
+	_, _, err := s.SyncFromDir(context.Background(), filePath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a directory")
+}

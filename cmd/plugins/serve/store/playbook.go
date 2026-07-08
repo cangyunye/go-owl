@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
@@ -17,6 +18,7 @@ import (
 
 type PlaybookStore struct {
 	db    *sql.DB
+	mu    sync.RWMutex
 	cache map[string]*model.Playbook
 }
 
@@ -86,12 +88,27 @@ func (s *PlaybookStore) buildCache(ctx context.Context) error {
 	return nil
 }
 
-func (s *PlaybookStore) List(ctx context.Context) ([]*model.Playbook, error) {
-	if len(s.cache) == 0 {
-		if err := s.buildCache(ctx); err != nil {
-			return nil, err
-		}
+func (s *PlaybookStore) ensureCache(ctx context.Context) error {
+	s.mu.RLock()
+	hasEntries := len(s.cache) > 0
+	s.mu.RUnlock()
+	if hasEntries {
+		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.cache) == 0 {
+		return s.buildCache(ctx)
+	}
+	return nil
+}
+
+func (s *PlaybookStore) List(ctx context.Context) ([]*model.Playbook, error) {
+	if err := s.ensureCache(ctx); err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	result := make([]*model.Playbook, 0, len(s.cache))
 	for _, pb := range s.cache {
 		result = append(result, pb)
@@ -100,9 +117,11 @@ func (s *PlaybookStore) List(ctx context.Context) ([]*model.Playbook, error) {
 }
 
 func (s *PlaybookStore) Get(ctx context.Context, id string) (*model.Playbook, error) {
-	if len(s.cache) == 0 {
-		s.buildCache(ctx)
+	if err := s.ensureCache(ctx); err != nil {
+		return nil, err
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if pb, ok := s.cache[id]; ok {
 		return pb, nil
 	}
@@ -110,11 +129,11 @@ func (s *PlaybookStore) Get(ctx context.Context, id string) (*model.Playbook, er
 }
 
 func (s *PlaybookStore) ListByCategory(ctx context.Context, category string) ([]*model.Playbook, error) {
-	if len(s.cache) == 0 {
-		if err := s.buildCache(ctx); err != nil {
-			return nil, err
-		}
+	if err := s.ensureCache(ctx); err != nil {
+		return nil, err
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	var result []*model.Playbook
 	for _, pb := range s.cache {
 		if pb.Category == category {
@@ -125,11 +144,11 @@ func (s *PlaybookStore) ListByCategory(ctx context.Context, category string) ([]
 }
 
 func (s *PlaybookStore) GetCategoryCounts(ctx context.Context) (map[string]int, error) {
-	if len(s.cache) == 0 {
-		if err := s.buildCache(ctx); err != nil {
-			return nil, err
-		}
+	if err := s.ensureCache(ctx); err != nil {
+		return nil, err
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	counts := make(map[string]int)
 	for _, pb := range s.cache {
 		counts[pb.Category]++
@@ -158,14 +177,20 @@ func (s *PlaybookStore) Upsert(ctx context.Context, pb *model.Playbook) error {
 		pb.ID, pb.Name, pb.Description, pb.Category, pb.FilePath,
 		pb.TasksCount, string(tnJSON), fe, time.Now().UTC())
 	if err == nil {
+		s.mu.Lock()
 		s.cache[pb.ID] = pb
+		s.mu.Unlock()
 	}
 	return err
 }
 
 func (s *PlaybookStore) Delete(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM playbooks WHERE id = ?`, id)
-	delete(s.cache, id)
+	if err == nil {
+		s.mu.Lock()
+		delete(s.cache, id)
+		s.mu.Unlock()
+	}
 	return err
 }
 
@@ -215,8 +240,11 @@ func (s *PlaybookStore) SyncFromDir(ctx context.Context, dir string) ([]*model.P
 	var errors []string
 
 	info, err := os.Stat(dir)
-	if err != nil || !info.IsDir() {
+	if err != nil {
 		return nil, nil, err
+	}
+	if !info.IsDir() {
+		return nil, nil, fmt.Errorf("path is not a directory: %s", dir)
 	}
 
 	filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
