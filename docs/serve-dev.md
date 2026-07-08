@@ -64,11 +64,57 @@ make build/all
 ## 管理员管理
 
 ```bash
-# 重置 admin 密码（生成新随机密码并更新数据库）
-owl-serve --reset-admin
+# 首次启动 —— 自动生成随机密码并打印到终端
+./build/owl-serve --port 8080
+
+# 忘记密码 —— 重置并启动服务（不删库）
+./build/owl-serve --reset-admin --port 8080
+# 输出: Username: admin / Password: xxxxxxxx，然后自动启动服务
 ```
 
-此命令在 `main.go` 中实现，调用 `Server.ResetAdmin()` 方法。
+`--reset-admin` 在 `main.go` 中实现，调用 `Server.ResetAdmin()` 方法。
+
+## 测试数据
+
+内置 seed 端点 `POST /api/v1/nodes/seed`（仅 admin），创建 50 个模拟节点：
+
+```bash
+# 1. 启动服务
+./build/owl-serve --port 8080
+
+# 2. 从终端输出的密码登录并获取 token（替换 <password>）
+TOKEN="$(curl -s http://localhost:8080/api/v1/login -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"<password>"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')"
+
+# 3. 注入 50 个节点
+curl -X POST http://localhost:8080/api/v1/nodes/seed \
+  -H "Authorization: Bearer $TOKEN"
+# → {"code":200,"message":"seeded 50 nodes"}
+```
+
+生成的节点特征：
+- 分组：web / db / cache / worker / monitor / gateway（每个节点 1~3 个）
+- 标签：env（prod/staging/dev）、tier（frontend/backend/data）、team（platform/infra/fe-team/data）
+- 状态：online / offline / unknown 随机分布
+- IP：`10.0.x.x` 格式
+- SSH 用户：root / admin / deploy / app
+
+也可通过分组过滤验证：
+```bash
+# 查看所有分组
+curl -s http://localhost:8080/api/v1/nodes/filters -H "Authorization: Bearer $TOKEN" \
+  | python3 -m json.tool
+
+# 按单分组过滤
+curl -s "http://localhost:8080/api/v1/nodes?group=web&page_size=5" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 按多分组过滤（逗号分隔）
+curl -s "http://localhost:8080/api/v1/nodes?group=web,db" \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 ## 开发模式
 
