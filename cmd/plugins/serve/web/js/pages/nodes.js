@@ -1,5 +1,5 @@
 export function renderNodes(render, navigate, user, api, shell) {
-  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', filters: { groups: [], users: [] } };
+  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '' };
   const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -12,18 +12,52 @@ export function renderNodes(render, navigate, user, api, shell) {
   }
 
   async function loadFilters() {
-    try { state.filters = await api.filters(); } catch {}
+    try {
+      const res = await api.filters().catch(() => null);
+      state.filters = res || { groups: [], users: [] };
+    } catch {}
+    const seen = {};
+    for (const n of state.nodes) for (const g of (n.groups || [])) seen[g] = true;
+    for (const g of ((state.filters && state.filters.groups) || [])) seen[g] = true;
+    state.allGroups = Object.keys(seen).sort();
+    loadPanelGroups();
+  }
+
+  function loadPanelGroups() {
+    const list = document.getElementById('panelList');
+    if (!list) return;
+    const q = state.groupSearch.toLowerCase();
+    const filtered = state.allGroups.filter(g => !q || g.toLowerCase().includes(q));
+    list.innerHTML = `
+      <li style="padding:6px 10px">
+        <input type="text" id="groupSearchInput" placeholder="搜索分组…" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);font-size:12px;outline:none" value="${esc(state.groupSearch)}">
+      </li>
+      ${filtered.map(g => {
+        const checked = state.selectedGroups.includes(g);
+        return `<li class="panel-item" data-group="${esc(g)}" role="option" aria-selected="${checked}">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;width:100%">
+            <input type="checkbox" class="group-check" value="${esc(g)}" ${checked ? 'checked' : ''} style="accent-color:var(--accent)">
+            <span class="dot" style="background:${checked ? 'var(--accent)' : 'var(--muted)'}"></span>
+            <span>${esc(g)}</span>
+          </label>
+        </li>`;
+      }).join('')}
+    `;
+    document.getElementById('groupSearchInput')?.addEventListener('input', onGroupSearchInput);
+    document.querySelectorAll('.group-check').forEach(cb => cb.addEventListener('change', onGroupCheckChange));
   }
 
   async function loadNodes() {
     const params = { page: state.page, page_size: state.pageSize };
     if (state.query) params.q = state.query;
+    if (state.selectedGroups.length > 0) params.group = state.selectedGroups.join(',');
     try {
       const res = state.query ? await api.searchNodes(state.query) : await api.nodes(params);
       state.nodes = (res.data || []);
       state.total = state.query ? state.nodes.length : (res.meta?.total || 0);
     } catch { state.nodes = []; state.total = 0; }
     renderTable();
+    loadFilters();
   }
 
   function renderTable() {
@@ -61,6 +95,27 @@ export function renderNodes(render, navigate, user, api, shell) {
     if (s < 60) return s + 's';
     if (s < 3600) return Math.floor(s/60) + 'm';
     return Math.floor(s/3600) + 'h';
+  }
+
+  let groupDebounceTimer = null;
+  function onGroupSearchInput(e) {
+    clearTimeout(groupDebounceTimer);
+    groupDebounceTimer = setTimeout(() => {
+      state.groupSearch = e.target.value;
+      loadPanelGroups();
+    }, 100);
+  }
+
+  function onGroupCheckChange(e) {
+    const g = e.target.value;
+    if (e.target.checked) {
+      if (!state.selectedGroups.includes(g)) state.selectedGroups.push(g);
+    } else {
+      state.selectedGroups = state.selectedGroups.filter(x => x !== g);
+    }
+    loadPanelGroups();
+    state.page = 1;
+    loadNodes();
   }
 
   function showAddModal() {
@@ -172,14 +227,9 @@ export function renderNodes(render, navigate, user, api, shell) {
     return Array.from(document.querySelectorAll('.node-check:checked')).map(cb => cb.value);
   }
 
-  shell.setPanelContent(`
-    <li class="panel-item active"><span class="dot" style="background:var(--accent)"></span>全部分组</li>
-    <li class="panel-item"><span class="dot" style="background:var(--success)"></span>生产环境</li>
-    <li class="panel-item"><span class="dot" style="background:var(--warn)"></span>预发布</li>
-    <li class="panel-item"><span class="dot" style="background:var(--muted)"></span>开发环境</li>
-  `);
+  shell.setPanelContent('<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载分组…</li>');
 
-  loadFilters().then(loadNodes);
+  loadNodes();
 
   render(`
     <div class="filter-bar">

@@ -271,12 +271,7 @@ function updatePanelContent(viewId) {
   if (!list) return;
   const P = PANEL_TITLES[viewId] || '导航';
   shell.setPanelTitle(P);
-  if (viewId === 'history') {
-    // history page manages its own panel via shell
-    return;
-  }
-  if (viewId === 'dashboard') {
-    // dashboard sets panel via shell
+  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes') {
     return;
   }
   list.innerHTML = '<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载中…</li>';
