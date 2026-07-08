@@ -11,8 +11,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type OutputLine struct {
+	NodeID string `json:"node_id"`
+	Line   string `json:"line"`
+	Type   string `json:"type"` // "stdout" or "stderr"
+}
+
 type Executor interface {
 	Execute(ctx context.Context, nodeID, command string) (string, int, error)
+	ExecuteStream(ctx context.Context, nodeID, command string, outputCh chan<- OutputLine) (int, error)
 }
 
 type ExecHandler struct {

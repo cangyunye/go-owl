@@ -74,6 +74,18 @@ func (h *WSHub) BroadcastTaskUpdate(task interface{}) {
 	})
 }
 
+func (h *WSHub) BroadcastTaskOutput(taskID, nodeID, line, lineType string) {
+	h.Broadcast(WSMessage{
+		Type: "task_output",
+		Data: map[string]string{
+			"task_id": taskID,
+			"node_id": nodeID,
+			"line":    line,
+			"type":    lineType,
+		},
+	})
+}
+
 func (h *WSHub) WsHandler(authService *AuthHandler) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.Query("token")

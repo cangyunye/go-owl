@@ -1,5 +1,6 @@
 import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
+import { renderExec } from './pages/exec.js';
 import { renderNodes } from './pages/nodes.js';
 import { renderNodeDetail } from './pages/node.js';
 import { renderTasks } from './pages/tasks.js';
@@ -235,7 +236,7 @@ function switchView(viewId, pushState) {
       renderNodes(render, navigate, user, api, shell);
       break;
     case 'exec':
-      renderPlaceholderView(viewId, '命令执行');
+      renderExec(render, navigate, user, api, shell);
       break;
     case 'playbooks':
       renderPlaybooks(render, navigate, user, api);

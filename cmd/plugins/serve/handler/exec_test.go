@@ -28,6 +28,32 @@ func (m *mockExecutor) Execute(_ context.Context, _, _ string) (string, int, err
 	return m.output, m.exitCode, m.err
 }
 
+func (m *mockExecutor) ExecuteStream(_ context.Context, _, _ string, ch chan<- OutputLine) (int, error) {
+	if m.err != nil {
+		return -1, m.err
+	}
+	ch <- OutputLine{NodeID: "test-node", Line: "line1", Type: "stdout"}
+	ch <- OutputLine{NodeID: "test-node", Line: "line2", Type: "stdout"}
+	close(ch)
+	return m.exitCode, nil
+}
+
+func TestExecStream_Success(t *testing.T) {
+	_, h := execTestSetup(t)
+	ch := make(chan OutputLine, 10)
+	go func() {
+		code, err := h.exec.(*mockExecutor).ExecuteStream(t.Context(), "test-node", "uptime", ch)
+		require.NoError(t, err)
+		require.Equal(t, 0, code)
+	}()
+
+	var lines []string
+	for l := range ch {
+		lines = append(lines, l.Line)
+	}
+	require.Equal(t, []string{"line1", "line2"}, lines)
+}
+
 func execTestSetup(t *testing.T) (*sql.DB, *ExecHandler) {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
