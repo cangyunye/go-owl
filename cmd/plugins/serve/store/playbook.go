@@ -85,7 +85,7 @@ func (s *PlaybookStore) buildCache(ctx context.Context) error {
 		}
 		s.cache[pb.ID] = pb
 	}
-	return nil
+	return rows.Err()
 }
 
 func (s *PlaybookStore) ensureCache(ctx context.Context) error {
@@ -247,6 +247,11 @@ func (s *PlaybookStore) SyncFromDir(ctx context.Context, dir string) ([]*model.P
 		return nil, nil, fmt.Errorf("path is not a directory: %s", dir)
 	}
 
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot resolve absolute path: %w", err)
+	}
+
 	filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
 		if err != nil || fi.IsDir() {
 			return nil
@@ -282,11 +287,23 @@ func (s *PlaybookStore) SyncFromDir(ctx context.Context, dir string) ([]*model.P
 		}
 	}
 
-	existing, _ := s.List(ctx)
-	for _, pb := range existing {
-		if _, stillExists := diskMap[pb.ID]; !stillExists {
-			pb.FileExists = false
-			s.Upsert(ctx, pb)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, file_path FROM playbooks WHERE file_exists = 1`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, fp string
+			if err := rows.Scan(&id, &fp); err != nil {
+				continue
+			}
+			if _, stillExists := diskMap[id]; !stillExists {
+				s.mu.RLock()
+				pb, ok := s.cache[id]
+				s.mu.RUnlock()
+				if ok {
+					pb.FileExists = false
+					s.Upsert(ctx, pb)
+				}
+			}
 		}
 	}
 
