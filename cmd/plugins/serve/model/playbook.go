@@ -26,6 +26,7 @@ const (
 
 type PlaybookRun struct {
 	ID           string            `json:"id"`
+	PlaybookID   string            `json:"playbook_id"`
 	PlaybookName string            `json:"playbook_name"`
 	PlaybookFile string            `json:"playbook_file"`
 	Status       PlaybookRunStatus `json:"status"`

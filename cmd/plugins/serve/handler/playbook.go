@@ -131,7 +131,7 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 		return
 	}
 
-	run, err := h.runs.Create(c.Request.Context(), pb.Name, pb.FilePath, req.TargetNodes, req.ExtraVars, req.Tags)
+	run, err := h.runs.Create(c.Request.Context(), pb.ID, pb.Name, pb.FilePath, req.TargetNodes, req.ExtraVars, req.Tags)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "create run failed"})
 		return

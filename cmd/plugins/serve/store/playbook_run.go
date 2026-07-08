@@ -22,6 +22,7 @@ func (s *PlaybookRunStore) Init(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS playbook_runs (
 			id              TEXT PRIMARY KEY,
+			playbook_id     TEXT NOT NULL DEFAULT '',
 			playbook_name   TEXT NOT NULL DEFAULT '',
 			playbook_file   TEXT NOT NULL DEFAULT '',
 			status          TEXT NOT NULL DEFAULT 'queued',
@@ -35,14 +36,19 @@ func (s *PlaybookRunStore) Init(ctx context.Context) error {
 			completed_at    TIMESTAMP
 		)
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	s.db.ExecContext(ctx, `ALTER TABLE playbook_runs ADD COLUMN playbook_id TEXT NOT NULL DEFAULT ''`)
+	return nil
 }
 
-func (s *PlaybookRunStore) Create(ctx context.Context, name, file string, targetNodes []string, extraVars map[string]string, tags string) (*model.PlaybookRun, error) {
+func (s *PlaybookRunStore) Create(ctx context.Context, playbookID, name, file string, targetNodes []string, extraVars map[string]string, tags string) (*model.PlaybookRun, error) {
 	nodesJSON, _ := json.Marshal(targetNodes)
 	varsJSON, _ := json.Marshal(extraVars)
 	run := &model.PlaybookRun{
 		ID:           uuid.New().String(),
+		PlaybookID:   playbookID,
 		PlaybookName: name,
 		PlaybookFile: file,
 		Status:       model.RunStatusQueued,
@@ -52,8 +58,8 @@ func (s *PlaybookRunStore) Create(ctx context.Context, name, file string, target
 		CreatedAt:    time.Now().UTC(),
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO playbook_runs (id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		run.ID, run.PlaybookName, run.PlaybookFile, run.Status, string(nodesJSON), string(varsJSON), run.Tags, run.CreatedAt)
+		`INSERT INTO playbook_runs (id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		run.ID, run.PlaybookID, run.PlaybookName, run.PlaybookFile, run.Status, string(nodesJSON), string(varsJSON), run.Tags, run.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -65,8 +71,8 @@ func (s *PlaybookRunStore) Get(ctx context.Context, id string) (*model.PlaybookR
 	var targetNodesStr, extraVarsStr, resultsStr string
 	var startedAt, completedAt sql.NullTime
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at FROM playbook_runs WHERE id = ?`, id).
-		Scan(&run.ID, &run.PlaybookName, &run.PlaybookFile, &run.Status,
+		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at FROM playbook_runs WHERE id = ?`, id).
+		Scan(&run.ID, &run.PlaybookID, &run.PlaybookName, &run.PlaybookFile, &run.Status,
 			&targetNodesStr, &extraVarsStr, &run.Tags, &run.Error, &resultsStr,
 			&run.CreatedAt, &startedAt, &completedAt)
 	if err != nil {
@@ -92,7 +98,7 @@ func (s *PlaybookRunStore) List(ctx context.Context, limit, offset int) ([]*mode
 	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playbook_runs`).Scan(&total)
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(error,''), created_at, started_at, completed_at
+		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(error,''), created_at, started_at, completed_at
 		FROM playbook_runs ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -104,7 +110,7 @@ func (s *PlaybookRunStore) List(ctx context.Context, limit, offset int) ([]*mode
 		run := &model.PlaybookRun{}
 		var targetNodesStr, extraVarsStr string
 		var startedAt, completedAt sql.NullTime
-		if err := rows.Scan(&run.ID, &run.PlaybookName, &run.PlaybookFile, &run.Status,
+		if err := rows.Scan(&run.ID, &run.PlaybookID, &run.PlaybookName, &run.PlaybookFile, &run.Status,
 			&targetNodesStr, &extraVarsStr, &run.Tags, &run.Error,
 			&run.CreatedAt, &startedAt, &completedAt); err != nil {
 			continue
