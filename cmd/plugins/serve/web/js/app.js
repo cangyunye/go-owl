@@ -54,7 +54,11 @@ const shell = {
   },
   setPanelTitle(title) {
     const el = document.getElementById('panelTitle');
-    if (el) el.textContent = title;
+    if (el) {
+      const span = el.querySelector('span');
+      if (span) span.textContent = title;
+      else el.textContent = title;
+    }
   },
   setViewTitle(title) {
     const el = document.getElementById('viewTitle');
