@@ -13,7 +13,7 @@ func main() {
 	port := flag.Int("port", 8080, "HTTP port")
 	host := flag.String("host", "127.0.0.1", "HTTP host")
 	dev := flag.Bool("dev", false, "Development mode (frontend from filesystem)")
-	resetAdmin := flag.Bool("reset-admin", false, "Reset admin password and exit")
+	resetAdmin := flag.Bool("reset-admin", false, "Reset admin password")
 	flag.Parse()
 
 	home, err := os.UserHomeDir()
@@ -39,11 +39,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("reset admin: %v", err)
 		}
-		fmt.Println("Admin password has been reset.")
+		fmt.Println("\nAdmin password has been reset.")
 		fmt.Printf("Username: %s\n", creds.Username)
 		fmt.Printf("Password: %s\n", creds.Password)
-		fmt.Println("\nPlease save this password. It will not be shown again.")
-		return
+		fmt.Println("")
 	}
 
 	creds, err := srv.Init()
@@ -52,11 +51,11 @@ func main() {
 	}
 
 	if creds != nil {
-		fmt.Printf("\nURL:      http://%s:%d\n", *host, *port)
+		fmt.Printf("URL:      http://%s:%d\n", *host, *port)
 		fmt.Printf("Username: %s\n", creds.Username)
 		fmt.Printf("Password: %s\n", creds.Password)
 		fmt.Println("")
-	} else {
+	} else if !*resetAdmin {
 		fmt.Printf("OWL Console starting at http://%s:%d\n", *host, *port)
 	}
 
