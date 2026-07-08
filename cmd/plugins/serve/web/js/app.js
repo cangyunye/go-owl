@@ -114,12 +114,12 @@ function renderShell() {
   <aside class="panel" id="sidePanel">
     <div class="panel-header" id="panelTitle">
       <span>概览</span>
-      <button class="panel-toggle" id="panelToggle" title="折叠面板" aria-label="折叠面板">
-        <svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg>
-      </button>
     </div>
     <ul class="panel-list" id="panelList"></ul>
   </aside>
+  <button class="panel-toggle" id="panelToggle" title="折叠面板" aria-label="折叠面板">
+    <svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg>
+  </button>
   <main class="main-area">
     <header class="topbar">
       <div class="view-title" id="viewTitle">仪表盘</div>
@@ -180,8 +180,10 @@ function renderShell() {
     const panel = document.getElementById('sidePanel');
     const btn = document.getElementById('panelToggle');
     panel.classList.toggle('collapsed');
-    btn.title = panel.classList.contains('collapsed') ? '展开面板' : '折叠面板';
+    const collapsed = panel.classList.contains('collapsed');
+    btn.title = collapsed ? '展开面板' : '折叠面板';
     btn.setAttribute('aria-label', btn.title);
+    btn.classList.toggle('collapsed', collapsed);
   });
 
   // Theme toggle
@@ -237,7 +239,11 @@ function switchView(viewId, pushState) {
     const agentCtx = document.getElementById('agentContextPanel');
     if (agentCtx) agentCtx.remove();
     const sidePanel = document.getElementById('sidePanel');
-    if (sidePanel) sidePanel.classList.remove('collapsed');
+    if (sidePanel) {
+      sidePanel.classList.remove('collapsed');
+      const toggle = document.getElementById('panelToggle');
+      if (toggle) toggle.classList.remove('collapsed');
+    }
   }
 
   // Route to the view
