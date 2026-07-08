@@ -2,6 +2,7 @@ import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderExec } from './pages/exec.js';
 import { renderFiles } from './pages/files.js';
+import { renderAI } from './pages/ai.js';
 import { renderNodes } from './pages/nodes.js';
 import { renderNodeDetail } from './pages/node.js';
 import { renderTasks } from './pages/tasks.js';
@@ -246,7 +247,7 @@ function switchView(viewId, pushState) {
       renderFiles(render, navigate, user, api, shell);
       break;
     case 'ai':
-      renderPlaceholderView(viewId, 'AI 助手');
+      renderAI(render, navigate, user, api, shell);
       break;
     case 'history':
       renderHistory(render, navigate, user, api, shell);

@@ -120,6 +120,9 @@ const api = {
   playbookSettingsPath: () =>
     request('GET', '/playbook/settings/path'),
 
+  aiChat: (message) =>
+    request('POST', '/ai/chat', { message }),
+
   transfer: (data) =>
     request('POST', '/transfer', data),
 
