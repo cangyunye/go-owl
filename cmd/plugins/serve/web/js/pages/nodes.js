@@ -196,24 +196,19 @@ export function renderNodes(render, navigate, user, api, shell) {
       desc.textContent = '所有节点将替换为完全相同的标签';
     } else {
       title.textContent = '依次打标签';
-      desc.textContent = '新增标签合并到各节点，不覆盖已有标签';
+      desc.textContent = '合并到各节点，同名标签值保持一致';
     }
     if (mode === 'replace') {
       document.getElementById('label-input').value = '';
     } else {
-      const commonLabels = {};
-      let first = true;
+      const allLabels = {};
       for (const n of state.nodes) {
         if (!ids.includes(n.id)) continue;
-        if (first) { Object.assign(commonLabels, n.labels || {}); first = false; }
-        else {
-          for (const key of Object.keys(commonLabels)) {
-            if (!n.labels || !(key in n.labels) || n.labels[key] !== commonLabels[key])
-              delete commonLabels[key];
-          }
+        for (const [k, v] of Object.entries(n.labels || {})) {
+          if (!(k in allLabels)) allLabels[k] = v;
         }
       }
-      document.getElementById('label-input').value = Object.entries(commonLabels).map(([k, v]) => `${k}:${v}`).join('\n');
+      document.getElementById('label-input').value = Object.entries(allLabels).map(([k, v]) => `${k}:${v}`).join('\n');
     }
     document.getElementById('label-node-count').textContent = ids.length;
     document.getElementById('label-error').textContent = '';
