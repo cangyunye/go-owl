@@ -23,7 +23,7 @@ const VIEW_TITLES = {
 };
 
 const PANEL_TITLES = {
-  dashboard: '概览', nodes: '节点分组', exec: '最近节点',
+  dashboard: '概览', nodes: '节点分组', exec: '节点选择',
   playbooks: '剧本分类', files: '传输记录', ai: '对话上下文',
   history: '过滤条件', settings: '系统配置', users: '用户角色'
 };
@@ -306,7 +306,7 @@ function updatePanelContent(viewId) {
   if (!list) return;
   const P = PANEL_TITLES[viewId] || '导航';
   shell.setPanelTitle(P);
-  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes') {
+  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes' || viewId === 'exec') {
     return;
   }
   list.innerHTML = '<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载中…</li>';
