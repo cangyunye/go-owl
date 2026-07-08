@@ -26,7 +26,7 @@ async function request(method, path, body) {
   return res.json();
 }
 
-const api = {
+export const api = {
   login: (username, password) =>
     request('POST', '/login', { username, password }),
 
@@ -146,7 +146,7 @@ const api = {
 
     ws.onclose = () => {
       reconnectTimer = setTimeout(() => {
-        connectWebSocket(onMessage);
+        api.connectWebSocket(onMessage);
       }, 3000);
     };
 

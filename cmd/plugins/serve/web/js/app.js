@@ -1,3 +1,4 @@
+import { api } from './api.js';
 import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderExec } from './pages/exec.js';
