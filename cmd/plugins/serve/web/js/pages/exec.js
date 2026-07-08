@@ -8,32 +8,141 @@ export function renderExec(render, navigate, user, api, shell) {
   let allLabels = [];
   let labelInputs = [];
   let statusFilter = '';
+  let currentPage = 1;
+  const pageSize = 30;
+  let totalNodes = 0;
+  let allPages = 1;
+  let searchQuery = '';
 
   const params = new URLSearchParams(window.location.search);
   const initNodes = params.get('nodes');
   const initGroups = params.get('groups');
+
+  const saved = sessionStorage.getItem('exec_selected_nodes');
+  if (saved) {
+    try { JSON.parse(saved).forEach(id => selectedNodes.add(id)); } catch {}
+  }
+
   if (initGroups) activeGroups = initGroups.split(',').filter(Boolean);
   if (initNodes) initNodes.split(',').filter(Boolean).forEach(id => selectedNodes.add(id));
+
+  function saveSelection() {
+    sessionStorage.setItem('exec_selected_nodes', JSON.stringify(Array.from(selectedNodes)));
+  }
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
   function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 7); }
 
   shell.setPanelContent(`
-    <li class="panel-item active"><span class="dot" style="background:var(--accent)"></span>选择节点</li>
-    <li class="panel-item" style="cursor:default;padding:4px 10px;font-size:12px;color:var(--muted)">从下方节点列表中选择目标</li>
+    <div class="panel-node-selector" style="display:flex;flex-direction:column;height:100%">
+      <div class="panel-search">
+        <input type="text" id="panel-node-search" placeholder="搜索节点名称或地址..." spellcheck="false">
+      </div>
+      <div class="status-filter" style="padding:0 0 6px">
+        <button class="status-btn active" data-status="">全部</button>
+        <button class="status-btn" data-status="online">在线</button>
+        <button class="status-btn" data-status="offline">离线</button>
+      </div>
+      <div class="panel-node-list" id="panel-node-list">
+        <span style="color:var(--muted);font-size:12px">加载中…</span>
+      </div>
+      <div class="panel-node-footer" id="panel-node-footer">
+        <div class="pagination" id="node-pagination"></div>
+        <div class="selected-count" id="selected-count">已选 0 个节点</div>
+      </div>
+    </div>
   `);
 
   async function loadNodes() {
     try {
-      const opts = { page: 1, page_size: 100 };
+      const opts = { page: currentPage, page_size: pageSize };
       if (activeGroups.length) opts.group = activeGroups.join(',');
       if (statusFilter) opts.status = statusFilter;
+      if (searchQuery) opts.q = searchQuery;
       const res = await api.nodes(opts);
       allNodes = res.data || [];
-      renderNodeChips();
-      if (initNodes && initNodes.split(',').length) updateExecButton();
+      totalNodes = res.meta?.total || 0;
+      allPages = Math.ceil(totalNodes / pageSize) || 1;
+      renderPanelNodeList();
+      renderPagination();
+      updateExecButton();
     } catch { allNodes = []; }
+  }
+
+  function renderPanelNodeList() {
+    const container = document.getElementById('panel-node-list');
+    if (!container) return;
+    if (allNodes.length === 0) {
+      container.innerHTML = '<span style="color:var(--muted);font-size:12px">无匹配节点</span>';
+      return;
+    }
+    container.innerHTML = allNodes.map(n => {
+      const selected = selectedNodes.has(n.id);
+      const dotColor = n.status === 'online' ? 'var(--success)' : n.status === 'offline' ? 'var(--muted)' : 'var(--warn)';
+      return `<span class="node-chip ${selected ? 'selected' : ''}" data-id="${esc(n.id)}">
+        <span class="dot" style="background:${dotColor}"></span>${esc(n.name || n.id)}
+      </span>`;
+    }).join('');
+
+    container.querySelectorAll('.node-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const id = chip.dataset.id;
+        if (selectedNodes.has(id)) {
+          selectedNodes.delete(id);
+          chip.classList.remove('selected');
+        } else {
+          selectedNodes.add(id);
+          chip.classList.add('selected');
+        }
+        saveSelection();
+        updateSelectedCount();
+        updateExecButton();
+      });
+    });
+  }
+
+  function renderPagination() {
+    const container = document.getElementById('node-pagination');
+    if (!container) return;
+    if (allPages <= 1) { container.innerHTML = ''; return; }
+
+    let html = '';
+    html += `<button class="page-btn" data-page="${currentPage - 1}" ${currentPage <= 1 ? 'disabled' : ''}>◀</button>`;
+
+    const range = 2;
+    const start = Math.max(1, currentPage - range);
+    const end = Math.min(allPages, currentPage + range);
+
+    if (start > 1) {
+      html += `<button class="page-btn" data-page="1">1</button>`;
+      if (start > 2) html += `<span class="page-ellipsis">⋯</span>`;
+    }
+    for (let i = start; i <= end; i++) {
+      html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+    }
+    if (end < allPages) {
+      if (end < allPages - 1) html += `<span class="page-ellipsis">⋯</span>`;
+      html += `<button class="page-btn" data-page="${allPages}">${allPages}</button>`;
+    }
+    html += `<button class="page-btn" data-page="${currentPage + 1}" ${currentPage >= allPages ? 'disabled' : ''}>▶</button>`;
+
+    container.innerHTML = html;
+
+    container.querySelectorAll('.page-btn:not(:disabled)').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = parseInt(btn.dataset.page);
+        if (p && p !== currentPage) {
+          currentPage = p;
+          loadNodes();
+        }
+      });
+    });
+  }
+
+  function updateSelectedCount() {
+    const el = document.getElementById('selected-count');
+    if (el) el.textContent = `已选 ${selectedNodes.size} 个节点`;
   }
 
   async function loadFilters() {
@@ -54,6 +163,7 @@ export function renderExec(render, navigate, user, api, shell) {
     }
     renderGroupTags();
     renderGroupChips();
+    currentPage = 1;
     loadNodes();
   }
 
@@ -72,16 +182,14 @@ export function renderExec(render, navigate, user, api, shell) {
   function renderGroupTags() {
     const card = document.getElementById('group-filter-card');
     const container = document.getElementById('group-tags');
-    if (!container) return;
+    if (!container || !card) return;
     if (activeGroups.length) {
       card.style.display = '';
       container.innerHTML = activeGroups.map(g =>
         `<span class="tag ${tagColor(g)}">${esc(g)} <span class="tag-remove" data-group="${esc(g)}" style="cursor:pointer;margin-left:2px">×</span></span>`
       ).join('');
       document.querySelectorAll('.tag-remove').forEach(el => {
-        el.addEventListener('click', function() {
-          toggleGroup(this.dataset.group);
-        });
+        el.addEventListener('click', function() { toggleGroup(this.dataset.group); });
       });
     } else {
       card.style.display = 'none';
@@ -105,13 +213,10 @@ export function renderExec(render, navigate, user, api, shell) {
         </div>
       </div>
     `;
-
     renderGroupChips();
     renderGroupTags();
-
     document.getElementById('add-label-btn').addEventListener('click', addLabel);
     document.getElementById('label-input').addEventListener('keydown', e => { if (e.key === 'Enter') addLabel(); });
-
     renderLabelTags();
   }
 
@@ -139,36 +244,6 @@ export function renderExec(render, navigate, user, api, shell) {
     ).join('');
     document.querySelectorAll('.label-remove').forEach(el => {
       el.addEventListener('click', function() { removeLabel(this.dataset.label); });
-    });
-  }
-
-  function renderNodeChips() {
-    const container = document.getElementById('node-chips');
-    if (!container) return;
-    if (allNodes.length === 0) {
-      container.innerHTML = '<span style="color:var(--muted);font-size:12px">无可用节点</span>';
-      return;
-    }
-    container.innerHTML = allNodes.map(n => {
-      const selected = selectedNodes.has(n.id);
-      const dotColor = n.status === 'online' ? 'var(--success)' : n.status === 'offline' ? 'var(--muted)' : 'var(--warn)';
-      return `<span class="node-chip ${selected ? 'selected' : ''}" data-id="${esc(n.id)}" data-status="${esc(n.status)}">
-        <span class="dot" style="background:${dotColor}"></span>${esc(n.name || n.id)}
-      </span>`;
-    }).join('');
-
-    container.querySelectorAll('.node-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        const id = chip.dataset.id;
-        if (selectedNodes.has(id)) {
-          selectedNodes.delete(id);
-          chip.classList.remove('selected');
-        } else {
-          selectedNodes.add(id);
-          chip.classList.add('selected');
-        }
-        updateExecButton();
-      });
     });
   }
 
@@ -292,13 +367,6 @@ export function renderExec(render, navigate, user, api, shell) {
     }
   }
 
-  function toggleAdv(id) {
-    const el = document.getElementById(id);
-    if (el) el.classList.toggle('open');
-    const arrow = el?.previousElementSibling?.querySelector('.arrow');
-    if (arrow) arrow.classList.toggle('open');
-  }
-
   render(`
     <div class="exec-layout">
       <div class="exec-main">
@@ -333,20 +401,6 @@ free -m</textarea>
       </div>
 
       <div class="exec-sidebar">
-        <div class="card">
-          <div class="card-header"><h3>目标节点</h3></div>
-          <div class="card-body">
-            <div class="node-selector" id="node-chips" style="margin-bottom:8px">
-              <span style="color:var(--muted);font-size:12px">加载中…</span>
-            </div>
-            <div class="status-filter">
-              <button class="status-btn active" data-status="">全部</button>
-              <button class="status-btn" data-status="online">在线</button>
-              <button class="status-btn" data-status="offline">离线</button>
-            </div>
-          </div>
-        </div>
-
         <div class="card">
           <div class="card-header"><h3>筛选条件</h3></div>
           <div class="card-body" id="filter-controls"></div>
@@ -455,6 +509,7 @@ free -m</textarea>
   `, () => {
     loadNodes();
     loadFilters();
+    updateSelectedCount();
 
     document.getElementById('cmd-input').addEventListener('input', updateExecButton);
     document.getElementById('exec-btn').addEventListener('click', handleExec);
@@ -469,7 +524,9 @@ free -m</textarea>
         document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         statusFilter = this.dataset.status;
+        currentPage = 1;
         selectedNodes.clear();
+        saveSelection();
         loadNodes();
         updateExecButton();
       });
@@ -480,6 +537,12 @@ free -m</textarea>
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
       });
+    });
+
+    document.getElementById('panel-node-search').addEventListener('input', function() {
+      searchQuery = this.value.trim();
+      currentPage = 1;
+      loadNodes();
     });
 
     const noRetryCb = document.getElementById('no-retry');
