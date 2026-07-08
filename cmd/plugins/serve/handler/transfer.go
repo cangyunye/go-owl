@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -70,19 +71,19 @@ func (h *TransferHandler) Create(c *gin.Context) {
 		}
 
 		go func(nodeID, src, dst, dir string, conn *nodeSSHInfo) {
-			ctx := c.Request.Context()
-			err := scpTransfer(ctx, conn, src, dst, dir)
-			status := "completed"
+			bg := context.Background()
+			err := scpTransfer(bg, conn, src, dst, dir)
+			taskStatus := store.TaskStatusCompleted
 			errMsg := ""
 			if err != nil {
-				status = "failed"
+				taskStatus = store.TaskStatusFailed
 				errMsg = err.Error()
 			}
 			output := errMsg
 			if output == "" {
 				output = fmt.Sprintf("transfer %s -> %s completed", src, dst)
 			}
-			h.task.UpdateStatus(ctx, rec.ID, status, output, nil)
+			h.task.UpdateStatus(bg, rec.ID, taskStatus, output, nil)
 		}(nid, req.SourcePath, req.DestPath, direction, info)
 
 		results = append(results, transferResponse{NodeID: nid, Status: "queued"})
@@ -162,7 +163,7 @@ func (h *TransferHandler) List(c *gin.Context) {
 		return
 	}
 
-	var transfers []store.Task
+	var transfers []*store.Task
 	for _, t := range tasks {
 		if len(t.Command) > 9 && t.Command[:9] == "transfer:" {
 			transfers = append(transfers, t)
