@@ -50,7 +50,7 @@ const ExecSystemPrompt = `# owl-AI - 命令执行
 
 owl exec run "<command>"
 owl exec run "<command>" --nodes node1,node2
-owl exec run "<command>" --group web
+owl exec run "<command>" --groups web
 
 ### 参数说明
 
@@ -58,7 +58,7 @@ owl exec run "<command>" --group web
 |------|------|
 | <command> | 要执行的命令（必填） |
 | --nodes | 指定节点 ID（逗号分隔） |
-| --group | 按分组选择节点 |
+| --groups | 按分组选择节点 |
 | --label | 按标签选择节点 |
 | --status | 按状态选择节点 |
 | --timeout | 超时时间，默认 60s |

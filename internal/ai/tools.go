@@ -178,7 +178,7 @@ func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interfac
 	// 步骤2: 应用精确过滤条件（在搜索结果上过滤）
 	if group != "" {
 		debugLogger.Debugw("按分组过滤", "group", group)
-		nodes = t.filterByGroup(nodes, group)
+		nodes = t.filterByGroup(nodes, []string{group})
 	}
 
 	if len(convertedLabels) > 0 {
@@ -221,14 +221,26 @@ func (t *QueryNodesTool) filterByName(nodes []*model.Node, search string) []*mod
 	return filtered
 }
 
-func (t *QueryNodesTool) filterByGroup(nodes []*model.Node, group string) []*model.Node {
+func (t *QueryNodesTool) filterByGroup(nodes []*model.Node, groups []string) []*model.Node {
 	filtered := make([]*model.Node, 0)
 	for _, n := range nodes {
-		if n.HasGroup(group) {
+		if matchesAnyGroup(n, groups) {
 			filtered = append(filtered, n)
 		}
 	}
 	return filtered
+}
+
+func matchesAnyGroup(n *model.Node, groups []string) bool {
+	if len(groups) == 0 {
+		return true
+	}
+	for _, g := range groups {
+		if n.HasGroup(g) {
+			return true
+		}
+	}
+	return false
 }
 
 func (t *QueryNodesTool) filterByLabels(nodes []*model.Node, labels map[string]string) []*model.Node {
@@ -506,7 +518,7 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 			args = append(args, "--nodes", strings.Join(nodeNames, ","))
 		}
 	} else if group, _ := params["group"].(string); group != "" {
-		args = append(args, "--group", group)
+		args = append(args, "--groups", group)
 	} else if label, _ := params["label"].(string); label != "" {
 		args = append(args, "--label", label)
 	} else if search, ok := params["search"].(string); ok && search != "" {
@@ -779,7 +791,7 @@ func (t *ExecuteScriptTool) Execute(ctx context.Context, params map[string]inter
 		}
 		args = append(args, "--nodes", strings.Join(nodeNames, ","))
 	} else if group, _ := params["group"].(string); group != "" {
-		args = append(args, "--group", group)
+		args = append(args, "--groups", group)
 	} else if label, _ := params["label"].(string); label != "" {
 		args = append(args, "--label", label)
 	} else if search, ok := params["search"].(string); ok && search != "" {
@@ -1172,7 +1184,7 @@ func (t *QueryDatabaseTool) Execute(ctx context.Context, params map[string]inter
 	}
 
 	if group != "" {
-		args = append(args, "--group", group)
+		args = append(args, "--groups", group)
 	}
 
 	if labelsRaw != nil {
@@ -1890,7 +1902,7 @@ func (t *NodeCheckTool) Execute(ctx context.Context, params map[string]interface
 	if all, _ := params["all"].(bool); all {
 		args = append(args, "--all")
 	} else if group, _ := params["group"].(string); group != "" {
-		args = append(args, "--group", group)
+		args = append(args, "--groups", group)
 	} else if nodeList, ok := params["nodes"].([]interface{}); ok && len(nodeList) > 0 {
 		var nodeNames []string
 		for _, node := range nodeList {

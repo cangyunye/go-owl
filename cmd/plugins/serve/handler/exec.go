@@ -99,17 +99,33 @@ func resolveNodeIDs(db *sql.DB, req execRequest) []string {
 		return []string{req.NodeID}
 	}
 	if req.Group != "" {
-		pattern := "%" + req.Group + "%"
-		rows, err := db.Query(`SELECT id FROM nodes WHERE groups LIKE ?`, pattern)
-		if err == nil && rows != nil {
-			defer rows.Close()
-			var ids []string
-			for rows.Next() {
-				var id string
-				rows.Scan(&id)
-				ids = append(ids, id)
+		groupNames := strings.Split(req.Group, ",")
+		var allIDs []string
+		seen := make(map[string]bool)
+		for _, gn := range groupNames {
+			gn = strings.TrimSpace(gn)
+			if gn == "" {
+				continue
 			}
-			return ids
+			pattern := "%" + gn + "%"
+			rows, err := db.Query(`SELECT id FROM nodes WHERE groups LIKE ?`, pattern)
+			if err != nil || rows == nil {
+				continue
+			}
+			func() {
+				defer rows.Close()
+				for rows.Next() {
+					var id string
+					rows.Scan(&id)
+					if !seen[id] {
+						seen[id] = true
+						allIDs = append(allIDs, id)
+					}
+				}
+			}()
+		}
+		if len(allIDs) > 0 {
+			return allIDs
 		}
 	}
 	if len(req.Labels) > 0 {
