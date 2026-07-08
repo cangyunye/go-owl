@@ -1493,7 +1493,7 @@ func (t *ListPlaybooksTool) Validate(params map[string]interface{}) error {
 }
 
 func (t *ListPlaybooksTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
-	library := "./playbooks"
+	library := defaultPlaybookDir()
 	if _, err := os.Stat(library); os.IsNotExist(err) {
 		return "No playbooks found. Playbooks directory does not exist.", nil
 	}
@@ -2243,4 +2243,20 @@ func GetToolDefinitions() []map[string]interface{} {
 			},
 		},
 	}
+}
+
+func defaultPlaybookDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "./playbooks"
+	}
+	p := filepath.Join(home, ".owl", "playbooks")
+	if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+		return p
+	}
+	if fi, err := os.Stat("./playbooks"); err == nil && fi.IsDir() {
+		abs, _ := filepath.Abs("./playbooks")
+		return abs
+	}
+	return p
 }

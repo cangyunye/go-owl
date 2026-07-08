@@ -32,8 +32,8 @@ func NewPlaybookListCmd() *cobra.Command {
 		Run: runPlaybookList,
 	}
 
-	listCmd.Flags().StringVar(&playbookListLibrary, "library", "./playbooks",
-		"剧本库目录")
+	listCmd.Flags().StringVar(&playbookListLibrary, "library", "",
+		"剧本库目录 (default: ~/.owl/playbooks)")
 	listCmd.Flags().StringVarP(&playbookListFormat, "output", "o", "table",
 		"输出格式: table, json, yaml")
 
@@ -42,6 +42,9 @@ func NewPlaybookListCmd() *cobra.Command {
 
 func runPlaybookList(cmd *cobra.Command, args []string) {
 	library := playbookListLibrary
+	if library == "" {
+		library = defaultPlaybookDir()
+	}
 
 	// 检查目录是否存在
 	if _, err := os.Stat(library); os.IsNotExist(err) {

@@ -24,7 +24,7 @@ func TestPlaybookListFlags(t *testing.T) {
 	cmd := playbook.NewPlaybookListCmd()
 
 	testutil.AssertFlagExists(t, cmd, "library")
-	testutil.AssertFlagDefault(t, cmd, "library", "./playbooks")
+	testutil.AssertFlagDefault(t, cmd, "library", "")
 
 	testutil.AssertFlagExists(t, cmd, "output")
 	testutil.AssertFlagShorthand(t, cmd, "output", "o")

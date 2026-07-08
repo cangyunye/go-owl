@@ -107,6 +107,18 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	if err := playbookStore.Init(context.Background()); err != nil {
 		return nil, fmt.Errorf("init playbook store: %w", err)
 	}
+
+	home, err := os.UserHomeDir()
+	if err == nil {
+		globalDir := filepath.Join(home, ".owl", "playbooks")
+		if err := os.MkdirAll(globalDir, 0755); err == nil {
+			entries, _ := os.ReadDir(globalDir)
+			if len(entries) == 0 {
+				copySamplePlaybooks(globalDir)
+			}
+		}
+	}
+
 	playbookRunStore := store.NewPlaybookRunStore(db)
 	if err := playbookRunStore.Init(context.Background()); err != nil {
 		return nil, fmt.Errorf("init playbook run store: %w", err)
@@ -315,6 +327,23 @@ func (s *Server) Start() error {
 		}
 	}
 	return s.Router.Run(s.Config.ListenAddr)
+}
+
+func copySamplePlaybooks(dir string) {
+	samples := map[string]string{
+		"example/ping-test.yaml": `name: ping_test
+description: Test node connectivity via ping
+hosts: []
+tasks:
+  - name: Ping localhost
+    command: ping -c 1 127.0.0.1
+`,
+	}
+	for relPath, content := range samples {
+		p := filepath.Join(dir, relPath)
+		os.MkdirAll(filepath.Dir(p), 0755)
+		os.WriteFile(p, []byte(content), 0644)
+	}
 }
 
 func (s *Server) ResetAdmin() (*AdminCredentials, error) {
