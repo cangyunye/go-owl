@@ -13,6 +13,7 @@ export function renderFiles(render, navigate, user, api, shell) {
   let labelInputs = [];
   let stagingFiles = [];
   let diskInfo = null;
+  let stagingSearch = '';
   let transferFilter = 'all';
   let transferSearch = '';
   let transferDir = 'all';
@@ -352,14 +353,17 @@ export function renderFiles(render, navigate, user, api, shell) {
     if (info && diskInfo) {
       info.textContent = `使用 ${fmtSize(diskInfo.used)} / ${fmtSize(diskInfo.total)} · 剩余 ${fmtSize(diskInfo.free)}`;
     }
+    const filtered = stagingSearch
+      ? stagingFiles.filter(f => f.name.toLowerCase().includes(stagingSearch.toLowerCase()))
+      : stagingFiles;
     const canDelete = user && user.role === 'admin';
-    if (stagingFiles.length === 0) {
+    if (filtered.length === 0) {
       list.innerHTML = '<table class="data-table"><tbody><tr><td class="empty-state" style="padding:20px">暂无文件</td></tr></tbody></table>';
     } else {
       const stagingDir = diskInfo ? diskInfo.staging_dir : '';
       list.innerHTML = `<table class="data-table" style="font-size:12px">
         <thead><tr><th style="width:36px"></th><th>文件名</th><th>修改时间</th><th>大小</th><th></th></tr></thead>
-        <tbody>${stagingFiles.map(f => {
+        <tbody>${filtered.map(f => {
           const fullPath = stagingDir ? stagingDir + '/' + f.name : f.name;
           return `<tr class="staging-file-row" data-name="${esc(f.name)}">
           <td class="checkbox-col" style="display:none"><input type="checkbox" class="staging-checkbox" data-name="${esc(f.name)}"></td>
@@ -469,7 +473,10 @@ export function renderFiles(render, navigate, user, api, shell) {
         </div>
 
         <div class="card">
-          <div class="card-header"><h3>文件中转站</h3></div>
+          <div class="card-header" style="display:flex;align-items:center;gap:8px">
+            <h3 style="flex:1">文件中转站</h3>
+            <input type="text" id="staging-search" class="exec-input" placeholder="搜索文件名..." style="width:140px;font-size:12px">
+          </div>
           <div class="card-body">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
               <div style="flex:1;min-width:0">
@@ -579,6 +586,11 @@ export function renderFiles(render, navigate, user, api, shell) {
       input.value = '';
       document.getElementById('staging-upload-btn').textContent = '上传';
       document.getElementById('staging-upload-btn').disabled = true;
+    });
+
+    document.getElementById('staging-search').addEventListener('input', function() {
+      stagingSearch = this.value.trim();
+      renderStaging();
     });
   });
 }
