@@ -14,6 +14,8 @@ export function renderFiles(render, navigate, user, api, shell) {
   let stagingFiles = [];
   let diskInfo = null;
   let stagingSearch = '';
+  let stagingMultiSelect = false;
+  let stagingSelected = new Set();
   let transferFilter = 'all';
   let transferSearch = '';
   let transferDir = 'all';
@@ -361,12 +363,13 @@ export function renderFiles(render, navigate, user, api, shell) {
       list.innerHTML = '<table class="data-table"><tbody><tr><td class="empty-state" style="padding:20px">暂无文件</td></tr></tbody></table>';
     } else {
       const stagingDir = diskInfo ? diskInfo.staging_dir : '';
+      const showCheck = stagingMultiSelect ? '' : 'style="display:none"';
       list.innerHTML = `<table class="data-table" style="font-size:12px">
         <thead><tr><th style="width:36px"></th><th>文件名</th><th>修改时间</th><th>大小</th><th></th></tr></thead>
         <tbody>${filtered.map(f => {
           const fullPath = stagingDir ? stagingDir + '/' + f.name : f.name;
           return `<tr class="staging-file-row" data-name="${esc(f.name)}">
-          <td class="checkbox-col" style="display:none"><input type="checkbox" class="staging-checkbox" data-name="${esc(f.name)}"></td>
+          <td class="checkbox-col" ${showCheck}><input type="checkbox" class="staging-checkbox" data-name="${esc(f.name)}"></td>
           <td><div class="cell-name"><span>${esc(f.name)}</span><span class="sub">${esc(fullPath)}</span></div></td>
           <td style="color:var(--muted);white-space:nowrap">${fmtTime(f.mod_time)}</td>
           <td style="color:var(--muted);white-space:nowrap;text-align:right">${fmtSize(f.size)}</td>
@@ -396,6 +399,19 @@ export function renderFiles(render, navigate, user, api, shell) {
           if (srcInput) {
             srcInput.value = fullPath;
             srcInput.focus();
+          }
+        });
+      });
+      list.querySelectorAll('.staging-checkbox').forEach(cb => {
+        cb.addEventListener('change', function() {
+          const name = this.dataset.name;
+          if (this.checked) stagingSelected.add(name);
+          else stagingSelected.delete(name);
+          const batchBtn = document.getElementById('staging-batch-btn');
+          if (batchBtn) {
+            const count = stagingSelected.size;
+            batchBtn.textContent = count ? `批量传输 (${count})` : '批量传输';
+            batchBtn.style.display = stagingMultiSelect && count > 0 ? 'inline-flex' : 'none';
           }
         });
       });
@@ -483,12 +499,17 @@ export function renderFiles(render, navigate, user, api, shell) {
                 <div id="staging-disk-bar" style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"></div>
                 <div id="staging-disk-info" style="font-size:11px;color:var(--muted);margin-top:2px">加载中…</div>
               </div>
+              <button class="btn btn-ghost btn-sm" id="staging-multi-btn" style="white-space:nowrap;flex-shrink:0" title="多选模式">
+                <svg width="13" height="13" aria-hidden="true" style="margin-right:3px;vertical-align:-2px"><use href="#icon-check"/></svg>
+                多选
+              </button>
               <button class="btn btn-secondary btn-sm" id="staging-pick-btn" style="white-space:nowrap;flex-shrink:0">
                 <svg width="13" height="13" aria-hidden="true" style="margin-right:3px;vertical-align:-2px"><use href="#icon-plus"/></svg>
                 选择
               </button>
               <input type="file" id="staging-file-input" hidden>
               <button class="btn btn-primary btn-sm" id="staging-upload-btn" disabled style="white-space:nowrap;flex-shrink:0">上传</button>
+              <button class="btn btn-primary btn-sm" id="staging-batch-btn" style="white-space:nowrap;flex-shrink:0;display:none">批量传输</button>
             </div>
             <div id="staging-file-list" style="max-height:200px;overflow-y:auto">加载中…</div>
           </div>
@@ -590,6 +611,45 @@ export function renderFiles(render, navigate, user, api, shell) {
 
     document.getElementById('staging-search').addEventListener('input', function() {
       stagingSearch = this.value.trim();
+      renderStaging();
+    });
+
+    document.getElementById('staging-multi-btn').addEventListener('click', function() {
+      stagingMultiSelect = !stagingMultiSelect;
+      if (!stagingMultiSelect) stagingSelected.clear();
+      this.classList.toggle('active');
+      document.getElementById('staging-batch-btn').style.display = 'none';
+      renderStaging();
+    });
+
+    document.getElementById('staging-batch-btn').addEventListener('click', async function() {
+      if (stagingSelected.size === 0) return;
+      const dstInput = document.getElementById('dst-path');
+      const dst = dstInput ? dstInput.value.trim() : '';
+      if (!dst) { alert('请填写节点路径'); return; }
+      if (selectedNodes.size === 0) { alert('请选择目标节点'); return; }
+      const stagingDir = diskInfo ? diskInfo.staging_dir : '';
+      let success = 0, fail = 0;
+      for (const name of stagingSelected) {
+        const fullPath = stagingDir ? stagingDir + '/' + name : name;
+        try {
+          await api.transfer({
+            action: 'push',
+            node_ids: Array.from(selectedNodes),
+            source_path: fullPath,
+            dest_path: dst,
+            direction: 'push',
+          });
+          success++;
+        } catch (e) {
+          fail++;
+        }
+      }
+      alert(`批量传输完成：${success} 成功, ${fail} 失败`);
+      stagingSelected.clear();
+      stagingMultiSelect = false;
+      document.getElementById('staging-multi-btn').classList.remove('active');
+      loadTransfers();
       renderStaging();
     });
   });
