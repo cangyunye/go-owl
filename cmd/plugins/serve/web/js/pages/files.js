@@ -381,6 +381,20 @@ export function renderFiles(render, navigate, user, api, shell) {
           } catch (e) { alert('删除失败: ' + e.message); }
         });
       });
+
+      list.querySelectorAll('.staging-file-row').forEach(row => {
+        row.addEventListener('click', function(e) {
+          if (e.target.closest('.staging-delete-btn') || e.target.closest('.staging-checkbox')) return;
+          const name = this.dataset.name;
+          const stagingDir = diskInfo ? diskInfo.staging_dir : '';
+          const fullPath = stagingDir ? stagingDir + '/' + name : name;
+          const srcInput = document.getElementById('src-path');
+          if (srcInput) {
+            srcInput.value = fullPath;
+            srcInput.focus();
+          }
+        });
+      });
     }
   }
 
