@@ -25,6 +25,7 @@ type Task struct {
 	Status    TaskStatus `json:"status"`
 	Output    string     `json:"output,omitempty"`
 	ExitCode  *int       `json:"exit_code,omitempty"`
+	RecordID  string     `json:"record_id,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	StartedAt *time.Time `json:"started_at,omitempty"`
@@ -58,17 +59,22 @@ func (s *TaskStore) Init(ctx context.Context) error {
 }
 
 func (s *TaskStore) Create(ctx context.Context, nodeID, command string) (*Task, error) {
+	return s.CreateWithRecord(ctx, nodeID, command, "")
+}
+
+func (s *TaskStore) CreateWithRecord(ctx context.Context, nodeID, command, recordID string) (*Task, error) {
 	task := &Task{
 		ID:        uuid.New().String(),
 		NodeID:    nodeID,
 		Command:   command,
 		Status:    TaskStatusQueued,
+		RecordID:  recordID,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO tasks (id, node_id, command, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		task.ID, task.NodeID, task.Command, task.Status, task.CreatedAt, task.UpdatedAt)
+		`INSERT INTO tasks (id, node_id, command, status, record_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		task.ID, task.NodeID, task.Command, task.Status, task.RecordID, task.CreatedAt, task.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +85,8 @@ func (s *TaskStore) Get(ctx context.Context, id string) (*Task, error) {
 	t := &Task{}
 	var startedAt, completedAt sql.NullTime
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, created_at, updated_at, started_at, completed_at FROM tasks WHERE id = ?`, id).
-		Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt)
+		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at FROM tasks WHERE id = ?`, id).
+		Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +104,7 @@ func (s *TaskStore) List(ctx context.Context, limit, offset int) ([]*Task, int, 
 	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks`).Scan(&total)
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, created_at, updated_at, started_at, completed_at
+		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at
 		FROM tasks ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -109,7 +115,7 @@ func (s *TaskStore) List(ctx context.Context, limit, offset int) ([]*Task, int, 
 	for rows.Next() {
 		t := &Task{}
 		var startedAt, completedAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
 			continue
 		}
 		if startedAt.Valid { t.StartedAt = &startedAt.Time }
@@ -132,7 +138,7 @@ func (s *TaskStore) UpdateStatus(ctx context.Context, id string, status TaskStat
 
 func (s *TaskStore) ListByNode(ctx context.Context, nodeID string, status TaskStatus) ([]*Task, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, created_at, updated_at, started_at, completed_at
+		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at
 		FROM tasks WHERE node_id = ? AND status = ? ORDER BY created_at DESC`, nodeID, status)
 	if err != nil {
 		return nil, err

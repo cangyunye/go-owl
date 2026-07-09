@@ -51,9 +51,11 @@ type Server struct {
 	settingsHandler  *handler.SettingsHandler
 	execHandler      *handler.ExecHandler
 	playbookHandler  *handler.PlaybookHandler
-	transferHandler  *handler.TransferHandler
-	aiHandler        *handler.AIHandler
-	wsHub            *handler.WSHub
+	stagingHandler   *handler.StagingHandler
+	transferRecordStore *store.TransferRecordStore
+	transferHandler    *handler.TransferHandler
+	aiHandler          *handler.AIHandler
+	wsHub              *handler.WSHub
 }
 
 func NewServer(cfg *Config) *Server {
@@ -123,7 +125,12 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	if err := playbookRunStore.Init(context.Background()); err != nil {
 		return nil, fmt.Errorf("init playbook run store: %w", err)
 	}
-	s.transferHandler = handler.NewTransferHandler(db, s.Tasks)
+	s.transferRecordStore = store.NewTransferRecordStore(db)
+	if err := s.transferRecordStore.Init(context.Background()); err != nil {
+		return nil, fmt.Errorf("init transfer record store: %w", err)
+	}
+	s.stagingHandler = handler.NewStagingHandler(db)
+	s.transferHandler = handler.NewTransferHandler(db, s.Tasks, s.transferRecordStore)
 	s.aiHandler = handler.NewAIHandler(db)
 	nodeStore := store.NewNodeStore(db)
 	s.playbookHandler = handler.NewPlaybookHandler(db, playbookStore, playbookRunStore, nodeStore, s.wsHub)
@@ -155,6 +162,10 @@ func (s *Server) setupRoutes() {
 
 		reader.GET("/tasks", s.execHandler.List)
 		reader.GET("/tasks/:id", s.execHandler.Get)
+		reader.GET("/staging/files", s.stagingHandler.List)
+		reader.GET("/staging/disk", s.stagingHandler.DiskInfo)
+		reader.GET("/transfer/records", s.transferHandler.Records)
+		reader.GET("/transfer/records/:id", s.transferHandler.RecordGet)
 
 		writer := auth.Group("", s.authHandler.RBACMiddleware(model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{
@@ -172,6 +183,7 @@ func (s *Server) setupRoutes() {
 			operator.POST("/exec", s.execHandler.Create)
 			operator.POST("/transfer", s.transferHandler.Create)
 			operator.GET("/transfers", s.transferHandler.List)
+			operator.POST("/staging/upload", s.stagingHandler.Upload)
 			operator.POST("/ai/chat", s.aiHandler.Chat)
 			operator.GET("/playbooks", s.playbookHandler.List)
 			operator.GET("/playbooks/:id", s.playbookHandler.Get)
@@ -186,6 +198,7 @@ func (s *Server) setupRoutes() {
 		{
 			admin.DELETE("/nodes/:id", s.nodeHandler.Delete)
 			admin.DELETE("/tasks/:id", s.execHandler.Cancel)
+			admin.DELETE("/staging/:name", s.stagingHandler.Delete)
 			admin.GET("/settings", s.settingsHandler.List)
 			admin.GET("/settings/:key", s.settingsHandler.Get)
 			admin.PUT("/settings/:key", s.settingsHandler.Set)

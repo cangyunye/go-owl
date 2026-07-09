@@ -13,8 +13,9 @@ import (
 )
 
 type TransferHandler struct {
-	db   *sql.DB
-	task *store.TaskStore
+	db          *sql.DB
+	task        *store.TaskStore
+	recordStore *store.TransferRecordStore
 }
 
 type transferRequest struct {
@@ -31,8 +32,8 @@ type transferResponse struct {
 	Error  string `json:"error,omitempty"`
 }
 
-func NewTransferHandler(db *sql.DB, ts *store.TaskStore) *TransferHandler {
-	return &TransferHandler{db: db, task: ts}
+func NewTransferHandler(db *sql.DB, ts *store.TaskStore, rs *store.TransferRecordStore) *TransferHandler {
+	return &TransferHandler{db: db, task: ts, recordStore: rs}
 }
 
 func (h *TransferHandler) Create(c *gin.Context) {
@@ -55,22 +56,31 @@ func (h *TransferHandler) Create(c *gin.Context) {
 		direction = "push"
 	}
 
+	transferRec, err := h.recordStore.Create(c.Request.Context(), req.SourcePath, req.DestPath, direction)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "create record failed"})
+		return
+	}
+	h.recordStore.SetNodeCount(c.Request.Context(), transferRec.ID, len(req.NodeIDs))
+
 	results := make([]transferResponse, 0, len(req.NodeIDs))
 
 	for _, nid := range req.NodeIDs {
 		info, err := resolveNodeSSH(h.db, nid)
 		if err != nil {
+			h.recordStore.UpdateNodeResult(c.Request.Context(), transferRec.ID, false)
 			results = append(results, transferResponse{NodeID: nid, Status: "failed", Error: err.Error()})
 			continue
 		}
 
-		rec, err := h.task.Create(c.Request.Context(), nid, fmt.Sprintf("transfer:%s -> %s", req.SourcePath, req.DestPath))
+		rec, err := h.task.CreateWithRecord(c.Request.Context(), nid, fmt.Sprintf("transfer:%s -> %s", req.SourcePath, req.DestPath), transferRec.ID)
 		if err != nil {
+			h.recordStore.UpdateNodeResult(c.Request.Context(), transferRec.ID, false)
 			results = append(results, transferResponse{NodeID: nid, Status: "failed", Error: err.Error()})
 			continue
 		}
 
-		go func(nodeID, src, dst, dir string, conn *nodeSSHInfo) {
+		go func(nodeID, src, dst, dir string, conn *nodeSSHInfo, recordID string) {
 			bg := context.Background()
 			err := scpTransfer(bg, conn, src, dst, dir)
 			taskStatus := store.TaskStatusCompleted
@@ -84,12 +94,15 @@ func (h *TransferHandler) Create(c *gin.Context) {
 				output = fmt.Sprintf("transfer %s -> %s completed", src, dst)
 			}
 			h.task.UpdateStatus(bg, rec.ID, taskStatus, output, nil)
-		}(nid, req.SourcePath, req.DestPath, direction, info)
+			h.recordStore.UpdateNodeResult(bg, recordID, err == nil)
+		}(nid, req.SourcePath, req.DestPath, direction, info, transferRec.ID)
 
 		results = append(results, transferResponse{NodeID: nid, Status: "queued"})
 	}
 
-	c.JSON(http.StatusAccepted, gin.H{"transfers": results})
+	h.recordStore.MarkRunning(c.Request.Context(), transferRec.ID)
+
+	c.JSON(http.StatusAccepted, gin.H{"record_id": transferRec.ID, "transfers": results})
 }
 
 func resolveNodeSSH(db *sql.DB, nodeID string) (*nodeSSHInfo, error) {
@@ -156,7 +169,6 @@ func scpTransfer(ctx context.Context, info *nodeSSHInfo, src, dst, direction str
 }
 
 func (h *TransferHandler) List(c *gin.Context) {
-	// Return recent transfer tasks
 	tasks, _, err := h.task.List(c.Request.Context(), 50, 0)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "list failed"})
@@ -170,4 +182,23 @@ func (h *TransferHandler) List(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"data": transfers})
+}
+
+func (h *TransferHandler) Records(c *gin.Context) {
+	records, total, err := h.recordStore.List(c.Request.Context(), 50, 0)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "list records failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": records, "total": total})
+}
+
+func (h *TransferHandler) RecordGet(c *gin.Context) {
+	id := c.Param("id")
+	rec, err := h.recordStore.Get(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "record not found"})
+		return
+	}
+	c.JSON(http.StatusOK, rec)
 }
