@@ -49,6 +49,7 @@ func (s *TaskStore) Init(ctx context.Context) error {
 			status TEXT NOT NULL DEFAULT 'queued',
 			output TEXT DEFAULT '',
 			exit_code INTEGER,
+			record_id TEXT DEFAULT '',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			started_at TIMESTAMP,
@@ -149,7 +150,7 @@ func (s *TaskStore) ListByNode(ctx context.Context, nodeID string, status TaskSt
 	for rows.Next() {
 		t := &Task{}
 		var startedAt, completedAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
 			continue
 		}
 		if startedAt.Valid { t.StartedAt = &startedAt.Time }
