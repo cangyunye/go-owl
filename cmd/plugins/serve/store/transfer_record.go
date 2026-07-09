@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -179,7 +180,7 @@ func (s *TransferRecordStore) UpdateNodeResult(ctx context.Context, id string, s
 }
 
 func isColumnExists(err error) bool {
-	return err != nil && (err.Error() == "duplicate column name: record_id")
+	return err != nil && strings.Contains(err.Error(), "duplicate column name: record_id")
 }
 
 func (s *TransferRecordStore) SetNodeCount(ctx context.Context, id string, count int) error {
