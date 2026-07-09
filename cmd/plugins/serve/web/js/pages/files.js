@@ -2,6 +2,8 @@ export function renderFiles(render, navigate, user, api, shell) {
   let allNodes = [];
   let selectedNodes = new Set();
   let transfers = [];
+  let transferRecords = [];
+  let transferRecordTab = 'list';
   let currentPage = 1;
   const pageSize = 30;
   let totalNodes = 0;
@@ -155,9 +157,10 @@ export function renderFiles(render, navigate, user, api, shell) {
 
   async function loadTransfers() {
     try {
-      const res = await api.transfers();
-      transfers = res.data || [];
-    } catch { transfers = []; }
+      const [tRes, rRes] = await Promise.all([api.transfers(), api.transferRecords()]);
+      transfers = tRes.data || [];
+      transferRecords = rRes.data || [];
+    } catch { transfers = []; transferRecords = []; }
     renderTransfers();
   }
 
@@ -172,34 +175,83 @@ export function renderFiles(render, navigate, user, api, shell) {
     return map[s] || s;
   }
 
+  function recordStatusText(s) {
+    const map = { pending: '等待中', running: '传输中', partial_success: '部分成功', completed: '已完成', failed: '失败', cancelled: '已取消' };
+    return map[s] || s;
+  }
+
+  function recordStatusIcon(s) {
+    if (s === 'completed') return '<span class="status-icon" style="background:var(--success)"></span>';
+    if (s === 'failed' || s === 'cancelled') return '<span class="status-icon" style="background:var(--danger)"></span>';
+    if (s === 'partial_success') return '<span class="status-icon" style="background:var(--warn)"></span>';
+    return '<span class="status-pulse" style="background:var(--warn)"></span>';
+  }
+
   function renderTransfers() {
     const list = document.getElementById('transfer-list');
+    const tabs = document.getElementById('transfer-tabs');
     if (!list) return;
-    let filtered = [...transfers];
-    if (transferFilter !== 'all') filtered = filtered.filter(t => t.status === transferFilter);
-    if (transferSearch) {
-      const q = transferSearch.toLowerCase();
-      filtered = filtered.filter(t => (t.command || '').toLowerCase().includes(q) || t.node_id.toLowerCase().includes(q));
+    if (tabs) {
+      tabs.innerHTML = `
+        <button class="status-btn ${transferRecordTab === 'list' ? 'active' : ''}" data-tab="list">传输记录</button>
+        <button class="status-btn ${transferRecordTab === 'tasks' ? 'active' : ''}" data-tab="tasks">任务详情</button>
+      `;
+      tabs.querySelectorAll('.status-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          tabs.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          transferRecordTab = this.dataset.tab;
+          renderTransfers();
+        });
+      });
     }
-    if (startDate) {
-      const s = new Date(startDate).getTime();
-      filtered = filtered.filter(t => new Date(t.created_at).getTime() >= s);
+
+    if (transferRecordTab === 'tasks') {
+      let filtered = [...transfers];
+      if (transferFilter !== 'all') filtered = filtered.filter(t => t.status === transferFilter);
+      if (transferSearch) {
+        const q = transferSearch.toLowerCase();
+        filtered = filtered.filter(t => (t.command || '').toLowerCase().includes(q) || t.node_id.toLowerCase().includes(q));
+      }
+      if (startDate) {
+        const s = new Date(startDate).getTime();
+        filtered = filtered.filter(t => new Date(t.created_at).getTime() >= s);
+      }
+      if (endDate) {
+        const e = new Date(endDate).getTime() + 86400000;
+        filtered = filtered.filter(t => new Date(t.created_at).getTime() <= e);
+      }
+      if (filtered.length === 0) {
+        list.innerHTML = '<li class="task-item"><div class="task-info"><div class="task-name" style="color:var(--muted)">暂无传输任务</div></div></li>';
+      } else {
+        list.innerHTML = filtered.map(t => `<li class="task-item">
+          ${statusIcon(t.status)}
+          <div class="task-info">
+            <div class="task-name">${esc(t.command || '')}</div>
+            <div class="task-meta">节点: ${esc(t.node_id)} · ${t.created_at ? timeAgo(t.created_at) : ''}</div>
+          </div>
+          <span class="task-time">${statusText(t.status)}</span>
+        </li>`).join('');
+      }
+      return;
     }
-    if (endDate) {
-      const e = new Date(endDate).getTime() + 86400000;
-      filtered = filtered.filter(t => new Date(t.created_at).getTime() <= e);
-    }
-    if (filtered.length === 0) {
+
+    if (transferRecords.length === 0) {
       list.innerHTML = '<li class="task-item"><div class="task-info"><div class="task-name" style="color:var(--muted)">暂无传输记录</div></div></li>';
     } else {
-      list.innerHTML = filtered.map(t => `<li class="task-item">
-        ${statusIcon(t.status)}
-        <div class="task-info">
-          <div class="task-name">${esc(t.command || '')}</div>
-          <div class="task-meta">节点: ${esc(t.node_id)} · ${t.created_at ? timeAgo(t.created_at) : ''}</div>
-        </div>
-        <span class="task-time">${statusText(t.status)}</span>
-      </li>`).join('');
+      list.innerHTML = transferRecords.map(r => {
+        const stats = r.success_count + r.failed_count > 0
+          ? ` · ${r.success_count}/${r.node_count} 成功`
+          : ` · ${r.node_count} 节点`;
+        return `<li class="task-item">
+          ${recordStatusIcon(r.status)}
+          <div class="task-info">
+            <div class="task-name">${esc(r.file_source.split('/').pop())}</div>
+            <div class="task-meta">${esc(r.dest_path)}${stats} · ${r.created_at ? timeAgo(r.created_at) : ''}</div>
+          </div>
+          <span class="task-time">${recordStatusText(r.status)}</span>
+        </li>`;
+      }).join('');
     }
   }
 
@@ -466,6 +518,7 @@ export function renderFiles(render, navigate, user, api, shell) {
         <div class="card">
           <div class="card-header"><h3>传输记录</h3></div>
           <div class="card-body" style="padding:8px 14px 0">
+            <div style="display:flex;gap:6px;margin-bottom:8px" id="transfer-tabs"></div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
               <button class="status-btn active" data-tf="all">全部</button>
               <button class="status-btn" data-tf="completed">成功</button>
@@ -508,8 +561,10 @@ export function renderFiles(render, navigate, user, api, shell) {
                 选择
               </button>
               <input type="file" id="staging-file-input" hidden>
-              <button class="btn btn-primary btn-sm" id="staging-upload-btn" disabled style="white-space:nowrap;flex-shrink:0">上传</button>
-              <button class="btn btn-primary btn-sm" id="staging-batch-btn" style="white-space:nowrap;flex-shrink:0;display:none">批量传输</button>
+              <div style="width:100px;flex-shrink:0">
+                <button class="btn btn-primary btn-sm" id="staging-upload-btn" disabled style="width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">上传中转站</button>
+                <button class="btn btn-primary btn-sm" id="staging-batch-btn" style="width:100%;white-space:nowrap;display:none">批量传输</button>
+              </div>
             </div>
             <div id="staging-file-list" style="max-height:200px;overflow-y:auto">加载中…</div>
           </div>
@@ -595,9 +650,9 @@ export function renderFiles(render, navigate, user, api, shell) {
       const btn = document.getElementById('staging-upload-btn');
       btn.disabled = !this.files.length;
       if (this.files.length) {
-        btn.textContent = `上传 ${this.files[0].name}`;
+        btn.textContent = `上传中转站 ${this.files[0].name}`;
       } else {
-        btn.textContent = '上传';
+        btn.textContent = '上传中转站';
       }
     });
 
@@ -605,7 +660,7 @@ export function renderFiles(render, navigate, user, api, shell) {
       const input = document.getElementById('staging-file-input');
       handleStagingUpload(input.files[0]);
       input.value = '';
-      document.getElementById('staging-upload-btn').textContent = '上传';
+      document.getElementById('staging-upload-btn').textContent = '上传中转站';
       document.getElementById('staging-upload-btn').disabled = true;
     });
 
@@ -614,43 +669,50 @@ export function renderFiles(render, navigate, user, api, shell) {
       renderStaging();
     });
 
-    document.getElementById('staging-multi-btn').addEventListener('click', function() {
-      stagingMultiSelect = !stagingMultiSelect;
-      if (!stagingMultiSelect) stagingSelected.clear();
-      this.classList.toggle('active');
-      document.getElementById('staging-batch-btn').style.display = 'none';
-      renderStaging();
-    });
+document.getElementById('staging-multi-btn').addEventListener('click', function() {
+    stagingMultiSelect = !stagingMultiSelect;
+    if (!stagingMultiSelect) stagingSelected.clear();
+    this.classList.toggle('active');
+    const srcInput = document.getElementById('src-path');
+    srcInput.disabled = stagingMultiSelect;
+    if (stagingMultiSelect) srcInput.value = '';
+    document.getElementById('staging-upload-btn').style.display = stagingMultiSelect ? 'none' : 'inline-flex';
+    document.getElementById('staging-batch-btn').style.display = stagingMultiSelect ? 'inline-flex' : 'none';
+    renderStaging();
+  });
 
-    document.getElementById('staging-batch-btn').addEventListener('click', async function() {
-      if (stagingSelected.size === 0) return;
-      const dstInput = document.getElementById('dst-path');
-      const dst = dstInput ? dstInput.value.trim() : '';
-      if (!dst) { alert('请填写节点路径'); return; }
-      if (selectedNodes.size === 0) { alert('请选择目标节点'); return; }
-      const stagingDir = diskInfo ? diskInfo.staging_dir : '';
-      let success = 0, fail = 0;
-      for (const name of stagingSelected) {
-        const fullPath = stagingDir ? stagingDir + '/' + name : name;
-        try {
-          await api.transfer({
-            action: 'push',
-            node_ids: Array.from(selectedNodes),
-            source_path: fullPath,
-            dest_path: dst,
-            direction: 'push',
-          });
-          success++;
-        } catch (e) {
-          fail++;
-        }
+  document.getElementById('staging-batch-btn').addEventListener('click', async function() {
+    if (stagingSelected.size === 0) return;
+    const dstInput = document.getElementById('dst-path');
+    const dst = dstInput ? dstInput.value.trim() : '';
+    if (!dst) { alert('请填写节点路径'); return; }
+    if (selectedNodes.size === 0) { alert('请选择目标节点'); return; }
+    const stagingDir = diskInfo ? diskInfo.staging_dir : '';
+    let success = 0, fail = 0;
+    for (const name of stagingSelected) {
+      const fullPath = stagingDir ? stagingDir + '/' + name : name;
+      try {
+        await api.transfer({
+          action: 'push',
+          node_ids: Array.from(selectedNodes),
+          source_path: fullPath,
+          dest_path: dst,
+          direction: 'push',
+        });
+        success++;
+      } catch (e) {
+        fail++;
       }
-      alert(`批量传输完成：${success} 成功, ${fail} 失败`);
-      stagingSelected.clear();
-      stagingMultiSelect = false;
-      document.getElementById('staging-multi-btn').classList.remove('active');
-      loadTransfers();
-      renderStaging();
-    });
+    }
+    alert(`批量传输完成：${success} 成功, ${fail} 失败`);
+    stagingSelected.clear();
+    stagingMultiSelect = false;
+    document.getElementById('staging-multi-btn').classList.remove('active');
+    document.getElementById('src-path').disabled = false;
+    document.getElementById('staging-upload-btn').style.display = 'inline-flex';
+    document.getElementById('staging-batch-btn').style.display = 'none';
+    loadTransfers();
+    renderStaging();
+  });
   });
 }

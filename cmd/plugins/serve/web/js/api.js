@@ -186,11 +186,50 @@ export const api = {
   aiChat: (message) =>
     request('POST', '/ai/chat', { message }),
 
+  staging: {
+    files: () =>
+      request('GET', '/staging/files'),
+
+    disk: () =>
+      request('GET', '/staging/disk'),
+
+    upload: async (file) => {
+      const t = token();
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_BASE}/staging/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${t}` },
+        body: formData,
+      });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+        throw new Error('Unauthorized');
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(err.message || 'Upload failed');
+      }
+      return res.json();
+    },
+
+    delete: (name) =>
+      request('DELETE', `/staging/${encodeURIComponent(name)}`),
+  },
+
   transfer: (data) =>
     request('POST', '/transfer', data),
 
   transfers: () =>
     request('GET', '/transfers'),
+
+  transferRecords: () =>
+    request('GET', '/transfer/records'),
+
+  transferRecord: (id) =>
+    request('GET', `/transfer/records/${encodeURIComponent(id)}`),
 
   connectWebSocket(onMessage) {
     const token = localStorage.getItem('token');
