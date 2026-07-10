@@ -209,6 +209,54 @@ func TestServer_WebSocketRequiresAuth(t *testing.T) {
 	assert.Equal(t, 401, w2.Code)
 }
 
+func TestServer_ServesMarkedJS(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{DBPath: filepath.Join(dir, "owl.db"), ListenAddr: "127.0.0.1:0"}
+	srv := NewServer(cfg)
+	_, err := srv.Init()
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/static/js/marked.min.js", nil)
+	srv.Router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+	assert.Contains(t, w.Body.String(), "marked")
+	assert.Contains(t, w.Body.String(), "parse")
+}
+
+func TestServer_IndexHTML_HasMarkedScript(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{DBPath: filepath.Join(dir, "owl.db"), ListenAddr: "127.0.0.1:0"}
+	srv := NewServer(cfg)
+	_, err := srv.Init()
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/", nil)
+	srv.Router.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	assert.Contains(t, body, "static/js/marked.min.js", "index.html must include marked.min.js")
+	assert.Contains(t, body, "static/js/storage.js", "marked should be after storage.js")
+	assert.Contains(t, body, "static/js/app.js", "marked should be before app.js")
+
+	storageIdx := indexOf(body, "static/js/storage.js")
+	markedIdx := indexOf(body, "static/js/marked.min.js")
+	appIdx := indexOf(body, "static/js/app.js")
+	assert.True(t, storageIdx < markedIdx, "storage.js must load before marked.min.js")
+	assert.True(t, markedIdx < appIdx, "marked.min.js must load before app.js")
+}
+
+func indexOf(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
 func TestServer_SPARouting(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &Config{

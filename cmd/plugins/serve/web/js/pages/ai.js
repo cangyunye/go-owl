@@ -15,6 +15,11 @@ export function renderAI(render, navigate, user, api, shell) {
   }
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+  function md(text) {
+    if (!text) return '';
+    try { return marked.parse(text, { breaks: true, gfm: true }); }
+    catch { return esc(text); }
+  }
 
   shell.setPanelContent('');
 
@@ -73,7 +78,7 @@ export function renderAI(render, navigate, user, api, shell) {
       const res = await api.aiChat(payload.message, payload.session_id, payload.encrypted_api_key, payload.provider, payload.model, payload.base_url, payload.api_type);
       hideThinking();
       if (res && res.reply) {
-        addMsg('assistant', esc(res.reply) + navChips(res.intent));
+        addMsg('assistant', md(res.reply) + navChips(res.intent));
         chatMessages.push({ role: 'user', content: text });
         chatMessages.push({ role: 'assistant', content: res.reply });
         await saveCurrentConv();
@@ -132,7 +137,8 @@ export function renderAI(render, navigate, user, api, shell) {
     if (!container) return;
     container.innerHTML = '';
     chatMessages.forEach(m => {
-      addMsg(m.role === 'user' ? 'user' : 'assistant', esc(m.content));
+      const isUser = m.role === 'user';
+      addMsg(isUser ? 'user' : 'assistant', isUser ? esc(m.content) : md(m.content));
     });
     // highlight active
     document.querySelectorAll('.session-item').forEach(el => el.classList.toggle('session-item-active', el.dataset.id === id));
