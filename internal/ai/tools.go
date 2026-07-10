@@ -184,6 +184,33 @@ func (e *CLIExecutor) ValidatePlaybook(ctx context.Context, p ValidatePlaybookPa
 	return &ValidateResult{Text: result}, nil
 }
 
+func (e *CLIExecutor) RunPlaybook(ctx context.Context, p RunPlaybookParams) (*RunPlaybookResult, error) {
+	args := []string{"playbook", "run", p.Name, "--no-color"}
+	if p.Check {
+		args = append(args, "--check")
+	}
+	if p.Tags != "" {
+		args = append(args, "--tags", p.Tags)
+	}
+	if p.Group != "" {
+		args = append(args, "--groups", p.Group)
+	}
+	if p.Label != "" {
+		args = append(args, "--label", p.Label)
+	}
+	if len(p.Nodes) > 0 {
+		args = append(args, "--nodes", strings.Join(p.Nodes, ","))
+	}
+	if p.Search != "" {
+		args = append(args, "--search", p.Search)
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &RunPlaybookResult{Text: result}, nil
+}
+
 func (e *CLIExecutor) NodeCheck(ctx context.Context, p NodeCheckParams) (*NodeCheckResult, error) {
 	args := []string{"node", "check", "--no-color"}
 	if p.All {
@@ -1952,6 +1979,26 @@ func (t *RunPlaybookTool) Validate(params map[string]interface{}) error {
 
 func (t *RunPlaybookTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	name, _ := params["name"].(string)
+
+	if t.executor != nil {
+		p := RunPlaybookParams{Name: name}
+		if nodeList, ok := params["nodes"].([]interface{}); ok {
+			for _, n := range nodeList {
+				if s, ok := n.(string); ok {
+					p.Nodes = append(p.Nodes, s)
+				}
+			}
+		}
+		p.Group, _ = params["group"].(string)
+		p.Label, _ = params["label"].(string)
+		p.Search, _ = params["search"].(string)
+		p.Tags, _ = params["tags"].(string)
+		p.Check, _ = params["check"].(bool)
+		result, err := t.executor.RunPlaybook(ctx, p)
+		if err == nil {
+			return result.Text, nil
+		}
+	}
 
 	var nodes []*model.Node
 	var filterDesc string

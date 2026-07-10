@@ -90,6 +90,8 @@ func (h *AIHandler) Chat(c *gin.Context) {
 		session = h.sessionMgr.CreateSession(sessionID, h.agent)
 	}
 
+	h.executor.userRole = c.GetString("role")
+
 	startTime := time.Now()
 	reply, err := session.Send(c.Request.Context(), req.Message)
 	durationMs := time.Since(startTime).Milliseconds()

@@ -21,6 +21,16 @@ type WebExecutor struct {
 	auditStore         *store.AIAuditStore
 	keyManager         *KeyManager
 	debugMode          bool
+	userRole           string
+}
+
+func (e *WebExecutor) requireOperator() error {
+	switch e.userRole {
+	case "admin", "operator":
+		return nil
+	default:
+		return fmt.Errorf("权限不足: 需要 operator 或 admin 角色")
+	}
 }
 
 func NewWebExecutor(db *sql.DB, taskStore *store.TaskStore, transferRecordStore *store.TransferRecordStore,
@@ -78,6 +88,9 @@ func (e *WebExecutor) QueryNodes(ctx context.Context, params ai2.QueryNodesParam
 }
 
 func (e *WebExecutor) ExecuteCommand(ctx context.Context, params ai2.ExecCommandParams) (*ai2.ExecResult, error) {
+	if err := e.requireOperator(); err != nil {
+		return nil, err
+	}
 	nodeID := "ai-exec"
 	if len(params.Nodes) > 0 {
 		nodeID = strings.Join(params.Nodes, ",")
@@ -90,6 +103,9 @@ func (e *WebExecutor) ExecuteCommand(ctx context.Context, params ai2.ExecCommand
 }
 
 func (e *WebExecutor) ExecuteScript(ctx context.Context, params ai2.ExecScriptParams) (*ai2.ExecScriptResult, error) {
+	if err := e.requireOperator(); err != nil {
+		return nil, err
+	}
 	nodeID := "ai-exec"
 	if len(params.Nodes) > 0 {
 		nodeID = strings.Join(params.Nodes, ",")
@@ -102,6 +118,9 @@ func (e *WebExecutor) ExecuteScript(ctx context.Context, params ai2.ExecScriptPa
 }
 
 func (e *WebExecutor) GeneratePlaybook(ctx context.Context, params ai2.GeneratePlaybookParams) (*ai2.GeneratePlaybookResult, error) {
+	if err := e.requireOperator(); err != nil {
+		return nil, err
+	}
 	content := fmt.Sprintf(`name: ai-generated-playbook
 description: "%s"
 hosts: []
@@ -114,6 +133,9 @@ tasks:
 }
 
 func (e *WebExecutor) TransferFile(ctx context.Context, params ai2.TransferFileParams) (*ai2.TransferResult, error) {
+	if err := e.requireOperator(); err != nil {
+		return nil, err
+	}
 	rec, err := e.transferRecordStore.Create(ctx, params.SourceFile, params.DestDir, "push")
 	if err != nil {
 		return nil, fmt.Errorf("create transfer record: %w", err)
@@ -191,6 +213,9 @@ func (e *WebExecutor) readPlaybookFile(name string) ([]byte, error) {
 }
 
 func (e *WebExecutor) NodeCheck(ctx context.Context, params ai2.NodeCheckParams) (*ai2.NodeCheckResult, error) {
+	if err := e.requireOperator(); err != nil {
+		return nil, err
+	}
 	var nodeIDs []string
 	if params.All {
 		rows, err := e.db.QueryContext(ctx, "SELECT id FROM nodes")
@@ -271,6 +296,9 @@ func (e *WebExecutor) QueryDatabase(ctx context.Context, params ai2.QueryDatabas
 }
 
 func (e *WebExecutor) RunPlaybook(ctx context.Context, params ai2.RunPlaybookParams) (*ai2.RunPlaybookResult, error) {
+	if err := e.requireOperator(); err != nil {
+		return nil, err
+	}
 	run, err := e.playbookRunStore.Create(ctx, params.Name, params.Name, "", params.Nodes, nil, params.Tags)
 	if err != nil {
 		return nil, fmt.Errorf("create playbook run: %w", err)

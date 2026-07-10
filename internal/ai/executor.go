@@ -79,6 +79,7 @@ type Executor interface {
 	ExecuteScript(ctx context.Context, params ExecScriptParams) (*ExecScriptResult, error)
 	GeneratePlaybook(ctx context.Context, params GeneratePlaybookParams) (*GeneratePlaybookResult, error)
 	TransferFile(ctx context.Context, params TransferFileParams) (*TransferResult, error)
+	RunPlaybook(ctx context.Context, params RunPlaybookParams) (*RunPlaybookResult, error)
 	ListPlaybooks(ctx context.Context) (*ListPlaybooksResult, error)
 	PlaybookInfo(ctx context.Context, params PlaybookInfoParams) (*PlaybookInfoResult, error)
 	ValidatePlaybook(ctx context.Context, params ValidatePlaybookParams) (*ValidateResult, error)
