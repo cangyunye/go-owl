@@ -412,63 +412,92 @@ export function renderFiles(render, navigate, user, api, shell) {
       : stagingFiles;
     const canDelete = user && user.role === 'admin';
     if (filtered.length === 0) {
-      list.innerHTML = '<table class="data-table"><tbody><tr><td class="empty-state" style="padding:20px">暂无文件</td></tr></tbody></table>';
-    } else {
-      const stagingDir = diskInfo ? diskInfo.staging_dir : '';
-      const showCheck = stagingMultiSelect ? '' : 'style="display:none"';
-      list.innerHTML = `<table class="data-table" style="font-size:12px">
-        <thead><tr><th style="width:36px"></th><th>文件名</th><th style="min-width:130px">时间</th><th style="min-width:70px;text-align:right">大小</th><th style="width:36px"></th></tr></thead>
-        <tbody>${filtered.map(f => {
-          const fullPath = stagingDir ? stagingDir + '/' + f.name : f.name;
-          const fileTime = f.mod_time || f.create_time || '';
-          return `<tr class="staging-file-row" data-name="${esc(f.name)}">
-          <td class="checkbox-col" ${showCheck}><input type="checkbox" class="staging-checkbox" data-name="${esc(f.name)}"></td>
-          <td><div style="overflow:hidden"><div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</div><div class="sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(fullPath)}</div></div></td>
-          <td style="color:var(--muted);white-space:nowrap;font-size:11px">${fmtTime(fileTime)}</td>
-          <td style="color:var(--muted);white-space:nowrap;text-align:right">${fmtSize(f.size)}</td>
-          <td class="action-cell">${canDelete ? `<button class="btn btn-ghost btn-icon btn-sm staging-delete-btn" data-name="${esc(f.name)}" title="删除"><svg width="14" height="14" aria-hidden="true" style="color:var(--danger)"><use href="#icon-x"/></svg></button>` : ''}</td>
+      list.innerHTML = '<div class="staging-empty">暂无文件</div>';
+      return;
+    }
+    const stagingDir = diskInfo ? diskInfo.staging_dir : '';
+    const showCheck = stagingMultiSelect ? '' : 'display:none';
+    const allChecked = filtered.length > 0 && filtered.every(f => stagingSelected.has(f.name));
+    list.innerHTML = `<table class="staging-table">
+      <thead><tr>
+        <th class="stg-ck" style="${showCheck}"><input type="checkbox" class="staging-select-all" ${allChecked ? 'checked' : ''}></th>
+        <th class="stg-name">文件名</th>
+        <th class="stg-path">路径</th>
+        <th class="stg-time">创建时间</th>
+        <th class="stg-size">大小</th>
+        ${canDelete ? '<th class="stg-act"></th>' : ''}
+      </tr></thead>
+      <tbody>${filtered.map(f => {
+        const fullPath = stagingDir ? stagingDir + '/' + f.name : f.name;
+        const fileTime = f.create_time || f.mod_time || '';
+        const checked = stagingSelected.has(f.name) ? 'checked' : '';
+        return `<tr class="staging-file-row" data-name="${esc(f.name)}">
+          <td class="stg-ck" style="${showCheck}"><input type="checkbox" class="staging-checkbox" data-name="${esc(f.name)}" ${checked}></td>
+          <td class="stg-name" title="${esc(f.name)}">${esc(f.name)}</td>
+          <td class="stg-path" title="${esc(fullPath)}">${esc(fullPath)}</td>
+          <td class="stg-time">${fmtTime(fileTime)}</td>
+          <td class="stg-size">${fmtSize(f.size)}</td>
+          ${canDelete ? `<td class="stg-act"><button class="btn btn-ghost btn-icon btn-sm staging-delete-btn" data-name="${esc(f.name)}" title="删除"><svg width="14" height="14" aria-hidden="true" style="color:var(--danger)"><use href="#icon-x"/></svg></button></td>` : ''}
         </tr>`;
-        }).join('')}</tbody>
-      </table>`;
-      list.querySelectorAll('.staging-delete-btn').forEach(btn => {
-        btn.addEventListener('click', async function(e) {
-          e.stopPropagation();
-          const name = this.dataset.name;
-          if (!confirm(`确认删除 ${name}？`)) return;
-          try {
-            await api.staging.delete(name);
-            loadStaging();
-          } catch (e) { alert('删除失败: ' + e.message); }
-        });
-      });
+      }).join('')}</tbody>
+    </table>`;
 
-      list.querySelectorAll('.staging-file-row').forEach(row => {
-        row.addEventListener('click', function(e) {
-          if (e.target.closest('.staging-delete-btn') || e.target.closest('.staging-checkbox')) return;
-          const name = this.dataset.name;
-          const stagingDir = diskInfo ? diskInfo.staging_dir : '';
-          const fullPath = stagingDir ? stagingDir + '/' + name : name;
-          const srcInput = document.getElementById('src-path');
-          if (srcInput) {
-            srcInput.value = fullPath;
-            srcInput.focus();
-          }
+    const selectAll = list.querySelector('.staging-select-all');
+    if (selectAll) {
+      selectAll.addEventListener('change', function() {
+        filtered.forEach(f => {
+          if (this.checked) stagingSelected.add(f.name);
+          else stagingSelected.delete(f.name);
         });
-      });
-      list.querySelectorAll('.staging-checkbox').forEach(cb => {
-        cb.addEventListener('change', function() {
-          const name = this.dataset.name;
-          if (this.checked) stagingSelected.add(name);
-          else stagingSelected.delete(name);
-          const batchBtn = document.getElementById('staging-batch-btn');
-          if (batchBtn) {
-            const count = stagingSelected.size;
-            batchBtn.textContent = count ? `批量传输 (${count})` : '批量传输';
-            batchBtn.style.display = stagingMultiSelect && count > 0 ? 'inline-flex' : 'none';
-          }
-        });
+        list.querySelectorAll('.staging-checkbox').forEach(cb => { cb.checked = this.checked; });
+        const batchBtn = document.getElementById('staging-batch-btn');
+        if (batchBtn) {
+          const count = stagingSelected.size;
+          batchBtn.textContent = count ? `批量传输 (${count})` : '批量传输';
+          batchBtn.style.display = stagingMultiSelect && count > 0 ? 'inline-flex' : 'none';
+        }
       });
     }
+    list.querySelectorAll('.staging-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async function(e) {
+        e.stopPropagation();
+        const name = this.dataset.name;
+        if (!confirm(`确认删除 ${name}？`)) return;
+        try {
+          await api.staging.delete(name);
+          loadStaging();
+        } catch (e) { alert('删除失败: ' + e.message); }
+      });
+    });
+    list.querySelectorAll('.staging-file-row').forEach(row => {
+      row.addEventListener('click', function(e) {
+        if (e.target.closest('.staging-delete-btn') || e.target.closest('.staging-checkbox')) return;
+        const name = this.dataset.name;
+        const stagingDir = diskInfo ? diskInfo.staging_dir : '';
+        const fullPath = stagingDir ? stagingDir + '/' + name : name;
+        const srcInput = document.getElementById('src-path');
+        if (srcInput) {
+          srcInput.value = fullPath;
+          srcInput.focus();
+        }
+      });
+    });
+    list.querySelectorAll('.staging-checkbox').forEach(cb => {
+      cb.addEventListener('change', function() {
+        const name = this.dataset.name;
+        if (this.checked) stagingSelected.add(name);
+        else stagingSelected.delete(name);
+        const batchBtn = document.getElementById('staging-batch-btn');
+        if (batchBtn) {
+          const count = stagingSelected.size;
+          batchBtn.textContent = count ? `批量传输 (${count})` : '批量传输';
+          batchBtn.style.display = stagingMultiSelect && count > 0 ? 'inline-flex' : 'none';
+        }
+        if (selectAll) {
+          selectAll.checked = filtered.every(f => stagingSelected.has(f.name));
+        }
+      });
+    });
   }
 
   async function handleStagingUpload(file) {
@@ -567,7 +596,7 @@ export function renderFiles(render, navigate, user, api, shell) {
                 <button class="btn btn-primary btn-sm" id="staging-batch-btn" style="width:100%;white-space:nowrap;display:none">批量传输</button>
               </div>
             </div>
-            <div id="staging-file-list" style="max-height:200px;overflow-y:auto">加载中…</div>
+            <div id="staging-file-list" style="max-height:280px;overflow-y:auto">加载中…</div>
           </div>
         </div>
       </div>
