@@ -195,6 +195,7 @@ func (s *Server) setupRoutes() {
 		reader.GET("/ai/context", s.aiHandler.GetContext)
 		reader.POST("/ai/chat", s.aiHandler.Chat)
 		reader.POST("/ai/audit", s.aiHandler.Audit)
+		reader.POST("/ai/models", s.aiHandler.Models)
 
 		writer := auth.Group("", s.authHandler.RBACMiddleware(model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{

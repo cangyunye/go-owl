@@ -187,6 +187,7 @@ export const api = {
   aiChat: (message, sessionId, encryptedApiKey) => request('POST', '/ai/chat', { message, session_id: sessionId, encrypted_api_key: encryptedApiKey }),
   getAiContext: () => request('GET', '/ai/context'),
   aiAudit: (record) => request('POST', '/ai/audit', record),
+  aiModels: (sessionId, encryptedApiKey, baseUrl, apiType) => request('POST', '/ai/models', { session_id: sessionId, encrypted_api_key: encryptedApiKey, base_url: baseUrl, api_type: apiType }),
 
   staging: {
     files: () =>
