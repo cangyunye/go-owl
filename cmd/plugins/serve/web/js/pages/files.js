@@ -416,14 +416,16 @@ export function renderFiles(render, navigate, user, api, shell) {
     } else {
       const stagingDir = diskInfo ? diskInfo.staging_dir : '';
       const showCheck = stagingMultiSelect ? '' : 'style="display:none"';
-      list.innerHTML = `<table class="data-table" style="font-size:12px">
-        <thead><tr><th style="width:36px"></th><th>文件名</th><th>修改时间</th><th>大小</th><th></th></tr></thead>
+      list.innerHTML = `<table class="data-table" style="font-size:12px;width:100%;table-layout:fixed">
+        <colgroup><col style="width:36px"><col><col style="width:150px"><col style="width:80px"><col style="width:36px"></colgroup>
+        <thead><tr><th style="width:36px"></th><th>文件名</th><th style="width:150px">时间</th><th style="width:80px;text-align:right">大小</th><th style="width:36px"></th></tr></thead>
         <tbody>${filtered.map(f => {
           const fullPath = stagingDir ? stagingDir + '/' + f.name : f.name;
+          const fileTime = f.mod_time || f.create_time || '';
           return `<tr class="staging-file-row" data-name="${esc(f.name)}">
           <td class="checkbox-col" ${showCheck}><input type="checkbox" class="staging-checkbox" data-name="${esc(f.name)}"></td>
-          <td><div class="cell-name"><span>${esc(f.name)}</span><span class="sub">${esc(fullPath)}</span></div></td>
-          <td style="color:var(--muted);white-space:nowrap">${fmtTime(f.mod_time)}</td>
+          <td><div style="overflow:hidden"><div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</div><div class="sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(fullPath)}</div></div></td>
+          <td style="color:var(--muted);white-space:nowrap;font-size:11px">${fmtTime(fileTime)}</td>
           <td style="color:var(--muted);white-space:nowrap;text-align:right">${fmtSize(f.size)}</td>
           <td class="action-cell">${canDelete ? `<button class="btn btn-ghost btn-icon btn-sm staging-delete-btn" data-name="${esc(f.name)}" title="删除"><svg width="14" height="14" aria-hidden="true" style="color:var(--danger)"><use href="#icon-x"/></svg></button>` : ''}</td>
         </tr>`;
@@ -650,7 +652,7 @@ export function renderFiles(render, navigate, user, api, shell) {
       const btn = document.getElementById('staging-upload-btn');
       btn.disabled = !this.files.length;
       if (this.files.length) {
-        btn.textContent = `上传中转站 ${this.files[0].name}`;
+        btn.textContent = '上传中转站';
       } else {
         btn.textContent = '上传中转站';
       }
