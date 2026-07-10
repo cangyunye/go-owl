@@ -10,6 +10,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	pb "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
 )
@@ -28,6 +29,105 @@ func NewPlaybookHandler(db *sql.DB, ps *store.PlaybookStore, rs *store.PlaybookR
 
 type refreshRequest struct {
 	Path string `json:"path"`
+}
+
+type createTemplateRequest struct {
+	Name          string                 `json:"name"`
+	Description   string                 `json:"description,omitempty"`
+	Version       string                 `json:"version,omitempty"`
+	ExecutionMode string                 `json:"execution_mode,omitempty"`
+	Vars          map[string]interface{} `json:"vars,omitempty"`
+	DefaultGroups   []string             `json:"default_groups,omitempty"`
+	DefaultTags     []string             `json:"default_tags,omitempty"`
+	DefaultSkipTags []string             `json:"default_skip_tags,omitempty"`
+	Tasks         []createTemplateTask   `json:"tasks"`
+}
+
+type createTemplateTask struct {
+	Name   string                 `json:"name"`
+	Action string                 `json:"action"`
+	Args   map[string]interface{} `json:"args"`
+}
+
+func (h *PlaybookHandler) Create(c *gin.Context) {
+	var req createTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request: " + err.Error()})
+		return
+	}
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "name is required"})
+		return
+	}
+	if req.Version == "" {
+		req.Version = "1.0"
+	}
+
+	var defaultCfg *pb.TemplateDefaultConfig
+	if len(req.DefaultGroups) > 0 || len(req.DefaultTags) > 0 || len(req.DefaultSkipTags) > 0 {
+		defaultCfg = &pb.TemplateDefaultConfig{
+			Groups:   req.DefaultGroups,
+			Tags:     req.DefaultTags,
+			SkipTags: req.DefaultSkipTags,
+		}
+	}
+
+	tasks := make([]pb.TemplateTask, len(req.Tasks))
+	for i, t := range req.Tasks {
+		tasks[i] = pb.TemplateTask{
+			Name:   t.Name,
+			Action: t.Action,
+			Args:   t.Args,
+		}
+	}
+
+	tpl := &pb.TemplatePlaybook{
+		Name:          req.Name,
+		Description:   req.Description,
+		Version:       req.Version,
+		Hosts:         []string{},
+		ExecutionMode: req.ExecutionMode,
+		Default:       defaultCfg,
+		Vars:          req.Vars,
+		PreTasks:      []pb.TemplateTask{},
+		Tasks:         tasks,
+		PostTasks:     []pb.TemplateTask{},
+	}
+
+	yamlData, err := pb.RenderTemplateYAML(tpl)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "generate yaml failed"})
+		return
+	}
+
+	libraryPath := h.getPlaybookLibraryPath()
+	outputPath := filepath.Join(libraryPath, req.Name+".yaml")
+
+	if err := os.MkdirAll(libraryPath, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "create directory failed"})
+		return
+	}
+	if err := os.WriteFile(outputPath, yamlData, 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "write file failed"})
+		return
+	}
+
+	_, _, err = h.playbooks.SyncFromDir(c.Request.Context(), libraryPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "sync failed: " + err.Error()})
+		return
+	}
+
+	all, _ := h.playbooks.List(c.Request.Context())
+	var created *model.Playbook
+	for i := range all {
+		if all[i].Name == req.Name {
+			created = all[i]
+			break
+		}
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"data": created, "file_path": outputPath})
 }
 
 func (h *PlaybookHandler) Refresh(c *gin.Context) {
@@ -178,6 +278,16 @@ func (h *PlaybookHandler) GetSettingsPath(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"value": path})
+}
+
+func (h *PlaybookHandler) getPlaybookLibraryPath() string {
+	var path string
+	err := h.db.QueryRow(`SELECT value FROM settings WHERE key = 'playbook_library_path'`).Scan(&path)
+	if err != nil || path == "" {
+		home, _ := os.UserHomeDir()
+		path = filepath.Join(home, ".owl", "playbooks")
+	}
+	return path
 }
 
 func (h *PlaybookHandler) RunCancel(c *gin.Context) {

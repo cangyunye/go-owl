@@ -314,6 +314,93 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         </div>
       </div>
     </div>
+
+    <div class="modal-overlay" id="create-playbook-modal">
+      <div class="modal modal-lg">
+        <div class="modal-header">
+          <h3>📝 创建剧本</h3>
+          <button class="btn btn-ghost btn-sm" id="create-pb-close-btn" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">&times;</button>
+        </div>
+        <div class="modal-body" id="create-pb-body" style="max-height:70vh;overflow-y:auto">
+          <!-- Step indicator -->
+          <div style="display:flex;gap:8px;margin-bottom:16px" id="create-pb-steps">
+            <span class="step-dot active" data-step="1">1</span><span style="color:var(--muted);font-size:12px">基本信息</span>
+            <span style="color:var(--muted);padding:0 4px">→</span>
+            <span class="step-dot" data-step="2">2</span><span style="color:var(--muted);font-size:12px">变量</span>
+            <span style="color:var(--muted);padding:0 4px">→</span>
+            <span class="step-dot" data-step="3">3</span><span style="color:var(--muted);font-size:12px">执行配置</span>
+            <span style="color:var(--muted);padding:0 4px">→</span>
+            <span class="step-dot" data-step="4">4</span><span style="color:var(--muted);font-size:12px">任务</span>
+            <span style="color:var(--muted);padding:0 4px">→</span>
+            <span class="step-dot" data-step="5">5</span><span style="color:var(--muted);font-size:12px">确认</span>
+          </div>
+
+          <!-- Step 1: Basic Info -->
+          <div class="create-pb-page" data-page="1">
+            <div class="form-row"><label>剧本名称 *</label><input id="cp-name" placeholder="my-playbook" style="width:100%"></div>
+            <div class="form-row"><label>描述</label><textarea id="cp-desc" placeholder="可选" style="width:100%;resize:vertical" rows="2"></textarea></div>
+            <div class="form-row"><label>版本</label><input id="cp-version" value="1.0" style="width:100%"></div>
+          </div>
+
+          <!-- Step 2: Variables -->
+          <div class="create-pb-page" data-page="2" style="display:none">
+            <p style="font-size:13px;color:var(--muted);margin-bottom:12px">添加变量（可选）</p>
+            <div id="cp-vars-list"></div>
+            <button class="btn btn-secondary btn-sm" id="cp-add-var"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 添加变量</button>
+            <div style="margin-top:8px"><label class="checkbox-label"><input type="checkbox" id="cp-skip-vars"> 跳过（不添加变量）</label></div>
+          </div>
+
+          <!-- Step 3: Execution Mode + Default Config -->
+          <div class="create-pb-page" data-page="3" style="display:none">
+            <div class="form-row">
+              <label>执行模式</label>
+              <select id="cp-mode" style="width:100%">
+                <option value="">fail_continue（失败继续）</option>
+                <option value="pipeline">pipeline（失败终止）</option>
+              </select>
+            </div>
+            <h4 style="font-size:13px;color:var(--muted);margin:16px 0 8px">默认配置（可选）</h4>
+            <div class="form-row"><label>目标分组</label><input id="cp-groups" placeholder="web, db (逗号分隔)" style="width:100%"></div>
+            <div class="form-row"><label>执行标签</label><input id="cp-tags" placeholder="tag1, tag2 (逗号分隔)" style="width:100%"></div>
+            <div class="form-row"><label>跳过标签</label><input id="cp-skip-tags" placeholder="skip-me (逗号分隔)" style="width:100%"></div>
+          </div>
+
+          <!-- Step 4: Tasks -->
+          <div class="create-pb-page" data-page="4" style="display:none">
+            <p style="font-size:13px;color:var(--muted);margin-bottom:12px">添加任务项</p>
+            <div class="form-row" style="display:flex;gap:8px;align-items:end">
+              <div style="flex:1">
+                <label>任务类型</label>
+                <select id="cp-task-action" style="width:100%">
+                  <option value="command">command — 执行 Shell 命令</option>
+                  <option value="script">script — 执行脚本文件</option>
+                  <option value="upload">upload — 上传文件到节点</option>
+                  <option value="download">download — 从节点下载文件</option>
+                  <option value="include">include — 包含其他剧本</option>
+                </select>
+              </div>
+              <button class="btn btn-primary btn-sm" id="cp-add-task" style="white-space:nowrap">+ 添加</button>
+            </div>
+            <div id="cp-tasks-list" style="margin-top:12px">
+              <p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>
+            </div>
+          </div>
+
+          <!-- Step 5: Confirm -->
+          <div class="create-pb-page" data-page="5" style="display:none">
+            <div id="cp-summary" style="font-size:13px;margin-bottom:12px"></div>
+            <h4 style="font-size:13px;color:var(--muted);margin-bottom:8px">YAML 预览</h4>
+            <pre id="cp-preview" style="background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font:12px/1.6 var(--font-mono);overflow-x:auto;white-space:pre;max-height:300px"></pre>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-cancel" id="cp-prev-btn" style="display:none">上一步</button>
+          <button class="btn-primary" id="cp-next-btn">下一步</button>
+          <button class="btn-primary" id="cp-save-btn" style="display:none">保存剧本</button>
+        </div>
+        <p class="error-msg" id="cp-error"></p>
+      </div>
+    </div>
   `, () => {
     setupWebSocket();
 
@@ -387,6 +474,205 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       const id = document.getElementById('playbook-detail-modal').dataset.playbookId;
       document.getElementById('playbook-detail-modal').classList.remove('open');
       showRunModal(id);
+    });
+
+    // Create playbook wizard state
+    let cpState = {
+      step: 1,
+      totalSteps: 5,
+      vars: [],
+      tasks: [],
+    };
+    let cpTaskCounter = 0;
+
+    document.getElementById('add-playbook-btn').addEventListener('click', () => {
+      cpState = { step: 1, totalSteps: 5, vars: [], tasks: [] };
+      cpTaskCounter = 0;
+      document.getElementById('cp-name').value = '';
+      document.getElementById('cp-desc').value = '';
+      document.getElementById('cp-version').value = '1.0';
+      document.getElementById('cp-mode').value = '';
+      document.getElementById('cp-groups').value = '';
+      document.getElementById('cp-tags').value = '';
+      document.getElementById('cp-skip-tags').value = '';
+      document.getElementById('cp-vars-list').innerHTML = '';
+      document.getElementById('cp-skip-vars').checked = false;
+      document.getElementById('cp-tasks-list').innerHTML = '<p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
+      document.getElementById('cp-error').textContent = '';
+      showCpStep(1);
+      document.getElementById('create-playbook-modal').classList.add('open');
+    });
+
+    document.getElementById('create-pb-close-btn').addEventListener('click', () => {
+      document.getElementById('create-playbook-modal').classList.remove('open');
+    });
+    document.getElementById('create-playbook-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) document.getElementById('create-playbook-modal').classList.remove('open');
+    });
+
+    function showCpStep(n) {
+      cpState.step = n;
+      document.querySelectorAll('.create-pb-page').forEach(el => el.style.display = 'none');
+      document.querySelector(`.create-pb-page[data-page="${n}"]`).style.display = 'block';
+      document.querySelectorAll('.step-dot').forEach(el => el.classList.toggle('active', parseInt(el.dataset.step) <= n));
+      document.getElementById('cp-prev-btn').style.display = n > 1 ? '' : 'none';
+      document.getElementById('cp-next-btn').style.display = n < cpState.totalSteps ? '' : 'none';
+      document.getElementById('cp-save-btn').style.display = n === cpState.totalSteps ? '' : 'none';
+      if (n === cpState.totalSteps) buildCpSummary();
+      document.getElementById('cp-error').textContent = '';
+    }
+
+    document.getElementById('cp-prev-btn').addEventListener('click', () => {
+      if (cpState.step > 1) showCpStep(cpState.step - 1);
+    });
+
+    document.getElementById('cp-next-btn').addEventListener('click', () => {
+      const err = document.getElementById('cp-error');
+      if (cpState.step === 1) {
+        if (!document.getElementById('cp-name').value.trim()) {
+          err.textContent = '剧本名称不能为空';
+          return;
+        }
+      }
+      if (cpState.step < cpState.totalSteps) showCpStep(cpState.step + 1);
+    });
+
+    // Variables
+    document.getElementById('cp-add-var').addEventListener('click', () => {
+      const idx = cpState.vars.length;
+      cpState.vars.push({ key: '', value: '' });
+      const row = document.createElement('div');
+      row.className = 'form-row';
+      row.style.cssText = 'display:flex;gap:8px;align-items:end';
+      row.innerHTML = `
+        <div style="flex:1"><input class="cp-var-key" data-idx="${idx}" placeholder="变量名" style="width:100%"></div>
+        <div style="flex:1"><input class="cp-var-value" data-idx="${idx}" placeholder="值" style="width:100%"></div>
+        <button class="cp-var-remove" data-idx="${idx}" style="background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:4px 8px;font-size:12px">删除</button>
+      `;
+      document.getElementById('cp-vars-list').appendChild(row);
+      row.querySelector('.cp-var-key').addEventListener('input', (e) => { cpState.vars[idx].key = e.target.value; });
+      row.querySelector('.cp-var-value').addEventListener('input', (e) => { cpState.vars[idx].value = e.target.value; });
+      row.querySelector('.cp-var-remove').addEventListener('click', (e) => {
+        const removeIdx = Array.from(document.getElementById('cp-vars-list').children).indexOf(e.currentTarget.parentElement);
+        cpState.vars.splice(removeIdx, 1);
+        e.currentTarget.parentElement.remove();
+      });
+    });
+
+    // Tasks
+    document.getElementById('cp-add-task').addEventListener('click', () => {
+      const action = document.getElementById('cp-task-action').value;
+      cpTaskCounter++;
+      const task = { name: `任务 ${cpTaskCounter}`, action, args: getActionArgs(action) };
+      cpState.tasks.push(task);
+      renderCpTasks();
+    });
+
+    function getActionArgs(action) {
+      const templates = {
+        command: { cmd: '<命令内容>' },
+        script: { script: '<脚本路径>', dest: '/tmp/', args: '' },
+        upload: { src: '<本地路径>', dest: '<远程路径>', overwrite: true },
+        download: { src: '<远程路径>', dest: '<本地路径>', subdir: true },
+        include: { playbook: '<剧本路径>' },
+      };
+      return JSON.parse(JSON.stringify(templates[action] || {}));
+    }
+
+    function renderCpTasks() {
+      const list = document.getElementById('cp-tasks-list');
+      if (cpState.tasks.length === 0) {
+        list.innerHTML = '<p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
+        return;
+      }
+      list.innerHTML = cpState.tasks.map((t, i) =>
+        `<div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
+          <span style="font-weight:500;font-size:13px;flex:1">${esc(t.name)}</span>
+          <span class="tag">${esc(t.action)}</span>
+          <button class="cp-task-remove" data-idx="${i}" style="background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:11px">删除</button>
+        </div>`
+      ).join('');
+      document.querySelectorAll('.cp-task-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          cpState.tasks.splice(parseInt(btn.dataset.idx), 1);
+          renderCpTasks();
+        });
+      });
+    }
+
+    function buildCpSummary() {
+      const name = document.getElementById('cp-name').value.trim();
+      const desc = document.getElementById('cp-desc').value.trim();
+      const version = document.getElementById('cp-version').value.trim() || '1.0';
+      const mode = document.getElementById('cp-mode').value || 'fail_continue';
+
+      const html = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><strong>名称:</strong> ${esc(name)}</div>
+          <div><strong>版本:</strong> ${esc(version)}</div>
+          <div><strong>描述:</strong> ${esc(desc || '-')}</div>
+          <div><strong>执行模式:</strong> ${mode}</div>
+        </div>
+      `;
+      document.getElementById('cp-summary').innerHTML = html;
+
+      // Build preview YAML (for visual only — the actual YAML is generated server-side)
+      let preview = `name: ${name}\n`;
+      if (desc) preview += `description: ${desc}\n`;
+      preview += `version: "${version}"\nhosts: []\n`;
+      if (mode) preview += `execution_mode: ${mode}\n`;
+      preview += `pre_tasks: []\n`;
+      preview += `tasks:\n`;
+      for (const t of cpState.tasks) {
+        preview += `  - name: ${t.name}\n    action: ${t.action}\n    args:\n`;
+        for (const [k, v] of Object.entries(t.args)) {
+          const val = typeof v === 'string' ? v : JSON.stringify(v);
+          preview += `      ${k}: ${val}\n`;
+        }
+      }
+      preview += `post_tasks: []\n`;
+      document.getElementById('cp-preview').textContent = preview;
+    }
+
+    // Save
+    document.getElementById('cp-save-btn').addEventListener('click', async () => {
+      const err = document.getElementById('cp-error');
+      const name = document.getElementById('cp-name').value.trim();
+      if (!name) { err.textContent = '剧本名称不能为空'; return; }
+
+      // Collect vars
+      const vars = {};
+      if (!document.getElementById('cp-skip-vars').checked) {
+        for (const v of cpState.vars) {
+          if (v.key.trim()) vars[v.key.trim()] = v.value;
+        }
+      }
+
+      const data = {
+        name,
+        description: document.getElementById('cp-desc').value.trim() || undefined,
+        version: document.getElementById('cp-version').value.trim() || '1.0',
+        execution_mode: document.getElementById('cp-mode').value || undefined,
+        vars: Object.keys(vars).length > 0 ? vars : undefined,
+        default_groups: document.getElementById('cp-groups').value.trim() ? document.getElementById('cp-groups').value.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+        default_tags: document.getElementById('cp-tags').value.trim() ? document.getElementById('cp-tags').value.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+        default_skip_tags: document.getElementById('cp-skip-tags').value.trim() ? document.getElementById('cp-skip-tags').value.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+        tasks: cpState.tasks,
+      };
+
+      try {
+        document.getElementById('cp-save-btn').textContent = '保存中…';
+        document.getElementById('cp-save-btn').disabled = true;
+        await api.createPlaybookTemplate(data);
+        document.getElementById('create-playbook-modal').classList.remove('open');
+        loadAll();
+        loadRuns();
+      } catch (e) {
+        err.textContent = e.message;
+      } finally {
+        document.getElementById('cp-save-btn').textContent = '保存剧本';
+        document.getElementById('cp-save-btn').disabled = false;
+      }
     });
 
     loadAll();

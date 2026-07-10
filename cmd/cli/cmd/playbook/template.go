@@ -8,90 +8,11 @@ import (
 	"strconv"
 	"strings"
 
+	playbook "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 var playbookTemplateOutput string
-
-type ActionTemplate struct {
-	Name        string
-	Description string
-	Template    map[string]interface{}
-}
-
-func GetActionTemplates() []ActionTemplate {
-	return actionTemplates
-}
-
-var actionTemplates = []ActionTemplate{
-	{
-		Name:        "command",
-		Description: "执行 Shell 命令",
-		Template: map[string]interface{}{
-			"cmd": "<命令内容>",
-		},
-	},
-	{
-		Name:        "script",
-		Description: "执行脚本文件",
-		Template: map[string]interface{}{
-			"script": "<脚本路径>",
-			"dest":   "/tmp/",
-			"args":   "",
-		},
-	},
-	{
-		Name:        "upload",
-		Description: "上传文件到节点",
-		Template: map[string]interface{}{
-			"src":       "<本地路径>",
-			"dest":      "<远程路径>",
-			"overwrite": true,
-		},
-	},
-	{
-		Name:        "download",
-		Description: "从节点下载文件",
-		Template: map[string]interface{}{
-			"src":    "<远程路径>",
-			"dest":   "<本地路径>",
-			"subdir": true,
-		},
-	},
-	{
-		Name:        "include",
-		Description: "包含其他剧本",
-		Template: map[string]interface{}{
-			"playbook": "<剧本路径>",
-		},
-	},
-}
-
-type TemplateDefaultConfig struct {
-	Groups   []string `yaml:"groups,omitempty"`
-	Tags     []string `yaml:"tags,omitempty"`
-	SkipTags []string `yaml:"skip_tags,omitempty"`
-}
-
-type TemplatePlaybook struct {
-	Name          string                 `yaml:"name"`
-	Description   string                 `yaml:"description,omitempty"`
-	Version       string                 `yaml:"version,omitempty"`
-	Hosts         []string               `yaml:"hosts"`
-	ExecutionMode string                 `yaml:"execution_mode,omitempty"`
-	Default       *TemplateDefaultConfig `yaml:"default,omitempty"`
-	Vars          map[string]interface{} `yaml:"vars,omitempty"`
-	PreTasks      []TemplateTask         `yaml:"pre_tasks"`
-	Tasks         []TemplateTask         `yaml:"tasks"`
-	PostTasks     []TemplateTask         `yaml:"post_tasks"`
-}
-
-type TemplateTask struct {
-	Name   string                 `yaml:"name"`
-	Action string                 `yaml:"action"`
-	Args   map[string]interface{} `yaml:"args"`
-}
 
 func NewPlaybookTemplateCmd() *cobra.Command {
 	templateCmd := &cobra.Command{
@@ -126,7 +47,7 @@ func runPlaybookTemplate(cmd *cobra.Command, args []string) {
 	defaultConfig := promptForDefaultConfig(reader)
 	tasks := promptForTasks(reader)
 
-	playbook := TemplatePlaybook{
+	tpl := playbook.TemplatePlaybook{
 		Name:          name,
 		Description:   description,
 		Version:       version,
@@ -134,12 +55,12 @@ func runPlaybookTemplate(cmd *cobra.Command, args []string) {
 		ExecutionMode: mode,
 		Default:       defaultConfig,
 		Vars:          vars,
-		PreTasks:      []TemplateTask{},
+		PreTasks:      []playbook.TemplateTask{},
 		Tasks:         tasks,
-		PostTasks:     []TemplateTask{},
+		PostTasks:     []playbook.TemplateTask{},
 	}
 
-	playbookYAML, err := yaml.Marshal(&playbook)
+	playbookYAML, err := playbook.RenderTemplateYAML(&tpl)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "生成 YAML 失败: %v\n", err)
 		os.Exit(1)
@@ -246,7 +167,7 @@ func displayActionChoices() {
 	fmt.Println()
 	fmt.Println("请选择任务类型:")
 	fmt.Println("----------------")
-	for i, t := range actionTemplates {
+	for i, t := range playbook.GetActionTemplates() {
 		fmt.Printf("%d. %s  - %s\n", i+1, t.Name, t.Description)
 	}
 	fmt.Println()
@@ -267,7 +188,7 @@ func promptForExecutionMode(reader *bufio.Reader) string {
 	return ""
 }
 
-func promptForDefaultConfig(reader *bufio.Reader) *TemplateDefaultConfig {
+func promptForDefaultConfig(reader *bufio.Reader) *playbook.TemplateDefaultConfig {
 	fmt.Print("是否配置默认值（分组/标签）？(y/n，默认 n): ")
 	input, err := reader.ReadString('\n')
 	if err != nil {
@@ -279,7 +200,7 @@ func promptForDefaultConfig(reader *bufio.Reader) *TemplateDefaultConfig {
 		return nil
 	}
 
-	cfg := &TemplateDefaultConfig{}
+	cfg := &playbook.TemplateDefaultConfig{}
 
 	fmt.Print("默认目标分组 (group，多个用逗号分隔，可选): ")
 	input, err = reader.ReadString('\n')
@@ -332,13 +253,14 @@ func promptForDefaultConfig(reader *bufio.Reader) *TemplateDefaultConfig {
 	return cfg
 }
 
-func promptForTasks(reader *bufio.Reader) []TemplateTask {
-	tasks := []TemplateTask{}
+func promptForTasks(reader *bufio.Reader) []playbook.TemplateTask {
+	tasks := []playbook.TemplateTask{}
 	taskIndex := 1
 
 	for {
 		displayActionChoices()
 
+		actionTemplates := playbook.GetActionTemplates()
 		fmt.Printf("选择任务类型 (1-%d): ", len(actionTemplates))
 		input, err := reader.ReadString('\n')
 		if err != nil {
@@ -360,7 +282,7 @@ func promptForTasks(reader *bufio.Reader) []TemplateTask {
 			argsCopy[k] = v
 		}
 
-		task := TemplateTask{
+		task := playbook.TemplateTask{
 			Name:   fmt.Sprintf("任务 %d", taskIndex),
 			Action: selectedTemplate.Name,
 			Args:   argsCopy,

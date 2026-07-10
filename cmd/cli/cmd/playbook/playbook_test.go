@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/playbook"
+	pb "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/testutil"
 )
 
@@ -101,7 +102,7 @@ func TestPlaybookTemplateCmd(t *testing.T) {
 }
 
 func TestActionTemplatesCount(t *testing.T) {
-	templates := playbook.GetActionTemplates()
+	templates := pb.GetActionTemplates()
 	if len(templates) != 5 {
 		t.Errorf("expected 5 action templates, got %d", len(templates))
 	}
