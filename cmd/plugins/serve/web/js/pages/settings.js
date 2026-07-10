@@ -109,7 +109,10 @@ export function renderSettings(render, navigate, user, api) {
             <option value="anthropic">Anthropic 兼容</option>
           </select>
         </div>
-        <button id="save-ai-config" class="btn btn-primary">保存</button>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button id="save-ai-config" class="btn btn-primary">保存</button>
+          <span id="save-ai-hint" style="font-size:12px;color:var(--success);display:none"></span>
+        </div>
       </div>
     </div>
   `, () => {
@@ -223,7 +226,10 @@ export function renderSettings(render, navigate, user, api) {
         }
       }
       await AIStorage.saveApiKey(userId, key, provider, model, baseUrl, apiFormat);
-      showToast('AI 配置已保存');
+      const hint = document.getElementById('save-ai-hint');
+      hint.textContent = '✓ 保存成功';
+      hint.style.display = '';
+      setTimeout(() => { hint.style.display = 'none'; }, 3000);
     });
     document.getElementById('settings-cancel').addEventListener('click', () => {
       document.getElementById('settings-modal').classList.remove('open');
