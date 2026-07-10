@@ -416,9 +416,8 @@ export function renderFiles(render, navigate, user, api, shell) {
     } else {
       const stagingDir = diskInfo ? diskInfo.staging_dir : '';
       const showCheck = stagingMultiSelect ? '' : 'style="display:none"';
-      list.innerHTML = `<table class="data-table" style="font-size:12px;width:100%;table-layout:fixed">
-        <colgroup><col style="width:36px"><col><col style="width:150px"><col style="width:80px"><col style="width:36px"></colgroup>
-        <thead><tr><th style="width:36px"></th><th>文件名</th><th style="width:150px">时间</th><th style="width:80px;text-align:right">大小</th><th style="width:36px"></th></tr></thead>
+      list.innerHTML = `<table class="data-table" style="font-size:12px">
+        <thead><tr><th style="width:36px"></th><th>文件名</th><th style="min-width:130px">时间</th><th style="min-width:70px;text-align:right">大小</th><th style="width:36px"></th></tr></thead>
         <tbody>${filtered.map(f => {
           const fullPath = stagingDir ? stagingDir + '/' + f.name : f.name;
           const fileTime = f.mod_time || f.create_time || '';
