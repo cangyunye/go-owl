@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"time"
@@ -104,7 +105,7 @@ func (h *AIHandler) Chat(c *gin.Context) {
 		if h.debugMode {
 			promptText = req.Message
 		}
-		h.auditStore.Create(c.Request.Context(), &store.AIAuditRecord{
+		h.auditStore.Create(context.Background(), &store.AIAuditRecord{
 			UserID:    userID,
 			Intent:    "conversation",
 			Result:    "success",

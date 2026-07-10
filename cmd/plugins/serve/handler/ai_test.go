@@ -52,6 +52,7 @@ func aiTestSetup(t *testing.T) (*sql.DB, *AIHandler) {
 
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 
 	ctx := context.Background()
@@ -280,12 +281,15 @@ func TestChat_AuditRecordCreated(t *testing.T) {
 
 	assert.Equal(t, 200, w.Code)
 
-	// Wait for async audit write
-	time.Sleep(100 * time.Millisecond)
-
 	var count int
-	err := h.db.QueryRow("SELECT COUNT(*) FROM ai_audit_log").Scan(&count)
-	require.NoError(t, err)
+	for i := 0; i < 20; i++ {
+		err := h.db.QueryRow("SELECT COUNT(*) FROM ai_audit_log").Scan(&count)
+		require.NoError(t, err)
+		if count > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	assert.Equal(t, 1, count)
 }
 
@@ -331,6 +335,7 @@ func TestAIDebugMode_IncludesPromptTextInAudit(t *testing.T) {
 
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 
 	ctx := context.Background()
@@ -374,11 +379,14 @@ func TestAIDebugMode_IncludesPromptTextInAudit(t *testing.T) {
 
 	assert.Equal(t, 200, w.Code)
 
-	// Wait for async audit and check
-	time.Sleep(100 * time.Millisecond)
-
 	var promptText string
-	err = db.QueryRow("SELECT prompt_text FROM ai_audit_log ORDER BY created_at DESC LIMIT 1").Scan(&promptText)
+	for i := 0; i < 20; i++ {
+		err = db.QueryRow("SELECT prompt_text FROM ai_audit_log ORDER BY created_at DESC LIMIT 1").Scan(&promptText)
+		if err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	require.NoError(t, err)
 	assert.NotEmpty(t, promptText, "prompt_text should be set when debug mode is on")
 }
@@ -388,6 +396,7 @@ func TestAIDebugMode_OmitsPromptTextByDefault(t *testing.T) {
 
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 
 	ctx := context.Background()
@@ -431,11 +440,14 @@ func TestAIDebugMode_OmitsPromptTextByDefault(t *testing.T) {
 
 	assert.Equal(t, 200, w.Code)
 
-	// Wait for async audit
-	time.Sleep(100 * time.Millisecond)
-
 	var promptText string
-	err = db.QueryRow("SELECT prompt_text FROM ai_audit_log ORDER BY created_at DESC LIMIT 1").Scan(&promptText)
+	for i := 0; i < 20; i++ {
+		err = db.QueryRow("SELECT prompt_text FROM ai_audit_log ORDER BY created_at DESC LIMIT 1").Scan(&promptText)
+		if err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	require.NoError(t, err)
 	assert.Empty(t, promptText, "prompt_text should be empty when debug mode is off")
 }

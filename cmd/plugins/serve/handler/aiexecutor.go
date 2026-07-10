@@ -194,23 +194,25 @@ func (e *WebExecutor) NodeCheck(ctx context.Context, params ai2.NodeCheckParams)
 	var nodeIDs []string
 	if params.All {
 		rows, err := e.db.QueryContext(ctx, "SELECT id FROM nodes")
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var id string
-				rows.Scan(&id)
-				nodeIDs = append(nodeIDs, id)
-			}
+		if err != nil {
+			return nil, fmt.Errorf("query nodes: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			rows.Scan(&id)
+			nodeIDs = append(nodeIDs, id)
 		}
 	} else if params.Group != "" {
 		rows, err := e.db.QueryContext(ctx, "SELECT id FROM nodes WHERE groups LIKE ?", "%\""+params.Group+"\"%")
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var id string
-				rows.Scan(&id)
-				nodeIDs = append(nodeIDs, id)
-			}
+		if err != nil {
+			return nil, fmt.Errorf("query nodes: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			rows.Scan(&id)
+			nodeIDs = append(nodeIDs, id)
 		}
 	} else {
 		nodeIDs = params.Nodes
