@@ -183,8 +183,10 @@ export const api = {
   playbookSettingsPath: () =>
     request('GET', '/playbook/settings/path'),
 
-  aiChat: (message) =>
-    request('POST', '/ai/chat', { message }),
+  getSessionKey: () => request('GET', '/ai/session-key'),
+  aiChat: (message, sessionId, encryptedApiKey) => request('POST', '/ai/chat', { message, session_id: sessionId, encrypted_api_key: encryptedApiKey }),
+  getAiContext: () => request('GET', '/ai/context'),
+  aiAudit: (record) => request('POST', '/ai/audit', record),
 
   staging: {
     files: () =>

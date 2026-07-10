@@ -73,7 +73,43 @@ export function renderSettings(render, navigate, user, api) {
         </div>
       </div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><h3>AI 助手</h3></div>
+      <div class="card-body">
+        <div class="settings-field" style="margin-bottom:12px">
+          <label style="display:block;margin-bottom:4px;color:var(--text-muted);font-size:13px">API Key</label>
+          <input type="password" id="ai-api-key" class="input" placeholder="sk-..." style="width:100%" />
+        </div>
+        <div class="settings-field" style="margin-bottom:12px">
+          <label style="display:block;margin-bottom:4px;color:var(--text-muted);font-size:13px">Provider</label>
+          <select id="ai-provider" class="input" style="width:100%">
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="settings-field" style="margin-bottom:12px">
+          <label style="display:block;margin-bottom:4px;color:var(--text-muted);font-size:13px">Model</label>
+          <input type="text" id="ai-model" class="input" placeholder="gpt-4o" style="width:100%" />
+        </div>
+        <button id="save-ai-config" class="btn btn-primary">保存</button>
+      </div>
+    </div>
   `, () => {
+    document.getElementById('save-ai-config')?.addEventListener('click', async () => {
+      const key = document.getElementById('ai-api-key').value;
+      const provider = document.getElementById('ai-provider').value;
+      const model = document.getElementById('ai-model').value;
+      const userId = user?.id || user?.username || 'default';
+      await AIStorage.saveApiKey(userId, key, provider, model);
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = 'AI 配置已保存';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2000);
+    });
     document.getElementById('settings-cancel').addEventListener('click', () => {
       document.getElementById('settings-modal').classList.remove('open');
     });

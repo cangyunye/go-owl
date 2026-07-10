@@ -1,5 +1,18 @@
 export function renderAI(render, navigate, user, api, shell) {
   let system = { nodes: { total: 0, online: 0, offline: 0, warn: 0 } };
+  let sessionId = null;
+  let publicKeySpki = null;
+  let chatMessages = [];
+
+  async function loadSessionKey() {
+    try {
+      const data = await api.getSessionKey();
+      sessionId = data.session_id;
+      publicKeySpki = data.public_key_spki;
+    } catch (e) {
+      console.error('Failed to load session key', e);
+    }
+  }
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
@@ -65,14 +78,32 @@ export function renderAI(render, navigate, user, api, shell) {
     showThinking();
 
     try {
-      const res = await api.aiChat(text);
+      const currentUser = user;
+      const keyData = await AIStorage.loadApiKey(currentUser.id || currentUser.username);
+
+      let payload = { message: text };
+
+      if (keyData && keyData.apiKey && sessionId && publicKeySpki) {
+        const encryptedKey = await CryptoWallet.encryptApiKey(publicKeySpki, keyData.apiKey);
+        payload.session_id = sessionId;
+        payload.encrypted_api_key = encryptedKey;
+      }
+
+      const res = await api.aiChat(payload.message, payload.session_id, payload.encrypted_api_key);
       hideThinking();
       if (res && res.reply) {
         addMsg('assistant', esc(res.reply) + navChips(res.intent));
+        chatMessages.push({ role: 'user', content: text });
+        chatMessages.push({ role: 'assistant', content: res.reply });
+        AIStorage.saveConversation({
+          id: Date.now().toString(),
+          messages: chatMessages,
+          createdAt: new Date().toISOString()
+        }).catch(() => {});
       }
-    } catch {
+    } catch (e) {
       hideThinking();
-      addMsg('assistant', '抱歉，我现在无法响应。请稍后重试。' + navChips(''));
+      addMsg('assistant', '抱歉，我现在无法响应。' + esc(e.message || '请稍后重试。'));
     }
   }
 
@@ -140,6 +171,7 @@ export function renderAI(render, navigate, user, api, shell) {
     </div>
   `, () => {
     loadStats();
+    loadSessionKey();
 
     const input = document.getElementById('chat-input');
     const sendBtn = document.getElementById('send-btn');
