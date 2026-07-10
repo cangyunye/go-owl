@@ -16,6 +16,213 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// CLIExecutor calls the owl CLI binary via runOwlCommand
+type CLIExecutor struct {
+	nodeMgr   node.Manager
+	nodeStore NodeStoreAdapter
+}
+
+func NewCLIExecutor(nodeMgr node.Manager, nodeStore NodeStoreAdapter) *CLIExecutor {
+	return &CLIExecutor{nodeMgr: nodeMgr, nodeStore: nodeStore}
+}
+
+func (e *CLIExecutor) QueryNodes(ctx context.Context, p QueryNodesParams) (*QueryNodesResult, error) {
+	args := []string{"node", "list", "--no-color"}
+	if p.Group != "" {
+		args = append(args, "--groups", p.Group)
+	}
+	if p.Status != "" {
+		args = append(args, "--status", p.Status)
+	}
+	if p.Format != "" && p.Format != "table" {
+		args = append(args, "--format", p.Format)
+	}
+	if p.Search != "" {
+		nodes := e.nodeMgr.SearchByName(p.Search)
+		if len(nodes) == 0 {
+			return &QueryNodesResult{"No matching nodes found"}, nil
+		}
+		var names []string
+		for _, n := range nodes {
+			names = append(names, n.Name)
+		}
+		args = append(args, "--nodes", strings.Join(names, ","))
+	}
+	if p.Labels != nil {
+		for k, v := range labelKeyMap {
+			if val, ok := p.Labels[k]; ok {
+				args = append(args, "--label", fmt.Sprintf("%s=%s", v, val))
+			}
+		}
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &QueryNodesResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) ExecuteCommand(ctx context.Context, p ExecCommandParams) (*ExecResult, error) {
+	args := []string{"exec", "run", p.Command, "--no-color", "--format", p.Format}
+	if p.Format == "" {
+		args = append(args, "--format", "simple")
+	}
+	if p.Mode == "serial" {
+		args = append(args, "--serial")
+	}
+	if p.Timeout > 0 && p.Timeout != 30 {
+		args = append(args, "--timeout", fmt.Sprintf("%d", p.Timeout))
+	}
+	if len(p.Nodes) > 0 {
+		args = append(args, "--nodes", strings.Join(p.Nodes, ","))
+	}
+	if p.Group != "" {
+		args = append(args, "--groups", p.Group)
+	}
+	if p.Label != "" {
+		args = append(args, "--label", p.Label)
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &ExecResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) ExecuteScript(ctx context.Context, p ExecScriptParams) (*ExecScriptResult, error) {
+	args := []string{"exec", "script", p.Script, "--no-color"}
+	if p.Inline {
+		args = append(args, "--inline")
+	}
+	if p.Dest != "" && p.Dest != "/tmp" {
+		args = append(args, "--dest", p.Dest)
+	}
+	if p.Args != "" {
+		args = append(args, "--args", p.Args)
+	}
+	if p.Timeout > 0 && p.Timeout != 300 {
+		args = append(args, "--timeout", fmt.Sprintf("%d", p.Timeout))
+	}
+	if p.Keep {
+		args = append(args, "--keep")
+	}
+	if len(p.Nodes) > 0 {
+		args = append(args, "--nodes", strings.Join(p.Nodes, ","))
+	}
+	if p.Group != "" {
+		args = append(args, "--groups", p.Group)
+	}
+	if p.Label != "" {
+		args = append(args, "--label", p.Label)
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &ExecScriptResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) TransferFile(ctx context.Context, p TransferFileParams) (*TransferResult, error) {
+	mode := p.Mode
+	if mode == "" {
+		if len(p.Nodes) >= 5 {
+			mode = "diffusion"
+		} else {
+			mode = "direct"
+		}
+	}
+	var args []string
+	if mode == "diffusion" {
+		args = []string{"file", "transfer", p.SourceFile, "--nodes", strings.Join(p.Nodes, ","), "--dest", p.DestDir}
+	} else {
+		args = []string{"file", "upload", p.SourceFile, "--nodes", strings.Join(p.Nodes, ","), "--dest", p.DestDir}
+	}
+	if p.Permission != "" && p.Permission != "0644" {
+		args = append(args, "--mode", p.Permission)
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &TransferResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) GeneratePlaybook(ctx context.Context, p GeneratePlaybookParams) (*GeneratePlaybookResult, error) {
+	args := []string{"playbook", "generate", p.Requirement}
+	if p.Vars != nil {
+		vJSON, _ := json.Marshal(p.Vars)
+		args = append(args, "--vars", string(vJSON))
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &GeneratePlaybookResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) ListPlaybooks(ctx context.Context) (*ListPlaybooksResult, error) {
+	result, err := runOwlCommand(ctx, []string{"playbook", "list", "--no-color"})
+	if err != nil {
+		return nil, err
+	}
+	return &ListPlaybooksResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) PlaybookInfo(ctx context.Context, p PlaybookInfoParams) (*PlaybookInfoResult, error) {
+	result, err := runOwlCommand(ctx, []string{"playbook", "info", p.Name})
+	if err != nil {
+		return nil, err
+	}
+	return &PlaybookInfoResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) ValidatePlaybook(ctx context.Context, p ValidatePlaybookParams) (*ValidateResult, error) {
+	result, err := runOwlCommand(ctx, []string{"playbook", "validate", p.File})
+	if err != nil {
+		return nil, err
+	}
+	return &ValidateResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) NodeCheck(ctx context.Context, p NodeCheckParams) (*NodeCheckResult, error) {
+	args := []string{"node", "check", "--no-color"}
+	if p.All {
+		args = append(args, "--all")
+	}
+	if p.Group != "" {
+		args = append(args, "--groups", p.Group)
+	}
+	if len(p.Nodes) > 0 {
+		args = append(args, p.Nodes...)
+	}
+	if p.Timeout > 0 && p.Timeout != 10 {
+		args = append(args, "--timeout", fmt.Sprintf("%ds", p.Timeout))
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeCheckResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) QueryDatabase(ctx context.Context, p QueryDatabaseParams) (*QueryDatabaseResult, error) {
+	args := []string{"node", "list", "--no-color"}
+	if p.Group != "" {
+		args = append(args, "--groups", p.Group)
+	}
+	if p.Status != "" {
+		args = append(args, "--status", p.Status)
+	}
+	if p.Format != "" && p.Format != "table" {
+		args = append(args, "--format", p.Format)
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &QueryDatabaseResult{Text: result}, nil
+}
+
 // getOwlPath finds the owl executable path
 func getOwlPath() string {
 	// First check if we're in the project directory
@@ -72,12 +279,13 @@ type Tool interface {
 }
 
 type QueryNodesTool struct {
+	executor  Executor
 	nodeMgr   node.Manager
 	nodeStore NodeStoreAdapter
 }
 
-func NewQueryNodesTool(nodeMgr node.Manager, nodeStore NodeStoreAdapter) *QueryNodesTool {
-	return &QueryNodesTool{nodeMgr: nodeMgr, nodeStore: nodeStore}
+func NewQueryNodesTool(executor Executor, nodeMgr node.Manager, nodeStore NodeStoreAdapter) *QueryNodesTool {
+	return &QueryNodesTool{executor: executor, nodeMgr: nodeMgr, nodeStore: nodeStore}
 }
 
 func (t *QueryNodesTool) Name() string {
@@ -132,6 +340,19 @@ func (t *QueryNodesTool) refreshNodeData() {
 }
 
 func (t *QueryNodesTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	if t.executor != nil {
+		p := QueryNodesParams{}
+		p.Group, _ = params["group"].(string)
+		p.Labels, _ = params["labels"].(map[string]interface{})
+		p.Status, _ = params["status"].(string)
+		p.Search, _ = params["search"].(string)
+		p.Format, _ = params["format"].(string)
+		result, err := t.executor.QueryNodes(ctx, p)
+		if err == nil {
+			return result.Text, nil
+		}
+	}
+
 	debugLogger.Debugw("QueryNodesTool 执行开始",
 		"params", fmt.Sprintf("%+v", params))
 
@@ -407,11 +628,12 @@ func padRight(s string, width int) string {
 }
 
 type ExecuteCommandTool struct {
-	nodeMgr node.Manager
+	executor Executor
+	nodeMgr  node.Manager
 }
 
-func NewExecuteCommandTool(nodeMgr node.Manager) *ExecuteCommandTool {
-	return &ExecuteCommandTool{nodeMgr: nodeMgr}
+func NewExecuteCommandTool(executor Executor, nodeMgr node.Manager) *ExecuteCommandTool {
+	return &ExecuteCommandTool{executor: executor, nodeMgr: nodeMgr}
 }
 
 func (t *ExecuteCommandTool) Name() string {
@@ -490,6 +712,29 @@ func (t *ExecuteCommandTool) Execute(ctx context.Context, params map[string]inte
 	mode, _ := params["mode"].(string)
 	if mode == "" {
 		mode = "parallel"
+	}
+
+	if t.executor != nil {
+		p := ExecCommandParams{
+			Command: command,
+			Timeout: timeout,
+			Format:  format,
+			Mode:    mode,
+		}
+		if nodeList, ok := params["nodes"].([]interface{}); ok {
+			for _, n := range nodeList {
+				if s, ok := n.(string); ok {
+					p.Nodes = append(p.Nodes, s)
+				}
+			}
+		}
+		p.Group, _ = params["group"].(string)
+		p.Label, _ = params["label"].(string)
+		p.Search, _ = params["search"].(string)
+		result, err := t.executor.ExecuteCommand(ctx, p)
+		if err == nil {
+			return result.Text, nil
+		}
 	}
 
 	// Build owl exec run command arguments
@@ -675,11 +920,12 @@ func (t *ExecuteCommandTool) validateCommand(cmd string) error {
 }
 
 type ExecuteScriptTool struct {
-	nodeMgr node.Manager
+	executor Executor
+	nodeMgr  node.Manager
 }
 
-func NewExecuteScriptTool(nodeMgr node.Manager) *ExecuteScriptTool {
-	return &ExecuteScriptTool{nodeMgr: nodeMgr}
+func NewExecuteScriptTool(executor Executor, nodeMgr node.Manager) *ExecuteScriptTool {
+	return &ExecuteScriptTool{executor: executor, nodeMgr: nodeMgr}
 }
 
 func (t *ExecuteScriptTool) Name() string {
@@ -751,31 +997,59 @@ func (t *ExecuteScriptTool) Execute(ctx context.Context, params map[string]inter
 		return "", fmt.Errorf("missing script")
 	}
 
+	inline, _ := params["inline"].(bool)
+	dest, _ := params["dest"].(string)
+	scriptArgs, _ := params["args"].(string)
+	timeout := 300
+	if tv, ok := params["timeout"].(float64); ok {
+		timeout = int(tv)
+	}
+	keep, _ := params["keep"].(bool)
+
+	if t.executor != nil {
+		p := ExecScriptParams{
+			Script:  script,
+			Inline:  inline,
+			Dest:    dest,
+			Args:    scriptArgs,
+			Timeout: timeout,
+			Keep:    keep,
+		}
+		if nodeList, ok := params["nodes"].([]interface{}); ok {
+			for _, n := range nodeList {
+				if s, ok := n.(string); ok {
+					p.Nodes = append(p.Nodes, s)
+				}
+			}
+		}
+		p.Group, _ = params["group"].(string)
+		p.Label, _ = params["label"].(string)
+		p.Search, _ = params["search"].(string)
+		result, err := t.executor.ExecuteScript(ctx, p)
+		if err == nil {
+			return result.Text, nil
+		}
+	}
+
 	// Build owl exec script command arguments
 	args := []string{"exec", "script", script, "--no-color"}
 
-	inline, _ := params["inline"].(bool)
 	if inline {
 		args = append(args, "--inline")
 	}
 
-	dest, _ := params["dest"].(string)
 	if dest != "" && dest != "/tmp" {
 		args = append(args, "--dest", dest)
 	}
 
-	scriptArgs, _ := params["args"].(string)
 	if scriptArgs != "" {
 		args = append(args, "--args", scriptArgs)
 	}
 
-	timeout := 300
-	if tv, ok := params["timeout"].(float64); ok {
-		timeout = int(tv)
+	if timeout != 300 {
 		args = append(args, "--timeout", fmt.Sprintf("%d", timeout))
 	}
 
-	keep, _ := params["keep"].(bool)
 	if keep {
 		args = append(args, "--keep")
 	}
@@ -842,11 +1116,12 @@ func (t *ExecuteScriptTool) Execute(ctx context.Context, params map[string]inter
 }
 
 type GeneratePlaybookTool struct {
-	nodeMgr node.Manager
+	executor Executor
+	nodeMgr  node.Manager
 }
 
-func NewGeneratePlaybookTool(nodeMgr node.Manager) *GeneratePlaybookTool {
-	return &GeneratePlaybookTool{nodeMgr: nodeMgr}
+func NewGeneratePlaybookTool(executor Executor, nodeMgr node.Manager) *GeneratePlaybookTool {
+	return &GeneratePlaybookTool{executor: executor, nodeMgr: nodeMgr}
 }
 
 func (t *GeneratePlaybookTool) Name() string {
@@ -883,6 +1158,17 @@ func (t *GeneratePlaybookTool) Execute(ctx context.Context, params map[string]in
 	requirement, ok := params["requirement"].(string)
 	if !ok || requirement == "" {
 		return "", fmt.Errorf("missing requirement description")
+	}
+
+	if t.executor != nil {
+		p := GeneratePlaybookParams{
+			Requirement: requirement,
+		}
+		p.Vars, _ = params["vars"].(map[string]interface{})
+		result, err := t.executor.GeneratePlaybook(ctx, p)
+		if err == nil {
+			return result.Text, nil
+		}
 	}
 
 	nodes := t.nodeMgr.List()
@@ -958,11 +1244,12 @@ func (t *GeneratePlaybookTool) extractServiceName(req string) string {
 }
 
 type TransferFileTool struct {
-	nodeMgr node.Manager
+	executor Executor
+	nodeMgr  node.Manager
 }
 
-func NewTransferFileTool(nodeMgr node.Manager) *TransferFileTool {
-	return &TransferFileTool{nodeMgr: nodeMgr}
+func NewTransferFileTool(executor Executor, nodeMgr node.Manager) *TransferFileTool {
+	return &TransferFileTool{executor: executor, nodeMgr: nodeMgr}
 }
 
 func (t *TransferFileTool) Name() string {
@@ -1020,6 +1307,27 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 	}
 
 	var nodeNames []string
+
+	if t.executor != nil {
+		p := TransferFileParams{
+			SourceFile: sourceFile,
+			DestDir:    destDir,
+		}
+		if nodeList, ok := params["nodes"].([]interface{}); ok {
+			for _, n := range nodeList {
+				if s, ok := n.(string); ok {
+					p.Nodes = append(p.Nodes, s)
+				}
+			}
+		}
+		p.Mode, _ = params["mode"].(string)
+		p.Permission, _ = params["permission"].(string)
+		p.Search, _ = params["search"].(string)
+		result, err := t.executor.TransferFile(ctx, p)
+		if err == nil {
+			return result.Text, nil
+		}
+	}
 
 	if search, ok := params["search"].(string); ok && search != "" {
 		nodes := t.nodeMgr.SearchByName(search)
@@ -1084,11 +1392,12 @@ func (t *TransferFileTool) Execute(ctx context.Context, params map[string]interf
 }
 
 type QueryDatabaseTool struct {
-	nodeMgr node.Manager
+	executor Executor
+	nodeMgr  node.Manager
 }
 
-func NewQueryDatabaseTool(nodeMgr node.Manager) *QueryDatabaseTool {
-	return &QueryDatabaseTool{nodeMgr: nodeMgr}
+func NewQueryDatabaseTool(executor Executor, nodeMgr node.Manager) *QueryDatabaseTool {
+	return &QueryDatabaseTool{executor: executor, nodeMgr: nodeMgr}
 }
 
 func (t *QueryDatabaseTool) Name() string {
@@ -1175,6 +1484,22 @@ func (t *QueryDatabaseTool) Execute(ctx context.Context, params map[string]inter
 	status, _ := params["status"].(string)
 	search, _ := params["search"].(string)
 	query, hasQuery := params["query"].(string)
+
+	if t.executor != nil && !hasQuery {
+		p := QueryDatabaseParams{
+			Group:  group,
+			Status: status,
+			Search: search,
+			Format: format,
+		}
+		if labelsRaw != nil {
+			p.Labels = labelsRaw
+		}
+		result, err := t.executor.QueryDatabase(ctx, p)
+		if err == nil {
+			return result.Text, nil
+		}
+	}
 
 	// Build owl node list command arguments
 	args := []string{"node", "list", "--no-color"}
@@ -1458,10 +1783,12 @@ func (t *QueryDatabaseTool) applyWhere(nodes []*model.Node, where string) []*mod
 	return result
 }
 
-type ListPlaybooksTool struct{}
+type ListPlaybooksTool struct {
+	executor Executor
+}
 
-func NewListPlaybooksTool() *ListPlaybooksTool {
-	return &ListPlaybooksTool{}
+func NewListPlaybooksTool(executor Executor) *ListPlaybooksTool {
+	return &ListPlaybooksTool{executor: executor}
 }
 
 func (t *ListPlaybooksTool) Name() string {
@@ -1493,6 +1820,13 @@ func (t *ListPlaybooksTool) Validate(params map[string]interface{}) error {
 }
 
 func (t *ListPlaybooksTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	if t.executor != nil {
+		result, err := t.executor.ListPlaybooks(ctx)
+		if err == nil {
+			return result.Text, nil
+		}
+	}
+
 	library := defaultPlaybookDir()
 	if _, err := os.Stat(library); os.IsNotExist(err) {
 		return "No playbooks found. Playbooks directory does not exist.", nil
@@ -1551,11 +1885,12 @@ type playbookInfo struct {
 }
 
 type RunPlaybookTool struct {
-	nodeMgr node.Manager
+	executor Executor
+	nodeMgr  node.Manager
 }
 
-func NewRunPlaybookTool(nodeMgr node.Manager) *RunPlaybookTool {
-	return &RunPlaybookTool{nodeMgr: nodeMgr}
+func NewRunPlaybookTool(executor Executor, nodeMgr node.Manager) *RunPlaybookTool {
+	return &RunPlaybookTool{executor: executor, nodeMgr: nodeMgr}
 }
 
 func (t *RunPlaybookTool) Name() string {
@@ -1671,10 +2006,12 @@ func (t *RunPlaybookTool) Execute(ctx context.Context, params map[string]interfa
 	return sb.String(), nil
 }
 
-type PlaybookInfoTool struct{}
+type PlaybookInfoTool struct {
+	executor Executor
+}
 
-func NewPlaybookInfoTool() *PlaybookInfoTool {
-	return &PlaybookInfoTool{}
+func NewPlaybookInfoTool(executor Executor) *PlaybookInfoTool {
+	return &PlaybookInfoTool{executor: executor}
 }
 
 func (t *PlaybookInfoTool) Name() string {
@@ -1707,6 +2044,13 @@ func (t *PlaybookInfoTool) Validate(params map[string]interface{}) error {
 
 func (t *PlaybookInfoTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	name, _ := params["name"].(string)
+
+	if t.executor != nil {
+		result, err := t.executor.PlaybookInfo(ctx, PlaybookInfoParams{Name: name})
+		if err == nil {
+			return result.Text, nil
+		}
+	}
 
 	library := defaultPlaybookDir()
 	playbookPath := filepath.Join(library, name)
@@ -1749,10 +2093,12 @@ func (t *PlaybookInfoTool) Execute(ctx context.Context, params map[string]interf
 	return sb.String(), nil
 }
 
-type ValidatePlaybookTool struct{}
+type ValidatePlaybookTool struct {
+	executor Executor
+}
 
-func NewValidatePlaybookTool() *ValidatePlaybookTool {
-	return &ValidatePlaybookTool{}
+func NewValidatePlaybookTool(executor Executor) *ValidatePlaybookTool {
+	return &ValidatePlaybookTool{executor: executor}
 }
 
 func (t *ValidatePlaybookTool) Name() string {
@@ -1786,6 +2132,13 @@ func (t *ValidatePlaybookTool) Validate(params map[string]interface{}) error {
 func (t *ValidatePlaybookTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	filePath, _ := params["file"].(string)
 
+	if t.executor != nil {
+		result, err := t.executor.ValidatePlaybook(ctx, ValidatePlaybookParams{File: filePath})
+		if err == nil {
+			return result.Text, nil
+		}
+	}
+
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %w", err)
@@ -1800,11 +2153,12 @@ func (t *ValidatePlaybookTool) Execute(ctx context.Context, params map[string]in
 }
 
 type NodeCheckTool struct {
-	nodeMgr node.Manager
+	executor Executor
+	nodeMgr  node.Manager
 }
 
-func NewNodeCheckTool(nodeMgr node.Manager) *NodeCheckTool {
-	return &NodeCheckTool{nodeMgr: nodeMgr}
+func NewNodeCheckTool(executor Executor, nodeMgr node.Manager) *NodeCheckTool {
+	return &NodeCheckTool{executor: executor, nodeMgr: nodeMgr}
 }
 
 func (t *NodeCheckTool) Name() string {
@@ -1862,6 +2216,27 @@ func (t *NodeCheckTool) Validate(params map[string]interface{}) error {
 }
 
 func (t *NodeCheckTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
+	if t.executor != nil {
+		p := NodeCheckParams{}
+		if nodeList, ok := params["nodes"].([]interface{}); ok {
+			for _, n := range nodeList {
+				if s, ok := n.(string); ok {
+					p.Nodes = append(p.Nodes, s)
+				}
+			}
+		}
+		p.Group, _ = params["group"].(string)
+		p.All, _ = params["all"].(bool)
+		if tv, ok := params["timeout"].(float64); ok {
+			p.Timeout = int(tv)
+		}
+		p.Update, _ = params["update"].(bool)
+		result, err := t.executor.NodeCheck(ctx, p)
+		if err == nil {
+			return result.Text, nil
+		}
+	}
+
 	var nodes []*model.Node
 
 	if all, _ := params["all"].(bool); all {

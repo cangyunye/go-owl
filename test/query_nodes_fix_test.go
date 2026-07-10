@@ -88,7 +88,7 @@ func (m *mockNodeMgrForFixTest) Refresh() error { return nil }
 // TestQueryNodes_FixSearchBeforeFilter 验证修复后的查询逻辑：先搜索后过滤
 func TestQueryNodes_FixSearchBeforeFilter(t *testing.T) {
 	mgr := newMockNodeMgrForFixTest()
-	tool := ai.NewQueryNodesTool(mgr, nil)
+	tool := ai.NewQueryNodesTool(nil, mgr, nil)
 	ctx := context.Background()
 
 	// 测试场景1: 搜索"server"应该返回所有包含"server"的节点（4个）

@@ -155,7 +155,7 @@ func TestExtractCommand(t *testing.T) {
 
 func TestQueryDatabaseTool_StructuredFilter(t *testing.T) {
 	mgr := &mockNodeMgr{}
-	tool := NewQueryDatabaseTool(mgr)
+	tool := NewQueryDatabaseTool(nil, mgr)
 	ctx := context.Background()
 
 	t.Run("Group filter", func(t *testing.T) {
@@ -191,7 +191,7 @@ func TestQueryDatabaseTool_StructuredFilter(t *testing.T) {
 
 func TestQueryDatabaseTool_SQLSelect(t *testing.T) {
 	mgr := &mockNodeMgr{}
-	tool := NewQueryDatabaseTool(mgr)
+	tool := NewQueryDatabaseTool(nil, mgr)
 	ctx := context.Background()
 
 	t.Run("SELECT all", func(t *testing.T) {
@@ -217,7 +217,7 @@ func TestQueryDatabaseTool_SQLSelect(t *testing.T) {
 
 func TestQueryDatabaseTool_RejectWrite(t *testing.T) {
 	mgr := &mockNodeMgr{}
-	tool := NewQueryDatabaseTool(mgr)
+	tool := NewQueryDatabaseTool(nil, mgr)
 	ctx := context.Background()
 
 	forbidden := []string{"INSERT INTO nodes", "UPDATE nodes SET", "DELETE FROM nodes", "DROP TABLE nodes", "ALTER TABLE nodes"}
@@ -337,15 +337,26 @@ func TestExtractFilePath(t *testing.T) {
 
 func TestNewAgent(t *testing.T) {
 	config := &Config{}
-	agent, err := NewAgent(config, nil, nil)
+	agent, err := NewAgent(nil, config, nil, nil, nil)
 	if err != nil {
-		t.Fatalf("Expected NewAgent to succeed, got error: %v", err)
+		t.Fatalf("Expected NewAgent to succeed with nil executor, got error: %v", err)
 	}
 	if agent == nil {
 		t.Fatal("Expected agent to be non-nil")
 	}
 	if agent.registry == nil {
 		t.Error("Expected registry to be initialized")
+	}
+}
+
+func TestNewAgentWithNilExecutor(t *testing.T) {
+	config := &Config{}
+	agent, err := NewAgent(nil, config, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Expected NewAgent to succeed with nil executor, got error: %v", err)
+	}
+	if agent == nil {
+		t.Fatal("Expected agent to be non-nil")
 	}
 }
 
@@ -367,7 +378,7 @@ func TestSessionManager(t *testing.T) {
 func TestExecuteToolCallWithInvalidParams(t *testing.T) {
 	ctx := context.Background()
 	registry := NewToolRegistry()
-	registry.Register(NewExecuteCommandTool(&mockNodeMgr{}))
+	registry.Register(NewExecuteCommandTool(nil, &mockNodeMgr{}))
 	agent := &Agent{registry: registry}
 
 	invalidParams := map[string]interface{}{
@@ -388,7 +399,7 @@ func TestExecuteToolCallWithInvalidParams(t *testing.T) {
 func TestExecuteToolCallWithMissingRequiredParams(t *testing.T) {
 	ctx := context.Background()
 	registry := NewToolRegistry()
-	registry.Register(NewExecuteCommandTool(&mockNodeMgr{}))
+	registry.Register(NewExecuteCommandTool(nil, &mockNodeMgr{}))
 	agent := &Agent{registry: registry}
 
 	missingParams := map[string]interface{}{
@@ -408,7 +419,7 @@ func TestExecuteToolCallWithMissingRequiredParams(t *testing.T) {
 func TestExecuteToolCallWithValidParams(t *testing.T) {
 	ctx := context.Background()
 	registry := NewToolRegistry()
-	registry.Register(NewExecuteCommandTool(&mockNodeMgr{}))
+	registry.Register(NewExecuteCommandTool(nil, &mockNodeMgr{}))
 	agent := &Agent{registry: registry}
 
 	validParams := map[string]interface{}{
@@ -444,7 +455,7 @@ func TestExecuteToolCallWithUnknownTool(t *testing.T) {
 func TestTransferFileValidation(t *testing.T) {
 	ctx := context.Background()
 	registry := NewToolRegistry()
-	registry.Register(NewTransferFileTool(&mockNodeMgr{}))
+	registry.Register(NewTransferFileTool(nil, &mockNodeMgr{}))
 	agent := &Agent{registry: registry}
 
 	tests := []struct {
@@ -582,7 +593,7 @@ func newTestAgentForRoute(responses []string) *Agent {
 			{Name: "node1", Address: "127.0.0.1", Port: 22, Status: "online"},
 		},
 	}
-	agent, _ := NewAgent(config, mgr, nil)
+	agent, _ := NewAgent(nil, config, mgr, nil, nil)
 	agent.SetChatModel(&mockChatModel{responses: responses})
 	return agent
 }
@@ -724,7 +735,7 @@ func TestProcessRouterError(t *testing.T) {
 			{Name: "node1", Address: "127.0.0.1", Port: 22, Status: "online"},
 		},
 	}
-	agent, _ := NewAgent(config, mgr, nil)
+	agent, _ := NewAgent(nil, config, mgr, nil, nil)
 	agent.SetChatModel(mock)
 
 	ctx := context.Background()
@@ -884,7 +895,7 @@ func TestDynamicHintNoInjectionForQueryNodes(t *testing.T) {
 func TestQueryNodesValidation(t *testing.T) {
 	ctx := context.Background()
 	registry := NewToolRegistry()
-	registry.Register(NewQueryNodesTool(&mockNodeMgr{}))
+	registry.Register(NewQueryNodesTool(nil, &mockNodeMgr{}, nil))
 	agent := &Agent{registry: registry}
 
 	tests := []struct {

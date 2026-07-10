@@ -276,7 +276,8 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	sessionID := fmt.Sprintf("ai-%d", time.Now().UnixMilli())
 
-	agent, err := ai.NewAgent(config, nodeMgr, nodeStoreAdapter, playbookParser, aiVerbose)
+	executor := ai.NewCLIExecutor(nodeMgr, nodeStoreAdapter)
+	agent, err := ai.NewAgent(executor, config, nodeMgr, nodeStoreAdapter, playbookParser, aiVerbose)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize Eino LLM: %v, using fallback mode\n", err)
 	}

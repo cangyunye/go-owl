@@ -119,19 +119,19 @@ var toolHints = map[string]string{
 	"transfer_file":     aiPrompts.TransferPrompt,
 }
 
-func NewAgent(config *Config, nodeMgr node.Manager, nodeStore NodeStoreAdapter, playbookParser *playbook.Parser, debug ...bool) (*Agent, error) {
+func NewAgent(executor Executor, config *Config, nodeMgr node.Manager, nodeStore NodeStoreAdapter, playbookParser *playbook.Parser, debug ...bool) (*Agent, error) {
 	registry := NewToolRegistry()
-	registry.Register(NewQueryNodesTool(nodeMgr, nodeStore))
-	registry.Register(NewExecuteCommandTool(nodeMgr))
-	registry.Register(NewGeneratePlaybookTool(nodeMgr))
-	registry.Register(NewTransferFileTool(nodeMgr))
-	registry.Register(NewExecuteScriptTool(nodeMgr))
-	registry.Register(NewQueryDatabaseTool(nodeMgr))
-	registry.Register(NewListPlaybooksTool())
-	registry.Register(NewRunPlaybookTool(nodeMgr))
-	registry.Register(NewPlaybookInfoTool())
-	registry.Register(NewValidatePlaybookTool())
-	registry.Register(NewNodeCheckTool(nodeMgr))
+	registry.Register(NewQueryNodesTool(executor, nodeMgr, nodeStore))
+	registry.Register(NewExecuteCommandTool(executor, nodeMgr))
+	registry.Register(NewGeneratePlaybookTool(executor, nodeMgr))
+	registry.Register(NewTransferFileTool(executor, nodeMgr))
+	registry.Register(NewExecuteScriptTool(executor, nodeMgr))
+	registry.Register(NewQueryDatabaseTool(executor, nodeMgr))
+	registry.Register(NewListPlaybooksTool(executor))
+	registry.Register(NewRunPlaybookTool(executor, nodeMgr))
+	registry.Register(NewPlaybookInfoTool(executor))
+	registry.Register(NewValidatePlaybookTool(executor))
+	registry.Register(NewNodeCheckTool(executor, nodeMgr))
 
 	isDebug := len(debug) > 0 && debug[0]
 
