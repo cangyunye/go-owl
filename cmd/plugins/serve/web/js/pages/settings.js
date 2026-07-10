@@ -94,16 +94,50 @@ export function renderSettings(render, navigate, user, api) {
           <label style="display:block;margin-bottom:4px;color:var(--text-muted);font-size:13px">Model</label>
           <input type="text" id="ai-model" class="input" placeholder="gpt-4o" style="width:100%" />
         </div>
+        <div class="settings-field" id="ai-base-url-field" style="margin-bottom:12px;display:none">
+          <label style="display:block;margin-bottom:4px;color:var(--text-muted);font-size:13px">Base URL</label>
+          <input type="text" id="ai-base-url" class="input" placeholder="https://api.example.com/v1" style="width:100%" />
+        </div>
+        <div class="settings-field" id="ai-format-field" style="margin-bottom:12px;display:none">
+          <label style="display:block;margin-bottom:4px;color:var(--text-muted);font-size:13px">API 格式</label>
+          <select id="ai-format" class="input" style="width:100%">
+            <option value="openai">OpenAI 兼容</option>
+            <option value="anthropic">Anthropic 兼容</option>
+          </select>
+        </div>
         <button id="save-ai-config" class="btn btn-primary">保存</button>
       </div>
     </div>
   `, () => {
+    document.getElementById('ai-provider')?.addEventListener('change', () => {
+      const custom = document.getElementById('ai-provider').value === 'custom';
+      document.getElementById('ai-base-url-field').style.display = custom ? '' : 'none';
+      document.getElementById('ai-format-field').style.display = custom ? '' : 'none';
+    });
+
+    (async () => {
+      const currentUser = user;
+      const keyData = await AIStorage.loadApiKey(currentUser?.id || currentUser?.username || 'default').catch(() => null);
+      if (keyData) {
+        if (keyData.provider) document.getElementById('ai-provider').value = keyData.provider;
+        if (keyData.model) document.getElementById('ai-model').value = keyData.model;
+        if (keyData.baseUrl) document.getElementById('ai-base-url').value = keyData.baseUrl;
+        if (keyData.apiFormat) document.getElementById('ai-format').value = keyData.apiFormat;
+        if (keyData.provider === 'custom') {
+          document.getElementById('ai-base-url-field').style.display = '';
+          document.getElementById('ai-format-field').style.display = '';
+        }
+      }
+    })();
+
     document.getElementById('save-ai-config')?.addEventListener('click', async () => {
       const key = document.getElementById('ai-api-key').value;
       const provider = document.getElementById('ai-provider').value;
       const model = document.getElementById('ai-model').value;
+      const baseUrl = document.getElementById('ai-base-url').value;
+      const apiFormat = document.getElementById('ai-format').value;
       const userId = user?.id || user?.username || 'default';
-      await AIStorage.saveApiKey(userId, key, provider, model);
+      await AIStorage.saveApiKey(userId, key, provider, model, baseUrl, apiFormat);
       const toast = document.createElement('div');
       toast.className = 'toast';
       toast.textContent = 'AI 配置已保存';

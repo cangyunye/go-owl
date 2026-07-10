@@ -63,8 +63,8 @@ const AIStorage = {
   },
 
   // API Key in localStorage (encrypted)
-  async saveApiKey(userId, apiKey, provider, model) {
-    const packet = await CryptoWallet.encryptLocal({ apiKey, provider, model }, userId);
+  async saveApiKey(userId, apiKey, provider, model, baseUrl, apiFormat) {
+    const packet = await CryptoWallet.encryptLocal({ apiKey, provider, model, baseUrl, apiFormat }, userId);
     localStorage.setItem('owl_ai_key', JSON.stringify(packet));
   },
 
