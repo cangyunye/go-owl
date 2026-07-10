@@ -19,6 +19,8 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	ai2 "github.com/cangyunye/go-owl/internal/ai"
+	"github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 )
@@ -30,6 +32,7 @@ type Config struct {
 	DBPath     string
 	ListenAddr string
 	DevMode    bool
+	AIDebugMode bool
 }
 
 type AdminCredentials struct {
@@ -54,6 +57,8 @@ type Server struct {
 	stagingHandler   *handler.StagingHandler
 	transferRecordStore *store.TransferRecordStore
 	transferHandler    *handler.TransferHandler
+	auditStore         *store.AIAuditStore
+	keyManager         *handler.KeyManager
 	aiHandler          *handler.AIHandler
 	wsHub              *handler.WSHub
 }
@@ -131,8 +136,28 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	}
 	s.stagingHandler = handler.NewStagingHandler(db)
 	s.transferHandler = handler.NewTransferHandler(db, s.Tasks, s.transferRecordStore)
-	s.aiHandler = handler.NewAIHandler(db)
+
 	nodeStore := store.NewNodeStore(db)
+
+	s.auditStore = store.NewAIAuditStore(db)
+	if err := s.auditStore.Init(context.Background()); err != nil {
+		return nil, fmt.Errorf("init ai audit store: %w", err)
+	}
+
+	s.keyManager = handler.NewKeyManager()
+
+	webExecutor := handler.NewWebExecutor(db, s.Tasks, s.transferRecordStore,
+		playbookRunStore, nodeStore, playbookStore, s.auditStore, s.keyManager, s.Config.AIDebugMode)
+
+	config := &ai2.Config{}
+	agent, err := ai2.NewAgent(webExecutor, config,
+		node.NewManager(node.NewInMemoryNodeStore()),
+		nil, nil, s.Config.AIDebugMode)
+	if err != nil {
+		return nil, fmt.Errorf("init ai agent: %w", err)
+	}
+
+	s.aiHandler = handler.NewAIHandler(db, s.auditStore, webExecutor, s.keyManager, agent, s.Config.AIDebugMode)
 	s.playbookHandler = handler.NewPlaybookHandler(db, playbookStore, playbookRunStore, nodeStore, s.wsHub)
 	s.setupRoutes()
 
@@ -166,6 +191,10 @@ func (s *Server) setupRoutes() {
 		reader.GET("/staging/disk", s.stagingHandler.DiskInfo)
 		reader.GET("/transfer/records", s.transferHandler.Records)
 		reader.GET("/transfer/records/:id", s.transferHandler.RecordGet)
+		reader.GET("/ai/session-key", s.aiHandler.GetSessionKey)
+		reader.GET("/ai/context", s.aiHandler.GetContext)
+		reader.POST("/ai/chat", s.aiHandler.Chat)
+		reader.POST("/ai/audit", s.aiHandler.Audit)
 
 		writer := auth.Group("", s.authHandler.RBACMiddleware(model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{
@@ -184,7 +213,6 @@ func (s *Server) setupRoutes() {
 			operator.POST("/transfer", s.transferHandler.Create)
 			operator.GET("/transfers", s.transferHandler.List)
 			operator.POST("/staging/upload", s.stagingHandler.Upload)
-			operator.POST("/ai/chat", s.aiHandler.Chat)
 			operator.GET("/playbooks", s.playbookHandler.List)
 			operator.GET("/playbooks/:id", s.playbookHandler.Get)
 			operator.GET("/playbooks/:id/file", s.playbookHandler.GetFile)

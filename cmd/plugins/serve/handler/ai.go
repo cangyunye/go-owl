@@ -1,66 +1,139 @@
 package handler
 
 import (
-	"context"
 	"database/sql"
 	"net/http"
-	"strings"
+	"time"
 
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type AIHandler struct {
-	db *sql.DB
+	db         *sql.DB
+	auditStore *store.AIAuditStore
+	executor   *WebExecutor
+	agent      *ai2.Agent
+	sessionMgr *ai2.SessionManager
+	keyManager *KeyManager
+	debugMode  bool
 }
 
-type chatRequest struct {
-	Message string `json:"message"`
+func NewAIHandler(db *sql.DB, auditStore *store.AIAuditStore, executor *WebExecutor,
+	keyManager *KeyManager, agent *ai2.Agent, debugMode bool) *AIHandler {
+	return &AIHandler{
+		db: db, auditStore: auditStore, executor: executor,
+		keyManager: keyManager, agent: agent,
+		sessionMgr: ai2.NewSessionManager(),
+		debugMode:  debugMode,
+	}
 }
 
-type chatResponse struct {
-	Intent string `json:"intent"`
-	Reply  string `json:"reply"`
+func (h *AIHandler) GetSessionKey(c *gin.Context) {
+	session, err := h.keyManager.CreateSession()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "generate session key failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"session_id":     session.SessionID,
+		"public_key_spki": session.PublicKeySPKI,
+	})
 }
 
-func NewAIHandler(db *sql.DB) *AIHandler {
-	return &AIHandler{db: db}
+type aiChatRequest struct {
+	Message         string `json:"message"`
+	SessionID       string `json:"session_id"`
+	EncryptedAPIKey string `json:"encrypted_api_key"`
 }
 
 func (h *AIHandler) Chat(c *gin.Context) {
-	var req chatRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Message == "" {
+	var req aiChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request body"})
+		return
+	}
+
+	if req.Message == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "message is required"})
 		return
 	}
 
-	classifier := ai2.NewIntentClassifier()
-	result := classifier.Classify(req.Message)
-	reply := h.buildReply(result.Type, req.Message)
+	// Decrypt API Key if provided
+	if req.EncryptedAPIKey != "" {
+		apiKey, err := h.keyManager.Decrypt(req.SessionID, req.EncryptedAPIKey)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid session or encrypted key"})
+			return
+		}
+		_ = apiKey // stored for future LLM use
+	}
 
-	c.JSON(http.StatusOK, chatResponse{
-		Intent: string(result.Type),
-		Reply:  reply,
+	userID := c.GetString("user_id")
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	// Get or create session
+	sessionID := req.SessionID
+	if sessionID == "" {
+		// Use request-level session
+		sessionID = uuid.New().String()
+	}
+
+	// Get or create AI session
+	session, exists := h.sessionMgr.GetSession(sessionID)
+	if !exists {
+		session = h.sessionMgr.CreateSession(sessionID, h.agent)
+	}
+
+	startTime := time.Now()
+	reply, err := session.Send(c.Request.Context(), req.Message)
+	durationMs := time.Since(startTime).Milliseconds()
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	// Async audit logging
+	go func() {
+		promptText := ""
+		if h.debugMode {
+			promptText = req.Message
+		}
+		h.auditStore.Create(c.Request.Context(), &store.AIAuditRecord{
+			UserID:    userID,
+			Intent:    "conversation",
+			Result:    "success",
+			ReplyText: reply,
+			PromptText: promptText,
+			LLMDurationMs: durationMs,
+		})
+	}()
+
+	c.JSON(http.StatusOK, gin.H{
+		"reply":      reply,
+		"session_id": sessionID,
 	})
 }
 
-func (h *AIHandler) buildReply(intent ai2.IntentType, msg string) string {
-	_ = strings.ToLower(msg)
-	switch intent {
-	case ai2.IntentQueryNodes:
-		return "当前节点查询功能已就绪，可在「节点管理」页面查看完整列表。"
-	case ai2.IntentExecuteCmd, ai2.IntentExecuteScript:
-		return "命令执行功能已就绪，请前往「命令执行」页面操作，或直接在下方输入要执行的命令。"
-	case ai2.IntentGeneratePlaybook:
-		return "剧本管理功能已就绪，请前往「剧本管理」页面创建和运行剧本。"
-	case ai2.IntentTransferFile:
-		return "文件传输功能已就绪，请前往「文件传输」页面操作。"
-	default:
-		return "我是 OWL 运维助手。我可以帮你管理节点、执行命令、运行剧本和传输文件。请尝试输入具体指令或点击快捷建议。"
-	}
+func (h *AIHandler) GetContext(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"tasks":         []interface{}{},
+		"transfers":     []interface{}{},
+		"playbook_runs": []interface{}{},
+	})
 }
 
-func (h *AIHandler) Status(_ context.Context) (int, int, int, error) {
+func (h *AIHandler) Audit(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "server-side audit is the primary path"})
+}
+
+// Status returns node counts (used by health check / analytics)
+func (h *AIHandler) Status() (int, int, int, error) {
 	var total, online, offline int
 	h.db.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&total)
 	h.db.QueryRow("SELECT COUNT(*) FROM nodes WHERE status = 'online'").Scan(&online)

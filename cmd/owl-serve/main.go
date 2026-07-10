@@ -14,6 +14,7 @@ func main() {
 	host := flag.String("host", "127.0.0.1", "HTTP host")
 	dev := flag.Bool("dev", false, "Development mode (frontend from filesystem)")
 	resetAdmin := flag.Bool("reset-admin", false, "Reset admin password")
+	aiDebug := flag.Bool("ai-debug", false, "Enable AI debug mode (logs full prompt/reply text)")
 	flag.Parse()
 
 	home, err := os.UserHomeDir()
@@ -27,6 +28,7 @@ func main() {
 		DBPath:     dbPath,
 		ListenAddr: fmt.Sprintf("%s:%d", *host, *port),
 		DevMode:    *dev,
+		AIDebugMode: *aiDebug,
 	}
 
 	srv := serve.NewServer(cfg)
