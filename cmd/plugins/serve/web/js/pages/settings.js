@@ -123,6 +123,7 @@ export function renderSettings(render, navigate, user, api) {
       const currentUser = user;
       const keyData = await AIStorage.loadApiKey(currentUser?.id || currentUser?.username || 'default').catch(() => null);
       if (keyData) {
+        if (keyData.apiKey) { document.getElementById('ai-api-key').value = keyData.apiKey; }
         if (keyData.provider) document.getElementById('ai-provider').value = keyData.provider;
         if (keyData.model) { document.getElementById('ai-model').value = keyData.model; hideModelSelect(); }
         if (keyData.baseUrl) document.getElementById('ai-base-url').value = keyData.baseUrl;
@@ -207,12 +208,20 @@ export function renderSettings(render, navigate, user, api) {
     });
 
     document.getElementById('save-ai-config')?.addEventListener('click', async () => {
-      const key = document.getElementById('ai-api-key').value;
+      let key = document.getElementById('ai-api-key').value;
       const provider = document.getElementById('ai-provider').value;
       const model = document.getElementById('ai-model').value;
       const baseUrl = document.getElementById('ai-base-url').value;
       const apiFormat = document.getElementById('ai-format').value;
       const userId = user?.id || user?.username || 'default';
+      if (!key) {
+        const existing = await AIStorage.loadApiKey(userId).catch(() => null);
+        if (existing && existing.apiKey) {
+          key = existing.apiKey;
+        } else {
+          showToast('请先输入 API Key'); return;
+        }
+      }
       await AIStorage.saveApiKey(userId, key, provider, model, baseUrl, apiFormat);
       showToast('AI 配置已保存');
     });
