@@ -43,7 +43,7 @@ func (h *AIHandler) GetSessionKey(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"session_id":     session.SessionID,
+		"session_id":      session.SessionID,
 		"public_key_spki": session.PublicKeySPKI,
 	})
 }
@@ -52,7 +52,15 @@ type aiChatRequest struct {
 	Message         string `json:"message"`
 	SessionID       string `json:"session_id"`
 	EncryptedAPIKey string `json:"encrypted_api_key"`
+	Provider        string `json:"provider"`
+	Model           string `json:"model"`
+	BaseURL         string `json:"base_url"`
+	APIType         string `json:"api_type"`
 }
+
+const systemPrompt = `你是 OWL Agent，一个运维智能助手。
+你可以帮助用户管理服务器节点、执行命令、运行剧本和传输文件。
+请用中文回答，保持专业且简洁。`
 
 func (h *AIHandler) Chat(c *gin.Context) {
 	var req aiChatRequest
@@ -66,35 +74,66 @@ func (h *AIHandler) Chat(c *gin.Context) {
 		return
 	}
 
-	// Decrypt API Key if provided
-	if req.EncryptedAPIKey != "" {
-		apiKey, err := h.keyManager.Decrypt(req.SessionID, req.EncryptedAPIKey)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid session or encrypted key"})
-			return
-		}
-		_ = apiKey // stored for future LLM use
-	}
-
 	userID := c.GetString("user_id")
 	if userID == "" {
 		userID = "anonymous"
 	}
 
-	// Get or create session
 	sessionID := req.SessionID
 	if sessionID == "" {
-		// Use request-level session
 		sessionID = uuid.New().String()
 	}
 
-	// Get or create AI session
+	h.executor.userRole = c.GetString("role")
+
+	// Try LLM if API key + model configured
+	if req.EncryptedAPIKey != "" && req.Model != "" {
+		apiKeyBytes, err := h.keyManager.Decrypt(req.SessionID, req.EncryptedAPIKey)
+		if err == nil {
+			apiKey := string(apiKeyBytes)
+			apiType := req.APIType
+			if apiType == "" {
+				apiType = "openai"
+			}
+			baseURL := req.BaseURL
+			if baseURL == "" {
+				baseURL = defaultBaseURL(req.Provider)
+			}
+
+			msgs := []LLMMessage{
+				{Role: "system", Content: systemPrompt},
+				{Role: "user", Content: req.Message},
+			}
+
+			startTime := time.Now()
+			llmResp, llmErr := CallLLM(c.Request.Context(), &LLMRequest{
+				APIKey:   apiKey,
+				BaseURL:  baseURL,
+				Model:    req.Model,
+				APIType:  apiType,
+				Messages: msgs,
+			})
+			durationMs := time.Since(startTime).Milliseconds()
+
+			if llmErr == nil {
+				go h.logAudit(userID, "conversation", "success", req.Message, llmResp.Content, durationMs, h.debugMode)
+				c.JSON(http.StatusOK, gin.H{
+					"reply":      llmResp.Content,
+					"session_id": sessionID,
+				})
+				return
+			}
+
+			// LLM failed — fall through to agent but log the error
+			go h.logAudit(userID, "conversation", "llm_error: "+llmErr.Error(), req.Message, "", durationMs, h.debugMode)
+		}
+	}
+
+	// Fallback: use internal agent
 	session, exists := h.sessionMgr.GetSession(sessionID)
 	if !exists {
 		session = h.sessionMgr.CreateSession(sessionID, h.agent)
 	}
-
-	h.executor.userRole = c.GetString("role")
 
 	startTime := time.Now()
 	reply, err := session.Send(c.Request.Context(), req.Message)
@@ -105,25 +144,95 @@ func (h *AIHandler) Chat(c *gin.Context) {
 		return
 	}
 
-	// Async audit logging
-	go func() {
-		promptText := ""
-		if h.debugMode {
-			promptText = req.Message
-		}
-		h.auditStore.Create(context.Background(), &store.AIAuditRecord{
-			UserID:    userID,
-			Intent:    "conversation",
-			Result:    "success",
-			ReplyText: reply,
-			PromptText: promptText,
-			LLMDurationMs: durationMs,
-		})
-	}()
+	go h.logAudit(userID, "conversation", "success", req.Message, reply, durationMs, h.debugMode)
 
 	c.JSON(http.StatusOK, gin.H{
 		"reply":      reply,
 		"session_id": sessionID,
+	})
+}
+
+func defaultBaseURL(provider string) string {
+	switch provider {
+	case "openai":
+		return "https://api.openai.com"
+	case "deepseek":
+		return "https://api.deepseek.com"
+	case "anthropic":
+		return "https://api.anthropic.com"
+	default:
+		return ""
+	}
+}
+
+type aiTestRequest struct {
+	SessionID       string `json:"session_id"`
+	EncryptedAPIKey string `json:"encrypted_api_key"`
+	BaseURL         string `json:"base_url"`
+	APIType         string `json:"api_type"`
+	Model           string `json:"model"`
+}
+
+func (h *AIHandler) Test(c *gin.Context) {
+	var req aiTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request"})
+		return
+	}
+
+	if req.EncryptedAPIKey == "" || req.SessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "session_id and encrypted_api_key are required"})
+		return
+	}
+	if req.Model == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "model is required"})
+		return
+	}
+	if req.BaseURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "base_url is required"})
+		return
+	}
+
+	apiKeyBytes, err := h.keyManager.Decrypt(req.SessionID, req.EncryptedAPIKey)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid session or encrypted key"})
+		return
+	}
+	apiKey := string(apiKeyBytes)
+
+	apiType := req.APIType
+	if apiType == "" {
+		apiType = "openai"
+	}
+
+	msgs := []LLMMessage{
+		{Role: "user", Content: "Hi"},
+	}
+
+	startTime := time.Now()
+	llmResp, err := CallLLM(c.Request.Context(), &LLMRequest{
+		APIKey:   apiKey,
+		BaseURL:  req.BaseURL,
+		Model:    req.Model,
+		APIType:  apiType,
+		Messages: msgs,
+	})
+	elapsed := time.Since(startTime).Milliseconds()
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"error":   err.Error(),
+			"elapsed_ms": elapsed,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":    true,
+		"reply":      llmResp.Content,
+		"model":      llmResp.Model,
+		"elapsed_ms": elapsed,
 	})
 }
 
@@ -137,6 +246,21 @@ func (h *AIHandler) GetContext(c *gin.Context) {
 
 func (h *AIHandler) Audit(c *gin.Context) {
 	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "server-side audit is the primary path"})
+}
+
+func (h *AIHandler) logAudit(userID, intent, result, prompt, reply string, durationMs int64, debug bool) {
+	promptText := ""
+	if debug {
+		promptText = prompt
+	}
+	h.auditStore.Create(context.Background(), &store.AIAuditRecord{
+		UserID:       userID,
+		Intent:       intent,
+		Result:       result,
+		ReplyText:    reply,
+		PromptText:   promptText,
+		LLMDurationMs: durationMs,
+	})
 }
 
 type aiModelsRequest struct {
@@ -240,7 +364,6 @@ func (h *AIHandler) Models(c *gin.Context) {
 	}
 }
 
-// Status returns node counts (used by health check / analytics)
 func (h *AIHandler) Status() (int, int, int, error) {
 	var total, online, offline int
 	h.db.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&total)

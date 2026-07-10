@@ -109,9 +109,11 @@ export function renderSettings(render, navigate, user, api) {
             <option value="anthropic">Anthropic 兼容</option>
           </select>
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <button id="save-ai-config" class="btn btn-primary">保存</button>
+          <button id="test-ai-config" class="btn btn-sm" style="white-space:nowrap">测试连接</button>
           <span id="save-ai-hint" style="font-size:12px;color:var(--success);display:none"></span>
+          <span id="test-ai-hint" style="font-size:12px;display:none"></span>
         </div>
       </div>
     </div>
@@ -231,6 +233,51 @@ export function renderSettings(render, navigate, user, api) {
       hint.style.display = '';
       setTimeout(() => { hint.style.display = 'none'; }, 3000);
     });
+
+    document.getElementById('test-ai-config')?.addEventListener('click', async () => {
+      const hint = document.getElementById('test-ai-hint');
+      hint.style.display = 'none';
+      document.getElementById('test-ai-config').textContent = '测试中…';
+      document.getElementById('test-ai-config').disabled = true;
+
+      try {
+        const apiKey = await getApiKey();
+        if (!apiKey) { showToast('请先输入 API Key'); return; }
+
+        const provider = document.getElementById('ai-provider').value;
+        let baseUrl = document.getElementById('ai-base-url').value.trim();
+        let apiType = document.getElementById('ai-format').value;
+        const model = document.getElementById('ai-model').value.trim();
+
+        if (!model) { showToast('请先输入或查询模型'); return; }
+
+        if (provider === 'custom' && !baseUrl) { showToast('请先输入 Base URL'); return; }
+        if (!baseUrl) {
+          const urls = { openai: 'https://api.openai.com', deepseek: 'https://api.deepseek.com', anthropic: 'https://api.anthropic.com' };
+          baseUrl = urls[provider] || '';
+          apiType = provider === 'anthropic' ? 'anthropic' : 'openai';
+        }
+
+        const keyRes = await api.getSessionKey();
+        const encryptedKey = await CryptoWallet.encryptApiKey(keyRes.public_key_spki, apiKey);
+        const res = await api.aiTest(keyRes.session_id, encryptedKey, baseUrl, apiType, model);
+
+        if (res.success) {
+          hint.textContent = '✓ 连接成功 (' + res.elapsed_ms + 'ms)';
+          hint.style.color = 'var(--success)';
+        } else {
+          hint.textContent = '✗ ' + (res.error || '连接失败');
+          hint.style.color = 'var(--danger)';
+        }
+      } catch (e) {
+        hint.textContent = '✗ ' + (e.message || e);
+        hint.style.color = 'var(--danger)';
+      }
+      hint.style.display = '';
+      document.getElementById('test-ai-config').textContent = '测试连接';
+      document.getElementById('test-ai-config').disabled = false;
+    });
+
     document.getElementById('settings-cancel').addEventListener('click', () => {
       document.getElementById('settings-modal').classList.remove('open');
     });

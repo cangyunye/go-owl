@@ -58,15 +58,19 @@ export function renderAI(render, navigate, user, api, shell) {
       const currentUser = user;
       const keyData = await AIStorage.loadApiKey(currentUser.id || currentUser.username);
 
-      let payload = { message: text };
+      let payload = { message: text, provider: '', model: '', base_url: '', api_type: 'openai' };
 
       if (keyData && keyData.apiKey && sessionId && publicKeySpki) {
         const encryptedKey = await CryptoWallet.encryptApiKey(publicKeySpki, keyData.apiKey);
         payload.session_id = sessionId;
         payload.encrypted_api_key = encryptedKey;
+        payload.provider = keyData.provider || '';
+        payload.model = keyData.model || '';
+        payload.base_url = keyData.baseUrl || '';
+        payload.api_type = keyData.apiFormat || 'openai';
       }
 
-      const res = await api.aiChat(payload.message, payload.session_id, payload.encrypted_api_key);
+      const res = await api.aiChat(payload.message, payload.session_id, payload.encrypted_api_key, payload.provider, payload.model, payload.base_url, payload.api_type);
       hideThinking();
       if (res && res.reply) {
         addMsg('assistant', esc(res.reply) + navChips(res.intent));

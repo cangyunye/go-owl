@@ -183,11 +183,15 @@ export const api = {
   playbookSettingsPath: () =>
     request('GET', '/playbook/settings/path'),
 
+  createPlaybookTemplate: (data) =>
+    request('POST', '/playbook/template', data),
+
   getSessionKey: () => request('GET', '/ai/session-key'),
-  aiChat: (message, sessionId, encryptedApiKey) => request('POST', '/ai/chat', { message, session_id: sessionId, encrypted_api_key: encryptedApiKey }),
+  aiChat: (message, sessionId, encryptedApiKey, provider, model, baseUrl, apiType) => request('POST', '/ai/chat', { message, session_id: sessionId, encrypted_api_key: encryptedApiKey, provider, model, base_url: baseUrl, api_type: apiType }),
   getAiContext: () => request('GET', '/ai/context'),
   aiAudit: (record) => request('POST', '/ai/audit', record),
   aiModels: (sessionId, encryptedApiKey, baseUrl, apiType) => request('POST', '/ai/models', { session_id: sessionId, encrypted_api_key: encryptedApiKey, base_url: baseUrl, api_type: apiType }),
+  aiTest: (sessionId, encryptedApiKey, baseUrl, apiType, model) => request('POST', '/ai/test', { session_id: sessionId, encrypted_api_key: encryptedApiKey, base_url: baseUrl, api_type: apiType, model }),
 
   staging: {
     files: () =>

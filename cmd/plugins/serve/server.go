@@ -196,6 +196,7 @@ func (s *Server) setupRoutes() {
 		reader.POST("/ai/chat", s.aiHandler.Chat)
 		reader.POST("/ai/audit", s.aiHandler.Audit)
 		reader.POST("/ai/models", s.aiHandler.Models)
+		reader.POST("/ai/test", s.aiHandler.Test)
 
 		writer := auth.Group("", s.authHandler.RBACMiddleware(model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{
@@ -236,6 +237,7 @@ func (s *Server) setupRoutes() {
 			admin.POST("/users", s.userHandler.Create)
 			admin.PUT("/users/:id", s.userHandler.Update)
 			admin.DELETE("/users/:id", s.userHandler.Delete)
+			admin.POST("/playbook/template", s.playbookHandler.Create)
 			admin.POST("/playbook/refresh", s.playbookHandler.Refresh)
 			admin.DELETE("/playbook/runs/:id", s.playbookHandler.RunCancel)
 		}
