@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-OWL=./build/darwin-arm64/owl
+OWL=owl
 
 echo "==> 添加 50 个测试节点"
 
