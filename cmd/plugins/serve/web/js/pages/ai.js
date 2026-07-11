@@ -61,12 +61,12 @@ export function renderAI(render, navigate, user, api, shell) {
 
     try {
       const currentUser = user;
-      const keyData = await AIStorage.loadApiKey(currentUser.id || currentUser.username);
+      const keyData = await window.AIStorage.loadApiKey(currentUser.id || currentUser.username);
 
       let payload = { message: text, provider: '', model: '', base_url: '', api_type: 'openai' };
 
       if (keyData && keyData.apiKey && sessionId && publicKeySpki) {
-        const encryptedKey = await CryptoWallet.encryptApiKey(publicKeySpki, keyData.apiKey);
+        const encryptedKey = await window.CryptoWallet.encryptApiKey(publicKeySpki, keyData.apiKey);
         payload.session_id = sessionId;
         payload.encrypted_api_key = encryptedKey;
         payload.provider = keyData.provider || '';
@@ -97,7 +97,7 @@ export function renderAI(render, navigate, user, api, shell) {
       createdAt: new Date().toISOString()
     };
     if (!currentConvId) currentConvId = conv.id;
-    await AIStorage.saveConversation(conv).catch(() => {});
+    await window.AIStorage.saveConversation(conv).catch(() => {});
     loadHistory();
   }
 
@@ -105,7 +105,7 @@ export function renderAI(render, navigate, user, api, shell) {
     const list = document.getElementById('session-list');
     if (!list) return;
     try {
-      const convs = await AIStorage.getConversations(50, 0);
+      const convs = await window.AIStorage.getConversations(50, 0);
       if (convs.length === 0) {
         list.innerHTML = '<div class="session-empty">暂无历史会话</div>';
         return;
@@ -180,6 +180,91 @@ export function renderAI(render, navigate, user, api, shell) {
     if (input) { input.value = text; input.focus(); }
   }
 
+  // ---- Provider selector ----
+  const PROVIDER_LABELS = {
+    anthropic: 'Anthropic', deepseek: 'DeepSeek', openai: 'OpenAI',
+    qwen: '千问', volcengine: '火山引擎', minimax: 'MiniMax', mimo: '小米 MiMo', custom: '自定义'
+  };
+  const ALL_PROVIDERS = ['anthropic','deepseek','openai','qwen','volcengine','minimax','mimo','custom'];
+
+  async function loadProviderSelector() {
+    const sel = document.getElementById('ai-provider-select');
+    if (!sel) return;
+    // Remove existing options except placeholder
+    sel.innerHTML = '<option value="">— 选择供应商 —</option>';
+
+    const userId = user?.id || user?.username || 'default';
+    let foundOne = false;
+    let activeProvider = '';
+
+    for (const p of ALL_PROVIDERS) {
+      let keyData = null;
+      try {
+        const raw = localStorage.getItem('owl_ai_key_' + p);
+        if (raw) {
+          const packet = JSON.parse(raw);
+          const namespace = userId + '_' + p;
+          keyData = await window.CryptoWallet.decryptLocal(packet, namespace);
+        }
+      } catch {}
+      if (keyData && keyData.apiKey) {
+        const label = PROVIDER_LABELS[p] || p;
+        const model = keyData.model ? ' (' + keyData.model + ')' : '';
+        sel.innerHTML += '<option value="' + p + '">' + label + model + '</option>';
+        foundOne = true;
+        if (!activeProvider) activeProvider = p;
+      }
+    }
+
+    // Try to detect current active from legacy owl_ai_key
+    try {
+      const legacy = await window.AIStorage.loadApiKey(userId);
+      if (legacy && legacy.apiKey) {
+        // Match to one of the provider keys
+        for (const p of ALL_PROVIDERS) {
+          const raw = localStorage.getItem('owl_ai_key_' + p);
+          if (raw) {
+            try {
+              const packet = JSON.parse(raw);
+              const namespace = userId + '_' + p;
+              const kd = await window.CryptoWallet.decryptLocal(packet, namespace);
+              if (kd && kd.apiKey === legacy.apiKey) {
+                activeProvider = p;
+                break;
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch {}
+
+    if (activeProvider) sel.value = activeProvider;
+
+    if (!foundOne) {
+      sel.innerHTML += '<option value="" disabled>— 请先在设置页配置供应商 —</option>';
+    }
+  }
+
+  async function switchProvider(provider) {
+    if (!provider) return;
+    const userId = user?.id || user?.username || 'default';
+    try {
+      const raw = localStorage.getItem('owl_ai_key_' + provider);
+      if (!raw) return;
+      const packet = JSON.parse(raw);
+      const namespace = userId + '_' + provider;
+      const keyData = await window.CryptoWallet.decryptLocal(packet, namespace);
+      if (keyData && keyData.apiKey) {
+        // Write to legacy owl_ai_key so sendMsg picks it up
+        const legacyPacket = await window.CryptoWallet.encryptLocal(
+          { apiKey: keyData.apiKey, provider: keyData.provider, model: keyData.model, baseUrl: keyData.baseUrl, apiFormat: keyData.apiFormat || 'openai' },
+          userId
+        );
+        localStorage.setItem('owl_ai_key', JSON.stringify(legacyPacket));
+      }
+    } catch {}
+  }
+
   render(`
     <div class="agent-layout">
       <div class="agent-chat">
@@ -199,6 +284,12 @@ export function renderAI(render, navigate, user, api, shell) {
           <span class="pchip" data-prompt="在 web-01 上执行 df -h">▶️ 执行命令</span>
           <span class="pchip" data-prompt="有哪些剧本可以运行？">📜 剧本列表</span>
           <span class="pchip" data-prompt="传输 /etc/hosts 到 web-01">📁 传输文件</span>
+        </div>
+        <div class="chat-provider-bar" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
+          <span style="font-size:11px;color:var(--muted);white-space:nowrap">供应商：</span>
+          <select class="input" id="ai-provider-select" style="font-size:12px;padding:4px 8px;width:auto;min-width:180px;flex:1;max-width:280px">
+            <option value="">— 选择供应商 —</option>
+          </select>
         </div>
         <div class="chat-input-bar">
           <input type="text" class="input" id="chat-input" placeholder="输入指令，例如「查看在线节点」「执行 uptime」…" aria-label="输入指令">
@@ -230,6 +321,11 @@ export function renderAI(render, navigate, user, api, shell) {
 
     document.querySelectorAll('.pchip').forEach(chip => {
       chip.addEventListener('click', () => fillPrompt(chip.dataset.prompt));
+    });
+
+    loadProviderSelector();
+    document.getElementById('ai-provider-select').addEventListener('change', (e) => {
+      switchProvider(e.target.value);
     });
   });
 }

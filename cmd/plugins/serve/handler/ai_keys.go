@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,6 +66,15 @@ func (km *KeyManager) GetSessionPublicKey(sessionID string) (*rsa.PublicKey, err
 }
 
 func (km *KeyManager) Decrypt(sessionID string, ciphertextB64 string) ([]byte, error) {
+	// Support plaintext fallback when crypto.subtle is unavailable on the client
+	if strings.HasPrefix(ciphertextB64, "__plain__:") {
+		plaintext, err := base64.StdEncoding.DecodeString(ciphertextB64[len("__plain__:"):])
+		if err != nil {
+			return nil, fmt.Errorf("decode plaintext: %w", err)
+		}
+		return plaintext, nil
+	}
+
 	km.mu.RLock()
 	session, ok := km.sessions[sessionID]
 	km.mu.RUnlock()

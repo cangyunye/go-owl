@@ -206,7 +206,7 @@ func (h *AIHandler) Test(c *gin.Context) {
 	}
 
 	msgs := []LLMMessage{
-		{Role: "user", Content: "Hi"},
+		{Role: "user", Content: "只需要回答hello"},
 	}
 
 	startTime := time.Now()

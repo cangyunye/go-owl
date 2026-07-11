@@ -80,3 +80,6 @@ const AIStorage = {
     }
   }
 };
+
+// Expose to global scope so ES modules (app.js) can access it
+window.AIStorage = AIStorage;
