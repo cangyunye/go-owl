@@ -68,6 +68,9 @@ func NewServer(cfg *Config) *Server {
 }
 
 func (s *Server) Init() (*AdminCredentials, error) {
+	if err := ensureDBDir(s.Config.DBPath); err != nil {
+		return nil, fmt.Errorf("ensure db dir: %w", err)
+	}
 	db, err := sql.Open("sqlite", s.Config.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -392,7 +395,18 @@ tasks:
 	}
 }
 
+func ensureDBDir(dbPath string) error {
+	dir := filepath.Dir(dbPath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return os.MkdirAll(dir, 0755)
+	}
+	return nil
+}
+
 func (s *Server) ResetAdmin() (*AdminCredentials, error) {
+	if err := ensureDBDir(s.Config.DBPath); err != nil {
+		return nil, fmt.Errorf("ensure db dir: %w", err)
+	}
 	db, err := sql.Open("sqlite", s.Config.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
