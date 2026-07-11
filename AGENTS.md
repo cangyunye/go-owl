@@ -15,3 +15,10 @@
   curl -X POST http://localhost:8080/api/v1/nodes/seed -H "Authorization: Bearer $TOKEN"
   ```
 - This creates 50 nodes with diverse groups (web, db, cache, worker, monitor, gateway) and labels.
+
+## No Plan No Implement
+## test-driven-development
+use /tdd 
+## Git commit After E2E
+after a success E2E , commit as atomic as possible .
+
