@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/google/uuid"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
 	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/logger"
@@ -73,6 +75,9 @@ func NewUploadCmd() *cobra.Command {
 
 func runUpload(cmd *cobra.Command, args []string) {
 	localFile := args[0]
+
+	// 从 owl settings 加载未显式指定的 flag 默认值
+	applyUploadSettingsFallback(cmd)
 
 	if _, err := os.Stat(localFile); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "错误: 本地文件不存在: %s\n", localFile)
@@ -282,4 +287,32 @@ func getFileNameFromPath(path string) string {
 		}
 	}
 	return path
+}
+
+// applyUploadSettingsFallback 从 owl settings 加载未显式指定的 upload flag 默认值
+func applyUploadSettingsFallback(cmd *cobra.Command) {
+	s := settings.GetCurrentSettings()
+
+	// --groups: 如果用户未指定，使用 settings 中的 default.group 或 target.groups
+	if !cmd.Flags().Changed("groups") {
+		group := s.Default.Group
+		if group == "" {
+			group = s.Target.Groups
+		}
+		if group != "" {
+			uploadGroup = strings.Split(group, ",")
+		}
+	}
+
+	// --label: 如果用户未指定，使用 settings 中的 default.labels
+	if !cmd.Flags().Changed("label") {
+		for k, v := range s.Default.Labels {
+			uploadLabel = append(uploadLabel, k+"="+v)
+		}
+	}
+
+	// --parallel: 如果用户未指定，使用 settings 中的 default.parallel
+	if !cmd.Flags().Changed("parallel") {
+		uploadParallel = s.Default.Parallel
+	}
 }

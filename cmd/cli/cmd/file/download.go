@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/google/uuid"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
 	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/logger"
@@ -74,6 +76,9 @@ func NewDownloadCmd() *cobra.Command {
 
 func runDownload(cmd *cobra.Command, args []string) {
 	remoteFile := args[0]
+
+	// 从 owl settings 加载未显式指定的 flag 默认值
+	applyDownloadSettingsFallback(cmd)
 
 	logger.Init(nil)
 	defer logger.Sync()
@@ -234,5 +239,33 @@ func runDownload(cmd *cobra.Command, args []string) {
 
 	if failed > 0 {
 		os.Exit(1)
+	}
+}
+
+// applyDownloadSettingsFallback 从 owl settings 加载未显式指定的 download flag 默认值
+func applyDownloadSettingsFallback(cmd *cobra.Command) {
+	s := settings.GetCurrentSettings()
+
+	// --groups: 如果用户未指定，使用 settings 中的 default.group 或 target.groups
+	if !cmd.Flags().Changed("groups") {
+		group := s.Default.Group
+		if group == "" {
+			group = s.Target.Groups
+		}
+		if group != "" {
+			downloadGroup = strings.Split(group, ",")
+		}
+	}
+
+	// --label: 如果用户未指定，使用 settings 中的 default.labels
+	if !cmd.Flags().Changed("label") {
+		for k, v := range s.Default.Labels {
+			downloadLabel = append(downloadLabel, k+"="+v)
+		}
+	}
+
+	// --parallel: 如果用户未指定，使用 settings 中的 default.parallel
+	if !cmd.Flags().Changed("parallel") {
+		downloadParallel = s.Default.Parallel
 	}
 }

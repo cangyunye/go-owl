@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
 	"github.com/cangyunye/go-owl/internal/history"
@@ -69,6 +70,9 @@ func NewTransferCmd() *cobra.Command {
 
 func runTransfer(cmd *cobra.Command, args []string) {
 	fileName := args[0]
+
+	// 从 owl settings 加载未显式指定的 flag 默认值
+	applyTransferSettingsFallback(cmd)
 
 	fileInfo, err := os.Stat(fileName)
 	if os.IsNotExist(err) {
@@ -798,6 +802,25 @@ func generateProgressBar(percent float64, width int) string {
 	return result
 }
 
+// applyTransferSettingsFallback 从 owl settings 加载未显式指定的 transfer flag 默认值
+func applyTransferSettingsFallback(cmd *cobra.Command) {
+	s := settings.GetCurrentSettings()
 
+	// --groups: 如果用户未指定，使用 settings 中的 default.group 或 target.groups
+	if !cmd.Flags().Changed("groups") {
+		group := s.Default.Group
+		if group == "" {
+			group = s.Target.Groups
+		}
+		if group != "" {
+			transferGroup = strings.Split(group, ",")
+		}
+	}
 
-
+	// --label: 如果用户未指定，使用 settings 中的 default.labels
+	if !cmd.Flags().Changed("label") {
+		for k, v := range s.Default.Labels {
+			transferLabel = append(transferLabel, k+"="+v)
+		}
+	}
+}
