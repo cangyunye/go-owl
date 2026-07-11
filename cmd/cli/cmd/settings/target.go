@@ -2,6 +2,7 @@ package settings
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -40,29 +41,56 @@ func NewSettingsTargetCmd() *cobra.Command {
 }
 
 func runSettingsTarget(cmd *cobra.Command, args []string) {
-	hasTarget := false
+	settings := loadSettings()
 
-	fmt.Println("Default Target Settings:")
-	fmt.Println("=========================")
+	hasChange := false
 
-	if len(targetGroup) > 0 {
-		fmt.Printf("  Group: %s\n", strings.Join(targetGroup, ", "))
-		hasTarget = true
+	if cmd.Flags().Changed("groups") {
+		settings.Target.Groups = strings.Join(targetGroup, ",")
+		hasChange = true
+	}
+	if cmd.Flags().Changed("label") {
+		settings.Target.Label = strings.Join(targetLabel, ",")
+		hasChange = true
+	}
+	if cmd.Flags().Changed("nodes") {
+		settings.Target.Nodes = targetNodes
+		hasChange = true
 	}
 
-	if len(targetLabel) > 0 {
-		fmt.Printf("  Labels: %v\n", targetLabel)
-		hasTarget = true
+	if !hasChange {
+		fmt.Println("Default Target Settings:")
+		fmt.Println("=========================")
+		if settings.Target.Groups != "" {
+			fmt.Printf("  Groups: %s\n", settings.Target.Groups)
+		}
+		if settings.Target.Label != "" {
+			fmt.Printf("  Label:  %s\n", settings.Target.Label)
+		}
+		if settings.Target.Nodes != "" {
+			fmt.Printf("  Nodes:  %s\n", settings.Target.Nodes)
+		}
+		if settings.Target.Groups == "" && settings.Target.Label == "" && settings.Target.Nodes == "" {
+			fmt.Println("  (no default target set)")
+		}
+		fmt.Println("\nTip: use --groups, --label, or --nodes to set default targets.")
+		return
 	}
 
-	if targetNodes != "" {
-		fmt.Printf("  Nodes: %s\n", targetNodes)
-		hasTarget = true
+	if err := saveSettings(settings); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to save settings: %v\n", err)
+		os.Exit(1)
 	}
 
-	if !hasTarget {
-		fmt.Println("  (no default target set)")
+	fmt.Println("Default Target Settings (saved):")
+	fmt.Println("================================")
+	if settings.Target.Groups != "" {
+		fmt.Printf("  Groups: %s\n", settings.Target.Groups)
 	}
-
-	fmt.Println("\nNote: Settings are not persisted in this demo version.")
+	if settings.Target.Label != "" {
+		fmt.Printf("  Label:  %s\n", settings.Target.Label)
+	}
+	if settings.Target.Nodes != "" {
+		fmt.Printf("  Nodes:  %s\n", settings.Target.Nodes)
+	}
 }
