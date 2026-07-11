@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/internal/control/async"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	"github.com/cangyunye/go-owl/internal/control/command"
@@ -126,6 +127,9 @@ func NewRunCmd() *cobra.Command {
 
 func runExecRun(cmd *cobra.Command, args []string) {
 	execmd := args[0]
+
+	// 从 owl settings 加载未显式指定的 flag 默认值
+	applyExecSettingsFallback(cmd)
 
 	logger.Init(nil)
 	defer logger.Sync()
@@ -569,4 +573,43 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.1fs", d.Seconds())
 	}
 	return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
+}
+
+// applyExecSettingsFallback 从 owl settings 加载未显式指定的 flag 默认值
+// 优先级: CLI flag > 命令内置默认值 > owl settings 配置
+func applyExecSettingsFallback(cmd *cobra.Command) {
+	s := settings.GetCurrentSettings()
+
+	// --groups: 如果用户未指定，使用 settings 中的 default.group 或 target.groups
+	if !cmd.Flags().Changed("groups") {
+		group := s.Default.Group
+		if group == "" {
+			group = s.Target.Groups
+		}
+		if group != "" {
+			execGroup = strings.Split(group, ",")
+		}
+	}
+
+	// --label: 如果用户未指定，使用 settings 中的 default.labels
+	if !cmd.Flags().Changed("label") {
+		for k, v := range s.Default.Labels {
+			execLabel = append(execLabel, k+"="+v)
+		}
+	}
+
+	// --format: 如果用户未指定，使用 settings 中的 output.format
+	if !cmd.Flags().Changed("format") && s.Output.Format != "" {
+		execFormat = s.Output.Format
+	}
+
+	// --no-color: 如果用户未指定，从 settings output.color 取反
+	if !cmd.Flags().Changed("no-color") {
+		execNoColor = !s.Output.Color
+	}
+
+	// --parallel / --serial: 如果用户未指定，使用 settings 中的 default.parallel
+	if !cmd.Flags().Changed("parallel") && !cmd.Flags().Changed("serial") {
+		execParallel = s.Default.Parallel
+	}
 }

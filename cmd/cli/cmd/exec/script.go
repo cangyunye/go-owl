@@ -5,12 +5,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	"github.com/cangyunye/go-owl/internal/control/script"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
@@ -85,6 +87,10 @@ var (
 
 func runScript(cmd *cobra.Command, args []string) {
 	scriptPath := args[0]
+
+	// 从 owl settings 加载未显式指定的 flag 默认值
+	applyScriptSettingsFallback(cmd)
+
 	logger.Init(nil)
 	defer logger.Sync()
 	_, err := history.NewDB(history.DefaultConfig())
@@ -411,4 +417,27 @@ func containsStringList(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// applyScriptSettingsFallback 从 owl settings 加载未显式指定的脚本 flag 默认值
+func applyScriptSettingsFallback(cmd *cobra.Command) {
+	s := settings.GetCurrentSettings()
+
+	// --groups: 如果用户未指定，使用 settings 中的 default.group 或 target.groups
+	if !cmd.Flags().Changed("groups") {
+		group := s.Default.Group
+		if group == "" {
+			group = s.Target.Groups
+		}
+		if group != "" {
+			scriptGroup = strings.Split(group, ",")
+		}
+	}
+
+	// --label: 如果用户未指定，使用 settings 中的 default.labels
+	if !cmd.Flags().Changed("label") {
+		for k, v := range s.Default.Labels {
+			scriptLabel = append(scriptLabel, k+"="+v)
+		}
+	}
 }
