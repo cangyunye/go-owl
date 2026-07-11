@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/internal/common/model"
 )
 
@@ -62,6 +63,9 @@ func NewListCmd() *cobra.Command {
 }
 
 func runList(cmd *cobra.Command, args []string) {
+	// 从 owl settings 加载未显式指定的 flag 默认值
+	applyListSettingsFallback(cmd)
+
 	store := common.GetNodeStore()
 	formatter := common.NewOutputFormatter(listFormat, !listNoColor)
 
@@ -182,5 +186,31 @@ func toModelNode(n *common.NodeInfo) *model.Node {
 		Groups:      n.Groups,
 		Labels:      n.Labels,
 		LastCheckAt: n.LastCheckAt,
+	}
+}
+
+// applyListSettingsFallback 从 owl settings 加载未显式指定的 node list flag 默认值
+func applyListSettingsFallback(cmd *cobra.Command) {
+	s := settings.GetCurrentSettings()
+
+	// --groups: 如果用户未指定，使用 settings 中的 default.group 或 target.groups
+	if !cmd.Flags().Changed("groups") {
+		group := s.Default.Group
+		if group == "" {
+			group = s.Target.Groups
+		}
+		if group != "" {
+			listGroup = strings.Split(group, ",")
+		}
+	}
+
+	// --format: 如果用户未指定，使用 settings 中的 output.format
+	if !cmd.Flags().Changed("format") && s.Output.Format != "" {
+		listFormat = s.Output.Format
+	}
+
+	// --no-color: 如果用户未指定，从 settings output.color 取反
+	if !cmd.Flags().Changed("no-color") {
+		listNoColor = !s.Output.Color
 	}
 }
