@@ -145,10 +145,10 @@ function renderShell() {
         <button class="theme-btn active" data-theme-val="default" title="深空" aria-label="深色主题">
           <svg aria-hidden="true"><use href="#icon-moon"/></svg>
         </button>
-        <button class="theme-btn" data-theme-val="light-sky" title="云天蓝" aria-label="浅色主题">
+        <button class="theme-btn" data-theme-val="light-sky" title="薄荷绿" aria-label="浅色主题">
           <svg aria-hidden="true"><use href="#icon-sun"/></svg>
         </button>
-        <button class="theme-btn" data-theme-val="dark-warm" title="月牙白" aria-label="暖色主题">
+        <button class="theme-btn" data-theme-val="dark-warm" title="暖阳" aria-label="暖色主题">
           <svg aria-hidden="true"><use href="#icon-warm"/></svg>
         </button>
       </div>

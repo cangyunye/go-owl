@@ -40,14 +40,39 @@
 }
 
 html[data-theme="light-sky"] {
-  --bg:          oklch(96% 0.015 220);
+  --bg:          oklch(96% 0.015 140);
   --surface:     oklch(100% 0 0);
-  --surface-2:   oklch(92% 0.012 220);
-  --fg:          oklch(16% 0.02 240);
-  --muted:       oklch(48% 0.018 240);
-  --border:      oklch(86% 0.012 220);
-  --accent:      oklch(58% 0.22 240);
-  --accent-dim:  oklch(50% 0.15 240);
+  --surface-2:   oklch(92% 0.012 140);
+  --fg:          oklch(16% 0.02 150);
+  --muted:       oklch(48% 0.018 150);
+  --border:      oklch(86% 0.012 140);
+  --accent:      oklch(58% 0.22 150);
+  --accent-dim:  oklch(50% 0.15 150);
+  --success:     oklch(56% 0.18 145);
+  --warn:        oklch(66% 0.16 85);
+  --danger:      oklch(56% 0.22 25);
+  --info:        oklch(60% 0.14 140);
+  --text:        var(--fg);
+  --text-muted:  var(--muted);
+  --primary:     var(--accent);
+  --primary-hover: oklch(52% 0.24 150);
+  --warning:     var(--warn);
+  --offline:     var(--muted);
+  --surface-hover:  oklch(90% 0.03 150 / 0.6);
+  --surface-active: oklch(88% 0.04 150 / 0.5);
+  --code-bg:        oklch(93% 0.015 140);
+  --code-bg-alt:    oklch(90% 0.015 140);
+}
+
+html[data-theme="dark-warm"] {
+  --bg:          oklch(96% 0.015 55);
+  --surface:     oklch(99% 0.008 55);
+  --surface-2:   oklch(92% 0.015 55);
+  --fg:          oklch(22% 0.02 55);
+  --muted:       oklch(50% 0.02 55);
+  --border:      oklch(88% 0.015 55);
+  --accent:      oklch(60% 0.16 50);
+  --accent-dim:  oklch(50% 0.12 50);
   --success:     oklch(56% 0.18 145);
   --warn:        oklch(66% 0.16 85);
   --danger:      oklch(56% 0.22 25);
@@ -55,38 +80,13 @@ html[data-theme="light-sky"] {
   --text:        var(--fg);
   --text-muted:  var(--muted);
   --primary:     var(--accent);
-  --primary-hover: oklch(52% 0.24 240);
+  --primary-hover: oklch(54% 0.18 50);
   --warning:     var(--warn);
   --offline:     var(--muted);
-  --surface-hover:  oklch(90% 0.03 240 / 0.6);
-  --surface-active: oklch(88% 0.04 240 / 0.5);
-  --code-bg:        oklch(93% 0.015 220);
-  --code-bg-alt:    oklch(90% 0.015 220);
-}
-
-html[data-theme="dark-warm"] {
-  --bg:          oklch(14% 0.012 55);
-  --surface:     oklch(18% 0.015 55);
-  --surface-2:   oklch(22% 0.018 55);
-  --fg:          oklch(92% 0.008 55);
-  --muted:       oklch(55% 0.012 55);
-  --border:      oklch(26% 0.015 55);
-  --accent:      oklch(64% 0.16 50);
-  --accent-dim:  oklch(52% 0.12 50);
-  --success:     oklch(62% 0.18 145);
-  --warn:        oklch(68% 0.16 85);
-  --danger:      oklch(58% 0.22 25);
-  --info:        oklch(62% 0.14 220);
-  --text:        var(--fg);
-  --text-muted:  var(--muted);
-  --primary:     var(--accent);
-  --primary-hover: oklch(56% 0.18 50);
-  --warning:     var(--warn);
-  --offline:     var(--muted);
-  --surface-hover:  oklch(30% 0.04 55 / 0.5);
-  --surface-active: oklch(30% 0.04 55 / 0.4);
-  --code-bg:        oklch(12% 0.015 55);
-  --code-bg-alt:    oklch(10% 0.015 55);
+  --surface-hover:  oklch(90% 0.03 55 / 0.6);
+  --surface-active: oklch(88% 0.04 55 / 0.5);
+  --code-bg:        oklch(93% 0.015 55);
+  --code-bg-alt:    oklch(90% 0.015 55);
 }
 
 html, body {
@@ -2910,20 +2910,20 @@ select {
 
 /* Dark theme overrides */
 html[data-theme="dark-warm"] select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E");
 }
 
-/* ---- AI component dark theme adaptations ---- */
+/* ---- AI component warm-light theme adaptations ---- */
 
-/* JSON preview in dark mode needs deeper background to look good */
+/* JSON preview in warm-light mode */
 html[data-theme="dark-warm"] .ai-json-preview {
-  background: oklch(22% 0.01 250);
+  background: var(--surface);
 }
 html[data-theme="dark-warm"] .ai-btn-test {
-  background: oklch(22% 0.01 250);
+  background: var(--surface);
 }
 html[data-theme="dark-warm"] .ai-modal-body textarea {
-  background: oklch(20% 0.01 250);
+  background: var(--surface);
 }
 html[data-theme="dark-warm"] .ai-json-preview pre {
   background: transparent;
