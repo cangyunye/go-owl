@@ -251,9 +251,15 @@ function switchView(viewId, pushState) {
     if (agentCtx) agentCtx.remove();
     const sidePanel = document.getElementById('sidePanel');
     if (sidePanel) {
+      sidePanel.style.display = '';
       sidePanel.classList.remove('collapsed');
       const toggle = document.getElementById('panelToggle');
-      if (toggle) toggle.classList.remove('collapsed');
+      if (toggle) {
+        toggle.style.display = '';
+        toggle.classList.remove('collapsed');
+      }
+      const vc = document.querySelector('.view-container');
+      if (vc) vc.style.padding = '';
     }
   }
 
