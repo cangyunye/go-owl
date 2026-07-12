@@ -87,8 +87,15 @@ func (h *NodeHandler) List(c *gin.Context) {
 		}
 	}
 	if s := c.Query("status"); s != "" {
-		query += fmt.Sprintf(" AND status = ?")
-		args = append(args, s)
+		switch s {
+		case "offline":
+			query += " AND status IN ('offline', 'unknown')"
+		case "warn":
+			query += " AND status IN ('warn', 'warning')"
+		default:
+			query += " AND status = ?"
+			args = append(args, s)
+		}
 	}
 	if u := c.Query("user"); u != "" {
 		query += fmt.Sprintf(" AND user = ?")
