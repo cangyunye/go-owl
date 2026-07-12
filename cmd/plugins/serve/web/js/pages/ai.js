@@ -3,7 +3,7 @@ export function renderAI(render, navigate, user, api, shell) {
   let publicKeySpki = null;
   let chatMessages = [];
   let currentConvId = null;
-  let currentAiTheme = 'sunlight';
+  let currentAiTheme = 'moonlight';
   let isProcessing = false;
 
   async function loadSessionKey() {
@@ -420,7 +420,7 @@ export function renderAI(render, navigate, user, api, shell) {
 
   // ---- Render ----
   render(`
-    <div class="ai-layout" data-ai-theme="sunlight">
+    <div class="ai-layout" data-ai-theme="moonlight">
       <!-- Left Sidebar: Conversation list -->
       <div class="ai-sidebar-left">
         <div class="ai-sidebar-header">
@@ -444,7 +444,7 @@ export function renderAI(render, navigate, user, api, shell) {
             <span class="ai-status-text">已就绪</span>
           </div>
           <div class="ai-header-right">
-            <button class="ai-theme-btn" id="ai-theme-btn" title="切换至月牙白" aria-label="切换至月牙白">☾</button>
+            <button class="ai-theme-btn" id="ai-theme-btn" title="切换至日光黄" aria-label="切换至日光黄">☀</button>
           </div>
         </div>
 
@@ -516,11 +516,6 @@ export function renderAI(render, navigate, user, api, shell) {
     var aiThemeMap = { 'light-sky': 'sunlight', 'dark-warm': 'sunlight' };
     var globalTheme = document.documentElement.getAttribute('data-theme') || 'default';
     var initial = aiThemeMap[globalTheme] || 'moonlight';
-    // Allow saved AI theme to override
-    try {
-      var saved = localStorage.getItem('ops-ai-theme');
-      if (saved === 'sunlight' || saved === 'moonlight') initial = saved;
-    } catch(_) {}
     setAiTheme(initial);
 
     // Restore messages if we have a current conversation
