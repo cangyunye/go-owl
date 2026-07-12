@@ -36,10 +36,10 @@ export function renderNodes(render, navigate, user, api, shell) {
       ${filtered.map(g => {
         const checked = state.selectedGroups.includes(g);
         return `<li class="panel-item" data-group="${esc(g)}" role="option" aria-selected="${checked}">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;width:100%">
-            <input type="checkbox" class="group-check" value="${esc(g)}" ${checked ? 'checked' : ''} style="accent-color:var(--accent)">
+          <label>
+            <input type="checkbox" class="group-check" value="${esc(g)}" ${checked ? 'checked' : ''}>
             <span class="dot" style="background:${checked ? 'var(--accent)' : 'var(--muted)'}"></span>
-            <span>${esc(g)}</span>
+            <span class="group-text">${esc(g)}</span>
           </label>
         </li>`;
       }).join('')}
