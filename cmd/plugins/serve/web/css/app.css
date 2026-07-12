@@ -3309,19 +3309,19 @@ html[data-theme="light-sky"] .ai-btn-test {
 
 /* ---- Moonlight (月牙白/冷白月光调) ---- */
 .ai-layout[data-ai-theme="moonlight"] {
-  --bg:         oklch(12% 0.015 260);
-  --surface:    oklch(17% 0.015 260);
-  --fg:         oklch(93% 0.008 260);
-  --muted:      oklch(55% 0.015 260);
-  --border:     oklch(28% 0.015 260);
-  --accent:     oklch(80% 0.06 240);
-  --accent-fg:  oklch(12% 0 0);
-  --danger:     oklch(60% 0.2 30);
-  --warn:       oklch(70% 0.15 85);
-  --success:    oklch(55% 0.18 140);
-  --chat-ai:    oklch(20% 0.015 260);
-  --chat-user:  oklch(80% 0.06 240 / 0.1);
+  --bg:         oklch(12% 0.015 250);
+  --surface:    oklch(16% 0.018 250);
+  --fg:         oklch(92% 0.01 250);
+  --muted:      oklch(55% 0.015 250);
+  --border:     oklch(25% 0.015 250);
+  --accent:     oklch(62% 0.18 255);
+  --accent-fg:  oklch(98% 0 0);
+  --danger:     oklch(58% 0.20 25);
+  --warn:       oklch(68% 0.16 85);
+  --success:    oklch(62% 0.16 145);
+  --chat-ai:    oklch(20% 0.015 250);
+  --chat-user:  oklch(62% 0.18 255 / 0.1);
   --shadow:     0 1px 3px oklch(0% 0 0 / 0.25);
   --shadow-lg:  0 4px 24px oklch(0% 0 0 / 0.35);
-  --sidebar-hover: oklch(80% 0.06 240 / 0.08);
+  --sidebar-hover: oklch(62% 0.18 255 / 0.08);
 }
