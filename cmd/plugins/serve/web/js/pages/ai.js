@@ -3,7 +3,6 @@ export function renderAI(render, navigate, user, api, shell) {
   let publicKeySpki = null;
   let chatMessages = [];
   let currentConvId = null;
-  let currentAiTheme = 'moonlight';
   let isProcessing = false;
 
   async function loadSessionKey() {
@@ -24,30 +23,6 @@ export function renderAI(render, navigate, user, api, shell) {
   }
 
   shell.setPanelContent('');
-
-  // ---- AI Theme ----
-  function setAiTheme(theme) {
-    currentAiTheme = theme;
-    const layout = document.querySelector('.ai-layout');
-    if (layout) layout.setAttribute('data-ai-theme', theme);
-    // Update toggle button to show what you'll switch TO
-    const btn = document.getElementById('ai-theme-btn');
-    if (btn) {
-      if (theme === 'sunlight') {
-        btn.textContent = '☾';
-        btn.title = '切换至月牙白';
-      } else {
-        btn.textContent = '☀';
-        btn.title = '切换至日光黄';
-      }
-    }
-    try { localStorage.setItem('ops-ai-theme', theme); } catch(_) {}
-  }
-
-  function toggleAiTheme() {
-    const next = currentAiTheme === 'sunlight' ? 'moonlight' : 'sunlight';
-    setAiTheme(next);
-  }
 
   // ---- Message DOM ----
   function addMsg(cls, html) {
@@ -444,7 +419,6 @@ export function renderAI(render, navigate, user, api, shell) {
             <span class="ai-status-text">已就绪</span>
           </div>
           <div class="ai-header-right">
-            <button class="ai-theme-btn" id="ai-theme-btn" title="切换至日光黄" aria-label="切换至日光黄">☀</button>
           </div>
         </div>
 
@@ -512,12 +486,6 @@ export function renderAI(render, navigate, user, api, shell) {
     loadSessionKey();
     loadHistory();
 
-    // Map current global theme to AI theme
-    var aiThemeMap = { 'light-sky': 'sunlight', 'dark-warm': 'sunlight' };
-    var globalTheme = document.documentElement.getAttribute('data-theme') || 'default';
-    var initial = aiThemeMap[globalTheme] || 'moonlight';
-    setAiTheme(initial);
-
     // Restore messages if we have a current conversation
     const emptyState = document.getElementById('ai-empty-state');
     const chatArea = document.getElementById('ai-chat-messages');
@@ -533,9 +501,6 @@ export function renderAI(render, navigate, user, api, shell) {
       if (emptyState) emptyState.style.display = 'flex';
       if (suggestions) suggestions.style.display = 'flex';
     }
-
-    // Theme toggle
-    document.getElementById('ai-theme-btn').addEventListener('click', toggleAiTheme);
 
     // New conversation
     document.getElementById('ai-new-conv-btn').addEventListener('click', newConversation);

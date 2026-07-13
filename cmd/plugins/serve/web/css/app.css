@@ -2828,24 +2828,6 @@ html[data-theme="light-sky"] .ai-btn-test {
   gap: 8px;
 }
 
-/* ---- Theme toggle within AI ---- */
-.ai-theme-btn {
-  width: 36px; height: 36px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--muted);
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  font-size: 16px;
-  transition: all 0.15s;
-}
-.ai-theme-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
 /* ---- Status indicator ---- */
 .ai-status-dot {
   display: inline-block;
@@ -3281,47 +3263,4 @@ html[data-theme="light-sky"] .ai-btn-test {
   .ai-vendor-group { margin-left: 0; justify-content: center; }
   .ai-input-area { padding: 6px 14px 12px; }
   .ai-suggest-btn { font-size: 11px; padding: 4px 10px; }
-}
-
-/* ================================================================
-   AI LAYOUT THEMES — sunlight (暖黄) / moonlight (月牙白)
-   Applied via data-ai-theme on .ai-layout
-   ================================================================ */
-
-/* ---- Sunlight (暖黄/日光黄) — default AI theme ---- */
-.ai-layout[data-ai-theme="sunlight"] {
-  --bg:         oklch(96% 0.018 85);
-  --surface:    oklch(99% 0.01 85);
-  --fg:         oklch(22% 0.025 75);
-  --muted:      oklch(50% 0.03 85);
-  --border:     oklch(88% 0.02 85);
-  --accent:     oklch(66% 0.18 75);
-  --accent-fg:  oklch(98% 0 0);
-  --danger:     oklch(55% 0.2 30);
-  --warn:       oklch(65% 0.15 85);
-  --success:    oklch(50% 0.18 140);
-  --chat-ai:    oklch(95% 0.015 85);
-  --chat-user:  oklch(66% 0.18 75 / 0.1);
-  --shadow:     0 1px 3px oklch(50% 0.03 85 / 0.1);
-  --shadow-lg:  0 4px 24px oklch(50% 0.03 85 / 0.12);
-  --sidebar-hover: oklch(66% 0.18 75 / 0.06);
-}
-
-/* ---- Moonlight (月牙白/冷白月光调) ---- */
-.ai-layout[data-ai-theme="moonlight"] {
-  --bg:         oklch(12% 0.015 250);
-  --surface:    oklch(16% 0.018 250);
-  --fg:         oklch(92% 0.01 250);
-  --muted:      oklch(55% 0.015 250);
-  --border:     oklch(25% 0.015 250);
-  --accent:     oklch(62% 0.18 255);
-  --accent-fg:  oklch(98% 0 0);
-  --danger:     oklch(58% 0.20 25);
-  --warn:       oklch(68% 0.16 85);
-  --success:    oklch(62% 0.16 145);
-  --chat-ai:    oklch(20% 0.015 250);
-  --chat-user:  oklch(62% 0.18 255 / 0.1);
-  --shadow:     0 1px 3px oklch(0% 0 0 / 0.25);
-  --shadow-lg:  0 4px 24px oklch(0% 0 0 / 0.35);
-  --sidebar-hover: oklch(62% 0.18 255 / 0.08);
 }
