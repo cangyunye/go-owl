@@ -19,10 +19,10 @@ owl-serve 是 go-owl 的 Web 控制台服务，提供：
 owl-serve
 
 # 指定端口和地址
-owl-serve -port 8080 -host 0.0.0.0
+owl-serve --port 8080 --host 0.0.0.0
 
 # 开发模式（前端热更新）
-owl-serve -dev
+owl-serve --dev
 
 # 通过 go-owl CLI
 owl serve
@@ -50,6 +50,8 @@ Password: rq3aemy3tUut
 
 ```bash
 owl-serve --reset-admin
+# 或通过 owl CLI 同样支持：
+owl serve --reset-admin
 ```
 
 输出：
@@ -293,7 +295,8 @@ GET /api/v1/tasks?page=1&page_size=50
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `-port` | 8080 | HTTP 监听端口 |
-| `-host` | 127.0.0.1 | HTTP 监听地址 |
-| `-dev` | false | 开发模式（前端从文件系统加载） |
+| `--port`（`-p`） | 8080 | HTTP 监听端口 |
+| `--host` | 127.0.0.1 | HTTP 监听地址 |
+| `--dev` | false | 开发模式（前端从文件系统加载） |
 | `--reset-admin` | false | 重置 admin 密码并退出 |
+| `--ai-debug` | false | AI 调试模式（记录完整提示词/回复） |

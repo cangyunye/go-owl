@@ -30,6 +30,12 @@ func TestServeFlags(t *testing.T) {
 
 	testutil.AssertFlagExists(t, cmd, "dev")
 	testutil.AssertFlagDefault(t, cmd, "dev", "false")
+
+	testutil.AssertFlagExists(t, cmd, "reset-admin")
+	testutil.AssertFlagDefault(t, cmd, "reset-admin", "false")
+
+	testutil.AssertFlagExists(t, cmd, "ai-debug")
+	testutil.AssertFlagDefault(t, cmd, "ai-debug", "false")
 }
 
 func TestServeHelpContainsSections(t *testing.T) {

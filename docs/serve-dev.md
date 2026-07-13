@@ -3,7 +3,7 @@
 ## 架构
 
 ```
-cmd/owl-serve/main.go          # 入口，解析 -port / -host / -dev 标志
+cmd/owl-serve/main.go          # 入口，解析 --port / --host / --dev 标志（cobra）
 cmd/plugins/serve/
 ├── server.go                   # Init / Start / 路由注册 / 静态文件服务
 ├── server_test.go              # 集成测试（SPA、WebSocket）
@@ -72,7 +72,7 @@ make build/all
 # 输出: Username: admin / Password: xxxxxxxx，然后自动启动服务
 ```
 
-`--reset-admin` 在 `main.go` 中实现，调用 `Server.ResetAdmin()` 方法。
+`--reset-admin` 在 `main.go` 中通过 cobra 实现，调用 `Server.ResetAdmin()` 方法。\n\n> 注：`owl serve` 子命令现也支持 `--reset-admin` 和 `--ai-debug` 参数，自动透传给 `owl-serve`。
 
 ## 测试数据
 
@@ -120,13 +120,13 @@ curl -s "http://localhost:8080/api/v1/nodes?group=web,db" \
 
 ```bash
 # 从文件系统加载前端文件（支持热更新）
-owl-serve -dev
+owl-serve --dev
 
 # 指定端口
-owl-serve -port 8080 -dev
+owl-serve --port 8080 --dev
 
-# 或通过 Cobra
-owl serve -dev
+# 或通过 owl CLI
+owl serve --dev
 ```
 
 `-dev` 模式下静态文件从 `cmd/plugins/serve/web/` 目录读取，修改 JS/CSS 后刷新浏览器即可，无需重新编译。

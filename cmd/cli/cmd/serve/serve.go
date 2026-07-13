@@ -10,9 +10,11 @@ import (
 )
 
 var (
-	port int
-	host string
-	dev  bool
+	port        int
+	host        string
+	dev         bool
+	resetAdmin  bool
+	aiDebug     bool
 )
 
 func NewServeCmd() *cobra.Command {
@@ -30,13 +32,17 @@ func NewServeCmd() *cobra.Command {
   owl serve
   owl serve --port 9090
   owl serve --host 0.0.0.0 --port 8080
-  owl serve --dev`,
+  owl serve --dev
+  owl serve --reset-admin --port 8080
+  owl serve --ai-debug`,
 		Run: runServe,
 	}
 
 	serveCmd.Flags().IntVarP(&port, "port", "p", 8080, "HTTP 监听端口")
 	serveCmd.Flags().StringVar(&host, "host", "127.0.0.1", "HTTP 监听地址")
 	serveCmd.Flags().BoolVar(&dev, "dev", false, "开发模式（前端从文件系统加载）")
+	serveCmd.Flags().BoolVar(&resetAdmin, "reset-admin", false, "重置管理员密码")
+	serveCmd.Flags().BoolVar(&aiDebug, "ai-debug", false, "AI 调试模式（记录完整提示词/回复）")
 
 	return serveCmd
 }
@@ -56,6 +62,12 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 	if dev {
 		serveArgs = append(serveArgs, "--dev")
+	}
+	if resetAdmin {
+		serveArgs = append(serveArgs, "--reset-admin")
+	}
+	if aiDebug {
+		serveArgs = append(serveArgs, "--ai-debug")
 	}
 
 	serveCmd := exec.Command(binPath, serveArgs...)

@@ -5,6 +5,8 @@
 - Use `--reset-admin` flag instead:
   ```bash
   ./build/owl-serve --reset-admin --port 8080
+  # 或通过 owl CLI 同样支持：
+  owl serve --reset-admin --port 8080
   ```
   This resets the admin password, prints the new credentials, and starts the server in one command.
 
