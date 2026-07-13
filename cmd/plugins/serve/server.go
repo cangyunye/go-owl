@@ -249,8 +249,7 @@ func (s *Server) setupRoutes() {
 	// Static files
 	var staticFS fs.FS
 	if s.Config.DevMode {
-		wd, _ := os.Getwd()
-		staticFS = os.DirFS(filepath.Join(wd, "web"))
+		staticFS = s.devStaticFS()
 	} else {
 		sub, _ := fs.Sub(webFS, "web")
 		staticFS = sub
@@ -367,6 +366,28 @@ func generatePassword(length int) string {
 		pwd[i] = charset[n.Int64()]
 	}
 	return string(pwd)
+}
+
+// devStaticFS resolves the web/ directory for dev mode by walking up from
+// the current working directory until it finds go.mod (project root).
+func (s *Server) devStaticFS() fs.FS {
+	wd, err := os.Getwd()
+	if err != nil {
+		return os.DirFS("web")
+	}
+	dir := wd
+	for i := 0; i < 10; i++ {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return os.DirFS(filepath.Join(dir, "cmd", "plugins", "serve", "web"))
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	// fallback: try CWD/web (works if user cd'd into cmd/plugins/serve/)
+	return os.DirFS(filepath.Join(wd, "web"))
 }
 
 func (s *Server) Start() error {
