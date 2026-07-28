@@ -1,0 +1,187 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"time"
+)
+
+// 表结构必须与 internal/history/db_sqlite3.go 保持逐字一致。
+// CLI 与 Web 共用 ~/.owl/owl.db，两者以 CREATE TABLE IF NOT EXISTS 建同名表，
+// 先建者生效；schema 不一致会导致读写错乱。
+
+type Operation struct {
+	ID               int64
+	TaskID           string
+	OpType           string
+	Command          string
+	Targets          []string
+	Status           string
+	ExecutionMode    string
+	PlaybookPath     string
+	CurrentTaskIndex int
+	CurrentTaskPhase string
+	CreatedAt        time.Time
+}
+
+type CommandExecution struct {
+	ID         int64
+	TaskID     string
+	NodeID     string
+	Command    string
+	ExitCode   int
+	Stdout     string
+	Stderr     string
+	DurationMs int64
+	Success    bool
+	CreatedAt  time.Time
+}
+
+type FileTransfer struct {
+	ID           int64
+	TaskID       string
+	NodeID       string
+	FileName     string
+	FileSize     int64
+	TransferType string
+	Status       string
+	Progress     float64
+	Error        string
+	CreatedAt    time.Time
+}
+
+type NodeCommunication struct {
+	ID          int64
+	TaskID      string
+	NodeID      string
+	NodeAddress string
+	Direction   string
+	MessageType string
+	Payload     string
+	Success     bool
+	Error       string
+	CreatedAt   time.Time
+}
+
+type Record struct {
+	Operation         *Operation         `json:"operation"`
+	CommandExecutions []*CommandExecution `json:"command_executions,omitempty"`
+	Transfers         []*FileTransfer     `json:"transfers,omitempty"`
+	Communications    []*NodeCommunication `json:"communications,omitempty"`
+}
+
+type QueryOptions struct {
+	TaskID    string
+	NodeID    string
+	OpType    string
+	Status    string
+	StartTime time.Time
+	EndTime   time.Time
+	Limit     int
+	Offset    int
+}
+
+type Stats struct {
+	Total    int            `json:"total"`
+	ByOpType map[string]int `json:"by_op_type"`
+	ByStatus map[string]int `json:"by_status"`
+}
+
+type HistoryStore struct {
+	db *sql.DB
+}
+
+func NewHistoryStore(db *sql.DB) *HistoryStore {
+	return &HistoryStore{db: db}
+}
+
+func (s *HistoryStore) Init(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS operations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id TEXT,
+			op_type TEXT,
+			command TEXT,
+			targets TEXT,
+			status TEXT,
+			execution_mode TEXT DEFAULT '',
+			playbook_path TEXT DEFAULT '',
+			current_task_index INTEGER DEFAULT 0,
+			current_task_phase TEXT DEFAULT '',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_operations_task_id ON operations (task_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_operations_op_type ON operations (op_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_operations_created_at ON operations (created_at)`,
+		`CREATE TABLE IF NOT EXISTS command_executions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id TEXT,
+			node_id TEXT,
+			command TEXT,
+			exit_code INTEGER,
+			stdout TEXT,
+			stderr TEXT,
+			duration_ms INTEGER,
+			success INTEGER,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_executions_task_id ON command_executions (task_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_executions_node_id ON command_executions (node_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_executions_created_at ON command_executions (created_at)`,
+		`CREATE TABLE IF NOT EXISTS file_transfers (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id TEXT,
+			node_id TEXT,
+			file_name TEXT,
+			file_size INTEGER,
+			transfer_type TEXT,
+			status TEXT,
+			progress REAL,
+			error TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_transfers_task_id ON file_transfers (task_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_transfers_node_id ON file_transfers (node_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_transfers_created_at ON file_transfers (created_at)`,
+		`CREATE TABLE IF NOT EXISTS node_communications (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id TEXT,
+			node_id TEXT,
+			node_address TEXT,
+			direction TEXT,
+			message_type TEXT,
+			payload TEXT,
+			success INTEGER,
+			error TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_communications_task_id ON node_communications (task_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_communications_node_id ON node_communications (node_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_communications_created_at ON node_communications (created_at)`,
+	}
+	for _, stmt := range statements {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *HistoryStore) RecordOperation(ctx context.Context, op *Operation) error {
+	if s == nil {
+		return nil
+	}
+	if op.CreatedAt.IsZero() {
+		op.CreatedAt = time.Now().UTC()
+	}
+	targetsJSON, _ := json.Marshal(op.Targets)
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, op.TaskID, op.OpType, op.Command, string(targetsJSON), op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, op.CreatedAt)
+	return err
+}
