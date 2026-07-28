@@ -104,3 +104,57 @@ func TestHistoryStore_QueryPaginationAndStatusFilter(t *testing.T) {
 	assert.Equal(t, 5, total)
 	assert.Len(t, page, 2)
 }
+
+func TestHistoryStore_Cleanup(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	old := time.Now().UTC().AddDate(0, 0, -100)
+	fresh := time.Now().UTC()
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "old", OpType: "command", Status: "completed", CreatedAt: old}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "fresh", OpType: "command", Status: "completed", CreatedAt: fresh}))
+	require.NoError(t, s.RecordCommandExecution(ctx, &CommandExecution{TaskID: "old", NodeID: "n1", Success: true, CreatedAt: old}))
+
+	deleted, err := s.Cleanup(ctx, 30)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), deleted)
+
+	var count int
+	db.QueryRow(`SELECT COUNT(*) FROM operations`).Scan(&count)
+	assert.Equal(t, 1, count)
+}
+
+func TestHistoryStore_Stats(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	s.RecordOperation(ctx, &Operation{TaskID: "a", OpType: "command", Status: "completed"})
+	s.RecordOperation(ctx, &Operation{TaskID: "b", OpType: "command", Status: "failed"})
+	s.RecordOperation(ctx, &Operation{TaskID: "c", OpType: "playbook", Status: "completed"})
+
+	st, err := s.Stats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 3, st.Total)
+	assert.Equal(t, 2, st.ByOpType["command"])
+	assert.Equal(t, 1, st.ByOpType["playbook"])
+	assert.Equal(t, 2, st.ByStatus["completed"])
+	assert.Equal(t, 1, st.ByStatus["failed"])
+}
+
+func TestHistoryStore_UpdateOperationStatus(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "op", OpType: "command", Status: "running"}))
+	require.NoError(t, s.UpdateOperationStatus(ctx, "op", "completed"))
+
+	rec, err := s.GetByTaskID(ctx, "op")
+	require.NoError(t, err)
+	assert.Equal(t, "completed", rec.Operation.Status)
+}

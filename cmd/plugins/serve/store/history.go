@@ -363,3 +363,65 @@ func (s *HistoryStore) commsByTaskID(ctx context.Context, taskID string) ([]*Nod
 	}
 	return results, nil
 }
+
+func (s *HistoryStore) UpdateOperationStatus(ctx context.Context, taskID, status string) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE operations SET status = ? WHERE task_id = ?`, status, taskID)
+	return err
+}
+
+func (s *HistoryStore) Cleanup(ctx context.Context, retentionDays int) (int64, error) {
+	if s == nil {
+		return 0, nil
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays)
+	var total int64
+	for _, table := range []string{"operations", "command_executions", "file_transfers", "node_communications"} {
+		res, err := s.db.ExecContext(ctx, "DELETE FROM "+table+" WHERE created_at < ?", cutoff)
+		if err != nil {
+			return total, err
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			total += n
+		}
+	}
+	return total, nil
+}
+
+func (s *HistoryStore) Stats(ctx context.Context) (*Stats, error) {
+	if s == nil {
+		return &Stats{ByOpType: map[string]int{}, ByStatus: map[string]int{}}, nil
+	}
+	st := &Stats{ByOpType: map[string]int{}, ByStatus: map[string]int{}}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM operations`).Scan(&st.Total); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT op_type, COUNT(*) FROM operations GROUP BY op_type`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var k string
+		var n int
+		if err := rows.Scan(&k, &n); err == nil {
+			st.ByOpType[k] = n
+		}
+	}
+	rows.Close()
+
+	rows2, err := s.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM operations GROUP BY status`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var k string
+		var n int
+		if err := rows2.Scan(&k, &n); err == nil {
+			st.ByStatus[k] = n
+		}
+	}
+	return st, nil
+}
