@@ -41,3 +41,66 @@ func TestHistoryStore_NilSafe(t *testing.T) {
 	assert.NoError(t, s.Init(context.Background()))
 	assert.NoError(t, s.RecordOperation(context.Background(), &Operation{}))
 }
+
+func TestHistoryStore_RecordDetailsAndQuery(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "op-c", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed"}))
+	require.NoError(t, s.RecordCommandExecution(ctx, &CommandExecution{TaskID: "op-c", NodeID: "n1", Command: "uptime", ExitCode: 0, Stdout: "ok", DurationMs: 12, Success: true}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "op-f", OpType: "file_transfer", Command: "transfer a -> b", Targets: []string{"n1"}, Status: "completed"}))
+	require.NoError(t, s.RecordFileTransfer(ctx, &FileTransfer{TaskID: "op-f", NodeID: "n1", FileName: "a.tar", FileSize: 100, TransferType: "push", Status: "completed"}))
+
+	recs, total, err := s.Query(ctx, &QueryOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, recs, 2)
+
+	byType, total, err := s.Query(ctx, &QueryOptions{OpType: "command"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, byType, 1)
+	assert.Equal(t, "op-c", byType[0].Operation.TaskID)
+	require.Len(t, byType[0].CommandExecutions, 1)
+	assert.Equal(t, "ok", byType[0].CommandExecutions[0].Stdout)
+
+	byNode, total, err := s.Query(ctx, &QueryOptions{NodeID: "n1"})
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, byNode, 2)
+
+	rec, err := s.GetByTaskID(ctx, "op-f")
+	require.NoError(t, err)
+	require.Len(t, rec.Transfers, 1)
+	assert.Equal(t, int64(100), rec.Transfers[0].FileSize)
+
+	_, err = s.GetByTaskID(ctx, "missing")
+	assert.Error(t, err)
+}
+
+func TestHistoryStore_QueryPaginationAndStatusFilter(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	for i := 0; i < 5; i++ {
+		st := "completed"
+		if i == 0 {
+			st = "failed"
+		}
+		require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "t" + string(rune('0'+i)), OpType: "command", Status: st}))
+	}
+
+	failed, total, err := s.Query(ctx, &QueryOptions{Status: "failed"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	assert.Len(t, failed, 1)
+
+	page, total, err := s.Query(ctx, &QueryOptions{Limit: 2, Offset: 0})
+	require.NoError(t, err)
+	assert.Equal(t, 5, total)
+	assert.Len(t, page, 2)
+}

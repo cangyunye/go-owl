@@ -185,3 +185,181 @@ func (s *HistoryStore) RecordOperation(ctx context.Context, op *Operation) error
 	`, op.TaskID, op.OpType, op.Command, string(targetsJSON), op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, op.CreatedAt)
 	return err
 }
+
+func (s *HistoryStore) RecordCommandExecution(ctx context.Context, exec *CommandExecution) error {
+	if s == nil {
+		return nil
+	}
+	if exec.CreatedAt.IsZero() {
+		exec.CreatedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO command_executions (task_id, node_id, command, exit_code, stdout, stderr, duration_ms, success, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, exec.TaskID, exec.NodeID, exec.Command, exec.ExitCode, exec.Stdout, exec.Stderr, exec.DurationMs, exec.Success, exec.CreatedAt)
+	return err
+}
+
+func (s *HistoryStore) RecordFileTransfer(ctx context.Context, tr *FileTransfer) error {
+	if s == nil {
+		return nil
+	}
+	if tr.CreatedAt.IsZero() {
+		tr.CreatedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO file_transfers (task_id, node_id, file_name, file_size, transfer_type, status, progress, error, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, tr.TaskID, tr.NodeID, tr.FileName, tr.FileSize, tr.TransferType, tr.Status, tr.Progress, tr.Error, tr.CreatedAt)
+	return err
+}
+
+func (s *HistoryStore) RecordNodeCommunication(ctx context.Context, c *NodeCommunication) error {
+	if s == nil {
+		return nil
+	}
+	if c.CreatedAt.IsZero() {
+		c.CreatedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO node_communications (task_id, node_id, node_address, direction, message_type, payload, success, error, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.TaskID, c.NodeID, c.NodeAddress, c.Direction, c.MessageType, c.Payload, c.Success, c.Error, c.CreatedAt)
+	return err
+}
+
+func (s *HistoryStore) Query(ctx context.Context, opts *QueryOptions) ([]*Record, int, error) {
+	if s == nil {
+		return nil, 0, nil
+	}
+	where := " WHERE 1=1"
+	args := []interface{}{}
+	if opts.TaskID != "" {
+		where += " AND task_id = ?"
+		args = append(args, opts.TaskID)
+	}
+	if opts.OpType != "" {
+		where += " AND op_type = ?"
+		args = append(args, opts.OpType)
+	}
+	if opts.Status != "" {
+		where += " AND status = ?"
+		args = append(args, opts.Status)
+	}
+	if opts.NodeID != "" {
+		where += " AND targets LIKE ?"
+		args = append(args, "%"+opts.NodeID+"%")
+	}
+	if !opts.StartTime.IsZero() {
+		where += " AND created_at >= ?"
+		args = append(args, opts.StartTime)
+	}
+	if !opts.EndTime.IsZero() {
+		where += " AND created_at <= ?"
+		args = append(args, opts.EndTime)
+	}
+
+	var total int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM operations"+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := "SELECT id, task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, created_at FROM operations" + where + " ORDER BY created_at DESC"
+	listArgs := append([]interface{}{}, args...)
+	if opts.Limit > 0 {
+		query += " LIMIT ? OFFSET ?"
+		listArgs = append(listArgs, opts.Limit, opts.Offset)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, listArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	records := []*Record{}
+	for rows.Next() {
+		var op Operation
+		var targetsJSON string
+		if err := rows.Scan(&op.ID, &op.TaskID, &op.OpType, &op.Command, &targetsJSON, &op.Status, &op.ExecutionMode, &op.PlaybookPath, &op.CurrentTaskIndex, &op.CurrentTaskPhase, &op.CreatedAt); err != nil {
+			continue
+		}
+		json.Unmarshal([]byte(targetsJSON), &op.Targets)
+		records = append(records, &Record{Operation: &op})
+	}
+
+	for _, rec := range records {
+		rec.CommandExecutions, _ = s.executionsByTaskID(ctx, rec.Operation.TaskID)
+		rec.Transfers, _ = s.transfersByTaskID(ctx, rec.Operation.TaskID)
+		rec.Communications, _ = s.commsByTaskID(ctx, rec.Operation.TaskID)
+	}
+	return records, total, nil
+}
+
+func (s *HistoryStore) GetByTaskID(ctx context.Context, taskID string) (*Record, error) {
+	recs, _, err := s.Query(ctx, &QueryOptions{TaskID: taskID})
+	if err != nil {
+		return nil, err
+	}
+	if len(recs) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return recs[0], nil
+}
+
+func (s *HistoryStore) executionsByTaskID(ctx context.Context, taskID string) ([]*CommandExecution, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, task_id, node_id, command, exit_code, stdout, stderr, duration_ms, success, created_at
+		FROM command_executions WHERE task_id = ? ORDER BY created_at`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := []*CommandExecution{}
+	for rows.Next() {
+		var e CommandExecution
+		if err := rows.Scan(&e.ID, &e.TaskID, &e.NodeID, &e.Command, &e.ExitCode, &e.Stdout, &e.Stderr, &e.DurationMs, &e.Success, &e.CreatedAt); err != nil {
+			continue
+		}
+		results = append(results, &e)
+	}
+	return results, nil
+}
+
+func (s *HistoryStore) transfersByTaskID(ctx context.Context, taskID string) ([]*FileTransfer, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, task_id, node_id, file_name, file_size, transfer_type, status, progress, error, created_at
+		FROM file_transfers WHERE task_id = ? ORDER BY created_at`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := []*FileTransfer{}
+	for rows.Next() {
+		var tr FileTransfer
+		if err := rows.Scan(&tr.ID, &tr.TaskID, &tr.NodeID, &tr.FileName, &tr.FileSize, &tr.TransferType, &tr.Status, &tr.Progress, &tr.Error, &tr.CreatedAt); err != nil {
+			continue
+		}
+		results = append(results, &tr)
+	}
+	return results, nil
+}
+
+func (s *HistoryStore) commsByTaskID(ctx context.Context, taskID string) ([]*NodeCommunication, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, task_id, node_id, node_address, direction, message_type, payload, success, error, created_at
+		FROM node_communications WHERE task_id = ? ORDER BY created_at`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := []*NodeCommunication{}
+	for rows.Next() {
+		var c NodeCommunication
+		if err := rows.Scan(&c.ID, &c.TaskID, &c.NodeID, &c.NodeAddress, &c.Direction, &c.MessageType, &c.Payload, &c.Success, &c.Error, &c.CreatedAt); err != nil {
+			continue
+		}
+		results = append(results, &c)
+	}
+	return results, nil
+}
