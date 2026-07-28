@@ -86,6 +86,10 @@ func (h *WSHub) BroadcastTaskOutput(taskID, nodeID, line, lineType string) {
 	})
 }
 
+func (h *WSHub) BroadcastHistoryUpdate() {
+	h.Broadcast(WSMessage{Type: "history_update", Data: nil})
+}
+
 func (h *WSHub) WsHandler(authService *AuthHandler) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.Query("token")
