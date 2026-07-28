@@ -14,10 +14,50 @@ now_ns() {
     date +%s%N 2>/dev/null || echo 0
 }
 
+url_encode() {
+    local str="$1"
+    local encoded=""
+    local i c
+    for (( i = 0; i < ${#str}; i++ )); do
+        c="${str:$i:1}"
+        case "$c" in
+            [a-zA-Z0-9.~_-]) encoded+="$c" ;;
+            *) encoded+=$(printf '%%%02X' "'$c") ;;
+        esac
+    done
+    printf '%s' "$encoded"
+}
+
+parse_target_to_url() {
+    local target="$1"
+    local password="$2"
+
+    local user_host="${target%%:*}"
+    local remote_path="${target#*:}"
+
+    local user="${user_host%%@*}"
+    local host="${user_host#*@}"
+
+    local port=22
+    if [[ "$host" =~ ^(.+):([0-9]+)$ ]]; then
+        host="${BASH_REMATCH[1]}"
+        port="${BASH_REMATCH[2]}"
+    fi
+
+    if [[ -n "$password" ]]; then
+        local encoded_pass
+        encoded_pass="$(url_encode "$password")"
+        printf 'scp://%s:%s@%s:%s%s' "$user" "$encoded_pass" "$host" "$port" "$remote_path"
+    else
+        printf 'scp://%s@%s:%s%s' "$user" "$host" "$port" "$remote_path"
+    fi
+}
+
 SOURCE=""
 TARGETS=""
 TIMEOUT=30
 PASSWORDS=""
+GSCP_PATH="/tmp/gscp"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -35,6 +75,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --passwords)
             PASSWORDS="$2"
+            shift 2
+            ;;
+        --gscp-path)
+            GSCP_PATH="$2"
             shift 2
             ;;
         *)
@@ -64,6 +108,11 @@ if [[ ! "$TIMEOUT" =~ ^[0-9]+$ ]]; then
     exit 2
 fi
 
+if [[ ! -x "$GSCP_PATH" ]]; then
+    echo "owl-relay: gscp not found or not executable: $GSCP_PATH" >&2
+    exit 2
+fi
+
 IFS=',' read -ra TARGET_ARR <<< "$TARGETS"
 IFS=',' read -ra PASSWORD_ARR <<< "$PASSWORDS"
 
@@ -84,26 +133,12 @@ for i in "${!TARGET_ARR[@]}"; do
     target="${TARGET_ARR[$i]}"
     password="${PASSWORD_ARR[$i]:-}"
 
-    scp_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=no)
+    url="$(parse_target_to_url "$target" "$password")"
 
-    if [[ -n "$password" ]]; then
-        if ! command -v sshpass &>/dev/null; then
-            target_csv="$(csv_quote "$target")"
-            echo "$target_csv,auth_failed,$(csv_quote 'sshpass not available'),0"
-            ((fail_count++))
-            continue
-        fi
-
-        start_ns=$(now_ns)
-        SSHPASS="$password" timeout "$TIMEOUT" sshpass -e scp "${scp_opts[@]}" "$SOURCE" "$target" &>/dev/null
-        scp_exit=$?
-        end_ns=$(now_ns)
-    else
-        start_ns=$(now_ns)
-        timeout "$TIMEOUT" scp "${scp_opts[@]}" "$SOURCE" "$target" &>/dev/null
-        scp_exit=$?
-        end_ns=$(now_ns)
-    fi
+    start_ns=$(now_ns)
+    timeout "$TIMEOUT" "$GSCP_PATH" -m PUT -q "$SOURCE" "$url" &>/dev/null
+    scp_exit=$?
+    end_ns=$(now_ns)
 
     if [[ $start_ns -gt 0 ]] && [[ $end_ns -gt 0 ]]; then
         duration_ms=$(( (end_ns - start_ns) / 1000000 ))
@@ -124,7 +159,7 @@ for i in "${!TARGET_ARR[@]}"; do
             ;;
         *)
             status="failed"
-            error="scp exit code $scp_exit"
+            error="gscp exit code $scp_exit"
             ((fail_count++))
             ;;
     esac

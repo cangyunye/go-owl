@@ -23,7 +23,7 @@ GO := go
 # 编译标志
 COMMIT_ID := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME := $(shell date "+%Y-%m-%d %H:%M:%S")
-LDFLAGS := -ldflags "-s -w -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.version=1.0.0' -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.commitID=$(COMMIT_ID)' -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.buildTime=$(BUILD_TIME)'"
+LDFLAGS := -ldflags "-s -w -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.version=0.16.0' -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.commitID=$(COMMIT_ID)' -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.buildTime=$(BUILD_TIME)'"
 
 # 颜色定义
 BOLD := \033[1m
@@ -85,8 +85,8 @@ build/darwin-arm64:
 	GOOS=darwin GOARCH=arm64 $(GO) build -tags sqlite3 $(LDFLAGS) -o $(BUILD_DIR)/darwin-arm64-sqlite3/$(BINARY_NAME) $(MAIN_PATH)
 	@printf "$(BOLD)$(GREEN)✓$(NC) macOS ARM64 已编译\n"
 
-# 编译所有平台版本（含 CLI + Server）
-build/all: build/linux build/windows build/darwin build/darwin-arm64 build-serve/linux build-serve/darwin build-serve/darwin-arm64
+# 编译所有平台版本（含 CLI + Server + gscp）
+build/all: build/linux build/windows build/darwin build/darwin-arm64 build-serve/linux build-serve/darwin build-serve/darwin-arm64 build-gscp
 	@printf ""
 	@printf "$(BOLD)$(GREEN)✓$(NC) 所有平台版本编译完成\n"
 	@find $(BUILD_DIR) -type f \( -name "$(BINARY_NAME)*" -o -name "owl-serve*" \) | head -30
@@ -100,6 +100,41 @@ else
 	$(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)/$(BINARY_NAME).exe $(MAIN_PATH)
 endif
 	@printf "$(BOLD)$(GREEN)✓$(NC) $(shell go env GOOS)-$(shell go env GOARCH) 版本已编译\n"
+
+# ====================
+# gscp 中继工具编译
+# ====================
+
+GSCP_REPO    := https://github.com/cangyunye/gscp.git
+GSCP_REF     := main
+GSCP_SRC     := $(BUILD_DIR)/.gscp-src
+GSCP_LDFLAGS := -w -s
+
+define GSCP_CROSS_BUILD
+	@mkdir -p $(BUILD_DIR)/linux-amd64 $(BUILD_DIR)/linux-arm64 $(BUILD_DIR)/darwin-amd64 $(BUILD_DIR)/darwin-arm64
+	cd $(1) && GOWORK=off GOOS=linux GOARCH=amd64 $(GO) build -ldflags "$(GSCP_LDFLAGS)" -o $(CURDIR)/$(BUILD_DIR)/linux-amd64/gscp .
+	cd $(1) && GOWORK=off GOOS=linux GOARCH=arm64 $(GO) build -ldflags "$(GSCP_LDFLAGS)" -o $(CURDIR)/$(BUILD_DIR)/linux-arm64/gscp .
+	cd $(1) && GOWORK=off GOOS=darwin GOARCH=amd64 $(GO) build -ldflags "$(GSCP_LDFLAGS)" -o $(CURDIR)/$(BUILD_DIR)/darwin-amd64/gscp .
+	cd $(1) && GOWORK=off GOOS=darwin GOARCH=arm64 $(GO) build -ldflags "$(GSCP_LDFLAGS)" -o $(CURDIR)/$(BUILD_DIR)/darwin-arm64/gscp .
+	@printf "$(BOLD)$(GREEN)✓$(NC) gscp 全平台编译完成 (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64)\n"
+endef
+
+## build-gscp: 从仓库克隆并编译 gscp（默认）
+build-gscp:
+	@if [ ! -d $(GSCP_SRC)/.git ]; then \
+		printf "$(BOLD)$(BLUE)==>$(NC) 克隆 gscp 仓库...\n"; \
+		git clone --depth 1 $(GSCP_REPO) $(GSCP_SRC); \
+	fi
+	@cd $(GSCP_SRC) && git fetch origin $(GSCP_REF) && git checkout FETCH_HEAD --quiet
+	$(call GSCP_CROSS_BUILD,$(GSCP_SRC))
+
+## build/local-gscp: 使用本地路径编译 gscp（开发用）
+## 用法: make build/local-gscp GSCP_LOCAL=../gscp
+build/local-gscp:
+	@test -n "$(GSCP_LOCAL)" || (printf "$(BOLD)$(YELLOW)错误:$(NC) 请指定 GSCP_LOCAL 路径\n用法: make build/local-gscp GSCP_LOCAL=../gscp\n" && exit 1)
+	@test -d "$(GSCP_LOCAL)" || (printf "$(BOLD)$(YELLOW)错误:$(NC) 路径不存在: $(GSCP_LOCAL)\n" && exit 1)
+	@printf "$(BOLD)$(BLUE)==>$(NC) 使用本地 gscp: $(GSCP_LOCAL)\n"
+	$(call GSCP_CROSS_BUILD,$(GSCP_LOCAL))
 
 # ====================
 # 数据库版本编译
@@ -273,6 +308,19 @@ else
 	cp $(BUILD_DIR)/$(SQLITE3_BINARY).exe "C:\Program Files\Owl\owl.exe"
 	@printf "$(BOLD)$(GREEN)✓$(NC) SQLite3 版本已安装\n"
 endif
+
+## install-gscp: 安装 gscp 到 ~/.owl/gscp/（需先执行 build-gscp 或 build/local-gscp）
+install-gscp:
+	@mkdir -p ~/.owl/gscp/linux-amd64 ~/.owl/gscp/linux-arm64 ~/.owl/gscp/darwin-amd64 ~/.owl/gscp/darwin-arm64
+	@for platform in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64; do \
+		if [ -f $(BUILD_DIR)/$$platform/gscp ]; then \
+			cp $(BUILD_DIR)/$$platform/gscp ~/.owl/gscp/$$platform/gscp; \
+			printf "$(BOLD)$(GREEN)✓$(NC) gscp ($$platform) → ~/.owl/gscp/$$platform/gscp\n"; \
+		else \
+			printf "$(BOLD)$(YELLOW)跳过:$(NC) $(BUILD_DIR)/$$platform/gscp 不存在\n"; \
+		fi; \
+	done
+	@printf "$(BOLD)$(GREEN)✓$(NC) gscp 安装完成，扩散传输将自动使用\n"
 
 # ====================
 # 清理
