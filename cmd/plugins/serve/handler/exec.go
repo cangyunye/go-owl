@@ -3,10 +3,13 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -47,10 +50,14 @@ func NewExecHandler(db *sql.DB, ts *store.TaskStore, hub *WSHub) *ExecHandler {
 type execRequest struct {
 	NodeID        string            `json:"node_id"`
 	NodeIDs       []string          `json:"node_ids"`
+	Mode          string            `json:"mode"`
 	Command       string            `json:"command"`
 	ScriptContent string            `json:"script_content"`
 	ScriptName    string            `json:"script_name"`
 	ScriptArgs    string            `json:"script_args"`
+	ScriptURL     string            `json:"script_url"`
+	ScriptDest    string            `json:"script_dest"`
+	ScriptKeep    bool              `json:"script_keep"`
 	Group         string            `json:"group"`
 	Groups        []string          `json:"groups"`
 	Labels        map[string]string `json:"labels"`
@@ -93,6 +100,12 @@ type ExecConfig struct {
 	CommandTimeout   string
 	NoColor          bool
 	Silent           bool
+
+	ScriptContent string
+	ScriptName    string
+	ScriptArgs    string
+	ScriptDest    string
+	ScriptKeep    bool
 }
 
 func resolveNodeIDs(db *sql.DB, req execRequest) []string {
@@ -167,6 +180,39 @@ func resolveNodeIDs(db *sql.DB, req execRequest) []string {
 	return nil
 }
 
+func resolveScriptContent(req execRequest) (content string, name string, err error) {
+	if req.ScriptContent != "" {
+		name = req.ScriptName
+		if name == "" {
+			name = "script.sh"
+		}
+		return req.ScriptContent, name, nil
+	}
+	if req.ScriptURL != "" {
+		resp, err := http.Get(req.ScriptURL)
+		if err != nil {
+			return "", "", fmt.Errorf("fetch script url: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return "", "", fmt.Errorf("fetch script url: status %d", resp.StatusCode)
+		}
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", "", fmt.Errorf("read script url: %w", err)
+		}
+		name = req.ScriptName
+		if name == "" {
+			name = filepath.Base(req.ScriptURL)
+			if name == "" || name == "." || name == "/" {
+				name = "script.sh"
+			}
+		}
+		return string(body), name, nil
+	}
+	return "", "", fmt.Errorf("script_content or script_url is required")
+}
+
 func (h *ExecHandler) Create(c *gin.Context) {
 	var req execRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -180,13 +226,32 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		return
 	}
 
+	isScript := req.Mode == "script"
 	command := req.Command
-	if command == "" && req.ScriptContent != "" {
-		command = req.ScriptContent
+	var scriptContent, scriptName string
+
+	if isScript {
+		content, name, err := resolveScriptContent(req)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+			return
+		}
+		scriptContent = content
+		scriptName = name
+		command = "script: " + name
+	} else {
+		if command == "" && req.ScriptContent != "" {
+			command = req.ScriptContent
+		}
+		if command == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "command or script_content is required"})
+			return
+		}
 	}
-	if command == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "command or script_content is required"})
-		return
+
+	scriptDest := req.ScriptDest
+	if scriptDest == "" {
+		scriptDest = "/tmp"
 	}
 
 	cfg := ExecConfig{
@@ -205,6 +270,11 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		CommandTimeout:   req.CommandTimeout,
 		NoColor:          req.NoColor,
 		Silent:           req.Silent,
+		ScriptContent:    scriptContent,
+		ScriptName:       scriptName,
+		ScriptArgs:       req.ScriptArgs,
+		ScriptDest:       scriptDest,
+		ScriptKeep:       req.ScriptKeep,
 	}
 	if cfg.Retry == 0 && !cfg.NoRetry {
 		cfg.Retry = 3
@@ -272,7 +342,11 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	}
 
 	if len(opTargets) > 0 {
-		op := &store.Operation{TaskID: opID, OpType: "command", Command: command, Targets: opTargets, Status: "running", CreatedAt: time.Now().UTC()}
+		opType := "command"
+		if isScript {
+			opType = "script"
+		}
+		op := &store.Operation{TaskID: opID, OpType: opType, Command: command, Targets: opTargets, Status: "running", CreatedAt: time.Now().UTC()}
 		if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
 			log.Printf("record history: %v", err)
 		}
@@ -440,7 +514,7 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 			))
 		}
 
-		output, exitCode, lastError = h.exec.Execute(ctx, task.NodeID, task.Command)
+		output, exitCode, lastError = h.exec.Execute(ctx, task.NodeID, h.buildExecCommand(task.Command, cfg))
 		if lastError == nil {
 			break
 		}
@@ -479,6 +553,23 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 	if h.hub != nil {
 		h.hub.BroadcastTaskUpdate(task)
 	}
+}
+
+func (h *ExecHandler) buildExecCommand(command string, cfg ExecConfig) string {
+	if cfg.ScriptContent == "" {
+		return command
+	}
+	encoded := base64.StdEncoding.EncodeToString([]byte(cfg.ScriptContent))
+	remotePath := cfg.ScriptDest + "/" + cfg.ScriptName
+	runCmd := remotePath
+	if cfg.ScriptArgs != "" {
+		runCmd += " " + cfg.ScriptArgs
+	}
+	execCmd := fmt.Sprintf("echo '%s' | base64 -d > %s && chmod +x %s && %s", encoded, remotePath, remotePath, runCmd)
+	if !cfg.ScriptKeep {
+		execCmd += "; rc=$?; rm -f " + remotePath + "; exit $rc"
+	}
+	return execCmd
 }
 
 func (h *ExecHandler) recordCommandExecution(ctx context.Context, task *store.Task, exitCode int, stdout, stderr string, durationMs int64, success bool) {

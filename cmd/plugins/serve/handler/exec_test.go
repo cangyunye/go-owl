@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -467,4 +469,115 @@ func TestExecCreate_RecordsHistory(t *testing.T) {
 	require.Len(t, recs[0].CommandExecutions, 1)
 	assert.Equal(t, "test-node", recs[0].CommandExecutions[0].NodeID)
 	assert.True(t, recs[0].CommandExecutions[0].Success)
+}
+
+func TestBuildExecCommand_CommandMode(t *testing.T) {
+	_, h := execTestSetup(t)
+	cfg := ExecConfig{Command: "uptime"}
+	assert.Equal(t, "uptime", h.buildExecCommand("uptime", cfg))
+}
+
+func TestBuildExecCommand_ScriptMode(t *testing.T) {
+	_, h := execTestSetup(t)
+	content := "#!/bin/bash\necho hello"
+	cfg := ExecConfig{
+		ScriptContent: content,
+		ScriptName:    "deploy.sh",
+		ScriptDest:    "/tmp",
+		ScriptKeep:    false,
+	}
+	cmd := h.buildExecCommand("script: deploy.sh", cfg)
+
+	encoded := base64.StdEncoding.EncodeToString([]byte(content))
+	assert.Contains(t, cmd, "echo '"+encoded+"' | base64 -d > /tmp/deploy.sh")
+	assert.Contains(t, cmd, "chmod +x /tmp/deploy.sh")
+	assert.Contains(t, cmd, "&& /tmp/deploy.sh")
+	assert.Contains(t, cmd, "rc=$?; rm -f /tmp/deploy.sh; exit $rc")
+}
+
+func TestBuildExecCommand_ScriptKeep(t *testing.T) {
+	_, h := execTestSetup(t)
+	cfg := ExecConfig{
+		ScriptContent: "echo hi",
+		ScriptName:    "keep.sh",
+		ScriptDest:    "/opt",
+		ScriptKeep:    true,
+	}
+	cmd := h.buildExecCommand("script: keep.sh", cfg)
+	assert.Contains(t, cmd, "> /opt/keep.sh")
+	assert.NotContains(t, cmd, "rm -f")
+}
+
+func TestBuildExecCommand_ScriptArgs(t *testing.T) {
+	_, h := execTestSetup(t)
+	cfg := ExecConfig{
+		ScriptContent: "echo hi",
+		ScriptName:    "run.sh",
+		ScriptDest:    "/tmp",
+		ScriptArgs:    "--env prod",
+	}
+	cmd := h.buildExecCommand("script: run.sh", cfg)
+	assert.Contains(t, cmd, "&& /tmp/run.sh --env prod")
+}
+
+func TestResolveScriptContent_Inline(t *testing.T) {
+	content, name, err := resolveScriptContent(execRequest{ScriptContent: "echo hi", ScriptName: "a.sh"})
+	require.NoError(t, err)
+	assert.Equal(t, "echo hi", content)
+	assert.Equal(t, "a.sh", name)
+}
+
+func TestResolveScriptContent_InlineDefaultName(t *testing.T) {
+	content, name, err := resolveScriptContent(execRequest{ScriptContent: "echo hi"})
+	require.NoError(t, err)
+	assert.Equal(t, "echo hi", content)
+	assert.Equal(t, "script.sh", name)
+}
+
+func TestResolveScriptContent_Missing(t *testing.T) {
+	_, _, err := resolveScriptContent(execRequest{})
+	assert.Error(t, err)
+}
+
+func TestExecCreate_ScriptMode_RecordsHistory(t *testing.T) {
+	db, h := execTestSetup(t)
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(t.Context()))
+	h.History = hs
+
+	router := execRBACRouter(t, h)
+	w := execPOST(t, router, map[string]interface{}{
+		"mode":           "script",
+		"node_ids":       []string{"test-node"},
+		"script_content": "#!/bin/bash\necho hello",
+		"script_name":    "deploy.sh",
+	})
+	require.Equal(t, 202, w.Code)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		recs, total, _ := hs.Query(t.Context(), &store.QueryOptions{OpType: "script"})
+		if total > 0 && recs[0].Operation.Status != "running" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	recs, total, err := hs.Query(t.Context(), &store.QueryOptions{OpType: "script"})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	assert.Equal(t, "script", recs[0].Operation.OpType)
+	assert.Equal(t, "script: deploy.sh", recs[0].Operation.Command)
+	assert.Equal(t, []string{"test-node"}, recs[0].Operation.Targets)
+}
+
+func TestExecCreate_ScriptMode_MissingContent(t *testing.T) {
+	_, h := execTestSetup(t)
+	router := execRBACRouter(t, h)
+	w := execPOST(t, router, map[string]interface{}{
+		"mode":     "script",
+		"node_ids": []string{"test-node"},
+	})
+	assert.Equal(t, 400, w.Code)
+	assert.True(t, strings.Contains(w.Body.String(), "script_content or script_url"))
 }
