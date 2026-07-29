@@ -389,11 +389,18 @@ function router() {
 
   const nodeMatch = path.match(/^\/nodes\/(.+)/);
   const taskMatch = path.match(/^\/tasks\/(.+)/);
+  const termMatch = path.match(/^\/terminal\/(.+)/);
 
   if (path === '/') {
     switchView('dashboard', false);
   } else if (path === '/nodes') {
     switchView('nodes', false);
+  } else if (termMatch) {
+    const termNodeId = decodeURIComponent(termMatch[1]);
+    setViewMetadata('终端', '节点管理');
+    import('./pages/terminal.js').then(m => {
+      m.renderTerminal(render, navigate, u, api, termNodeId);
+    });
   } else if (nodeMatch) {
     setViewMetadata('节点详情', '节点管理');
     renderNodeDetail(render, navigate, u, api, decodeURIComponent(nodeMatch[1]));

@@ -1,6 +1,7 @@
 export function renderNodeDetail(render, navigate, user, api, nodeId) {
   const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
   const isAdmin = user.role === 'admin';
+  const canExec = ['admin', 'operator'].includes(user.role);
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
@@ -204,6 +205,7 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${canWrite ? `<button class="btn-secondary" id="ping-btn">Ping</button>` : ''}
         ${canWrite ? `<button class="btn-secondary" id="check-btn">SSH 检查</button>` : ''}
+        ${canExec ? `<button class="btn-secondary" id="terminal-btn">终端</button>` : ''}
         ${canWrite ? `<button class="btn-primary" id="edit-btn">编辑</button>` : ''}
         ${isAdmin ? `<button class="btn-danger" id="delete-btn">删除</button>` : ''}
       </div>
@@ -211,6 +213,9 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
 
     if (canWrite) {
       document.getElementById('edit-btn').addEventListener('click', () => showEditModal(n));
+      if (canExec) {
+        document.getElementById('terminal-btn').addEventListener('click', () => navigate('/terminal/' + encodeURIComponent(nodeId)));
+      }
       document.getElementById('ping-btn').addEventListener('click', async () => {
         const btn = document.getElementById('ping-btn');
         const result = document.getElementById('ping-result');

@@ -63,6 +63,7 @@ type Server struct {
 	wsHub              *handler.WSHub
 	historyHandler     *handler.HistoryHandler
 	History            *store.HistoryStore
+	terminalHandler    *handler.TerminalHandler
 }
 
 func NewServer(cfg *Config) *Server {
@@ -188,6 +189,7 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	s.transferHandler.Hub = s.wsHub
 	s.playbookHandler.History = s.History
 	s.historyHandler = handler.NewHistoryHandler(s.History)
+	s.terminalHandler = handler.NewTerminalHandler(db, s.Auth)
 
 	s.setupRoutes()
 
@@ -202,6 +204,7 @@ func (s *Server) setupRoutes() {
 	s.Router.GET("/api/v1/health", handler.Health)
 	s.Router.POST("/api/v1/login", s.authHandler.Login)
 	s.Router.GET("/api/v1/ws", s.wsHub.WsHandler(s.authHandler))
+	s.Router.GET("/api/v1/session/terminal", s.terminalHandler.Terminal)
 
 	auth := s.Router.Group("/api/v1", s.authHandler.AuthMiddleware())
 	{
