@@ -13,6 +13,12 @@ export function renderExec(render, navigate, user, api, shell) {
   let totalNodes = 0;
   let allPages = 1;
   let searchQuery = '';
+  let execMode = 'command';
+  let scriptInputMode = 'inline';
+  let scriptFileContent = '';
+  let scriptFileName = '';
+  let commandContent = 'uptime\ndf -h\nfree -m';
+  let scriptInlineContent = '';
 
   const params = new URLSearchParams(window.location.search);
   const initNodes = params.get('nodes');
@@ -247,13 +253,59 @@ export function renderExec(render, navigate, user, api, shell) {
     });
   }
 
+  function hasScriptInput() {
+    if (scriptInputMode === 'inline') return document.getElementById('cmd-input').value.trim() !== '';
+    if (scriptInputMode === 'upload') return scriptFileContent !== '';
+    if (scriptInputMode === 'url') return (document.getElementById('script-url')?.value.trim() || '') !== '';
+    return false;
+  }
+
   function updateExecButton() {
     const btn = document.getElementById('exec-btn');
     if (!btn) return;
     const count = selectedNodes.size;
     const cmd = document.getElementById('cmd-input').value.trim();
-    btn.disabled = count === 0 || !cmd;
-    btn.textContent = count === 0 ? '选择目标节点' : count === 1 ? '执行命令' : `在 ${count} 个节点上执行`;
+    const ready = execMode === 'script' ? hasScriptInput() : !!cmd;
+    btn.disabled = count === 0 || !ready;
+    const verb = execMode === 'script' ? '执行脚本' : '执行命令';
+    btn.textContent = count === 0 ? '选择目标节点' : count === 1 ? verb : `在 ${count} 个节点上${verb}`;
+  }
+
+  function switchExecMode(mode) {
+    const ta = document.getElementById('cmd-input');
+    if (execMode === 'command') commandContent = ta.value;
+    else scriptInlineContent = ta.value;
+    execMode = mode;
+    const opts = document.getElementById('script-options');
+    if (mode === 'command') {
+      ta.value = commandContent;
+      ta.placeholder = '# 输入要执行的命令，支持多行\nuptime\ndf -h\nfree -m';
+      ta.style.display = '';
+      opts.style.display = 'none';
+    } else {
+      opts.style.display = '';
+      switchScriptSource(scriptInputMode);
+    }
+    document.getElementById('tab-command').classList.toggle('active', mode === 'command');
+    document.getElementById('tab-script').classList.toggle('active', mode === 'script');
+    updateExecButton();
+  }
+
+  function switchScriptSource(src) {
+    const ta = document.getElementById('cmd-input');
+    if (scriptInputMode === 'inline') scriptInlineContent = ta.value;
+    scriptInputMode = src;
+    document.getElementById('script-upload-row').style.display = src === 'upload' ? '' : 'none';
+    document.getElementById('script-url-row').style.display = src === 'url' ? '' : 'none';
+    if (src === 'inline') {
+      ta.value = scriptInlineContent;
+      ta.placeholder = '#!/bin/bash\n# 输入脚本内容\necho "hello world"';
+      ta.style.display = '';
+    } else {
+      ta.value = '';
+      ta.style.display = 'none';
+    }
+    updateExecButton();
   }
 
   function appendTerminal(html, cls) {
@@ -291,9 +343,29 @@ export function renderExec(render, navigate, user, api, shell) {
 
     const payload = {
       node_ids: nodeIDs,
-      command: cmd,
       force: 'true',
     };
+
+    if (execMode === 'script') {
+      payload.mode = 'script';
+      if (scriptInputMode === 'inline') {
+        payload.script_content = document.getElementById('cmd-input').value;
+      } else if (scriptInputMode === 'upload') {
+        payload.script_content = scriptFileContent;
+      } else if (scriptInputMode === 'url') {
+        payload.script_url = document.getElementById('script-url')?.value.trim() || '';
+      }
+      const sName = document.getElementById('script-name')?.value.trim();
+      if (sName) payload.script_name = sName;
+      else if (scriptInputMode === 'upload' && scriptFileName) payload.script_name = scriptFileName;
+      const sDest = document.getElementById('script-dest')?.value.trim();
+      if (sDest) payload.script_dest = sDest;
+      const sArgs = document.getElementById('script-args')?.value.trim();
+      if (sArgs) payload.script_args = sArgs;
+      if (document.getElementById('script-keep')?.checked) payload.script_keep = true;
+    } else {
+      payload.command = cmd;
+    }
 
     if (isAsync) payload.async = true;
     if (formatEl && formatEl.value !== 'simple') payload.format = formatEl.value;
@@ -319,15 +391,20 @@ export function renderExec(render, navigate, user, api, shell) {
   }
 
   async function handleExec() {
+    if (selectedNodes.size === 0) return;
     const cmd = document.getElementById('cmd-input').value.trim();
-    if (!cmd || selectedNodes.size === 0) return;
+    if (execMode === 'script') {
+      if (!hasScriptInput()) return;
+    } else if (!cmd) {
+      return;
+    }
 
     const nodeIDs = Array.from(selectedNodes);
     const isSingle = nodeIDs.length === 1;
     const isAsync = document.getElementById('async-toggle')?.checked || false;
 
     clearTerminal();
-    const modeLabel = isAsync ? '[异步]' : '';
+    const modeLabel = (isAsync ? '[异步]' : '') + (execMode === 'script' ? '[脚本]' : '');
     appendTerminal(`${modeLabel}正在连接 ${nodeIDs.length} 个节点…`, 'ts');
 
     try {
@@ -372,7 +449,10 @@ export function renderExec(render, navigate, user, api, shell) {
       <div class="exec-main">
         <div class="cmd-editor">
           <div class="editor-header">
-            <span>命令输入</span>
+            <div class="btn-group" style="display:flex;gap:4px">
+              <button class="btn btn-sm mode-btn active" id="tab-command">命令</button>
+              <button class="btn btn-sm mode-btn" id="tab-script">脚本</button>
+            </div>
             <span style="display:flex;gap:6px">
               <button class="btn btn-ghost btn-sm" id="clear-cmd-btn">清空</button>
             </span>
@@ -380,6 +460,41 @@ export function renderExec(render, navigate, user, api, shell) {
           <textarea id="cmd-input" placeholder="# 输入要执行的命令，支持多行&#10;uptime&#10;df -h&#10;free -m" aria-label="命令输入框" spellcheck="false">uptime
 df -h
 free -m</textarea>
+          <div id="script-options" style="display:none;padding:10px 12px;border-top:1px solid var(--border)">
+            <div class="filter-row">
+              <label>脚本来源</label>
+              <div class="btn-group" style="display:flex;gap:4px">
+                <button class="btn btn-sm mode-btn active" data-script-src="inline">内联</button>
+                <button class="btn btn-sm mode-btn" data-script-src="upload">上传</button>
+                <button class="btn btn-sm mode-btn" data-script-src="url">URL</button>
+              </div>
+            </div>
+            <div class="filter-row" id="script-upload-row" style="display:none">
+              <label>脚本文件</label>
+              <input type="file" id="script-file" class="exec-input">
+            </div>
+            <div class="filter-row" id="script-url-row" style="display:none">
+              <label>脚本 URL</label>
+              <input type="text" id="script-url" class="exec-input" placeholder="https://example.com/deploy.sh">
+            </div>
+            <div class="param-group" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+              <div class="param-row">
+                <label>脚本名</label>
+                <input type="text" id="script-name" class="exec-input" placeholder="自动" style="width:120px">
+              </div>
+              <div class="param-row">
+                <label>目标目录</label>
+                <input type="text" id="script-dest" class="exec-input" value="/tmp" style="width:100px">
+              </div>
+              <div class="param-row">
+                <label>参数</label>
+                <input type="text" id="script-args" class="exec-input" placeholder="--env prod" style="width:140px">
+              </div>
+              <label class="force-check" style="padding-bottom:6px">
+                <input type="checkbox" id="script-keep"> 保留脚本
+              </label>
+            </div>
+          </div>
         </div>
 
         <div class="output-terminal">
@@ -532,12 +647,37 @@ free -m</textarea>
       });
     });
 
-    document.querySelectorAll('.mode-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-        this.classList.add('active');
+    ['mode-parallel', 'mode-serial'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', () => {
+        document.getElementById('mode-parallel').classList.toggle('active', id === 'mode-parallel');
+        document.getElementById('mode-serial').classList.toggle('active', id === 'mode-serial');
       });
     });
+
+    document.getElementById('tab-command').addEventListener('click', () => switchExecMode('command'));
+    document.getElementById('tab-script').addEventListener('click', () => switchExecMode('script'));
+
+    document.querySelectorAll('[data-script-src]').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('[data-script-src]').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        switchScriptSource(this.dataset.scriptSrc);
+      });
+    });
+
+    const scriptFileEl = document.getElementById('script-file');
+    if (scriptFileEl) scriptFileEl.addEventListener('change', function() {
+      const file = this.files && this.files[0];
+      if (!file) { scriptFileContent = ''; scriptFileName = ''; updateExecButton(); return; }
+      scriptFileName = file.name;
+      const reader = new FileReader();
+      reader.onload = () => { scriptFileContent = reader.result; updateExecButton(); };
+      reader.readAsText(file);
+    });
+
+    const scriptUrlEl = document.getElementById('script-url');
+    if (scriptUrlEl) scriptUrlEl.addEventListener('input', updateExecButton);
 
     document.getElementById('panel-node-search').addEventListener('input', function() {
       searchQuery = this.value.trim();
