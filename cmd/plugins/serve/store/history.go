@@ -12,56 +12,56 @@ import (
 // 先建者生效；schema 不一致会导致读写错乱。
 
 type Operation struct {
-	ID               int64
-	TaskID           string
-	OpType           string
-	Command          string
-	Targets          []string
-	Status           string
-	ExecutionMode    string
-	PlaybookPath     string
-	CurrentTaskIndex int
-	CurrentTaskPhase string
-	CreatedAt        time.Time
+	ID               int64     `json:"id"`
+	TaskID           string    `json:"task_id"`
+	OpType           string    `json:"op_type"`
+	Command          string    `json:"command"`
+	Targets          []string  `json:"targets"`
+	Status           string    `json:"status"`
+	ExecutionMode    string    `json:"execution_mode"`
+	PlaybookPath     string    `json:"playbook_path"`
+	CurrentTaskIndex int       `json:"current_task_index"`
+	CurrentTaskPhase string    `json:"current_task_phase"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type CommandExecution struct {
-	ID         int64
-	TaskID     string
-	NodeID     string
-	Command    string
-	ExitCode   int
-	Stdout     string
-	Stderr     string
-	DurationMs int64
-	Success    bool
-	CreatedAt  time.Time
+	ID         int64     `json:"id"`
+	TaskID     string    `json:"task_id"`
+	NodeID     string    `json:"node_id"`
+	Command    string    `json:"command"`
+	ExitCode   int       `json:"exit_code"`
+	Stdout     string    `json:"stdout"`
+	Stderr     string    `json:"stderr"`
+	DurationMs int64     `json:"duration_ms"`
+	Success    bool      `json:"success"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type FileTransfer struct {
-	ID           int64
-	TaskID       string
-	NodeID       string
-	FileName     string
-	FileSize     int64
-	TransferType string
-	Status       string
-	Progress     float64
-	Error        string
-	CreatedAt    time.Time
+	ID           int64     `json:"id"`
+	TaskID       string    `json:"task_id"`
+	NodeID       string    `json:"node_id"`
+	FileName     string    `json:"file_name"`
+	FileSize     int64     `json:"file_size"`
+	TransferType string    `json:"transfer_type"`
+	Status       string    `json:"status"`
+	Progress     float64   `json:"progress"`
+	Error        string    `json:"error"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type NodeCommunication struct {
-	ID          int64
-	TaskID      string
-	NodeID      string
-	NodeAddress string
-	Direction   string
-	MessageType string
-	Payload     string
-	Success     bool
-	Error       string
-	CreatedAt   time.Time
+	ID          int64     `json:"id"`
+	TaskID      string    `json:"task_id"`
+	NodeID      string    `json:"node_id"`
+	NodeAddress string    `json:"node_address"`
+	Direction   string    `json:"direction"`
+	MessageType string    `json:"message_type"`
+	Payload     string    `json:"payload"`
+	Success     bool      `json:"success"`
+	Error       string    `json:"error"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Record struct {
