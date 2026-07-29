@@ -61,6 +61,8 @@ type Server struct {
 	keyManager         *handler.KeyManager
 	aiHandler          *handler.AIHandler
 	wsHub              *handler.WSHub
+	historyHandler     *handler.HistoryHandler
+	History            *store.HistoryStore
 }
 
 func NewServer(cfg *Config) *Server {
@@ -76,6 +78,17 @@ func (s *Server) Init() (*AdminCredentials, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 	s.DB = db
+
+	for _, pragma := range []string{
+		"PRAGMA journal_mode=WAL",
+		"PRAGMA synchronous=NORMAL",
+		"PRAGMA foreign_keys=ON",
+		"PRAGMA busy_timeout=5000",
+	} {
+		if _, err := db.ExecContext(context.Background(), pragma); err != nil {
+			return nil, fmt.Errorf("set pragma: %w", err)
+		}
+	}
 
 	// Init stores
 	s.Users = store.NewUserStore(db)
@@ -162,6 +175,20 @@ func (s *Server) Init() (*AdminCredentials, error) {
 
 	s.aiHandler = handler.NewAIHandler(db, s.auditStore, webExecutor, s.keyManager, agent, s.Config.AIDebugMode)
 	s.playbookHandler = handler.NewPlaybookHandler(db, playbookStore, playbookRunStore, nodeStore, s.wsHub)
+
+	s.History = store.NewHistoryStore(db)
+	if err := s.History.Init(context.Background()); err != nil {
+		return nil, fmt.Errorf("init history store: %w", err)
+	}
+
+	s.nodeHandler.History = s.History
+	s.nodeHandler.Hub = s.wsHub
+	s.execHandler.History = s.History
+	s.transferHandler.History = s.History
+	s.transferHandler.Hub = s.wsHub
+	s.playbookHandler.History = s.History
+	s.historyHandler = handler.NewHistoryHandler(s.History)
+
 	s.setupRoutes()
 
 	return creds, nil
@@ -200,6 +227,10 @@ func (s *Server) setupRoutes() {
 		reader.POST("/ai/audit", s.aiHandler.Audit)
 		reader.POST("/ai/models", s.aiHandler.Models)
 		reader.POST("/ai/test", s.aiHandler.Test)
+		reader.GET("/history", s.historyHandler.List)
+		reader.GET("/history/stats", s.historyHandler.Stats)
+		reader.GET("/history/export", s.historyHandler.Export)
+		reader.GET("/history/detail/:task_id", s.historyHandler.Get)
 
 		writer := auth.Group("", s.authHandler.RBACMiddleware(model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{
@@ -243,6 +274,7 @@ func (s *Server) setupRoutes() {
 			admin.POST("/playbook/template", s.playbookHandler.Create)
 			admin.POST("/playbook/refresh", s.playbookHandler.Refresh)
 			admin.DELETE("/playbook/runs/:id", s.playbookHandler.RunCancel)
+		admin.DELETE("/history", s.historyHandler.Clean)
 		}
 	}
 
