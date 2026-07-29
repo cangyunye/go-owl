@@ -97,7 +97,7 @@ export function renderHistory(render, navigate, user, api, shell) {
       `<tr><td>${esc(cm.node_id)}</td><td>${esc(cm.direction)}</td><td>${esc(cm.message_type)}</td><td>${cm.success ? '✅' : '❌'}</td></tr>`).join('');
 
     const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
+    overlay.className = 'modal-overlay open';
     overlay.innerHTML = `<div class="modal" style="max-width:760px;max-height:80vh;overflow:auto">
       <div class="modal-header"><h3>${esc(op.command || '操作详情')}</h3>
         <button class="btn btn-ghost btn-icon" id="detail-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
