@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ type PlaybookHandler struct {
 	runs      *store.PlaybookRunStore
 	nodes     *store.NodeStore
 	hub       *WSHub
+	History   *store.HistoryStore
 }
 
 func NewPlaybookHandler(db *sql.DB, ps *store.PlaybookStore, rs *store.PlaybookRunStore, ns *store.NodeStore, hub *WSHub) *PlaybookHandler {
@@ -237,6 +239,11 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 		return
 	}
 
+	op := &store.Operation{TaskID: run.ID, OpType: "playbook", Command: "playbook run " + pb.Name, Targets: req.TargetNodes, PlaybookPath: pb.FilePath, Status: "running", CreatedAt: time.Now().UTC()}
+	if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
+		log.Printf("record history: %v", err)
+	}
+
 	go h.executePlaybookRun(run.ID)
 
 	if h.hub != nil {
@@ -372,11 +379,16 @@ func (h *PlaybookHandler) executePlaybookRun(runID string) {
 				}
 
 				start := time.Now()
-				step := h.executePlaybookTask(ctx, exec, nodeID, taskName, taskBody)
-				step.DurationMs = time.Since(start).Milliseconds()
-				h.runs.AppendResult(ctx, runID, step)
+			step := h.executePlaybookTask(ctx, exec, nodeID, taskName, taskBody)
+			step.DurationMs = time.Since(start).Milliseconds()
+			h.runs.AppendResult(ctx, runID, step)
 
-				if step.ExitCode != 0 {
+			ce := &store.CommandExecution{TaskID: runID, NodeID: step.NodeID, Command: step.TaskName, ExitCode: step.ExitCode, Stdout: step.Output, Stderr: step.Error, DurationMs: step.DurationMs, Success: step.ExitCode == 0, CreatedAt: time.Now().UTC()}
+			if e := h.History.RecordCommandExecution(ctx, ce); e != nil {
+				log.Printf("record command execution: %v", e)
+			}
+
+			if step.ExitCode != 0 {
 					failed = true
 				}
 
@@ -393,6 +405,16 @@ func (h *PlaybookHandler) executePlaybookRun(runID string) {
 		finalStatus = model.RunStatusFailed
 	}
 	h.runs.UpdateStatus(ctx, runID, finalStatus, "")
+	opStatus := "completed"
+	if failed {
+		opStatus = "failed"
+	}
+	if err := h.History.UpdateOperationStatus(ctx, runID, opStatus); err != nil {
+		log.Printf("update op status: %v", err)
+	}
+	if h.hub != nil {
+		h.hub.BroadcastHistoryUpdate()
+	}
 	run, _ = h.runs.Get(ctx, runID)
 	if h.hub != nil {
 		h.hub.Broadcast(WSMessage{Type: "playbook_run_update", Data: run})
