@@ -188,6 +188,8 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	s.transferHandler.History = s.History
 	s.transferHandler.Hub = s.wsHub
 	s.playbookHandler.History = s.History
+	webExecutor.History = s.History
+	webExecutor.PlaybookHandler = s.playbookHandler
 	s.historyHandler = handler.NewHistoryHandler(s.History)
 	s.terminalHandler = handler.NewTerminalHandler(db, s.Auth)
 

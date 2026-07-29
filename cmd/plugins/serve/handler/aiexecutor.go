@@ -4,10 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,6 +27,8 @@ type WebExecutor struct {
 	keyManager         *KeyManager
 	debugMode          bool
 	userRole           string
+	History            *store.HistoryStore
+	PlaybookHandler    *PlaybookHandler
 }
 
 func (e *WebExecutor) requireOperator() error {
@@ -43,6 +50,50 @@ func NewWebExecutor(db *sql.DB, taskStore *store.TaskStore, transferRecordStore 
 		playbookStore: playbookStore, auditStore: auditStore,
 		keyManager: keyManager, debugMode: debugMode,
 	}
+}
+
+func (e *WebExecutor) resolveAINodeIDs(ctx context.Context, nodes []string, group, label, search string) []string {
+	if len(nodes) > 0 {
+		return nodes
+	}
+	query := "SELECT id FROM nodes WHERE 1=1"
+	args := []interface{}{}
+	if group != "" {
+		query += " AND groups LIKE ?"
+		args = append(args, "%\""+group+"\"%")
+	}
+	if label != "" && strings.Contains(label, "=") {
+		parts := strings.SplitN(label, "=", 2)
+		query += " AND labels LIKE ?"
+		args = append(args, "%\""+parts[0]+"\":\""+parts[1]+"\"%")
+	}
+	if search != "" {
+		query += " AND (name LIKE ? OR address LIKE ? OR id LIKE ?)"
+		args = append(args, "%"+search+"%", "%"+search+"%", "%"+search+"%")
+	}
+	rows, err := e.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func aggregateStatus(success, total int) string {
+	if success == 0 {
+		return "failed"
+	}
+	if success < total {
+		return "partial_failure"
+	}
+	return "completed"
 }
 
 func (e *WebExecutor) QueryNodes(ctx context.Context, params ai2.QueryNodesParams) (*ai2.QueryNodesResult, error) {
@@ -91,30 +142,136 @@ func (e *WebExecutor) ExecuteCommand(ctx context.Context, params ai2.ExecCommand
 	if err := e.requireOperator(); err != nil {
 		return nil, err
 	}
-	nodeID := "ai-exec"
-	if len(params.Nodes) > 0 {
-		nodeID = strings.Join(params.Nodes, ",")
+	nodeIDs := e.resolveAINodeIDs(ctx, params.Nodes, params.Group, params.Label, params.Search)
+	if len(nodeIDs) == 0 {
+		return &ai2.ExecResult{Text: "未找到目标节点"}, nil
 	}
-	task, err := e.taskStore.CreateWithRecord(ctx, nodeID, params.Command, "")
-	if err != nil {
-		return nil, fmt.Errorf("create task: %w", err)
+
+	type nodeResult struct {
+		nodeID   string
+		output   string
+		exitCode int
+		err      error
 	}
-	return &ai2.ExecResult{Text: fmt.Sprintf("Command task created (ID: %s). Type: exec, Nodes: %s", task.ID, nodeID)}, nil
+	results := make([]nodeResult, len(nodeIDs))
+	var wg sync.WaitGroup
+	exec := &sshExecutor{db: e.db}
+	for i, nid := range nodeIDs {
+		wg.Add(1)
+		go func(idx int, nodeID string) {
+			defer wg.Done()
+			output, exitCode, err := exec.Execute(ctx, nodeID, params.Command)
+			results[idx] = nodeResult{nodeID: nodeID, output: output, exitCode: exitCode, err: err}
+		}(i, nid)
+	}
+	wg.Wait()
+
+	opID := uuid.New().String()
+	var sb strings.Builder
+	successCount := 0
+	for _, r := range results {
+		ok := r.err == nil && r.exitCode == 0
+		if ok {
+			successCount++
+		}
+		task, _ := e.taskStore.CreateWithRecord(ctx, r.nodeID, params.Command, opID)
+		if task != nil {
+			status := store.TaskStatusCompleted
+			if r.err != nil {
+				status = store.TaskStatusFailed
+			}
+			e.taskStore.UpdateStatus(ctx, task.ID, status, r.output, &r.exitCode)
+		}
+		stderr := ""
+		if r.err != nil {
+			stderr = r.err.Error()
+		}
+		e.History.RecordCommandExecution(ctx, &store.CommandExecution{TaskID: opID, NodeID: r.nodeID, Command: params.Command, ExitCode: r.exitCode, Stdout: r.output, Stderr: stderr, Success: ok, CreatedAt: time.Now().UTC()})
+		mark := "✓"
+		if !ok {
+			mark = "✗"
+		}
+		sb.WriteString(fmt.Sprintf("%s [%s] exit=%d\n%s\n", mark, r.nodeID, r.exitCode, strings.TrimSpace(r.output)))
+	}
+
+	e.History.RecordOperation(ctx, &store.Operation{TaskID: opID, OpType: "command", Command: params.Command, Targets: nodeIDs, Status: aggregateStatus(successCount, len(results)), CreatedAt: time.Now().UTC()})
+
+	return &ai2.ExecResult{Text: fmt.Sprintf("在 %d 个节点执行（%d 成功）：\n\n%s", len(nodeIDs), successCount, sb.String())}, nil
 }
 
 func (e *WebExecutor) ExecuteScript(ctx context.Context, params ai2.ExecScriptParams) (*ai2.ExecScriptResult, error) {
 	if err := e.requireOperator(); err != nil {
 		return nil, err
 	}
-	nodeID := "ai-exec"
-	if len(params.Nodes) > 0 {
-		nodeID = strings.Join(params.Nodes, ",")
+	nodeIDs := e.resolveAINodeIDs(ctx, params.Nodes, params.Group, params.Label, params.Search)
+	if len(nodeIDs) == 0 {
+		return &ai2.ExecScriptResult{Text: "未找到目标节点"}, nil
 	}
-	task, err := e.taskStore.CreateWithRecord(ctx, nodeID, params.Script, "")
-	if err != nil {
-		return nil, fmt.Errorf("create task: %w", err)
+
+	dest := params.Dest
+	if dest == "" {
+		dest = "/tmp"
 	}
-	return &ai2.ExecScriptResult{Text: fmt.Sprintf("Script task created (ID: %s). Type: script, Nodes: %s", task.ID, nodeID)}, nil
+	scriptName := "ai-script.sh"
+	execCmd := buildExecCommand("", ExecConfig{
+		ScriptContent: params.Script,
+		ScriptName:    scriptName,
+		ScriptArgs:    params.Args,
+		ScriptDest:    dest,
+		ScriptKeep:    params.Keep,
+	})
+
+	type nodeResult struct {
+		nodeID   string
+		output   string
+		exitCode int
+		err      error
+	}
+	results := make([]nodeResult, len(nodeIDs))
+	var wg sync.WaitGroup
+	exec := &sshExecutor{db: e.db}
+	for i, nid := range nodeIDs {
+		wg.Add(1)
+		go func(idx int, nodeID string) {
+			defer wg.Done()
+			output, exitCode, err := exec.Execute(ctx, nodeID, execCmd)
+			results[idx] = nodeResult{nodeID: nodeID, output: output, exitCode: exitCode, err: err}
+		}(i, nid)
+	}
+	wg.Wait()
+
+	opID := uuid.New().String()
+	displayCmd := "script: " + scriptName
+	var sb strings.Builder
+	successCount := 0
+	for _, r := range results {
+		ok := r.err == nil && r.exitCode == 0
+		if ok {
+			successCount++
+		}
+		task, _ := e.taskStore.CreateWithRecord(ctx, r.nodeID, displayCmd, opID)
+		if task != nil {
+			status := store.TaskStatusCompleted
+			if r.err != nil {
+				status = store.TaskStatusFailed
+			}
+			e.taskStore.UpdateStatus(ctx, task.ID, status, r.output, &r.exitCode)
+		}
+		stderr := ""
+		if r.err != nil {
+			stderr = r.err.Error()
+		}
+		e.History.RecordCommandExecution(ctx, &store.CommandExecution{TaskID: opID, NodeID: r.nodeID, Command: displayCmd, ExitCode: r.exitCode, Stdout: r.output, Stderr: stderr, Success: ok, CreatedAt: time.Now().UTC()})
+		mark := "✓"
+		if !ok {
+			mark = "✗"
+		}
+		sb.WriteString(fmt.Sprintf("%s [%s] exit=%d\n%s\n", mark, r.nodeID, r.exitCode, strings.TrimSpace(r.output)))
+	}
+
+	e.History.RecordOperation(ctx, &store.Operation{TaskID: opID, OpType: "script", Command: displayCmd, Targets: nodeIDs, Status: aggregateStatus(successCount, len(results)), CreatedAt: time.Now().UTC()})
+
+	return &ai2.ExecScriptResult{Text: fmt.Sprintf("在 %d 个节点执行脚本（%d 成功）：\n\n%s", len(nodeIDs), successCount, sb.String())}, nil
 }
 
 func (e *WebExecutor) GeneratePlaybook(ctx context.Context, params ai2.GeneratePlaybookParams) (*ai2.GeneratePlaybookResult, error) {
@@ -136,11 +293,55 @@ func (e *WebExecutor) TransferFile(ctx context.Context, params ai2.TransferFileP
 	if err := e.requireOperator(); err != nil {
 		return nil, err
 	}
+	nodeIDs := e.resolveAINodeIDs(ctx, params.Nodes, "", "", params.Search)
+	if len(nodeIDs) == 0 {
+		return &ai2.TransferResult{Text: "未找到目标节点"}, nil
+	}
+
+	mode := parseFileMode(params.Permission)
+	if mode == 0 {
+		mode = parseFileMode(params.Mode)
+	}
+	opts := transferOptions{Overwrite: true, Mode: mode, Resume: true}
+
 	rec, err := e.transferRecordStore.Create(ctx, params.SourceFile, params.DestDir, "push")
 	if err != nil {
 		return nil, fmt.Errorf("create transfer record: %w", err)
 	}
-	return &ai2.TransferResult{Text: fmt.Sprintf("Transfer record created (ID: %s). Source: %s, Dest: %s, Nodes: %v", rec.ID, params.SourceFile, params.DestDir, params.Nodes)}, nil
+	e.transferRecordStore.SetNodeCount(ctx, rec.ID, len(nodeIDs))
+
+	var sb strings.Builder
+	successCount := 0
+	for _, nid := range nodeIDs {
+		info, err := resolveNodeSSH(e.db, nid)
+		if err != nil {
+			e.transferRecordStore.UpdateNodeResult(ctx, rec.ID, false)
+			sb.WriteString(fmt.Sprintf("✗ [%s] %v\n", nid, err))
+			continue
+		}
+		err = sftpTransfer(info, params.SourceFile, params.DestDir, "push", opts)
+		ok := err == nil
+		e.transferRecordStore.UpdateNodeResult(ctx, rec.ID, ok)
+		if ok {
+			successCount++
+		}
+		ftStatus := "completed"
+		errMsg := ""
+		if err != nil {
+			ftStatus = "failed"
+			errMsg = err.Error()
+		}
+		e.History.RecordFileTransfer(ctx, &store.FileTransfer{TaskID: rec.ID, NodeID: nid, FileName: filepath.Base(params.SourceFile), TransferType: "push", Status: ftStatus, Error: errMsg, CreatedAt: time.Now().UTC()})
+		mark := "✓"
+		if !ok {
+			mark = "✗"
+		}
+		sb.WriteString(fmt.Sprintf("%s [%s] %s\n", mark, nid, errMsg))
+	}
+
+	e.History.RecordOperation(ctx, &store.Operation{TaskID: rec.ID, OpType: "file_transfer", Command: fmt.Sprintf("transfer %s -> %s", params.SourceFile, params.DestDir), Targets: nodeIDs, Status: aggregateStatus(successCount, len(nodeIDs)), CreatedAt: time.Now().UTC()})
+
+	return &ai2.TransferResult{Text: fmt.Sprintf("传输 %s -> %s 到 %d 个节点（%d 成功）：\n%s", params.SourceFile, params.DestDir, len(nodeIDs), successCount, sb.String())}, nil
 }
 
 func (e *WebExecutor) ListPlaybooks(ctx context.Context) (*ai2.ListPlaybooksResult, error) {
@@ -242,13 +443,47 @@ func (e *WebExecutor) NodeCheck(ctx context.Context, params ai2.NodeCheckParams)
 	} else {
 		nodeIDs = params.Nodes
 	}
-
-	task, err := e.taskStore.CreateWithRecord(ctx, strings.Join(nodeIDs, ","), "node check", "")
-	if err != nil {
-		return nil, fmt.Errorf("create check task: %w", err)
+	if len(nodeIDs) == 0 {
+		return &ai2.NodeCheckResult{Text: "未找到目标节点"}, nil
 	}
 
-	return &ai2.NodeCheckResult{Text: fmt.Sprintf("Check task created (ID: %s). Nodes: %v", task.ID, nodeIDs)}, nil
+	timeout := time.Duration(params.Timeout) * time.Second
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	var sb strings.Builder
+	successCount := 0
+	for _, nid := range nodeIDs {
+		info, err := resolveNodeSSH(e.db, nid)
+		if err != nil {
+			sb.WriteString(fmt.Sprintf("✗ [%s] %v\n", nid, err))
+			continue
+		}
+		r := checkNodeSSH(e.db, nid, info.Address, info.Port, info.User, info.Password, info.SSHKey, timeout)
+		if r.Success {
+			successCount++
+		}
+		if params.Update {
+			status := "offline"
+			if r.Success {
+				status = "online"
+			}
+			e.db.ExecContext(ctx, "UPDATE nodes SET status = ?, updated_at = ? WHERE id = ?", status, now, nid)
+		}
+		mark := "✓"
+		detail := r.Method
+		if !r.Success {
+			mark = "✗"
+			if r.Error != "" {
+				detail = r.Error
+			}
+		}
+		sb.WriteString(fmt.Sprintf("%s [%s] %s\n", mark, nid, detail))
+	}
+
+	return &ai2.NodeCheckResult{Text: fmt.Sprintf("检查 %d 个节点（%d 在线）：\n%s", len(nodeIDs), successCount, sb.String())}, nil
 }
 
 func (e *WebExecutor) QueryDatabase(ctx context.Context, params ai2.QueryDatabaseParams) (*ai2.QueryDatabaseResult, error) {
@@ -299,9 +534,52 @@ func (e *WebExecutor) RunPlaybook(ctx context.Context, params ai2.RunPlaybookPar
 	if err := e.requireOperator(); err != nil {
 		return nil, err
 	}
-	run, err := e.playbookRunStore.Create(ctx, params.Name, params.Name, "", params.Nodes, nil, params.Tags)
+	nodeIDs := e.resolveAINodeIDs(ctx, params.Nodes, params.Group, params.Label, params.Search)
+	if len(nodeIDs) == 0 {
+		return &ai2.RunPlaybookResult{Text: "未找到目标节点"}, nil
+	}
+
+	pbs, err := e.playbookStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list playbooks: %w", err)
+	}
+	var pb *model.Playbook
+	for _, p := range pbs {
+		if p.Name == params.Name || p.ID == params.Name {
+			pb = p
+			break
+		}
+	}
+	if pb == nil {
+		return &ai2.RunPlaybookResult{Text: fmt.Sprintf("剧本不存在: %s", params.Name)}, nil
+	}
+	if !pb.FileExists {
+		return &ai2.RunPlaybookResult{Text: fmt.Sprintf("剧本文件已不存在: %s", pb.FilePath)}, nil
+	}
+
+	run, err := e.playbookRunStore.Create(ctx, pb.ID, pb.Name, pb.FilePath, nodeIDs, nil, params.Tags)
 	if err != nil {
 		return nil, fmt.Errorf("create playbook run: %w", err)
 	}
-	return &ai2.RunPlaybookResult{Text: fmt.Sprintf("Playbook run created (ID: %s). Name: %s, Nodes: %v", run.ID, params.Name, params.Nodes)}, nil
+
+	if e.PlaybookHandler == nil {
+		return &ai2.RunPlaybookResult{Text: fmt.Sprintf("剧本运行已创建 (ID: %s)，但执行器未就绪", run.ID)}, nil
+	}
+	e.PlaybookHandler.executePlaybookRun(run.ID)
+
+	finished, err := e.playbookRunStore.Get(ctx, run.ID)
+	if err != nil {
+		return &ai2.RunPlaybookResult{Text: fmt.Sprintf("剧本运行已创建 (ID: %s)", run.ID)}, nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("剧本 '%s' 执行完成，状态: %s\n", pb.Name, finished.Status))
+	for _, step := range finished.Results {
+		mark := "✓"
+		if step.ExitCode != 0 {
+			mark = "✗"
+		}
+		sb.WriteString(fmt.Sprintf("%s [%s] %s (exit=%d)\n", mark, step.NodeID, step.TaskName, step.ExitCode))
+	}
+	return &ai2.RunPlaybookResult{Text: sb.String()}, nil
 }

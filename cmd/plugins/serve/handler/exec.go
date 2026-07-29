@@ -514,7 +514,7 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 			))
 		}
 
-		output, exitCode, lastError = h.exec.Execute(ctx, task.NodeID, h.buildExecCommand(task.Command, cfg))
+		output, exitCode, lastError = h.exec.Execute(ctx, task.NodeID, buildExecCommand(task.Command, cfg))
 		if lastError == nil {
 			break
 		}
@@ -555,7 +555,7 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 	}
 }
 
-func (h *ExecHandler) buildExecCommand(command string, cfg ExecConfig) string {
+func buildExecCommand(command string, cfg ExecConfig) string {
 	if cfg.ScriptContent == "" {
 		return command
 	}

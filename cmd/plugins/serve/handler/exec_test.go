@@ -472,13 +472,11 @@ func TestExecCreate_RecordsHistory(t *testing.T) {
 }
 
 func TestBuildExecCommand_CommandMode(t *testing.T) {
-	_, h := execTestSetup(t)
 	cfg := ExecConfig{Command: "uptime"}
-	assert.Equal(t, "uptime", h.buildExecCommand("uptime", cfg))
+	assert.Equal(t, "uptime", buildExecCommand("uptime", cfg))
 }
 
 func TestBuildExecCommand_ScriptMode(t *testing.T) {
-	_, h := execTestSetup(t)
 	content := "#!/bin/bash\necho hello"
 	cfg := ExecConfig{
 		ScriptContent: content,
@@ -486,7 +484,7 @@ func TestBuildExecCommand_ScriptMode(t *testing.T) {
 		ScriptDest:    "/tmp",
 		ScriptKeep:    false,
 	}
-	cmd := h.buildExecCommand("script: deploy.sh", cfg)
+	cmd := buildExecCommand("script: deploy.sh", cfg)
 
 	encoded := base64.StdEncoding.EncodeToString([]byte(content))
 	assert.Contains(t, cmd, "echo '"+encoded+"' | base64 -d > /tmp/deploy.sh")
@@ -496,27 +494,25 @@ func TestBuildExecCommand_ScriptMode(t *testing.T) {
 }
 
 func TestBuildExecCommand_ScriptKeep(t *testing.T) {
-	_, h := execTestSetup(t)
 	cfg := ExecConfig{
 		ScriptContent: "echo hi",
 		ScriptName:    "keep.sh",
 		ScriptDest:    "/opt",
 		ScriptKeep:    true,
 	}
-	cmd := h.buildExecCommand("script: keep.sh", cfg)
+	cmd := buildExecCommand("script: keep.sh", cfg)
 	assert.Contains(t, cmd, "> /opt/keep.sh")
 	assert.NotContains(t, cmd, "rm -f")
 }
 
 func TestBuildExecCommand_ScriptArgs(t *testing.T) {
-	_, h := execTestSetup(t)
 	cfg := ExecConfig{
 		ScriptContent: "echo hi",
 		ScriptName:    "run.sh",
 		ScriptDest:    "/tmp",
 		ScriptArgs:    "--env prod",
 	}
-	cmd := h.buildExecCommand("script: run.sh", cfg)
+	cmd := buildExecCommand("script: run.sh", cfg)
 	assert.Contains(t, cmd, "&& /tmp/run.sh --env prod")
 }
 
