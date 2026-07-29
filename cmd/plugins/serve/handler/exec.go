@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type OutputLine struct {
@@ -26,10 +28,11 @@ type Executor interface {
 }
 
 type ExecHandler struct {
-	db    *sql.DB
-	task  *store.TaskStore
-	exec  Executor
-	hub   *WSHub
+	db      *sql.DB
+	task    *store.TaskStore
+	exec    Executor
+	hub     *WSHub
+	History *store.HistoryStore
 }
 
 func NewExecHandler(db *sql.DB, ts *store.TaskStore, hub *WSHub) *ExecHandler {
@@ -213,12 +216,15 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		cfg.RetryMaxInterval = "30s"
 	}
 
+	opID := uuid.New().String()
+	var opTargets []string
+
 	var tasks []*store.Task
 	isMerge := false
 
 	if cfg.Parallel {
 		for _, nid := range nodeIDs {
-			task, err := h.createSingleTask(c, nid, command, cfg.Force)
+			task, err := h.createSingleTask(c, nid, command, cfg.Force, opID)
 			if err != nil {
 				if len(nodeIDs) == 1 {
 					c.JSON(err.Code, gin.H{"code": err.Code, "message": err.Message})
@@ -232,6 +238,7 @@ func (h *ExecHandler) Create(c *gin.Context) {
 				continue
 			}
 			tasks = append(tasks, task.task)
+			opTargets = append(opTargets, nid)
 			if h.exec != nil {
 				go h.executeTask(task.task.ID, cfg)
 			}
@@ -242,7 +249,7 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	} else {
 		var serialTasks []*store.Task
 		for _, nid := range nodeIDs {
-			task, err := h.createSingleTask(c, nid, command, cfg.Force)
+			task, err := h.createSingleTask(c, nid, command, cfg.Force, opID)
 			if err != nil {
 				continue
 			}
@@ -252,6 +259,7 @@ func (h *ExecHandler) Create(c *gin.Context) {
 			tasks = append(tasks, task.task)
 			if !task.merged {
 				serialTasks = append(serialTasks, task.task)
+				opTargets = append(opTargets, nid)
 			}
 		}
 		if len(serialTasks) > 0 && h.exec != nil {
@@ -260,6 +268,16 @@ func (h *ExecHandler) Create(c *gin.Context) {
 					h.executeTask(t.ID, cfg)
 				}
 			}()
+		}
+	}
+
+	if len(opTargets) > 0 {
+		op := &store.Operation{TaskID: opID, OpType: "command", Command: command, Targets: opTargets, Status: "running", CreatedAt: time.Now().UTC()}
+		if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
+			log.Printf("record history: %v", err)
+		}
+		if h.hub != nil {
+			h.hub.BroadcastHistoryUpdate()
 		}
 	}
 
@@ -285,7 +303,7 @@ type apiError struct {
 	Message string
 }
 
-func (h *ExecHandler) createSingleTask(c *gin.Context, nid, command string, force bool) (*taskResult, *apiError) {
+func (h *ExecHandler) createSingleTask(c *gin.Context, nid, command string, force bool, recordID string) (*taskResult, *apiError) {
 	var exists bool
 	h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM nodes WHERE id = ?)", nid).Scan(&exists)
 	if !exists {
@@ -304,7 +322,7 @@ func (h *ExecHandler) createSingleTask(c *gin.Context, nid, command string, forc
 		}
 	}
 
-	task, err := h.task.Create(c.Request.Context(), nid, command)
+	task, err := h.task.CreateWithRecord(c.Request.Context(), nid, command, recordID)
 	if err != nil {
 		return nil, &apiError{Code: http.StatusInternalServerError, Message: "failed to create task"}
 	}
@@ -366,6 +384,7 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 		return
 	}
 	ctx := context.Background()
+	start := time.Now()
 	task, err := h.task.Get(ctx, taskID)
 	if err != nil {
 		return
@@ -435,6 +454,8 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 			errMsg = fmt.Sprintf("所有 %d 次尝试均失败: %s", retryCount+1, errMsg)
 		}
 		h.task.UpdateStatus(ctx, taskID, store.TaskStatusFailed, errMsg, &exitCode)
+		h.recordCommandExecution(ctx, task, exitCode, "", errMsg, time.Since(start).Milliseconds(), false)
+		h.updateOpStatus(ctx, task.RecordID)
 		task, _ = h.task.Get(ctx, taskID)
 		if h.hub != nil {
 			h.hub.BroadcastTaskUpdate(task)
@@ -452,9 +473,65 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 	}
 
 	h.task.UpdateStatus(ctx, taskID, store.TaskStatusCompleted, outputStr, &exitCode)
+	h.recordCommandExecution(ctx, task, exitCode, outputStr, "", time.Since(start).Milliseconds(), true)
+	h.updateOpStatus(ctx, task.RecordID)
 	task, _ = h.task.Get(ctx, taskID)
 	if h.hub != nil {
 		h.hub.BroadcastTaskUpdate(task)
+	}
+}
+
+func (h *ExecHandler) recordCommandExecution(ctx context.Context, task *store.Task, exitCode int, stdout, stderr string, durationMs int64, success bool) {
+	if task == nil || task.RecordID == "" {
+		return
+	}
+	exec := &store.CommandExecution{TaskID: task.RecordID, NodeID: task.NodeID, Command: task.Command, ExitCode: exitCode, Stdout: stdout, Stderr: stderr, DurationMs: durationMs, Success: success, CreatedAt: time.Now().UTC()}
+	if err := h.History.RecordCommandExecution(ctx, exec); err != nil {
+		log.Printf("record command execution: %v", err)
+	}
+}
+
+func (h *ExecHandler) updateOpStatus(ctx context.Context, opID string) {
+	if opID == "" || h.History == nil {
+		return
+	}
+	rows, err := h.db.QueryContext(ctx, `SELECT status FROM tasks WHERE record_id = ?`, opID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	var statuses []string
+	for rows.Next() {
+		var st string
+		if err := rows.Scan(&st); err == nil {
+			statuses = append(statuses, st)
+		}
+	}
+	if len(statuses) == 0 {
+		return
+	}
+	allDone := true
+	anyFail := false
+	for _, st := range statuses {
+		if st == "running" || st == "queued" || st == "pending" {
+			allDone = false
+		}
+		if st == "failed" || st == "cancelled" {
+			anyFail = true
+		}
+	}
+	if !allDone {
+		return
+	}
+	status := "completed"
+	if anyFail {
+		status = "failed"
+	}
+	if err := h.History.UpdateOperationStatus(ctx, opID, status); err != nil {
+		log.Printf("update op status: %v", err)
+	}
+	if h.hub != nil {
+		h.hub.BroadcastHistoryUpdate()
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
@@ -58,6 +59,7 @@ func execTestSetup(t *testing.T) (*sql.DB, *ExecHandler) {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
@@ -87,6 +89,7 @@ func execRBACRouter(t *testing.T, handler *ExecHandler) *gin.Engine {
 
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 
 	us := store.NewUserStore(db)
@@ -332,6 +335,7 @@ func TestExecCreate_AsViewer_Forbidden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 
 	us := store.NewUserStore(db)
@@ -430,4 +434,37 @@ func unmarshalTask(t *testing.T, w *httptest.ResponseRecorder) store.Task {
 	var task store.Task
 	json.Unmarshal(w.Body.Bytes(), &task)
 	return task
+}
+
+func TestExecCreate_RecordsHistory(t *testing.T) {
+	db, h := execTestSetup(t)
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(t.Context()))
+	h.History = hs
+
+	_, h2 := h, h
+	_ = h2
+	router := execRBACRouter(t, h)
+	w := execPOST(t, router, map[string]string{"node_id": "test-node", "command": "uptime"})
+	require.Equal(t, 202, w.Code)
+
+	deadline := time.Now().Add(10 * time.Second)
+	var total int
+	for time.Now().Before(deadline) {
+		recs, t2, _ := hs.Query(t.Context(), &store.QueryOptions{OpType: "command"})
+		total = t2
+		if len(recs) > 0 && recs[0].Operation.Status != "running" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	recs, total, err := hs.Query(t.Context(), &store.QueryOptions{OpType: "command"})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	assert.Equal(t, "uptime", recs[0].Operation.Command)
+	assert.Equal(t, []string{"test-node"}, recs[0].Operation.Targets)
+	assert.Equal(t, "completed", recs[0].Operation.Status)
+	require.Len(t, recs[0].CommandExecutions, 1)
+	assert.Equal(t, "test-node", recs[0].CommandExecutions[0].NodeID)
+	assert.True(t, recs[0].CommandExecutions[0].Success)
 }
