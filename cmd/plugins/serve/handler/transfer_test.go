@@ -138,3 +138,46 @@ func TestTransferPull_NoSourceCheck(t *testing.T) {
 	// pull 不校验本地文件存在，应该返回 202
 	assert.Equal(t, 202, w.Code)
 }
+
+func TestTransferCreate_RecordsHistory(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
+		id TEXT PRIMARY KEY, name TEXT, address TEXT, port INTEGER DEFAULT 22,
+		user TEXT, password TEXT, ssh_key TEXT, status TEXT DEFAULT 'unknown',
+		groups TEXT DEFAULT '[]', labels TEXT DEFAULT '{}',
+		proxy_jump TEXT DEFAULT '', created_at TIMESTAMP, updated_at TIMESTAMP)`)
+	require.NoError(t, err)
+	db.Exec(`INSERT INTO nodes (id, name, address, port, user, status) VALUES ('n1','n1','127.0.0.1',22,'root','online')`)
+
+	ts := store.NewTaskStore(db)
+	require.NoError(t, ts.Init(t.Context()))
+	rs := store.NewTransferRecordStore(db)
+	require.NoError(t, rs.Init(t.Context()))
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(t.Context()))
+
+	h := NewTransferHandler(db, ts, rs)
+	h.History = hs
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/transfer", h.Create)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"node_ids": []string{"n1"}, "source_path": "/tmp/a.tar", "dest_path": "/opt/", "direction": "push",
+	})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/transfer", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusAccepted, w.Code)
+
+	recs, total, err := hs.Query(t.Context(), &store.QueryOptions{OpType: "file_transfer"})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	assert.Equal(t, []string{"n1"}, recs[0].Operation.Targets)
+	assert.Contains(t, recs[0].Operation.Command, "/tmp/a.tar")
+}

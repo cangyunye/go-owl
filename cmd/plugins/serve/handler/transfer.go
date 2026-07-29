@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
@@ -16,6 +18,8 @@ type TransferHandler struct {
 	db          *sql.DB
 	task        *store.TaskStore
 	recordStore *store.TransferRecordStore
+	History     *store.HistoryStore
+	Hub         *WSHub
 }
 
 type transferRequest struct {
@@ -63,6 +67,14 @@ func (h *TransferHandler) Create(c *gin.Context) {
 	}
 	h.recordStore.SetNodeCount(c.Request.Context(), transferRec.ID, len(req.NodeIDs))
 
+	op := &store.Operation{TaskID: transferRec.ID, OpType: "file_transfer", Command: fmt.Sprintf("transfer %s -> %s", req.SourcePath, req.DestPath), Targets: req.NodeIDs, Status: "running", CreatedAt: time.Now().UTC()}
+	if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
+		log.Printf("record history: %v", err)
+	}
+	if h.Hub != nil {
+		h.Hub.BroadcastHistoryUpdate()
+	}
+
 	results := make([]transferResponse, 0, len(req.NodeIDs))
 
 	for _, nid := range req.NodeIDs {
@@ -95,6 +107,15 @@ func (h *TransferHandler) Create(c *gin.Context) {
 			}
 			h.task.UpdateStatus(bg, rec.ID, taskStatus, output, nil)
 			h.recordStore.UpdateNodeResult(bg, recordID, err == nil)
+			ftStatus := "completed"
+			if err != nil {
+				ftStatus = "failed"
+			}
+			ft := &store.FileTransfer{TaskID: recordID, NodeID: nodeID, FileName: filepath.Base(src), TransferType: dir, Status: ftStatus, Error: errMsg, CreatedAt: time.Now().UTC()}
+			if e := h.History.RecordFileTransfer(bg, ft); e != nil {
+				log.Printf("record file transfer: %v", e)
+			}
+			h.updateOpStatus(bg, recordID)
 		}(nid, req.SourcePath, req.DestPath, direction, info, transferRec.ID)
 
 		results = append(results, transferResponse{NodeID: nid, Status: "queued"})
@@ -201,4 +222,29 @@ func (h *TransferHandler) RecordGet(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, rec)
+}
+
+func (h *TransferHandler) updateOpStatus(ctx context.Context, recordID string) {
+	if recordID == "" || h.History == nil || h.recordStore == nil {
+		return
+	}
+	rec, err := h.recordStore.Get(ctx, recordID)
+	if err != nil {
+		return
+	}
+	var status string
+	switch rec.Status {
+	case store.TransferCompleted:
+		status = "completed"
+	case store.TransferFailed, store.TransferPartialSuccess:
+		status = "failed"
+	default:
+		return
+	}
+	if err := h.History.UpdateOperationStatus(ctx, recordID, status); err != nil {
+		log.Printf("update op status: %v", err)
+	}
+	if h.Hub != nil {
+		h.Hub.BroadcastHistoryUpdate()
+	}
 }
