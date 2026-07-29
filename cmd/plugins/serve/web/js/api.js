@@ -238,6 +238,51 @@ export const api = {
   transferRecord: (id) =>
     request('GET', `/transfer/records/${encodeURIComponent(id)}`),
 
+  historyList: (params = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') q.set(k, v);
+    return request('GET', `/history?${q}`);
+  },
+
+  historyStats: () =>
+    request('GET', '/history/stats'),
+
+  historyGet: (taskId) =>
+    request('GET', `/history/detail/${encodeURIComponent(taskId)}`),
+
+  historyClean: (days) =>
+    request('DELETE', `/history?days=${encodeURIComponent(days)}`),
+
+  historyExport: async (params = {}, format = 'json') => {
+    const t = token();
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') q.set(k, v);
+    q.set('format', format);
+    const res = await fetch(`${API_BASE}/history/export?${q}`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${t}` },
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    if (!res.ok) throw new Error('Export failed');
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename=(.+)/);
+    const filename = match ? match[1] : `history.${format === 'yaml' ? 'yaml' : 'json'}`;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
   connectWebSocket(onMessage) {
     const token = localStorage.getItem('token');
     if (!token) return null;
