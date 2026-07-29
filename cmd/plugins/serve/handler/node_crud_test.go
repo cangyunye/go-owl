@@ -289,6 +289,27 @@ func TestNodeCreate_WithPasswordAndSSHKey(t *testing.T) {
 	assert.Equal(t, "ssh-ed25519 AAA...", key)
 }
 
+func TestNodeCreate_RecordsHistory(t *testing.T) {
+	db, h := crudTestSetup(t)
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(t.Context()))
+	h.History = hs
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	injectRBAC(db, router, "POST", "/api/v1/nodes", model.RoleEditor, h.Create)
+
+	body := map[string]interface{}{"id": "hist-node", "address": "10.0.0.9", "user": "root"}
+	w := authRequest(t, router, "POST", "/api/v1/nodes", body, "editor")
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	recs, total, err := hs.Query(t.Context(), &store.QueryOptions{OpType: "node_manage"})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	assert.Contains(t, recs[0].Operation.Command, "hist-node")
+	assert.Equal(t, []string{"hist-node"}, recs[0].Operation.Targets)
+}
+
 func TestNodeUpdate_PartialUpdate(t *testing.T) {
 	db, h := crudTestSetup(t)
 

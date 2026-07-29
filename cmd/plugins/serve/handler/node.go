@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -12,7 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
@@ -60,11 +64,30 @@ type NodeResponse struct {
 }
 
 type NodeHandler struct {
-	db *sql.DB
+	db      *sql.DB
+	History *store.HistoryStore
+	Hub     *WSHub
 }
 
 func NewNodeHandler(db *sql.DB) *NodeHandler {
 	return &NodeHandler{db: db}
+}
+
+func (h *NodeHandler) recordNodeManage(ctx context.Context, action string, targets []string) {
+	op := &store.Operation{
+		TaskID:    uuid.New().String(),
+		OpType:    "node_manage",
+		Command:   action,
+		Targets:   targets,
+		Status:    "completed",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := h.History.RecordOperation(ctx, op); err != nil {
+		log.Printf("record history: %v", err)
+	}
+	if h.Hub != nil {
+		h.Hub.BroadcastHistoryUpdate()
+	}
 }
 
 func (h *NodeHandler) List(c *gin.Context) {
@@ -345,6 +368,7 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		n.Labels = map[string]string{}
 	}
 
+	h.recordNodeManage(c.Request.Context(), "node create "+req.ID, []string{req.ID})
 	c.JSON(http.StatusCreated, n)
 }
 
@@ -427,6 +451,7 @@ func (h *NodeHandler) Update(c *gin.Context) {
 	}
 
 	// Return updated node
+	h.recordNodeManage(c.Request.Context(), "node update "+id, []string{id})
 	c.Request.URL.Path = "/api/v1/nodes/" + id
 	h.Get(c)
 }
@@ -443,6 +468,7 @@ func (h *NodeHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "node not found"})
 		return
 	}
+	h.recordNodeManage(c.Request.Context(), "node delete "+id, []string{id})
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
@@ -525,6 +551,9 @@ func (h *NodeHandler) BatchGroups(c *gin.Context) {
 		updated++
 	}
 
+	if updated > 0 {
+		h.recordNodeManage(c.Request.Context(), fmt.Sprintf("node batch groups add=%v remove=%v", req.Add, req.Remove), req.NodeIDs)
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"updated": updated,
 		"errors":  errors,
@@ -671,6 +700,7 @@ func (h *NodeHandler) Import(c *gin.Context) {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	result := importResult{}
+	var importedIDs []string
 
 	for _, node := range nf.Nodes {
 		if node.ID == "" {
@@ -739,9 +769,13 @@ func (h *NodeHandler) Import(c *gin.Context) {
 			result.Failed++
 		} else {
 			result.Success++
+			importedIDs = append(importedIDs, node.ID)
 		}
 	}
 
+	if len(importedIDs) > 0 {
+		h.recordNodeManage(c.Request.Context(), fmt.Sprintf("node import success=%d", result.Success), importedIDs)
+	}
 	c.JSON(http.StatusOK, result)
 }
 
