@@ -267,6 +267,10 @@ export function renderFiles(render, navigate, user, api, shell) {
         source_path: src,
         dest_path: dst,
         direction: action,
+        overwrite: document.getElementById('files-overwrite')?.checked || false,
+        mode: document.getElementById('files-mode')?.value.trim() || '0644',
+        parallel: document.getElementById('files-parallel')?.checked ?? true,
+        resume: document.getElementById('files-resume')?.checked ?? true,
       };
       const res = await api.transfer(payload);
       if (res.transfers) {
@@ -728,6 +732,10 @@ document.getElementById('staging-multi-btn').addEventListener('click', function(
           source_path: fullPath,
           dest_path: dst,
           direction: 'push',
+          overwrite: document.getElementById('files-overwrite')?.checked || false,
+          mode: document.getElementById('files-mode')?.value.trim() || '0644',
+          parallel: document.getElementById('files-parallel')?.checked ?? true,
+          resume: document.getElementById('files-resume')?.checked ?? true,
         });
         success++;
       } catch (e) {

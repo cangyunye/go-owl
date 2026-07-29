@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -180,4 +182,146 @@ func TestTransferCreate_RecordsHistory(t *testing.T) {
 	require.Equal(t, 1, total)
 	assert.Equal(t, []string{"n1"}, recs[0].Operation.Targets)
 	assert.Contains(t, recs[0].Operation.Command, "/tmp/a.tar")
+}
+
+func TestParseFileMode(t *testing.T) {
+	assert.Equal(t, os.FileMode(0644), parseFileMode("0644"))
+	assert.Equal(t, os.FileMode(0755), parseFileMode("755"))
+	assert.Equal(t, os.FileMode(0), parseFileMode(""))
+	assert.Equal(t, os.FileMode(0), parseFileMode("invalid"))
+}
+
+func TestResolveLocalDest(t *testing.T) {
+	dir := t.TempDir()
+	assert.Equal(t, filepath.Join(dir, "f.txt"), resolveLocalDest(dir+"/", "f.txt"))
+	assert.Equal(t, filepath.Join(dir, "f.txt"), resolveLocalDest(dir, "f.txt"))
+	assert.Equal(t, "/some/file.txt", resolveLocalDest("/some/file.txt", "other.txt"))
+}
+
+func localhostNodeInfo(t *testing.T) *nodeSSHInfo {
+	t.Helper()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir")
+	}
+	key, err := os.ReadFile(filepath.Join(home, ".ssh", "id_rsa"))
+	if err != nil {
+		t.Skip("no ~/.ssh/id_rsa, skipping localhost SFTP e2e")
+	}
+	user := os.Getenv("USER")
+	if user == "" {
+		user = "root"
+	}
+	info := &nodeSSHInfo{Address: "127.0.0.1", Port: 22, User: user, SSHKey: string(key)}
+	client, sshClient, err := dialSFTP(info)
+	if err != nil {
+		t.Skipf("localhost SSH unavailable: %v", err)
+	}
+	client.Close()
+	sshClient.Close()
+	return info
+}
+
+func remoteCleanup(info *nodeSSHInfo, path string) {
+	c, sc, err := dialSFTP(info)
+	if err != nil {
+		return
+	}
+	defer sc.Close()
+	defer c.Close()
+	c.Remove(path)
+}
+
+func TestSFTPTransfer_PushE2E(t *testing.T) {
+	info := localhostNodeInfo(t)
+
+	srcDir := t.TempDir()
+	src := filepath.Join(srcDir, "owl_sftp_test.txt")
+	content := "hello sftp transfer\nline2\n"
+	require.NoError(t, os.WriteFile(src, []byte(content), 0644))
+
+	remotePath := fmt.Sprintf("/tmp/owl_sftp_push_%d.txt", os.Getpid())
+	remoteCleanup(info, remotePath)
+	defer remoteCleanup(info, remotePath)
+
+	opts := transferOptions{Overwrite: true, Mode: 0600}
+	require.NoError(t, sftpTransfer(info, src, remotePath, "push", opts))
+
+	c, sc, err := dialSFTP(info)
+	require.NoError(t, err)
+	defer sc.Close()
+	defer c.Close()
+	fi, err := c.Stat(remotePath)
+	require.NoError(t, err)
+	assert.Equal(t, int64(len(content)), fi.Size())
+	assert.Equal(t, os.FileMode(0600), fi.Mode().Perm())
+	rf, err := c.Open(remotePath)
+	require.NoError(t, err)
+	data, _ := io.ReadAll(rf)
+	rf.Close()
+	assert.Equal(t, content, string(data))
+}
+
+func TestSFTPTransfer_OverwriteE2E(t *testing.T) {
+	info := localhostNodeInfo(t)
+
+	srcDir := t.TempDir()
+	src := filepath.Join(srcDir, "f.txt")
+	remotePath := fmt.Sprintf("/tmp/owl_sftp_ow_%d.txt", os.Getpid())
+	remoteCleanup(info, remotePath)
+	defer remoteCleanup(info, remotePath)
+
+	require.NoError(t, os.WriteFile(src, []byte("v1"), 0644))
+	require.NoError(t, sftpTransfer(info, src, remotePath, "push", transferOptions{Overwrite: true}))
+
+	require.NoError(t, os.WriteFile(src, []byte("v2-longer-content"), 0644))
+	err := sftpTransfer(info, src, remotePath, "push", transferOptions{Overwrite: false})
+	assert.Error(t, err, "expected error when overwrite disabled and file exists")
+
+	require.NoError(t, sftpTransfer(info, src, remotePath, "push", transferOptions{Overwrite: true}))
+
+	c, sc, err := dialSFTP(info)
+	require.NoError(t, err)
+	defer sc.Close()
+	defer c.Close()
+	rf, err := c.Open(remotePath)
+	require.NoError(t, err)
+	data, _ := io.ReadAll(rf)
+	rf.Close()
+	assert.Equal(t, "v2-longer-content", string(data))
+}
+
+func TestSFTPTransfer_ResumeE2E(t *testing.T) {
+	info := localhostNodeInfo(t)
+
+	srcDir := t.TempDir()
+	src := filepath.Join(srcDir, "f.txt")
+	full := "0123456789ABCDEF"
+	require.NoError(t, os.WriteFile(src, []byte(full), 0644))
+
+	remotePath := fmt.Sprintf("/tmp/owl_sftp_resume_%d.txt", os.Getpid())
+	remoteCleanup(info, remotePath)
+	defer remoteCleanup(info, remotePath)
+
+	c, sc, err := dialSFTP(info)
+	require.NoError(t, err)
+	pf, err := c.Create(remotePath)
+	require.NoError(t, err)
+	_, err = pf.Write([]byte(full[:8]))
+	require.NoError(t, err)
+	pf.Close()
+	c.Close()
+	sc.Close()
+
+	require.NoError(t, sftpTransfer(info, src, remotePath, "push", transferOptions{Resume: true}))
+
+	c2, sc2, err := dialSFTP(info)
+	require.NoError(t, err)
+	defer sc2.Close()
+	defer c2.Close()
+	rf, err := c2.Open(remotePath)
+	require.NoError(t, err)
+	data, _ := io.ReadAll(rf)
+	rf.Close()
+	assert.Equal(t, full, string(data))
 }
