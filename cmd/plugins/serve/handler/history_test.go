@@ -39,13 +39,10 @@ func historyTestSetup(t *testing.T) (*store.HistoryStore, *gin.Engine) {
 	reader := auth.Group("", ah.RBACMiddleware(model.RoleViewer))
 	reader.GET("/history", hh.List)
 	reader.GET("/history/stats", hh.Stats)
-	// TODO(Task 10): uncomment after Export/Clean are implemented
-	// reader.GET("/history/export", hh.Export)
+	reader.GET("/history/export", hh.Export)
 	reader.GET("/history/detail/:task_id", hh.Get)
 	admin := auth.Group("", ah.RBACMiddleware(model.RoleAdmin))
-	_ = admin
-	// TODO(Task 10): uncomment after Clean is implemented
-	// admin.DELETE("/history", hh.Clean)
+	admin.DELETE("/history", hh.Clean)
 	return hs, r
 }
 
@@ -138,4 +135,57 @@ func TestParseHistoryDuration(t *testing.T) {
 	d3, err := parseHistoryDuration("30m")
 	require.NoError(t, err)
 	assert.Equal(t, 30*time.Minute, d3)
+}
+
+func TestHistoryExport_JSON(t *testing.T) {
+	hs, r := historyTestSetup(t)
+	hs.RecordOperation(context.Background(), &store.Operation{TaskID: "a", OpType: "command", Command: "uptime", Status: "completed"})
+
+	w := historyGET(t, r, "/api/v1/history/export?format=json", adminToken())
+	require.Equal(t, 200, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Disposition"), "history-")
+	assert.Contains(t, w.Header().Get("Content-Disposition"), ".json")
+	var recs []store.Record
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &recs))
+	assert.Len(t, recs, 1)
+}
+
+func TestHistoryExport_YAML(t *testing.T) {
+	hs, r := historyTestSetup(t)
+	hs.RecordOperation(context.Background(), &store.Operation{TaskID: "a", OpType: "command", Command: "uptime", Status: "completed"})
+
+	w := historyGET(t, r, "/api/v1/history/export?format=yaml", adminToken())
+	require.Equal(t, 200, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Disposition"), ".yaml")
+	assert.Contains(t, w.Body.String(), "uptime")
+}
+
+func TestHistoryClean_AdminOnly(t *testing.T) {
+	hs, r := historyTestSetup(t)
+	ctx := context.Background()
+	hs.RecordOperation(ctx, &store.Operation{TaskID: "old", OpType: "command", Status: "completed", CreatedAt: time.Now().UTC().AddDate(0, 0, -100)})
+	hs.RecordOperation(ctx, &store.Operation{TaskID: "new", OpType: "command", Status: "completed", CreatedAt: time.Now().UTC()})
+
+	wv := httptest.NewRecorder()
+	reqv, _ := http.NewRequest("DELETE", "/api/v1/history?days=30", nil)
+	reqv.Header.Set("Authorization", "Bearer "+viewerToken())
+	r.ServeHTTP(wv, reqv)
+	assert.Equal(t, 403, wv.Code)
+
+	wbad := httptest.NewRecorder()
+	reqbad, _ := http.NewRequest("DELETE", "/api/v1/history?days=0", nil)
+	reqbad.Header.Set("Authorization", "Bearer "+adminToken())
+	r.ServeHTTP(wbad, reqbad)
+	assert.Equal(t, 400, wbad.Code)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/api/v1/history?days=30", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken())
+	r.ServeHTTP(w, req)
+	require.Equal(t, 200, w.Code)
+	var resp struct {
+		Deleted int64 `json:"deleted"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, int64(1), resp.Deleted)
 }

@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/gin-gonic/gin"
+	"gopkg.in/yaml.v3"
 )
 
 type HistoryHandler struct {
@@ -108,4 +111,51 @@ func (h *HistoryHandler) Stats(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, st)
+}
+
+func (h *HistoryHandler) Export(c *gin.Context) {
+	opts := h.parseOptions(c)
+	opts.Limit = 1000
+	opts.Offset = 0
+	records, _, err := h.history.Query(c.Request.Context(), opts)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "export failed"})
+		return
+	}
+	if records == nil {
+		records = []*store.Record{}
+	}
+	ts := time.Now().UTC().Format("20060102-150405")
+	switch c.DefaultQuery("format", "json") {
+	case "yaml", "yml":
+		data, err := yaml.Marshal(records)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "marshal failed"})
+			return
+		}
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=history-%s.yaml", ts))
+		c.Data(http.StatusOK, "application/x-yaml", data)
+	default:
+		data, err := json.MarshalIndent(records, "", "  ")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "marshal failed"})
+			return
+		}
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=history-%s.json", ts))
+		c.Data(http.StatusOK, "application/json", data)
+	}
+}
+
+func (h *HistoryHandler) Clean(c *gin.Context) {
+	days, err := strconv.Atoi(c.Query("days"))
+	if err != nil || days <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "days must be a positive integer"})
+		return
+	}
+	deleted, err := h.history.Cleanup(c.Request.Context(), days)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "cleanup failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": deleted})
 }
