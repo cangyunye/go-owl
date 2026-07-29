@@ -243,6 +243,9 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 	if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
 		log.Printf("record history: %v", err)
 	}
+	if h.hub != nil {
+		h.hub.BroadcastHistoryUpdate()
+	}
 
 	go h.executePlaybookRun(run.ID)
 
@@ -379,16 +382,16 @@ func (h *PlaybookHandler) executePlaybookRun(runID string) {
 				}
 
 				start := time.Now()
-			step := h.executePlaybookTask(ctx, exec, nodeID, taskName, taskBody)
-			step.DurationMs = time.Since(start).Milliseconds()
-			h.runs.AppendResult(ctx, runID, step)
+				step := h.executePlaybookTask(ctx, exec, nodeID, taskName, taskBody)
+				step.DurationMs = time.Since(start).Milliseconds()
+				h.runs.AppendResult(ctx, runID, step)
 
-			ce := &store.CommandExecution{TaskID: runID, NodeID: step.NodeID, Command: step.TaskName, ExitCode: step.ExitCode, Stdout: step.Output, Stderr: step.Error, DurationMs: step.DurationMs, Success: step.ExitCode == 0, CreatedAt: time.Now().UTC()}
-			if e := h.History.RecordCommandExecution(ctx, ce); e != nil {
-				log.Printf("record command execution: %v", e)
-			}
+				ce := &store.CommandExecution{TaskID: runID, NodeID: step.NodeID, Command: step.TaskName, ExitCode: step.ExitCode, Stdout: step.Output, Stderr: step.Error, DurationMs: step.DurationMs, Success: step.ExitCode == 0, CreatedAt: time.Now().UTC()}
+				if e := h.History.RecordCommandExecution(ctx, ce); e != nil {
+					log.Printf("record command execution: %v", e)
+				}
 
-			if step.ExitCode != 0 {
+				if step.ExitCode != 0 {
 					failed = true
 				}
 
