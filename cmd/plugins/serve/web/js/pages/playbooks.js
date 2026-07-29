@@ -148,7 +148,16 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       } else {
         tasks.innerHTML = '<p style="color:var(--muted);font-size:13px">无任务</p>';
       }
-      yaml.textContent = pb.file_exists ? `文件路径: ${pb.file_path}\n\n(YAML 源文件内容暂不可用)` : '文件不存在';
+      if (pb.file_exists) {
+        yaml.textContent = '加载 YAML…';
+        api.playbookFile(id).then(res => {
+          yaml.textContent = res.content || '(空文件)';
+        }).catch(() => {
+          yaml.textContent = `文件路径: ${pb.file_path}\n\n(YAML 加载失败)`;
+        });
+      } else {
+        yaml.textContent = '文件不存在';
+      }
     } catch {
       nameEl.textContent = '加载失败';
       meta.innerHTML = '<span style="color:var(--danger)">无法获取剧本详情</span>';
