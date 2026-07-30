@@ -1,0 +1,31 @@
+description: HTTP 健康检查模板，对目标节点执行 HTTP 探活
+tags: [healthcheck, http, utility]
+
+parameters:
+  - name: url
+    description: "检查的 URL 地址"
+    default: "http://localhost:80/"
+    required: false
+  - name: expected_code
+    description: "期望的 HTTP 状态码"
+    default: 200
+    type: number
+    required: false
+  - name: timeout
+    description: "请求超时（秒）"
+    default: 5
+    type: number
+    required: false
+
+tasks:
+  - name: HTTP 健康检查
+    action: command
+    args:
+      cmd: |
+        code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout {{ timeout }} {{ url }})
+        if [ "$code" = "{{ expected_code }}" ]; then
+          echo "OK: {{ url }} returned $code"
+        else
+          echo "FAIL: {{ url }} returned $code (expected {{ expected_code }})"
+          exit 1
+        fi

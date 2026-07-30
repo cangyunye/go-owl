@@ -1,6 +1,8 @@
 package playbook
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -109,4 +111,75 @@ tasks:
 	if meta.Parameters[0].Name != "nginx_version" {
 		t.Errorf("unexpected param name: %s", meta.Parameters[0].Name)
 	}
+}
+
+func TestLoadTemplates_BuiltinOnly(t *testing.T) {
+	entries, err := LoadTemplates("/nonexistent/user/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected builtin templates to be loaded")
+	}
+	found := false
+	for _, e := range entries {
+		if e.Name == "utility/healthcheck/http" {
+			found = true
+			if e.Source != "builtin" {
+				t.Errorf("expected source builtin, got %s", e.Source)
+			}
+			if e.Category != "utility" {
+				t.Errorf("expected category utility, got %s", e.Category)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected to find utility/healthcheck/http template")
+	}
+}
+
+func TestGetTemplate(t *testing.T) {
+	entry, err := GetTemplate("utility/healthcheck/http", "/nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Meta.Description == "" {
+		t.Error("expected non-empty description")
+	}
+	if len(entry.Meta.Parameters) == 0 {
+		t.Error("expected parameters")
+	}
+	if entry.Content == nil {
+		t.Error("expected non-nil content")
+	}
+}
+
+func TestGetTemplate_NotFound(t *testing.T) {
+	_, err := GetTemplate("nonexistent/template", "/nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent template")
+	}
+}
+
+func TestLoadTemplates_UserOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "utility", "healthcheck"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, "utility", "healthcheck", "http.yaml"), []byte("description: user override\ntasks: []\n"), 0644)
+
+	entries, err := LoadTemplates(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name == "utility/healthcheck/http" {
+			if e.Source != "user" {
+				t.Errorf("expected user source to override builtin, got %s", e.Source)
+			}
+			if e.Meta.Description != "user override" {
+				t.Errorf("expected user description, got %s", e.Meta.Description)
+			}
+			return
+		}
+	}
+	t.Error("template not found")
 }
