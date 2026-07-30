@@ -1,0 +1,71 @@
+description: |
+  Nginx 部署模板，支持一键部署和配置管理。
+  功能包括：
+  - 自动下载和安装 Nginx
+  - 配置文件上传
+  - 服务启动和健康检查
+tags: [nginx, webserver, deploy]
+
+parameters:
+  - name: nginx_version
+    description: "Nginx 版本"
+    default: "1.24.0"
+    required: false
+
+  - name: nginx_port
+    description: "监听端口"
+    default: 80
+    required: false
+    type: number
+
+  - name: enable_ssl
+    description: "启用 HTTPS"
+    default: false
+    required: false
+    type: boolean
+
+tasks:
+  - name: 创建工作目录
+    action: command
+    args:
+      cmd: mkdir -p /tmp/nginx-install
+
+  - name: 上传 Nginx 压缩包
+    action: upload
+    args:
+      src: ./files/nginx-{{ nginx_version }}.tar.gz
+      dest: /tmp/nginx-install/
+      overwrite: true
+
+  - name: 解压安装
+    action: command
+    args:
+      cmd: |
+        cd /tmp/nginx-install
+        tar -xzf nginx-{{ nginx_version }}.tar.gz
+        cd nginx-{{ nginx_version }}
+        ./configure --prefix=/usr/local/nginx
+        make -j$(nproc)
+        make install
+
+  - name: 上传配置文件
+    action: upload
+    args:
+      src: ./files/nginx.conf
+      dest: /usr/local/nginx/conf/nginx.conf
+      overwrite: true
+
+  - name: 启动 Nginx
+    action: command
+    args:
+      cmd: /usr/local/nginx/sbin/nginx
+
+  - name: 验证安装
+    action: command
+    args:
+      cmd: curl -s -o /dev/null -w "%{http_code}" http://localhost:{{ nginx_port }}/
+
+  - name: 清理临时文件
+    action: command
+    args:
+      cmd: rm -rf /tmp/nginx-install
