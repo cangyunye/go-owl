@@ -15,14 +15,27 @@ import (
 var playbookTemplateOutput string
 
 func NewPlaybookTemplateCmd() *cobra.Command {
-	templateCmd := &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "template",
+		Short: "模板管理",
+		Long:  "Playbook 模板管理命令",
+	}
+	cmd.AddCommand(NewPlaybookTemplateCreateCmd())
+	cmd.AddCommand(NewPlaybookTemplateListCmd())
+	cmd.AddCommand(NewPlaybookTemplateInfoCmd())
+	cmd.AddCommand(NewPlaybookTemplateExportCmd())
+	return cmd
+}
+
+func NewPlaybookTemplateCreateCmd() *cobra.Command {
+	templateCmd := &cobra.Command{
+		Use:   "create",
 		Short: "交互式创建剧本模板",
 		Long: `通过会话式问答创建剧本模板。
 
 示例：
-  owl playbook template
-  owl playbook template --output ./my-playbook.yaml`,
+  owl playbook template create
+  owl playbook template create --output ./my-playbook.yaml`,
 		Run: runPlaybookTemplate,
 	}
 

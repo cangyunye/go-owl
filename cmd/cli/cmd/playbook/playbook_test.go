@@ -96,9 +96,27 @@ func TestPlaybookTemplateCmd(t *testing.T) {
 		t.Errorf("expected Use 'template', got '%s'", cmd.Use)
 	}
 
+	testutil.AssertSubCommands(t, cmd, []string{"create", "list", "info", "export"})
+}
+
+func TestPlaybookTemplateCreateCmd(t *testing.T) {
+	cmd := playbook.NewPlaybookTemplateCreateCmd()
+
+	if cmd.Use != "create" {
+		t.Errorf("expected Use 'create', got '%s'", cmd.Use)
+	}
+
 	testutil.AssertFlagExists(t, cmd, "output")
 	testutil.AssertFlagShorthand(t, cmd, "output", "o")
 	testutil.AssertFlagDefault(t, cmd, "output", "")
+}
+
+func TestPlaybookTemplateListCmd(t *testing.T) {
+	cmd := playbook.NewPlaybookTemplateListCmd()
+
+	if cmd.Use != "list" {
+		t.Errorf("expected Use 'list', got '%s'", cmd.Use)
+	}
 }
 
 func TestActionTemplatesCount(t *testing.T) {
