@@ -3,11 +3,12 @@ package playbook_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/playbook"
-	pb "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/testutil"
+	pb "github.com/cangyunye/go-owl/pkg/playbook"
 )
 
 func TestPlaybookCmdExists(t *testing.T) {
@@ -272,6 +273,88 @@ tasks:
 	results = playbook.ValidatePlaybookFiles([]string{})
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for empty input, got %d", len(results))
+	}
+}
+
+func TestPlaybookNewAndScaffoldRegistered(t *testing.T) {
+	parent := playbook.NewPlaybookCmd()
+	testutil.AssertSubCommands(t, parent, []string{"new", "scaffold"})
+}
+
+func TestPlaybookNewCmdFlags(t *testing.T) {
+	cmd := playbook.NewPlaybookNewCmd()
+
+	if cmd.Use != "new" {
+		t.Errorf("expected Use 'new', got '%s'", cmd.Use)
+	}
+
+	testutil.AssertFlagExists(t, cmd, "from")
+	testutil.AssertFlagDefault(t, cmd, "from", "")
+
+	testutil.AssertFlagExists(t, cmd, "var")
+
+	testutil.AssertFlagExists(t, cmd, "output")
+	testutil.AssertFlagShorthand(t, cmd, "output", "o")
+	testutil.AssertFlagDefault(t, cmd, "output", "")
+}
+
+func TestPlaybookNewFromTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+	outPath := filepath.Join(tmpDir, "sub", "http.yaml")
+
+	cmd := playbook.NewPlaybookNewCmd()
+	testutil.ExecuteCommand(t, cmd,
+		"--from=utility/healthcheck/http",
+		"--var", "url=http://example.com",
+		"--var", "expected_code=200",
+		"--var", "timeout=5",
+		"--output", outPath,
+	)
+
+	content, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("expected output file to be created: %v", err)
+	}
+
+	s := string(content)
+	if !strings.Contains(s, "http://example.com") {
+		t.Errorf("expected rendered playbook to contain provided url, got:\n%s", s)
+	}
+	if strings.Contains(s, "parameters:") {
+		t.Errorf("expected rendered playbook to strip parameters section, got:\n%s", s)
+	}
+	if strings.Contains(s, "{{") {
+		t.Errorf("expected no unrendered placeholders, got:\n%s", s)
+	}
+}
+
+func TestPlaybookScaffoldCmd(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	if cmd.Use != "scaffold" {
+		t.Errorf("expected Use 'scaffold', got '%s'", cmd.Use)
+	}
+
+	testutil.AssertFlagExists(t, cmd, "type")
+	testutil.AssertFlagDefault(t, cmd, "type", "basic")
+}
+
+func TestPlaybookScaffoldOutput(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	out := testutil.ExecuteCommand(t, cmd)
+
+	expected := []string{
+		`# description: "TODO: 描述此 Playbook 的用途"`,
+		"# parameters:",
+		"tasks:",
+		"action: command",
+		"# retries: 3",
+	}
+	for _, e := range expected {
+		if !strings.Contains(out, e) {
+			t.Errorf("expected scaffold output to contain %q, got:\n%s", e, out)
+		}
 	}
 }
 

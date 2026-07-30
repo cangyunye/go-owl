@@ -20,6 +20,8 @@ func NewPlaybookCmd() *cobra.Command {
 	pbCmd.AddCommand(NewPlaybookValidateCmd())
 	pbCmd.AddCommand(NewPlaybookRunCmd())
 	pbCmd.AddCommand(NewPlaybookTemplateCmd())
+	pbCmd.AddCommand(NewPlaybookNewCmd())
+	pbCmd.AddCommand(NewPlaybookScaffoldCmd())
 
 	return pbCmd
 }
