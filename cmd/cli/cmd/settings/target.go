@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // targetFlags
@@ -19,23 +21,18 @@ var (
 func NewSettingsTargetCmd() *cobra.Command {
 	targetCmd := &cobra.Command{
 		Use:   "target",
-		Short: "设置默认目标节点",
-		Long: `设置默认的目标节点选择条件。
-
-示例：
-  owl settings target --groups web
-  owl settings target --label env=prod
-  owl settings target --nodes node1,node2`,
-		Run: runSettingsTarget,
+		Short: i18n.T("settings.target.short"),
+		Long:  i18n.T("settings.target.long"),
+		Run:   runSettingsTarget,
 	}
 
-	targetCmd.Flags().StringSliceVarP(&targetGroup, "groups", "g", nil, "默认分组 (多个分组用逗号分隔或多次使用 -g)")
-	targetCmd.Flags().StringSliceVar(&targetGroup, "group", nil, "(已废弃，请使用 --groups)")
+	targetCmd.Flags().StringSliceVarP(&targetGroup, "groups", "g", nil, i18n.T("settings.target.flag_groups"))
+	targetCmd.Flags().StringSliceVar(&targetGroup, "group", nil, i18n.T("settings.target.flag_group_deprecated"))
 	targetCmd.Flags().MarkHidden("group")
 	targetCmd.Flags().StringSliceVarP(&targetLabel, "label", "l", nil,
-		"默认标签")
+		i18n.T("settings.target.flag_label"))
 	targetCmd.Flags().StringVarP(&targetNodes, "nodes", "N", "",
-		"默认节点")
+		i18n.T("settings.target.flag_nodes"))
 
 	return targetCmd
 }

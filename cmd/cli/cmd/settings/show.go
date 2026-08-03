@@ -4,13 +4,15 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // NewSettingsShowCmd 创建显示设置命令
 func NewSettingsShowCmd() *cobra.Command {
 	showCmd := &cobra.Command{
 		Use:   "show",
-		Short: "显示当前设置",
+		Short: i18n.T("settings.show.short"),
 		Run:   runSettingsShow,
 	}
 

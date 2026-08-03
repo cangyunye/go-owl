@@ -6,20 +6,16 @@ import (
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // NewSettingsCmd 创建设置命令
 func NewSettingsCmd() *cobra.Command {
 	settingsCmd := &cobra.Command{
 		Use:   "settings",
-		Short: "设置管理",
-		Long: `管理 owl 的配置设置。
-
-示例：
-  owl settings show
-  owl settings set output.format json
-  owl settings set default.timeout 60s
-  owl settings target --groups web,db`,
+		Short: i18n.T("settings.cmd.short"),
+		Long:  i18n.T("settings.cmd.long"),
 	}
 
 	settingsCmd.AddCommand(NewSettingsShowCmd())

@@ -4,18 +4,17 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // NewSettingsTemplateCmd 创建显示可配置项模板的命令
 func NewSettingsTemplateCmd() *cobra.Command {
 	templateCmd := &cobra.Command{
 		Use:   "template",
-		Short: "显示所有可配置项",
-		Long: `显示所有可配置的设置项及其类型、默认值和说明。
-
-示例：
-  owl settings template`,
-		Run: runSettingsTemplate,
+		Short: i18n.T("settings.template.short"),
+		Long:  i18n.T("settings.template.long"),
+		Run:   runSettingsTemplate,
 	}
 
 	return templateCmd
@@ -31,25 +30,25 @@ func runSettingsTemplate(cmd *cobra.Command, args []string) {
 	// 输出设置
 	fmt.Println("--- Output ---")
 	fmt.Println()
-	printRow("output.format", "string", `"table"`, "输出格式 (table, json, simple)")
-	printRow("output.color", "bool", "true", "是否启用颜色输出")
+	printRow("output.format", "string", `"table"`, i18n.T("settings.template.desc_output_format"))
+	printRow("output.color", "bool", "true", i18n.T("settings.template.desc_output_color"))
 	fmt.Println()
 
 	// 默认设置
 	fmt.Println("--- Default ---")
 	fmt.Println()
-	printRow("default.timeout", "duration", `"60s"`, "默认超时时间 (如 30s, 1m, 5m)")
-	printRow("default.group", "string", `""`, "默认节点分组")
-	printRow("default.parallel", "bool", "true", "默认是否并行执行")
-	printRow("default.labels", "map", "{}", "默认节点标签 (格式: key1=val1,key2=val2)")
+	printRow("default.timeout", "duration", `"60s"`, i18n.T("settings.template.desc_default_timeout"))
+	printRow("default.group", "string", `""`, i18n.T("settings.template.desc_default_group"))
+	printRow("default.parallel", "bool", "true", i18n.T("settings.template.desc_default_parallel"))
+	printRow("default.labels", "map", "{}", i18n.T("settings.template.desc_default_labels"))
 	fmt.Println()
 
 	// 目标设置
 	fmt.Println("--- Target ---")
 	fmt.Println()
-	printRow("target.groups", "string", `""`, "默认目标分组 (逗号分隔)")
-	printRow("target.label", "string", `""`, "默认目标标签")
-	printRow("target.nodes", "string", `""`, "默认目标节点 (逗号分隔)")
+	printRow("target.groups", "string", `""`, i18n.T("settings.template.desc_target_groups"))
+	printRow("target.label", "string", `""`, i18n.T("settings.template.desc_target_label"))
+	printRow("target.nodes", "string", `""`, i18n.T("settings.template.desc_target_nodes"))
 	fmt.Println()
 
 	fmt.Println("Usage:")

@@ -6,34 +6,18 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // NewSettingsSetCmd 创建设置值命令
 func NewSettingsSetCmd() *cobra.Command {
 	setCmd := &cobra.Command{
 		Use:   "set <key> <value>",
-		Short: "设置配置值",
-		Long: `设置配置项的值。
-
-支持的配置项：
-  output.format      - 输出格式 (table, json, simple)
-  output.color       - 启用颜色 (true, false)
-  default.timeout    - 默认超时时间 (例如 30s, 1m)
-  default.group      - 默认分组
-  default.parallel   - 默认并行执行 (true, false)
-  default.labels     - 默认标签 (格式: key1=val1,key2=val2)
-  target.groups      - 默认目标分组 (逗号分隔)
-  target.label       - 默认目标标签
-  target.nodes       - 默认目标节点 (逗号分隔)
-
-示例：
-  owl settings set output.format json
-  owl settings set default.timeout 60s
-  owl settings set default.group web
-  owl settings set default.labels env=prod,region=us
-  owl settings set target.groups web,db`,
-		Args: cobra.ExactArgs(2),
-		Run:  runSettingsSet,
+		Short: i18n.T("settings.set.short"),
+		Long:  i18n.T("settings.set.long"),
+		Args:  cobra.ExactArgs(2),
+		Run:   runSettingsSet,
 	}
 
 	return setCmd
