@@ -15,6 +15,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
 	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
 )
@@ -33,37 +34,29 @@ var (
 func NewTransferCmd() *cobra.Command {
 	transferCmd := &cobra.Command{
 		Use:   "transfer <file>",
-		Short: "节点间扩散传输 (P2P 模式)",
-		Long: `使用自扩散传输方案，将文件从源节点扩散到其他节点。
-
-前 N 个节点将被选为源节点，然后继续将文件传输到其他节点。
-
-示例：
-  owl file transfer app.tar.gz --nodes node1,node2,node3,node4,node5 \
-    --dest /opt/app/ --source-count 2
-  owl file transfer data.zip --all-nodes --dest /data/ --fan-out 3
-  owl file transfer db.tar.gz --groups database --source-count 1`,
-		Args: cobra.ExactArgs(1),
-		Run:  runTransfer,
+		Short: i18n.T("file.transfer.cmd.short"),
+		Long:  i18n.T("file.transfer.cmd.long"),
+		Args:  cobra.ExactArgs(1),
+		Run:   runTransfer,
 	}
 
 	transferCmd.Flags().StringVarP(&transferNodes, "nodes", "N", "",
-		"指定节点列表 (逗号分隔)")
+		i18n.T("file.transfer.flag_nodes"))
 	transferCmd.Flags().BoolVar(&transferAllNodes, "all-nodes", false,
-		"选择所有节点")
-	transferCmd.Flags().StringSliceVarP(&transferGroup, "groups", "g", nil, "按分组选择节点 (多个分组用逗号分隔或多次使用 -g)")
-	transferCmd.Flags().StringSliceVar(&transferGroup, "group", nil, "(已废弃，请使用 --groups)")
+		i18n.T("file.transfer.flag_all_nodes"))
+	transferCmd.Flags().StringSliceVarP(&transferGroup, "groups", "g", nil, i18n.T("file.common.flag_groups"))
+	transferCmd.Flags().StringSliceVar(&transferGroup, "group", nil, i18n.T("file.common.flag_group_deprecated"))
 	transferCmd.Flags().MarkHidden("group")
 	transferCmd.Flags().StringSliceVarP(&transferLabel, "label", "l", nil,
-		"按标签选择节点")
+		i18n.T("file.common.flag_label"))
 	transferCmd.Flags().StringVarP(&transferDest, "dest", "d", "/tmp",
-		"目标目录")
+		i18n.T("file.common.flag_dest"))
 	transferCmd.Flags().IntVar(&transferSourceCount, "source-count", 2,
-		"源节点数量 (前 N 个节点作为源)")
+		i18n.T("file.transfer.flag_source_count"))
 	transferCmd.Flags().IntVar(&transferFanOut, "fan-out", 3,
-		"扇出系数 (每个节点可传给的最大子节点数)")
+		i18n.T("file.transfer.flag_fan_out"))
 	transferCmd.Flags().IntVar(&transferThreshold, "threshold", 5,
-		"阈值 (小于此数量的节点直接传输，不使用扩散)")
+		i18n.T("file.transfer.flag_threshold"))
 
 	return transferCmd
 }
@@ -76,7 +69,7 @@ func runTransfer(cmd *cobra.Command, args []string) {
 
 	fileInfo, err := os.Stat(fileName)
 	if os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "错误: 文件不存在: %s\n", fileName)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("file.transfer.err_file_not_found", fileName))
 		os.Exit(1)
 	}
 	fileSize := fileInfo.Size()
@@ -85,7 +78,7 @@ func runTransfer(cmd *cobra.Command, args []string) {
 	defer logger.Sync()
 	_, err = history.NewDB(history.DefaultConfig())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("file.common.warn_history_db", err))
 	}
 
 	common.CheckNodeConflictsBeforeExec()
@@ -98,19 +91,19 @@ func runTransfer(cmd *cobra.Command, args []string) {
 		nodeIDs := parseNodeList(transferNodes)
 		resolvedNodes, err = nodeResolver.ResolveMultiple(nodeIDs)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "错误: 解析节点失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("file.transfer.err_resolve_nodes", err))
 			os.Exit(1)
 		}
 	} else if transferAllNodes {
 		resolvedNodes, err = nodeResolver.ListNodes(nil)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("file.common.err_list_nodes", err))
 			os.Exit(1)
 		}
 	} else if len(transferGroup) > 0 {
 		resolvedNodes, err = node.ListNodesByGroups(nodeResolver, transferGroup)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("file.common.err_list_nodes", err))
 			os.Exit(1)
 		}
 	} else if len(transferLabel) > 0 {
@@ -118,16 +111,16 @@ func runTransfer(cmd *cobra.Command, args []string) {
 			Label: transferLabel[0],
 		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "错误: 获取节点列表失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("file.common.err_list_nodes", err))
 			os.Exit(1)
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "错误: 请指定 --nodes, --all-nodes, --groups 或 --label")
+		fmt.Fprintln(os.Stderr, i18n.T("file.transfer.err_no_selector"))
 		os.Exit(1)
 	}
 
 	if len(resolvedNodes) == 0 {
-		fmt.Println("未找到目标节点")
+		fmt.Println(i18n.T("file.common.no_nodes"))
 		return
 	}
 
@@ -157,14 +150,14 @@ func runTransfer(cmd *cobra.Command, args []string) {
 
 	ctx := context.Background()
 
-	fmt.Printf("文件: %s (%.2f MB)\n", fileName, float64(fileSize)/1024/1024)
-	fmt.Printf("目标: %s\n", remotePath)
-	fmt.Printf("节点: %d 个\n", len(resolvedNodes))
+	fmt.Printf("%s", i18n.T("file.transfer.info_file", fileName, fmt.Sprintf("%.2f", float64(fileSize)/1024/1024)))
+	fmt.Printf("%s", i18n.T("file.transfer.info_dest", remotePath))
+	fmt.Printf("%s", i18n.T("file.transfer.info_nodes", i18n.F(len(resolvedNodes))))
 
 	if useDiffusion {
-		fmt.Printf("模式: 扩散传输 (fan-out=%d, threshold=%d)\n", transferFanOut, transferThreshold)
+		fmt.Printf("%s", i18n.T("file.transfer.info_mode_diffusion", i18n.F(transferFanOut), i18n.F(transferThreshold)))
 	} else {
-		fmt.Printf("模式: 直接传输 (节点数 < threshold=%d)\n", transferThreshold)
+		fmt.Printf("%s", i18n.T("file.transfer.info_mode_direct", i18n.F(transferThreshold)))
 	}
 
 	var successCount, failCount int
@@ -194,7 +187,7 @@ func runTransfer(cmd *cobra.Command, args []string) {
 	})
 
 	fmt.Println()
-	fmt.Printf("总结: %d 成功, %d 失败\n", successCount, failCount)
+	fmt.Printf("%s", i18n.T("file.transfer.summary", i18n.F(successCount), i18n.F(failCount)))
 	if failCount > 0 {
 		os.Exit(1)
 	}
@@ -209,7 +202,7 @@ func runDirectTransfer(ctx context.Context, nodeResolver *node.NodeResolver, tas
 		Resume:   true,
 	}
 
-	fmt.Println("\n正在传输...")
+	fmt.Println(i18n.T("file.transfer.transferring"))
 	results := manager.Upload(ctx, nodeIDs, fileName, remotePath, opts)
 
 	successCount := 0
@@ -226,14 +219,14 @@ func runDirectTransfer(ctx context.Context, nodeResolver *node.NodeResolver, tas
 		if result.Error != nil {
 			status = "failed"
 			errMsg = result.Error.Error()
-			fmt.Printf("  [%s] 失败 [%s]: %v\n", result.NodeID, method, result.Error)
+			fmt.Printf("%s", i18n.T("file.transfer.node_failed", result.NodeID, method, result.Error))
 			failCount++
 		} else {
 			speedInfo := ""
 			if result.Speed != "" && result.Speed != "N/A" {
 				speedInfo = ", " + result.Speed
 			}
-			fmt.Printf("  [%s] 成功 [%s%s]\n", result.NodeID, method, speedInfo)
+			fmt.Printf("%s", i18n.T("file.transfer.node_success", result.NodeID, method, speedInfo))
 			successCount++
 		}
 
@@ -254,7 +247,7 @@ func runDirectTransfer(ctx context.Context, nodeResolver *node.NodeResolver, tas
 }
 
 func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, taskID, fileName string, fileSize int64, remotePath string, resolvedNodes []*node.ResolvedNode) (int, int) {
-	fmt.Println("\n构建扩散树...")
+	fmt.Println(i18n.T("file.transfer.building_tree"))
 
 	modelNodes := resolvedToModelNodes(resolvedNodes)
 	treeBuilder := transfer.NewTreeBuilder(transferFanOut, 10, transferThreshold)
@@ -265,7 +258,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 
 	displayDiffusionTree(tree, resolvedNodes)
 
-	fmt.Println("\n正在传输...")
+	fmt.Println(i18n.T("file.transfer.transferring"))
 
 	manager := transfer.NewTransferManager(nodeResolver)
 	defer manager.Close()
@@ -326,7 +319,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 			if result.Error != nil {
 				status = "failed"
 				errMsg = result.Error.Error()
-				fmt.Printf("  [%s] 失败 [%s]: %v\n", nodeID, method, result.Error)
+				fmt.Printf("%s", i18n.T("file.transfer.node_failed", nodeID, method, result.Error))
 				failCount++
 				diffTransfer.UpdateNodeStatus(nodeID, transfer.DiffusionStatusFailed, 100, errMsg)
 			} else {
@@ -334,7 +327,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 				if result.Speed != "" && result.Speed != "N/A" {
 					speedInfo = ", " + result.Speed
 				}
-				fmt.Printf("  [%s] 成功 [%s%s]\n", nodeID, method, speedInfo)
+				fmt.Printf("%s", i18n.T("file.transfer.node_success", nodeID, method, speedInfo))
 				successCount++
 				diffTransfer.UpdateNodeStatus(nodeID, transfer.DiffusionStatusCompleted, 100, "")
 			}
@@ -354,7 +347,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 			progress++
 			percent := float64(progress) / float64(total) * 100
 			bar := generateProgressBar(percent, 40)
-			fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+			fmt.Printf("%s", i18n.T("file.transfer.progress", bar, fmt.Sprintf("%.0f", percent), i18n.F(progress), i18n.F(total)))
 
 			if result.Error == nil {
 				treeNode := tree.Nodes[nodeID]
@@ -421,7 +414,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 				if result.Error != nil {
 					status = "failed"
 					errMsg = result.Error.Error()
-					fmt.Printf("  [%s] 失败 [%s]: %v\n", result.NodeID, method, result.Error)
+					fmt.Printf("%s", i18n.T("file.transfer.node_failed", result.NodeID, method, result.Error))
 					failCount++
 					diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusFailed, 100, errMsg)
 				} else {
@@ -429,7 +422,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 					if result.Speed != "" && result.Speed != "N/A" {
 						speedInfo = ", " + result.Speed
 					}
-					fmt.Printf("  [%s] 成功 [%s%s]\n", result.NodeID, method, speedInfo)
+					fmt.Printf("%s", i18n.T("file.transfer.node_success", result.NodeID, method, speedInfo))
 					successCount++
 					diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusCompleted, 100, "")
 				}
@@ -449,7 +442,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 				progress++
 				percent := float64(progress) / float64(total) * 100
 				bar := generateProgressBar(percent, 40)
-				fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+				fmt.Printf("%s", i18n.T("file.transfer.progress", bar, fmt.Sprintf("%.0f", percent), i18n.F(progress), i18n.F(total)))
 			}
 		}
 
@@ -458,16 +451,16 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 
 			var deployedSources []string
 			for _, sourceID := range completedSources {
-				fmt.Printf("  正在部署中继工具到 [%s]...\n", sourceID)
+				fmt.Printf("%s", i18n.T("file.transfer.deploy_relay_tool", sourceID))
 				if err := relayExecutor.DeployRelay(ctx, sourceID); err != nil {
-					fmt.Printf("  警告: 部署到 [%s] 失败: %v, 尝试下一个源节点\n", sourceID, err)
+					fmt.Printf("%s", i18n.T("file.transfer.deploy_relay_failed", sourceID, err))
 					continue
 				}
 				deployedSources = append(deployedSources, sourceID)
 			}
 
 			if len(deployedSources) == 0 {
-				fmt.Println("  所有源节点部署失败，全部降级为直接传输")
+				fmt.Println(i18n.T("file.transfer.deploy_all_failed"))
 				fallbackIDs := make([]string, len(relayTargets))
 				for j, t := range relayTargets {
 					fallbackIDs[j] = t.nodeID
@@ -483,7 +476,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 					if result.Error != nil {
 						status = "failed"
 						errMsg = result.Error.Error()
-						fmt.Printf("  [%s] 降级直传失败 [%s]: %v\n", result.NodeID, method, result.Error)
+						fmt.Printf("%s", i18n.T("file.transfer.fallback_direct_failed", result.NodeID, method, result.Error))
 						failCount++
 						diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusFailed, 100, errMsg)
 					} else {
@@ -491,7 +484,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 						if result.Speed != "" && result.Speed != "N/A" {
 							speedInfo = ", " + result.Speed
 						}
-						fmt.Printf("  [%s] 降级直传成功 [%s%s]\n", result.NodeID, method, speedInfo)
+						fmt.Printf("%s", i18n.T("file.transfer.fallback_direct_success", result.NodeID, method, speedInfo))
 						successCount++
 						diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusCompleted, 100, "")
 					}
@@ -509,7 +502,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 					progress++
 					percent := float64(progress) / float64(total) * 100
 					bar := generateProgressBar(percent, 40)
-					fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+					fmt.Printf("%s", i18n.T("file.transfer.progress", bar, fmt.Sprintf("%.0f", percent), i18n.F(progress), i18n.F(total)))
 				}
 			} else {
 				dist := make(map[string][]relayTarget)
@@ -546,11 +539,11 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 						}
 						targetNames[j] = name
 					}
-					fmt.Printf("  [%s] 正在向 [%s] 中继传输...\n", sourceID, strings.Join(targetNames, ", "))
+					fmt.Printf("%s", i18n.T("file.transfer.relay_to", sourceID, strings.Join(targetNames, ", ")))
 
 					relayResults, relayErr := relayExecutor.ExecuteRelay(ctx, sourceID, subTask)
 					if relayErr != nil {
-						fmt.Printf("  警告: [%s] 中继传输存在问题: %v\n", sourceID, relayErr)
+						fmt.Printf("%s", i18n.T("file.transfer.relay_warning", sourceID, relayErr))
 					}
 
 					hostToNodeID := make(map[string]string)
@@ -571,7 +564,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 						}
 
 						if rr.Status == "success" {
-							fmt.Printf("  [%s] 成功 [relay, %dms]\n", name, rr.DurationMs)
+							fmt.Printf("%s", i18n.T("file.transfer.relay_success", name, i18n.F(rr.DurationMs)))
 							successCount++
 							diffTransfer.UpdateNodeStatus(nodeID, transfer.DiffusionStatusCompleted, 100, "")
 
@@ -587,7 +580,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 								CreatedAt:    time.Now(),
 							})
 						} else {
-							fmt.Printf("  [%s] 失败 [relay]: %s, 降级为直接传输\n", name, rr.Error)
+							fmt.Printf("%s", i18n.T("file.transfer.relay_failed_fallback", name, rr.Error))
 							failedRelayTargets = append(failedRelayTargets, relayTarget{
 								nodeID:   nodeID,
 								host:     rr.Target,
@@ -598,7 +591,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 						progress++
 						percent := float64(progress) / float64(total) * 100
 						bar := generateProgressBar(percent, 40)
-						fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+						fmt.Printf("%s", i18n.T("file.transfer.progress", bar, fmt.Sprintf("%.0f", percent), i18n.F(progress), i18n.F(total)))
 					}
 
 					if len(failedRelayTargets) > 0 {
@@ -606,7 +599,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 						for j, t := range failedRelayTargets {
 							fallbackIDs[j] = t.nodeID
 						}
-						fmt.Printf("  [%s] %d 个节点中继失败，正降级为直接传输: %v\n", sourceID, len(fallbackIDs), fallbackIDs)
+						fmt.Printf("%s", i18n.T("file.transfer.relay_nodes_failed", sourceID, i18n.F(len(fallbackIDs)), fallbackIDs))
 						results := manager.Upload(ctx, fallbackIDs, fileName, remotePath, opts)
 						for _, result := range results {
 							method := result.Method
@@ -618,7 +611,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 							if result.Error != nil {
 								status = "failed"
 								errMsg = result.Error.Error()
-								fmt.Printf("  [%s] 降级直传失败 [%s]: %v\n", result.NodeID, method, result.Error)
+								fmt.Printf("%s", i18n.T("file.transfer.fallback_direct_failed", result.NodeID, method, result.Error))
 								failCount++
 								diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusFailed, 100, errMsg)
 							} else {
@@ -626,7 +619,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 								if result.Speed != "" && result.Speed != "N/A" {
 									speedInfo = ", " + result.Speed
 								}
-								fmt.Printf("  [%s] 降级直传成功 [%s%s]\n", result.NodeID, method, speedInfo)
+								fmt.Printf("%s", i18n.T("file.transfer.fallback_direct_success", result.NodeID, method, speedInfo))
 								successCount++
 								diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusCompleted, 100, "")
 							}
@@ -644,13 +637,13 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 							progress++
 							percent := float64(progress) / float64(total) * 100
 							bar := generateProgressBar(percent, 40)
-							fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+							fmt.Printf("%s", i18n.T("file.transfer.progress", bar, fmt.Sprintf("%.0f", percent), i18n.F(progress), i18n.F(total)))
 						}
 					}
 				}
 			}
 		} else if len(relayTargets) > 0 && len(completedSources) == 0 {
-			fmt.Println("  无可用中继源节点，全部降级为直接传输")
+			fmt.Println(i18n.T("file.transfer.no_relay_source"))
 			for _, rt := range relayTargets {
 				directNodeIDs = append(directNodeIDs, rt.nodeID)
 			}
@@ -666,7 +659,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 					if result.Error != nil {
 						status = "failed"
 						errMsg = result.Error.Error()
-						fmt.Printf("  [%s] 无中继源→降级直传→失败 [%s]: %v\n", result.NodeID, method, result.Error)
+						fmt.Printf("%s", i18n.T("file.transfer.norelay_downgrade_failed", result.NodeID, method, result.Error))
 						failCount++
 						diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusFailed, 100, errMsg)
 					} else {
@@ -674,7 +667,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 						if result.Speed != "" && result.Speed != "N/A" {
 							speedInfo = ", " + result.Speed
 						}
-						fmt.Printf("  [%s] 无中继源→降级直传→成功 [%s%s]\n", result.NodeID, method, speedInfo)
+						fmt.Printf("%s", i18n.T("file.transfer.norelay_downgrade_success", result.NodeID, method, speedInfo))
 						successCount++
 						diffTransfer.UpdateNodeStatus(result.NodeID, transfer.DiffusionStatusCompleted, 100, "")
 					}
@@ -692,7 +685,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 					progress++
 					percent := float64(progress) / float64(total) * 100
 					bar := generateProgressBar(percent, 40)
-					fmt.Printf("\r  进度: [%s] %.0f%% (%d/%d)", bar, percent, progress, total)
+					fmt.Printf("%s", i18n.T("file.transfer.progress", bar, fmt.Sprintf("%.0f", percent), i18n.F(progress), i18n.F(total)))
 				}
 			}
 		}
@@ -737,13 +730,13 @@ func displayDiffusionTree(tree *transfer.DiffusionTree, resolvedNodes []*node.Re
 		nodeNameMap[n.ID] = name
 	}
 
-	fmt.Println("\n扩散树结构:")
+	fmt.Println(i18n.T("file.transfer.tree_title"))
 	fmt.Println("========================")
 
 	controlNode := tree.Nodes["control"]
 	sourceNodes := controlNode.Children
 
-	fmt.Print("源节点: ")
+	fmt.Print(i18n.T("file.transfer.source_nodes_label"))
 	for i, id := range sourceNodes {
 		if i > 0 {
 			fmt.Print(", ")
@@ -787,7 +780,7 @@ func displayDiffusionTree(tree *transfer.DiffusionTree, resolvedNodes []*node.Re
 
 	remainingCount := len(resolvedNodes) - len(sourceNodes) - childIndex
 	if remainingCount > 0 {
-		fmt.Printf("  ... 还有 %d 个节点在更深层级\n", remainingCount)
+		fmt.Printf("%s", i18n.T("file.transfer.more_nodes_deeper", i18n.F(remainingCount)))
 	}
 }
 
