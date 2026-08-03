@@ -11,7 +11,7 @@ func TestTChinese(t *testing.T) {
 	if got := T("common.no_nodes"); got != "未发现节点" {
 		t.Fatalf("zh lookup: got %q", got)
 	}
-	if got := T("common.total", 5); got != "总计: 5 个节点" {
+	if got := T("common.total", F(5)); got != "总计: 5 个节点" {
 		t.Fatalf("zh plural arg: got %q", got)
 	}
 }
@@ -21,9 +21,21 @@ func TestTEnglish(t *testing.T) {
 	if got := T("common.no_nodes"); got != "No nodes found." {
 		t.Fatalf("en lookup: got %q", got)
 	}
-	if got := T("common.total", 5); got != "Total: 5 nodes" {
+	if got := T("common.total", F(5)); got != "Total: 5 nodes" {
 		t.Fatalf("en plural arg: got %q", got)
 	}
+}
+
+func TestFPreventsDigitGrouping(t *testing.T) {
+	Init(language.Chinese)
+	if got := T("common.total", F(5000)); got != "总计: 5000 个节点" {
+		t.Fatalf("digit grouping leaked: got %q", got)
+	}
+	SetLang(language.English)
+	if got := T("common.total", F(5000)); got != "Total: 5000 nodes" {
+		t.Fatalf("digit grouping leaked: got %q", got)
+	}
+	SetLang(language.Chinese)
 }
 
 func TestMissingKeyFallsBackToSource(t *testing.T) {

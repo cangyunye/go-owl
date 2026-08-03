@@ -2,6 +2,7 @@ package i18n
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 
 	"golang.org/x/text/language"
@@ -53,6 +54,11 @@ func registerCatalogs() {
 		mu.Unlock()
 	}
 }
+
+// F 用原生 fmt 渲染数值，绕开 message.Printer 的本地化数字格式
+// （否则 %d/%v 数值会被插入千位分隔符，如 2222 -> "2,222"）。
+// 数字类参数应先用 F 转成字符串，再配合目录中的 %s 使用。
+func F(v interface{}) string { return fmt.Sprintf("%v", v) }
 
 // T 按当前语言查消息目录；缺失时回退源语言，源语言再缺失则返回 key 本身。
 func T(key string, args ...interface{}) string {

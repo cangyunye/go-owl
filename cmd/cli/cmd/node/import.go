@@ -158,7 +158,7 @@ func importNodes(opts *importOptions) {
 		}
 
 		if opts.dryRun {
-			fmt.Printf("%s\n", i18n.T("node.import.preview", node.ID, node.Name, node.Address, node.Port))
+			fmt.Printf("%s\n", i18n.T("node.import.preview", node.ID, node.Name, node.Address, i18n.F(node.Port)))
 			success++
 			continue
 		}
@@ -190,7 +190,7 @@ func importNodes(opts *importOptions) {
 		store.Save()
 	}
 
-	fmt.Printf("%s\n", i18n.T("node.import.result", success, skipped, failed))
+	fmt.Printf("%s\n", i18n.T("node.import.result", i18n.F(success), i18n.F(skipped), i18n.F(failed)))
 	if failed > 0 {
 		os.Exit(1)
 	}
@@ -235,7 +235,7 @@ func exportNodes(opts *importOptions) {
 			fmt.Fprintln(os.Stderr, i18n.T("node.import.err_write", err))
 			os.Exit(1)
 		}
-		fmt.Printf("%s\n", i18n.T("node.import.ok_exported", len(nodes), opts.filePath))
+		fmt.Printf("%s\n", i18n.T("node.import.ok_exported", i18n.F(len(nodes)), opts.filePath))
 	} else {
 		fmt.Println(string(data))
 	}

@@ -142,7 +142,7 @@ func runGroupsList(cmd *cobra.Command, args []string) {
 	fmt.Println(i18n.T("node.groups.list.title"))
 	fmt.Println("-------")
 	for group, nodeIDs := range groupMap {
-		fmt.Printf("%s\n", i18n.T("node.groups.list.item", group, len(nodeIDs), joinStrings(nodeIDs, ", ")))
+		fmt.Printf("%s\n", i18n.T("node.groups.list.item", group, i18n.F(len(nodeIDs)), joinStrings(nodeIDs, ", ")))
 	}
 }
 
@@ -181,9 +181,9 @@ func runGroupsShow(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Printf("%s\n", i18n.T("node.groups.show.title", group, len(groupNodes)))
+	fmt.Printf("%s\n", i18n.T("node.groups.show.title", group, i18n.F(len(groupNodes))))
 	fmt.Println("-------")
 	for _, n := range groupNodes {
-		fmt.Printf("%s\n", i18n.T("node.groups.show.item", n.ID, n.Name, n.Address, n.Port, n.Status))
+		fmt.Printf("%s\n", i18n.T("node.groups.show.item", n.ID, n.Name, n.Address, i18n.F(n.Port), n.Status))
 	}
 }

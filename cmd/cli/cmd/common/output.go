@@ -235,7 +235,7 @@ func (f *OutputFormatter) FormatNodesWithFields(nodes []*model.Node, fields []He
 		fmt.Println(strings.Join(rowParts, " "))
 	}
 
-	fmt.Printf("\n%s\n", i18n.T("common.total", len(nodes)))
+	fmt.Printf("\n%s\n", i18n.T("common.total", i18n.F(len(nodes))))
 }
 
 // getFieldValue 获取节点的指定字段值
@@ -426,7 +426,7 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 			PadRight(TruncateByWidth(labels, 30), 30),
 			PadRight(truncate(lastCheck, 20), 20))
 	}
-	fmt.Printf("\n%s\n", i18n.T("common.total", len(nodes)))
+	fmt.Printf("\n%s\n", i18n.T("common.total", i18n.F(len(nodes))))
 }
 
 func (f *OutputFormatter) printNodeDetail(node *model.Node) {

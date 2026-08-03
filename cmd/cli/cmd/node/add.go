@@ -119,7 +119,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 
 	fmt.Printf("%s\n", i18n.T("node.add.ok", nodeID))
 	fmt.Printf("%s\n", i18n.T("node.add.field_name", node.Name))
-	fmt.Printf("%s\n", i18n.T("node.add.field_address", node.Address, node.Port))
+	fmt.Printf("%s\n", i18n.T("node.add.field_address", node.Address, i18n.F(node.Port)))
 	if node.User != "" {
 		fmt.Printf("%s\n", i18n.T("node.add.field_user", node.User))
 	}

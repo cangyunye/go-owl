@@ -59,7 +59,7 @@ func runSample() {
 	fmt.Printf("%s\n", i18n.T("node.sample.ok", configFile))
 	fmt.Println(i18n.T("node.sample.list_title"))
 	for _, node := range sampleNodes {
-		fmt.Printf("%s\n", i18n.T("node.sample.list_item", node.Name, node.Address, node.Port, node.Groups))
+		fmt.Printf("%s\n", i18n.T("node.sample.list_item", node.Name, node.Address, i18n.F(node.Port), node.Groups))
 	}
 	fmt.Println(i18n.T("node.sample.edit_hint"))
 }

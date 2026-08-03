@@ -48,7 +48,7 @@ func runTemplateInfo(cmd *cobra.Command, args []string) {
 	if err := yaml.Unmarshal(entry.Content, &tpl); err == nil && len(tpl.Tasks) > 0 {
 		fmt.Fprintln(out, i18n.T("playbook.template.info.tasks"))
 		for i, task := range tpl.Tasks {
-			fmt.Fprintf(out, "%s", i18n.T("playbook.template.info.task_item", i+1, task.Name, task.Action))
+			fmt.Fprintf(out, "%s", i18n.T("playbook.template.info.task_item", i18n.F(i+1), task.Name, task.Action))
 		}
 	}
 

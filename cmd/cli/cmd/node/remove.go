@@ -43,7 +43,7 @@ func runRemove(cmd *cobra.Command, args []string) {
 		store.Save()
 	}
 
-	fmt.Printf("%s\n", i18n.T("node.remove.summary", success, failed))
+	fmt.Printf("%s\n", i18n.T("node.remove.summary", i18n.F(success), i18n.F(failed)))
 	if failed > 0 {
 		os.Exit(1)
 	}

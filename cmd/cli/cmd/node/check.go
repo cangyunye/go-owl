@@ -89,7 +89,7 @@ func runCheck(nodeIDs []string) {
 	}
 
 	fmt.Print(i18n.T("node.check.checking",
-		len(nodes), checkTimeout, checkWorkers))
+		i18n.F(len(nodes)), i18n.F(checkTimeout), i18n.F(checkWorkers)))
 
 	resultChan := make(chan checkResult, len(nodes))
 	var wg sync.WaitGroup
@@ -124,7 +124,7 @@ func runCheck(nodeIDs []string) {
 			if r.method == "password" {
 				authMethod = i18n.T("node.check.auth_password")
 			}
-			fmt.Print(i18n.T("node.check.online", r.node.ID, r.node.Address, r.node.Port, authMethod))
+			fmt.Print(i18n.T("node.check.online", r.node.ID, r.node.Address, i18n.F(r.node.Port), authMethod))
 			online++
 			r.node.Status = "online"
 			r.node.LastCheckAt = currentTime
@@ -136,7 +136,7 @@ func runCheck(nodeIDs []string) {
 			}
 			fmt.Println()
 		} else {
-			fmt.Print(i18n.T("node.check.offline", r.node.ID, r.node.Address, r.node.Port))
+			fmt.Print(i18n.T("node.check.offline", r.node.ID, r.node.Address, i18n.F(r.node.Port)))
 			offline++
 			r.node.Status = "offline"
 			r.node.LastCheckAt = currentTime
@@ -152,7 +152,7 @@ func runCheck(nodeIDs []string) {
 		}
 	}
 
-	fmt.Print(i18n.T("node.check.summary", online, offline, len(nodes)))
+	fmt.Print(i18n.T("node.check.summary", i18n.F(online), i18n.F(offline), i18n.F(len(nodes))))
 
 	if err := store.Save(); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.T("node.check.err_save", err))

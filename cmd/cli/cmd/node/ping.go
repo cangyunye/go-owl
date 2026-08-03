@@ -66,7 +66,7 @@ func runPing(nodeIDs []string) {
 		return
 	}
 
-	fmt.Print(i18n.T("node.ping.checking", len(nodes), pingTimeout, pingCount))
+	fmt.Print(i18n.T("node.ping.checking", i18n.F(len(nodes)), i18n.F(pingTimeout), i18n.F(pingCount)))
 
 	reachable := 0
 	unreachable := 0
@@ -116,8 +116,8 @@ func runPing(nodeIDs []string) {
 			if pingCount > 1 {
 				fmt.Print(i18n.T("node.ping.reachable", node.ID, node.Address))
 				fmt.Print(i18n.T("node.ping.stats",
-					len(latencies), avgLatency.Round(time.Millisecond),
-					minLatency.Round(time.Millisecond), maxLatency.Round(time.Millisecond)))
+					i18n.F(len(latencies)), i18n.F(avgLatency.Round(time.Millisecond)),
+					i18n.F(minLatency.Round(time.Millisecond)), i18n.F(maxLatency.Round(time.Millisecond))))
 			} else {
 				fmt.Print(i18n.T("node.ping.reachable_single", node.ID, node.Address, avgLatency.Round(time.Millisecond)))
 			}
@@ -128,5 +128,5 @@ func runPing(nodeIDs []string) {
 		}
 	}
 
-	fmt.Print(i18n.T("node.ping.summary", reachable, unreachable, len(nodes)))
+	fmt.Print(i18n.T("node.ping.summary", i18n.F(reachable), i18n.F(unreachable), i18n.F(len(nodes))))
 }
