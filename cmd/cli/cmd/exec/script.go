@@ -17,6 +17,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/control/script"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
 	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
@@ -26,47 +27,33 @@ import (
 func NewScriptCmd() *cobra.Command {
 	scriptCmd := &cobra.Command{
 		Use:   "script <script-file-or-url>",
-		Short: "执行脚本",
-		Long: `在指定节点上传输并执行脚本。
-
-支持本地脚本文件和 URL 远程脚本。
-
-执行方式：
-  默认：上传到远端文件执行（便于调试和审计）
-  --inline：直接发送内容执行（不留痕迹）
-
-示例：
-  owl exec script deploy.sh --nodes web-01,web-02
-  owl exec script ./scripts/install.sh --groups web --dest /tmp
-  owl exec script backup.sh --args "--env prod" --label env=prod
-  owl exec script init.sh --inline --nodes test-01  # 直接内容执行
-  owl exec script setup.sh --keep --nodes all  # 执行后保留脚本
-  owl exec script deploy.sh --timeout 10m`,
+		Short: i18n.T("exec.script.short"),
+		Long:  i18n.T("exec.script.long"),
 		Args: cobra.ExactArgs(1),
 		Run:  runScript,
 	}
 
 	scriptCmd.Flags().StringVarP(&scriptNodes, "nodes", "N", "",
-		"指定节点 ID (逗号分隔)")
-	scriptCmd.Flags().StringSliceVarP(&scriptGroup, "groups", "g", nil, "按分组选择节点 (多个分组用逗号分隔或多次使用 -g)")
-	scriptCmd.Flags().StringSliceVar(&scriptGroup, "group", nil, "(已废弃，请使用 --groups)")
+		i18n.T("exec.script.flag_nodes"))
+	scriptCmd.Flags().StringSliceVarP(&scriptGroup, "groups", "g", nil, i18n.T("exec.script.flag_groups"))
+	scriptCmd.Flags().StringSliceVar(&scriptGroup, "group", nil, i18n.T("exec.script.flag_group_deprecated"))
 	scriptCmd.Flags().MarkHidden("group")
 	scriptCmd.Flags().StringSliceVarP(&scriptLabel, "label", "l", nil,
-		"按标签选择节点")
+		i18n.T("exec.script.flag_label"))
 	scriptCmd.Flags().StringVar(&scriptDest, "dest", "/tmp",
-		"目标目录")
+		i18n.T("exec.script.flag_dest"))
 	scriptCmd.Flags().StringVar(&scriptArgs, "args", "",
-		"传递给脚本的参数")
+		i18n.T("exec.script.flag_args"))
 	scriptCmd.Flags().DurationVarP(&scriptTimeout, "timeout", "t", 5*60*time.Second,
-		"脚本执行超时时间")
+		i18n.T("exec.script.flag_timeout"))
 	scriptCmd.Flags().BoolVar(&scriptInline, "inline", false,
-		"直接发送内容执行，不保存为文件")
+		i18n.T("exec.script.flag_inline"))
 	scriptCmd.Flags().BoolVar(&scriptKeep, "keep", false,
-		"执行后保留脚本文件（默认会删除）")
+		i18n.T("exec.script.flag_keep"))
 	scriptCmd.Flags().BoolVarP(&scriptForce, "force", "f", false,
-		"跳过黑名单危险命令检查")
+		i18n.T("exec.script.flag_force"))
 	scriptCmd.Flags().BoolVarP(&scriptSilent, "silent", "s", false,
-		"静默模式，仅以表格形式输出执行结果")
+		i18n.T("exec.script.flag_silent"))
 
 	return scriptCmd
 }
@@ -95,7 +82,7 @@ func runScript(cmd *cobra.Command, args []string) {
 	defer logger.Sync()
 	_, err := history.NewDB(history.DefaultConfig())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
+		fmt.Fprintln(os.Stderr, i18n.T("exec.script.warn_history_db", err))
 	}
 
 	nodeLogWriter := logfile.NewNodeLogWriter("")
@@ -105,7 +92,7 @@ func runScript(cmd *cobra.Command, args []string) {
 	// 检查脚本文件是否存在
 	if !(len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://")) {
 		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "错误: 脚本文件不存在: %s\n", scriptPath)
+			fmt.Fprintln(os.Stderr, i18n.T("exec.script.err_script_not_found", scriptPath))
 			os.Exit(1)
 		}
 	}
@@ -114,30 +101,30 @@ func runScript(cmd *cobra.Command, args []string) {
 	nodeResolver := node.NewNodeResolver()
 	targetNodes := selectScriptTargetNodesWithResolver(nodeResolver)
 	if len(targetNodes) == 0 {
-		fmt.Println("未找到目标节点")
+		fmt.Println(i18n.T("exec.script.no_target_nodes"))
 		return
 	}
 
 	// 执行前显示信息
 	if !scriptSilent {
-		fmt.Printf("📜 脚本: %s\n", scriptPath)
-		fmt.Printf("🎯 目标节点: %d 个\n", len(targetNodes))
+		fmt.Println(i18n.T("exec.script.info_script", scriptPath))
+		fmt.Println(i18n.T("exec.script.info_target_nodes", i18n.F(len(targetNodes))))
 		if scriptInline {
-			fmt.Println("🚀 执行方式: 直接内容执行 (inline)")
+			fmt.Println(i18n.T("exec.script.info_method_inline"))
 		} else {
-			fmt.Printf("🚀 执行方式: 文件传输 + 执行\n")
-			fmt.Printf("📂 存放目录: %s\n", scriptDest)
+			fmt.Println(i18n.T("exec.script.info_method_transfer"))
+			fmt.Println(i18n.T("exec.script.info_dest", scriptDest))
 		}
 		if scriptKeep {
-			fmt.Println("📝 保留脚本: 是")
+			fmt.Println(i18n.T("exec.script.info_keep_yes"))
 		}
 		if scriptArgs != "" {
-			fmt.Printf("📋 参数: %s\n", scriptArgs)
+			fmt.Println(i18n.T("exec.script.info_args", scriptArgs))
 		}
 	}
 
 	if scriptForce {
-		fmt.Println("⚠️  已跳过黑名单检查 (--force)")
+		fmt.Println(i18n.T("exec.script.skip_blacklist"))
 	} else {
 		var scriptContent []byte
 		if len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://") {
@@ -153,7 +140,7 @@ func runScript(cmd *cobra.Command, args []string) {
 		if len(scriptContent) > 0 {
 			cfg, err := blacklist.LoadConfig()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "⚠️  加载黑名单配置失败: %v\n", err)
+				fmt.Fprintln(os.Stderr, i18n.T("exec.script.blacklist_load_failed", err))
 			} else {
 				checker := blacklist.NewChecker(cfg)
 				contentStr := string(scriptContent)
@@ -169,23 +156,23 @@ func runScript(cmd *cobra.Command, args []string) {
 				}
 
 				if blocked {
-					fmt.Println("⚠️  危险命令检测!")
-					fmt.Printf("脚本: %s\n", scriptPath)
+					fmt.Println(i18n.T("exec.script.dangerous_detected"))
+					fmt.Println(i18n.T("exec.script.dangerous_script", scriptPath))
 					for i, n := range targetNodes {
 						r := nodeResults[i]
 						if len(r.Matches) > 0 {
-							fmt.Printf("节点: %s (用户: %s)\n", n.ID, n.User)
+							fmt.Println(i18n.T("exec.script.dangerous_node", n.ID, n.User))
 							for _, m := range r.Matches {
-								fmt.Printf("  - 行: %s\n", m.Line)
-								fmt.Printf("    匹配模式: %s\n", m.Pattern)
+								fmt.Println(i18n.T("exec.script.dangerous_line", m.Line))
+								fmt.Println(i18n.T("exec.script.dangerous_pattern", m.Pattern))
 							}
 						}
 					}
-					fmt.Printf("⚠️  脚本中包含危险命令，确定要继续执行吗? (y/N): ")
+					fmt.Print(i18n.T("exec.script.dangerous_confirm"))
 					var input string
 					_, _ = fmt.Scanln(&input)
 					if input != "y" && input != "Y" {
-						fmt.Println("已取消执行")
+						fmt.Println(i18n.T("exec.script.cancelled"))
 						return
 					}
 				}
@@ -194,7 +181,7 @@ func runScript(cmd *cobra.Command, args []string) {
 	}
 
 	if !scriptSilent {
-		fmt.Println("\n⏳ 开始执行...")
+		fmt.Println(i18n.T("exec.script.starting"))
 	} else {
 		printSilentHeader()
 	}
@@ -238,15 +225,15 @@ func runScript(cmd *cobra.Command, args []string) {
 	for _, result := range results {
 		if result.Success() {
 			if !scriptSilent {
-				fmt.Printf("✅ [%s] 成功\n", result.NodeID)
+				fmt.Println(i18n.T("exec.script.node_success", result.NodeID))
 			}
 			success++
 		} else {
 			if !scriptSilent {
 				if result.Error != nil {
-					fmt.Printf("❌ [%s] 失败: %v\n", result.NodeID, result.Error)
+					fmt.Println(i18n.T("exec.script.node_failed_err", result.NodeID, result.Error))
 				} else {
-					fmt.Printf("❌ [%s] 失败 (退出码: %d)\n", result.NodeID, result.ExitCode)
+					fmt.Println(i18n.T("exec.script.node_failed_code", result.NodeID, i18n.F(result.ExitCode)))
 				}
 			}
 			failed++
@@ -258,7 +245,7 @@ func runScript(cmd *cobra.Command, args []string) {
 		} else {
 			// 显示输出
 			if result.Output != "" {
-				fmt.Printf("   输出:\n")
+				fmt.Println(i18n.T("exec.script.output_header"))
 				for _, line := range splitLines(result.Output) {
 					fmt.Printf("     %s\n", line)
 				}
@@ -308,11 +295,11 @@ func runScript(cmd *cobra.Command, args []string) {
 	if scriptSilent {
 		printSilentSummary(success, failed)
 	} else {
-		fmt.Printf("\n📊 总结: %d 成功, %d 失败\n", success, failed)
+		fmt.Println(i18n.T("exec.script.summary", i18n.F(success), i18n.F(failed)))
 	}
 	
 	if execErr != nil {
-		fmt.Fprintf(os.Stderr, "\n执行过程中出错: %v\n", execErr)
+		fmt.Fprintln(os.Stderr, i18n.T("exec.script.exec_error", execErr))
 		os.Exit(1)
 	}
 	
