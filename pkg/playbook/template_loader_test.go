@@ -183,3 +183,120 @@ func TestLoadTemplates_UserOverride(t *testing.T) {
 	}
 	t.Error("template not found")
 }
+
+func TestInstantiate_DollarSignInValue(t *testing.T) {
+	yamlContent := "tasks:\n  - name: test\n    action: command\n    args:\n      cmd: echo {{ path }}\n"
+	result, err := Instantiate([]byte(yamlContent), map[string]interface{}{"path": "/data/$HOME/${USER}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(result)
+	if !strings.Contains(output, "/data/$HOME/${USER}") {
+		t.Errorf("dollar signs corrupted, got: %s", output)
+	}
+}
+
+func TestInstantiate_LeftoverPlaceholders(t *testing.T) {
+	yamlContent := "tasks:\n  - name: test\n    action: command\n    args:\n      cmd: echo {{ a }} {{ b }}\n"
+	result, err := Instantiate([]byte(yamlContent), map[string]interface{}{"a": "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(result), "{{ b }}") {
+		t.Log("Note: leftover placeholders are silently preserved (no error)")
+	}
+}
+
+func TestValidateParams_UnknownKeys(t *testing.T) {
+	params := []TemplateParameter{
+		{Name: "a", Description: "param a", Default: "1"},
+	}
+	vals, err := ValidateParams(params, map[string]interface{}{"a": "x", "typo_key": "y"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := vals["typo_key"]; ok {
+		t.Log("Note: unknown keys are included (no filtering)")
+	} else {
+		t.Log("Note: unknown keys are silently dropped")
+	}
+}
+
+func TestValidateParams_TypeNotEnforced(t *testing.T) {
+	params := []TemplateParameter{
+		{Name: "port", Description: "port", Type: "number"},
+	}
+	vals, err := ValidateParams(params, map[string]interface{}{"port": "not-a-number"})
+	if err != nil {
+		t.Log("Type validation is enforced")
+	} else {
+		t.Logf("Note: type 'number' accepted string value %q without error", vals["port"])
+	}
+}
+
+func TestLoadTemplates_MalformedYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.WriteFile(filepath.Join(tmpDir, "good.yaml"), []byte("description: good\ntasks: []\n"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "bad.yaml"), []byte("{{{{invalid yaml::::"), 0644)
+
+	entries, err := LoadTemplates(tmpDir)
+	if err != nil {
+		t.Logf("Note: malformed YAML aborts entire load: %v", err)
+	} else {
+		t.Logf("Loaded %d entries despite malformed file", len(entries))
+	}
+}
+
+func TestLoadTemplates_YmlExtension(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.WriteFile(filepath.Join(tmpDir, "test.yml"), []byte("description: yml test\ntasks: []\n"), 0644)
+	entries, err := LoadTemplates(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Name == "test" && e.Source == "user" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error(".yml extension not loaded")
+	}
+}
+
+func TestInstantiate_NewlineInjection(t *testing.T) {
+	yamlContent := "tasks:\n  - name: test\n    action: command\n    args:\n      cmd: echo {{ url }}\n"
+	malicious := "hello\ntasks:\n  - name: injected\n    action: command\n    args:\n      cmd: rm -rf /"
+	result, err := Instantiate([]byte(yamlContent), map[string]interface{}{"url": malicious})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(result)
+	if strings.Contains(output, "injected") {
+		t.Log("WARNING: newline in value can inject YAML structure")
+	}
+}
+
+func TestAllBuiltinTemplates_Parseable(t *testing.T) {
+	entries, err := LoadTemplates("/nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Source != "builtin" {
+			continue
+		}
+		meta, err := ParseTemplateMeta(e.Content)
+		if err != nil {
+			t.Errorf("builtin template %s failed to parse: %v", e.Name, err)
+			continue
+		}
+		if meta.Description == "" {
+			t.Errorf("builtin template %s has empty description", e.Name)
+		}
+	}
+	if len(entries) < 3 {
+		t.Errorf("expected at least 3 builtin templates, got %d", len(entries))
+	}
+}

@@ -95,7 +95,7 @@ func Instantiate(templateData []byte, vars map[string]interface{}) ([]byte, erro
 	content := string(out)
 	for k, v := range vars {
 		re := regexp.MustCompile(`\{\{\s*` + regexp.QuoteMeta(k) + `\s*\}\}`)
-		content = re.ReplaceAllString(content, fmt.Sprintf("%v", v))
+		content = re.ReplaceAllLiteralString(content, fmt.Sprintf("%v", v))
 	}
 
 	return []byte(strings.TrimSpace(content) + "\n"), nil
