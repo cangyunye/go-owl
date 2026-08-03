@@ -15,6 +15,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/control/playbook"
 	internalhistory "github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 var (
@@ -30,40 +31,28 @@ var (
 func NewAICmd() *cobra.Command {
 	aiCmd := &cobra.Command{
 		Use:   "ai",
-		Short: "AI 智能助手模式",
-		Long: `启动 AI 智能助手交互模式，通过自然语言执行分布式运维操作。
-
-支持的功能：
-- 查询节点信息：查询节点状态、分组、标签
-- 执行批量命令：在指定节点上执行命令
-- 生成剧本：根据需求生成 Ansible-like YAML 剧本
-- 文件传输：传输文件到指定节点
-
-示例：
-  owl ai
-  owl ai --model gpt-4o
-  owl ai --provider dashscope --api-key sk-xxx
-  echo "查询所有在线节点" | owl ai`,
-		Run: runAI,
+		Short: i18n.T("ai.cmd.short"),
+		Long:  i18n.T("ai.cmd.long"),
+		Run:   runAI,
 	}
 
 	aiCmd.Flags().StringVar(&aiModel, "model", "gpt-4o",
-		"AI 模型名称")
+		i18n.T("ai.flag.model"))
 	aiCmd.Flags().StringVar(&aiProvider, "provider", "openai",
-		"AI 提供商: openai, anthropic, dashscope")
+		i18n.T("ai.flag.provider"))
 	aiCmd.Flags().StringVar(&aiAPIKey, "api-key", "",
-		"API Key (也可通过环境变量 OWL_API_KEY 设置)")
+		i18n.T("ai.flag.api_key"))
 	aiCmd.Flags().StringVar(&aiBaseURL, "base-url", "",
-		"API Base URL (用于代理或自定义端点，也可通过环境变量 OWL_BASE_URL 设置)")
+		i18n.T("ai.flag.base_url"))
 	aiCmd.Flags().IntVar(&aiTimeout, "timeout", 120,
-		"请求超时时间 (秒)")
+		i18n.T("ai.flag.timeout"))
 	aiCmd.Flags().StringVar(&aiSession, "session", "",
-		"会话 ID (用于恢复会话)")
+		i18n.T("ai.flag.session"))
 	aiCmd.Flags().BoolVarP(&aiVerbose, "verbose", "v", false,
-		"详细模式，显示完整的调试日志")
+		i18n.T("ai.flag.verbose"))
 	// 保留 --debug 作为别名以保持向后兼容性
 	aiCmd.Flags().BoolVar(&aiVerbose, "debug", false,
-		"(别名) 详细模式，显示完整的调试日志")
+		i18n.T("ai.flag.debug_alias"))
 
 	aiCmd.AddCommand(NewModelsCmd())
 	aiCmd.AddCommand(NewConfigCmd())
@@ -75,12 +64,8 @@ func NewAICmd() *cobra.Command {
 func NewModelsCmd() *cobra.Command {
 	modelsCmd := &cobra.Command{
 		Use:   "models",
-		Short: "列出可用的 AI 模型",
-		Long: `从 API 获取并列出可用的 AI 模型列表。
-
-示例：
-  owl ai models
-  owl ai models --provider openai --api-key sk-xxx`,
+		Short: i18n.T("ai.models.short"),
+		Long:  i18n.T("ai.models.long"),
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := context.Background()
 
@@ -118,48 +103,48 @@ func NewModelsCmd() *cobra.Command {
 			}
 
 			if config.AI.APIKey == "" {
-				fmt.Fprintf(os.Stderr, "错误: 请提供 API Key (使用 --api-key 参数或设置 OWL_API_KEY 环境变量)\n")
+				fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.models.err_no_api_key"))
 				os.Exit(1)
 			}
 
 			if aiProvider != "openai" && aiProvider != "qwen" && aiProvider != "dashscope" && aiProvider != "deepseek" && aiProvider != "" {
-				fmt.Fprintf(os.Stderr, "错误: %s 提供商不支持模型列表 API\n", aiProvider)
+				fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.models.err_provider_unsupported", aiProvider))
 				os.Exit(1)
 			}
 
-			fmt.Println("正在获取可用模型列表...")
+			fmt.Println(i18n.T("ai.models.fetching"))
 			fmt.Println()
 
 			client := ai.NewOpenAIClient(config)
 			models, err := client.ListModels(ctx)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "错误: 获取模型列表失败: %v\n", err)
+				fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.models.err_list_failed", err))
 				os.Exit(1)
 			}
 
 			if len(models) == 0 {
-				fmt.Println("未找到可用模型")
+				fmt.Println(i18n.T("ai.models.none_found"))
 				return
 			}
 
-			fmt.Println("可用模型:")
+			fmt.Println(i18n.T("ai.models.available"))
 			fmt.Println()
 			for _, m := range models {
 				fmt.Printf("  • %s\n", m)
 			}
 			fmt.Println()
-			fmt.Printf("共找到 %d 个模型\n", len(models))
+			fmt.Printf("%s", i18n.T("ai.models.total", i18n.F(len(models))))
 		},
 	}
 
 	modelsCmd.Flags().StringVar(&aiProvider, "provider", "openai",
-		"AI 提供商: openai, anthropic, dashscope")
+		i18n.T("ai.flag.provider"))
 	modelsCmd.Flags().StringVar(&aiAPIKey, "api-key", "",
-		"API Key (也可通过环境变量 OWL_API_KEY 设置)")
+		i18n.T("ai.flag.api_key"))
 	modelsCmd.Flags().StringVar(&aiBaseURL, "base-url", "",
-		"API Base URL (用于代理或自定义端点，也可通过环境变量 OWL_BASE_URL 设置)")
+		i18n.T("ai.flag.base_url"))
 	modelsCmd.Flags().IntVar(&aiTimeout, "timeout", 30,
-		"请求超时时间 (秒)")
+		i18n.T("ai.flag.timeout"))
 
 	return modelsCmd
 }
@@ -171,18 +156,18 @@ func progressLog(sessionID string, debug bool, step string, detail string) {
 	var label string
 	switch step {
 	case "route":
-		label = fmt.Sprintf("确认用户调用子命令为 %s 相关", detail)
+		label = i18n.T("ai.progress.route", detail)
 	case "analyze":
-		label = "请求模型生成执行 JSON..."
+		label = i18n.T("ai.progress.analyze")
 	case "generate":
-		label = fmt.Sprintf("JSON 校验通过 (%s)", detail)
+		label = i18n.T("ai.progress.generate", detail)
 	case "execute":
-		label = "开始执行操作"
+		label = i18n.T("ai.progress.execute")
 	case "result":
 		if strings.HasPrefix(detail, "失败") {
 			label = detail
 		} else {
-			label = "操作完成"
+			label = i18n.T("ai.progress.done")
 		}
 	default:
 		label = detail
@@ -229,7 +214,7 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	nodeMgr := ai.InitNodeManager(bridge)
 	if nodeMgr == nil {
-		fmt.Fprintf(os.Stderr, "Error: 初始化节点管理器失败\n")
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.error_init_node_manager"))
 		os.Exit(1)
 	}
 
@@ -284,9 +269,9 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	if len(args) > 0 {
 		query := strings.Join(args, " ")
-		debugLog(aiVerbose, "用户输入: %s", query)
+		debugLog(aiVerbose, "user input: %s", query)
 		timestamp := time.Now().Format("15:04:05")
-		fmt.Fprintf(os.Stderr, "[%s] 用户：%s\n", timestamp, query)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.chat.user_line", timestamp, query))
 
 		internalhistory.RecordAiChatGlobal(&internalhistory.AiChat{
 			SessionID: sessionID,
@@ -302,7 +287,7 @@ func runAI(cmd *cobra.Command, args []string) {
 
 		response, err := agent.Process(ctx, query, onProgress)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[%s] owl-ai: 失败: %v\n", time.Now().Format("15:04:05"), err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.chat.failed", time.Now().Format("15:04:05"), err))
 			os.Exit(1)
 		}
 
@@ -319,17 +304,17 @@ func runAI(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("\033[36m╔════════════════════════════════════════════════════════════╗\033[0m")
-	fmt.Println("\033[36m║           owl-AI 智能运维助手                          ║\033[0m")
+	fmt.Println(i18n.T("ai.banner.title"))
 	fmt.Println("\033[36m╚════════════════════════════════════════════════════════════╝\033[0m")
 	fmt.Println()
-	fmt.Println("欢迎使用 owl-AI！您可以用自然语言执行以下操作：")
+	fmt.Println(i18n.T("ai.welcome.intro"))
 	fmt.Println()
-	fmt.Println("  \033[33m•\033[0m 查询节点信息：\"查看所有 web 节点\"")
-	fmt.Println("  \033[33m•\033[0m 执行命令：\"在所有节点上执行 uptime\"")
-	fmt.Println("  \033[33m•\033[0m 生成剧本：\"生成一个部署 nginx 的剧本\"")
-	fmt.Println("  \033[33m•\033[0m 传输文件：\"上传 app.tar.gz 到所有节点\"")
+	fmt.Println(i18n.T("ai.welcome.item_query"))
+	fmt.Println(i18n.T("ai.welcome.item_exec"))
+	fmt.Println(i18n.T("ai.welcome.item_playbook"))
+	fmt.Println(i18n.T("ai.welcome.item_transfer"))
 	fmt.Println()
-	fmt.Println("\033[90m输入 'quit' 或 'exit' 退出\033[0m")
+	fmt.Println(i18n.T("ai.welcome.quit_hint"))
 	fmt.Println()
 
 	session := ai.NewSessionManager()
@@ -344,30 +329,30 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	scanner := bufio.NewScanner(os.Stdin)
 
-	fmt.Print("\033[32m您>\033[0m ")
+	fmt.Print(i18n.T("ai.chat.prompt"))
 	for scanner.Scan() {
 		input := strings.TrimSpace(scanner.Text())
 
 		if input == "" {
-			fmt.Print("\033[32m您>\033[0m ")
+			fmt.Print(i18n.T("ai.chat.prompt"))
 			continue
 		}
 
 		if strings.EqualFold(input, "quit") || strings.EqualFold(input, "exit") {
-			fmt.Println("\033[90m再见！\033[0m")
+			fmt.Println(i18n.T("ai.chat.bye"))
 			break
 		}
 
 		if strings.EqualFold(input, "help") {
 			printHelp()
-			fmt.Print("\033[32m您>\033[0m ")
+			fmt.Print(i18n.T("ai.chat.prompt"))
 			continue
 		}
 
 		if strings.HasPrefix(input, "!") {
 			cmdStr := strings.TrimPrefix(input, "!")
 			handleDirectCommand(cmdStr)
-			fmt.Print("\033[32m您>\033[0m ")
+			fmt.Print(i18n.T("ai.chat.prompt"))
 			continue
 		}
 
@@ -381,21 +366,21 @@ func runAI(cmd *cobra.Command, args []string) {
 
 		response, err := currentSession.Send(ctx, input)
 		if err != nil {
-			fmt.Printf("\033[31m错误: %v\033[0m\n", err)
+			fmt.Printf("%s", i18n.T("ai.chat.error", err))
 		} else {
 			fmt.Printf("\033[36mAI>\033[0m %s\n", response)
 		}
 
 		msgCount := currentSession.MessageCount()
 		if msgCount > 0 {
-			fmt.Printf("\n\033[90m[上下文: %d 条消息]\033[0m ", msgCount)
+			fmt.Printf("%s", i18n.T("ai.chat.context_count", i18n.F(msgCount)))
 		}
 		fmt.Println()
-		fmt.Print("\033[32m您>\033[0m ")
+		fmt.Print(i18n.T("ai.chat.prompt"))
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "读取输入错误: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.chat.err_read_input", err))
 	}
 }
 
@@ -517,28 +502,28 @@ func getBaseURL() string {
 
 func printHelp() {
 	fmt.Println()
-	fmt.Println("\033[33m可用命令：\033[0m")
+	fmt.Println(i18n.T("ai.help.title_commands"))
 	fmt.Println()
-	fmt.Println("  \033[90mhelp\033[0m         - 显示此帮助信息")
-	fmt.Println("  \033[90mquit/exit\033[0m   - 退出程序")
-	fmt.Println("  \033[90m!command\033[0m    - 执行直接命令 (如 !node list)")
+	fmt.Println(i18n.T("ai.help.cmd_help"))
+	fmt.Println(i18n.T("ai.help.cmd_quit"))
+	fmt.Println(i18n.T("ai.help.cmd_direct"))
 	fmt.Println()
-	fmt.Println("\033[33m示例：\033[0m")
+	fmt.Println(i18n.T("ai.help.title_examples"))
 	fmt.Println()
-	fmt.Println("  查看所有节点")
-	fmt.Println("  → 查询所有节点")
+	fmt.Println(i18n.T("ai.help.ex1_query"))
+	fmt.Println(i18n.T("ai.help.ex1_arrow"))
 	fmt.Println()
-	fmt.Println("  在 web 组执行 uptime")
-	fmt.Println("  → 在 web 组的节点上执行 uptime")
+	fmt.Println(i18n.T("ai.help.ex2_query"))
+	fmt.Println(i18n.T("ai.help.ex2_arrow"))
 	fmt.Println()
-	fmt.Println("  生成部署脚本")
-	fmt.Println("  → 生成一个部署 nginx 的剧本")
+	fmt.Println(i18n.T("ai.help.ex3_query"))
+	fmt.Println(i18n.T("ai.help.ex3_arrow"))
 	fmt.Println()
 }
 
 func handleDirectCommand(cmdStr string) {
-	fmt.Printf("\033[90m[直接执行: %s]\033[0m\n", cmdStr)
-	fmt.Println("（直接命令功能需要在完整 CLI 环境中执行）")
+	fmt.Printf("%s", i18n.T("ai.direct.executing", cmdStr))
+	fmt.Println(i18n.T("ai.direct.not_supported"))
 }
 
 func NewSessionManager() *ai.SessionManager {
