@@ -22,25 +22,18 @@
 
 ### 从源码构建
 
-项目支持 **DuckDB**（默认）和 **SQLite3** 两种数据库，可根据环境选择：
+默认使用纯 Go 的 SQLite（modernc.org/sqlite）作为历史数据库，无 CGO 依赖，可交叉编译到所有平台：
 
 ```bash
 git clone https://github.com/cangyunye/go-owl.git
 cd go-owl
 
-# 使用 DuckDB 构建（默认）
-go build -o owl-duckdb ./cmd/cli/main.go
-
-# 使用 SQLite3 构建（适用于不支持 DuckDB 的环境）
-go build -tags sqlite3 -o owl-sqlite3 ./cmd/cli/main.go
-```
-
-或者使用 Makefile：
-
-```bash
-make build-duckdb    # DuckDB 版本
-make build-sqlite3   # SQLite3 版本
-make all             # 构建所有版本
+make build                        # 当前平台 owl CLI
+make build WITH=serve,metrics,tui # 追加 Web 控制台 / metrics / TUI 组件
+make build PLATFORMS="linux/amd64 windows/amd64"   # 跨平台
+make build/all                    # 全平台 × 全组件（含 gscp，需网络）
+make install                      # 安装到 ~/.local/bin
+make help                         # 查看全部目标
 ```
 
 ## 🎉 快速开始

@@ -7,13 +7,10 @@
 ```bash
 # 编译项目
 cd go-owl
-make build-duckdb
-
-# 或使用 SQLite3 版本
-# make build-sqlite3
+make build
 
 # 确认二进制文件
-ls -la owl-duckdb
+ls -la build/*/owl
 ```
 
 ## 测试节点信息

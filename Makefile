@@ -1,487 +1,164 @@
-# go-owl Makefile
+# go-owl Makefile —— 组件化跨平台构建
 #
-# 跨平台编译，支持 DuckDB 和 SQLite3 数据库
-# 
-# 使用方法：
-#   make build              # 编译当前平台（DuckDB）
-#   make build/linux       # 编译 Linux 版本
-#   make build/windows     # 编译 Windows 版本
-#   make build/all         # 编译所有平台
-#   make install           # 安装到系统
-#   make clean             # 清理构建文件
+# 组件: owl CLI（核心，必编）+ 可选追加 serve / metrics / tui / gscp
+# 全部组件均为纯 Go（CGO_ENABLED=0），任意平台可交叉编译。
+#
+# 常用:
+#   make build                                   # 当前平台 owl CLI
+#   make build WITH=serve,metrics,tui,gscp       # 追加组件
+#   make build PLATFORMS="linux/amd64 windows/amd64"
+#   make build/all                               # 全平台 × 全组件
+#   make install                                 # 安装到 ~/.local/bin
 
-.PHONY: help build build/linux build/linux-amd64 build/windows build/windows-amd64 build/darwin build/darwin-arm64 build/all build-duckdb build-sqlite3 build-metrics build-all-metrics build-serve build-serve/linux build-serve/darwin build-serve/darwin-arm64 build-serve/windows install-serve clean install test test-quick test-unit test-integration test-bash test-all test-clean test-coverage fmt lint all
+SHELL       := /bin/sh
+GO          ?= go
+BUILD_DIR   := build
+VERSION     ?= 0.16.0
 
-# 变量定义
-BINARY_NAME := owl
-DUCKDB_BINARY := owl-duckdb
-SQLITE3_BINARY := owl-sqlite3
-MAIN_PATH := ./cmd/cli/main.go
-BUILD_DIR := build
-GO := go
+CLI_MAIN    := ./cmd/cli
+SERVE_MAIN  := ./cmd/owl-serve
+PKG         := github.com/cangyunye/go-owl/cmd/cli/cmd
+COMMIT_ID   := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_TIME  := $(shell date '+%Y-%m-%d %H:%M:%S')
+LDFLAGS     := -ldflags "-s -w -X '$(PKG).version=$(VERSION)' -X '$(PKG).commitID=$(COMMIT_ID)' -X '$(PKG).buildTime=$(BUILD_TIME)'"
 
-# 编译标志
-COMMIT_ID := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-BUILD_TIME := $(shell date "+%Y-%m-%d %H:%M:%S")
-LDFLAGS := -ldflags "-s -w -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.version=0.16.0' -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.commitID=$(COMMIT_ID)' -X 'github.com/cangyunye/go-owl/cmd/cli/cmd.buildTime=$(BUILD_TIME)'"
+ALL_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
+HOST_PLATFORM := $(shell $(GO) env GOOS)/$(shell $(GO) env GOARCH)
+HOST_PLATDIR  := $(subst /,-,$(HOST_PLATFORM))
+PLATFORMS     ?= $(HOST_PLATFORM)
 
-# 颜色定义
-BOLD := \033[1m
-GREEN := \033[32m
-YELLOW := \033[33m
-BLUE := \033[34m
-NC := \033[0m
+WITH ?=
+comma := ,
+COMPS := $(subst $(comma), ,$(WITH))
 
-# 可执行文件后缀
-EXE_SUFFIX := 
-ifeq ($(OS),Windows_NT)
-    EXE_SUFFIX := .exe
-endif
+# 外部源码: gscp（自动克隆）/ tui（优先本地兄弟目录）
+GSCP_REPO ?= https://github.com/cangyunye/gscp.git
+GSCP_REF  ?= main
+GSCP_SRC  := $(BUILD_DIR)/.gscp-src
+TUI_SRC   ?= ../go-owl-tui
+TUI_REPO  ?= https://github.com/cangyunye/go-owl-tui.git
+TUI_CLONE := $(BUILD_DIR)/.tui-src
 
-# 默认目标
-all: build
+.PHONY: build build/all build-serve build-metrics build-tui build-gscp build/local-gscp \
+	install install-gscp clean test test-unit test-integration test-quick test-coverage \
+	fmt lint vet help
 
-# ====================
-# 跨平台编译
-# ====================
-
-# Linux AMD64 (DuckDB)
-build/linux:
-	@mkdir -p $(BUILD_DIR)/linux-amd64
-	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/linux-amd64/$(BINARY_NAME) $(MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) Linux AMD64 (DuckDB) 已编译: $(BUILD_DIR)/linux-amd64/$(BINARY_NAME)\n"
-
-# Linux AMD64 (SQLite3)
-build/linux-amd64:
-	@mkdir -p $(BUILD_DIR)/linux-amd64-duckdb $(BUILD_DIR)/linux-amd64-sqlite3
-	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/linux-amd64-duckdb/$(BINARY_NAME) $(MAIN_PATH)
-	GOOS=linux GOARCH=amd64 $(GO) build -tags sqlite3 $(LDFLAGS) -o $(BUILD_DIR)/linux-amd64-sqlite3/$(BINARY_NAME) $(MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) Linux AMD64 已编译\n"
-
-# Windows AMD64 (DuckDB)
-build/windows:
-	@mkdir -p $(BUILD_DIR)/windows-amd64-duckdb $(BUILD_DIR)/windows-amd64-sqlite3
-	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/windows-amd64-duckdb/$(BINARY_NAME).exe $(MAIN_PATH)
-	GOOS=windows GOARCH=amd64 $(GO) build -tags sqlite3 $(LDFLAGS) -o $(BUILD_DIR)/windows-amd64-sqlite3/$(BINARY_NAME).exe $(MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) Windows AMD64 已编译\n"
-
-# Windows AMD64 (单独)
-build/windows-amd64:
-	@mkdir -p $(BUILD_DIR)/windows-amd64
-	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/windows-amd64/$(BINARY_NAME).exe $(MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) Windows AMD64 已编译: $(BUILD_DIR)/windows-amd64/$(BINARY_NAME).exe\n"
-
-# macOS AMD64
-build/darwin:
-	@mkdir -p $(BUILD_DIR)/darwin-amd64-duckdb $(BUILD_DIR)/darwin-amd64-sqlite3
-	GOOS=darwin GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/darwin-amd64-duckdb/$(BINARY_NAME) $(MAIN_PATH)
-	GOOS=darwin GOARCH=amd64 $(GO) build -tags sqlite3 $(LDFLAGS) -o $(BUILD_DIR)/darwin-amd64-sqlite3/$(BINARY_NAME) $(MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) macOS AMD64 已编译\n"
-
-# macOS ARM64 (Apple Silicon)
-build/darwin-arm64:
-	@mkdir -p $(BUILD_DIR)/darwin-arm64-duckdb $(BUILD_DIR)/darwin-arm64-sqlite3
-	GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/darwin-arm64-duckdb/$(BINARY_NAME) $(MAIN_PATH)
-	GOOS=darwin GOARCH=arm64 $(GO) build -tags sqlite3 $(LDFLAGS) -o $(BUILD_DIR)/darwin-arm64-sqlite3/$(BINARY_NAME) $(MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) macOS ARM64 已编译\n"
-
-# 编译所有平台版本（含 CLI + Server + gscp）
-build/all: build/linux build/windows build/darwin build/darwin-arm64 build-serve/linux build-serve/darwin build-serve/darwin-arm64 build-gscp
-	@printf ""
-	@printf "$(BOLD)$(GREEN)✓$(NC) 所有平台版本编译完成\n"
-	@find $(BUILD_DIR) -type f \( -name "$(BINARY_NAME)*" -o -name "owl-serve*" \) | head -30
-
-# 当前平台编译 (DuckDB)
-build:
-	@mkdir -p $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)
-ifneq ($(shell go env GOOS),windows)
-	$(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)/$(BINARY_NAME) $(MAIN_PATH)
-else
-	$(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)/$(BINARY_NAME).exe $(MAIN_PATH)
-endif
-	@printf "$(BOLD)$(GREEN)✓$(NC) $(shell go env GOOS)-$(shell go env GOARCH) 版本已编译\n"
-
-# ====================
-# gscp 中继工具编译
-# ====================
-
-GSCP_REPO    := https://github.com/cangyunye/gscp.git
-GSCP_REF     := main
-GSCP_SRC     := $(BUILD_DIR)/.gscp-src
-GSCP_LDFLAGS := -w -s
-
-define GSCP_CROSS_BUILD
-	@mkdir -p $(BUILD_DIR)/linux-amd64 $(BUILD_DIR)/linux-arm64 $(BUILD_DIR)/darwin-amd64 $(BUILD_DIR)/darwin-arm64
-	cd $(1) && GOWORK=off GOOS=linux GOARCH=amd64 $(GO) build -ldflags "$(GSCP_LDFLAGS)" -o $(CURDIR)/$(BUILD_DIR)/linux-amd64/gscp .
-	cd $(1) && GOWORK=off GOOS=linux GOARCH=arm64 $(GO) build -ldflags "$(GSCP_LDFLAGS)" -o $(CURDIR)/$(BUILD_DIR)/linux-arm64/gscp .
-	cd $(1) && GOWORK=off GOOS=darwin GOARCH=amd64 $(GO) build -ldflags "$(GSCP_LDFLAGS)" -o $(CURDIR)/$(BUILD_DIR)/darwin-amd64/gscp .
-	cd $(1) && GOWORK=off GOOS=darwin GOARCH=arm64 $(GO) build -ldflags "$(GSCP_LDFLAGS)" -o $(CURDIR)/$(BUILD_DIR)/darwin-arm64/gscp .
-	@printf "$(BOLD)$(GREEN)✓$(NC) gscp 全平台编译完成 (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64)\n"
+# 通用跨平台编译: $(1)=附加编译参数 $(2)=包路径 $(3)=二进制名
+define cross_build
+	@set -e; for p in $(PLATFORMS); do \
+		os=$${p%/*}; arch=$${p#*/}; ext=; \
+		if [ "$$os" = windows ]; then ext=.exe; fi; \
+		mkdir -p $(BUILD_DIR)/$$os-$$arch; \
+		printf '==> %-10s %s\n' '$(3)' "$$p"; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build $(1) -o $(BUILD_DIR)/$$os-$$arch/$(3)$$ext $(2); \
+	done
 endef
 
-## build-gscp: 从仓库克隆并编译 gscp（默认）
-build-gscp:
-	@if [ ! -d $(GSCP_SRC)/.git ]; then \
-		printf "$(BOLD)$(BLUE)==>$(NC) 克隆 gscp 仓库...\n"; \
-		git clone --depth 1 $(GSCP_REPO) $(GSCP_SRC); \
-	fi
-	@cd $(GSCP_SRC) && git fetch origin $(GSCP_REF) && git checkout FETCH_HEAD --quiet
-	$(call GSCP_CROSS_BUILD,$(GSCP_SRC))
-
-## build/local-gscp: 使用本地路径编译 gscp（开发用）
-## 用法: make build/local-gscp GSCP_LOCAL=../gscp
-build/local-gscp:
-	@test -n "$(GSCP_LOCAL)" || (printf "$(BOLD)$(YELLOW)错误:$(NC) 请指定 GSCP_LOCAL 路径\n用法: make build/local-gscp GSCP_LOCAL=../gscp\n" && exit 1)
-	@test -d "$(GSCP_LOCAL)" || (printf "$(BOLD)$(YELLOW)错误:$(NC) 路径不存在: $(GSCP_LOCAL)\n" && exit 1)
-	@printf "$(BOLD)$(BLUE)==>$(NC) 使用本地 gscp: $(GSCP_LOCAL)\n"
-	$(call GSCP_CROSS_BUILD,$(GSCP_LOCAL))
-
-# ====================
-# 数据库版本编译
-# ====================
-
-## build-duckdb: 使用 DuckDB 构建（默认）
-build-duckdb:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 使用 DuckDB 构建...\n"
-ifneq ($(shell go env GOOS),windows)
-	$(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
+build: ## 编译 owl CLI；WITH=serve,metrics,tui,gscp 追加组件
+ifneq (,$(filter metrics,$(COMPS)))
+	$(call cross_build,-tags metrics $(LDFLAGS),$(CLI_MAIN),owl)
 else
-	$(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME).exe $(MAIN_PATH)
+	$(call cross_build,$(LDFLAGS),$(CLI_MAIN),owl)
 endif
-	@printf "$(BOLD)$(GREEN)✓$(NC) DuckDB 版本构建完成\n"
-
-## build-sqlite3: 使用 SQLite3 构建
-build-sqlite3:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 使用 SQLite3 构建...\n"
-ifneq ($(shell go env GOOS),windows)
-	$(GO) build -tags sqlite3 $(LDFLAGS) -o $(BUILD_DIR)/$(SQLITE3_BINARY) $(MAIN_PATH)
-else
-	$(GO) build -tags sqlite3 $(LDFLAGS) -o $(BUILD_DIR)/$(SQLITE3_BINARY).exe $(MAIN_PATH)
+ifneq (,$(filter serve,$(COMPS)))
+	$(call cross_build,,$(SERVE_MAIN),owl-serve)
 endif
-	@printf "$(BOLD)$(GREEN)✓$(NC) SQLite3 版本构建完成\n"
-
-## all: 构建所有数据库版本
-all: build-duckdb build-sqlite3
-	@printf ""
-	@printf "$(BOLD)$(GREEN)✓$(NC) 所有版本构建完成！\n"
-	@ls -lh $(BUILD_DIR)/$(BINARY_NAME)* 2>/dev/null | awk '{print "  " $$9 ": " $$5}'
-
-# ====================
-# Metrics 功能编译
-# ====================
-
-## build-metrics: 使用 DuckDB + Metrics 功能构建
-build-metrics:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 使用 DuckDB + Metrics 功能构建...\n"
-	@mkdir -p $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)-metrics
-ifneq ($(shell go env GOOS),windows)
-	$(GO) build -tags metrics $(LDFLAGS) -o $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)-metrics/$(BINARY_NAME) $(MAIN_PATH)
-else
-	$(GO) build -tags metrics $(LDFLAGS) -o $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)-metrics/$(BINARY_NAME).exe $(MAIN_PATH)
+ifneq (,$(filter tui,$(COMPS)))
+	@$(MAKE) --no-print-directory build-tui PLATFORMS='$(PLATFORMS)'
 endif
-	@printf "$(BOLD)$(GREEN)✓$(NC) Metrics 版本构建完成\n"
+ifneq (,$(filter gscp,$(COMPS)))
+	@$(MAKE) --no-print-directory build-gscp PLATFORMS='$(PLATFORMS)'
+endif
 
-## build-metrics-linux: Linux AMD64 + Metrics
-build-metrics-linux:
-	@mkdir -p $(BUILD_DIR)/linux-amd64-metrics
-	GOOS=linux GOARCH=amd64 $(GO) build -tags metrics $(LDFLAGS) -o $(BUILD_DIR)/linux-amd64-metrics/$(BINARY_NAME) $(MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) Linux AMD64 Metrics 版本已编译\n"
+build/all: ## 全部平台 × 全部组件
+	@$(MAKE) --no-print-directory build PLATFORMS='$(ALL_PLATFORMS)' WITH=serve,metrics,tui,gscp
 
-## build-metrics-darwin: macOS + Metrics
-build-metrics-darwin:
-	@mkdir -p $(BUILD_DIR)/darwin-amd64-metrics $(BUILD_DIR)/darwin-arm64-metrics
-	GOOS=darwin GOARCH=amd64 $(GO) build -tags metrics $(LDFLAGS) -o $(BUILD_DIR)/darwin-amd64-metrics/$(BINARY_NAME) $(MAIN_PATH)
-	GOOS=darwin GOARCH=arm64 $(GO) build -tags metrics $(LDFLAGS) -o $(BUILD_DIR)/darwin-arm64-metrics/$(BINARY_NAME) $(MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) macOS Metrics 版本已编译\n"
+build-serve: ## 编译 Web 控制台 owl-serve（纯 Go，可交叉编译）
+	$(call cross_build,,$(SERVE_MAIN),owl-serve)
 
-## build-all-metrics: 编译所有平台 + Metrics 版本
-build-all-metrics: build-metrics-linux build-metrics-darwin
-	@printf ""
-	@printf "$(BOLD)$(GREEN)✓$(NC) 所有平台 Metrics 版本编译完成\n"
-	@find $(BUILD_DIR) -type f -name "$(BINARY_NAME)" | grep metrics | head -10
+build-metrics: ## 编译带 metrics 功能的 owl CLI（需兄弟目录 ../go-owl-metrics）
+	$(call cross_build,-tags metrics $(LDFLAGS),$(CLI_MAIN),owl)
 
-# ====================
-# Windows 分发包
-# ====================
+build-tui: ## 编译 owl-tui（默认源码 ../go-owl-tui，可 TUI_SRC= 覆盖；缺失时克隆 TUI_REPO）
+	@set -e; src=$(TUI_SRC); \
+	if [ ! -d "$$src" ]; then \
+		printf '==> clone owl-tui: $(TUI_REPO)\n'; \
+		rm -rf $(TUI_CLONE); git clone --depth 1 $(TUI_REPO) $(TUI_CLONE); src=./$(TUI_CLONE); \
+	fi; \
+	for p in $(PLATFORMS); do \
+		os=$${p%/*}; arch=$${p#*/}; ext=; \
+		if [ "$$os" = windows ]; then ext=.exe; fi; \
+		out=$(CURDIR)/$(BUILD_DIR)/$$os-$$arch; mkdir -p $$out; \
+		printf '==> %-10s %s\n' owl-tui "$$p"; \
+		(cd "$$src" && GOWORK=off CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -o "$$out/owl-tui$$ext" .); \
+	done
 
-## dist/windows: 创建 Windows 分发包
-dist/windows:
-	@mkdir -p $(BUILD_DIR)/windows-dist
-	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/windows-dist/$(BINARY_NAME).exe $(MAIN_PATH)
-	
-	@echo " Owl CLI 工具" > $(BUILD_DIR)/windows-dist/README.txt
-	@echo " ==============" >> $(BUILD_DIR)/windows-dist/README.txt
-	@echo "" >> $(BUILD_DIR)/windows-dist/README.txt
-	@echo "使用方法：" >> $(BUILD_DIR)/windows-dist/README.txt
-	@echo "1. 双击 owl.exe 运行或打开命令行运行" >> $(BUILD_DIR)/windows-dist/README.txt
-	@echo "2. 使用 owl --help 查看帮助" >> $(BUILD_DIR)/windows-dist/README.txt
-	@echo "" >> $(BUILD_DIR)/windows-dist/README.txt
-	@echo "配置：" >> $(BUILD_DIR)/windows-dist/README.txt
-	@echo "- 配置文件: %USERPROFILE%\.owl\config.yaml" >> $(BUILD_DIR)/windows-dist/README.txt
-	@echo "- 节点配置: %USERPROFILE%\.owl\nodes.json" >> $(BUILD_DIR)/windows-dist/README.txt
-	
-	@printf "$(BOLD)$(GREEN)✓$(NC) Windows 分发包已创建: $(BUILD_DIR)/windows-dist/\n"
-	@ls -lh $(BUILD_DIR)/windows-dist/
+build-gscp: ## 克隆并跨平台编译 gscp
+	@if [ ! -d '$(GSCP_SRC)/.git' ]; then git clone --depth 1 '$(GSCP_REPO)' '$(GSCP_SRC)'; fi
+	@cd '$(GSCP_SRC)' && git fetch -q origin '$(GSCP_REF)' && git checkout -q FETCH_HEAD
+	$(call cross_build_ext,$(GSCP_SRC),gscp)
 
-# ====================
-# Web 控制台（owl-serve）
-# ====================
+build/local-gscp: ## 用本地源码编 gscp: make build/local-gscp GSCP_LOCAL=../gscp
+	@if [ -z '$(GSCP_LOCAL)' ] || [ ! -d '$(GSCP_LOCAL)' ]; then echo '用法: make build/local-gscp GSCP_LOCAL=../gscp（路径需存在）'; exit 1; fi
+	$(call cross_build_ext,$(GSCP_LOCAL),gscp)
 
-SERVE_MAIN_PATH := ./cmd/owl-serve/main.go
-SERVE_BINARY := owl-serve
+# 外部模块跨平台编译: $(1)=源码目录 $(2)=二进制名
+define cross_build_ext
+	@set -e; for p in $(PLATFORMS); do \
+		os=$${p%/*}; arch=$${p#*/}; ext=; \
+		if [ "$$os" = windows ]; then ext=.exe; fi; \
+		out=$(CURDIR)/$(BUILD_DIR)/$$os-$$arch; mkdir -p $$out; \
+		printf '==> %-10s %s\n' '$(2)' "$$p"; \
+		(cd '$(1)' && GOWORK=off CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -ldflags '-w -s' -o "$$out/$(2)$$ext" .); \
+	done
+endef
 
-## build-serve/linux: 编译 Linux AMD64 Server
-build-serve/linux:
-	@mkdir -p $(BUILD_DIR)/linux-amd64
-	GOOS=linux GOARCH=amd64 $(GO) build -o $(BUILD_DIR)/linux-amd64/$(SERVE_BINARY) $(SERVE_MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) Linux AMD64 Server 已编译\n"
-
-## build-serve/darwin: 编译 macOS AMD64 Server
-build-serve/darwin:
-	@mkdir -p $(BUILD_DIR)/darwin-amd64
-	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BUILD_DIR)/darwin-amd64/$(SERVE_BINARY) $(SERVE_MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) macOS AMD64 Server 已编译\n"
-
-## build-serve/darwin-arm64: 编译 macOS ARM64 Server
-build-serve/darwin-arm64:
-	@mkdir -p $(BUILD_DIR)/darwin-arm64
-	GOOS=darwin GOARCH=arm64 $(GO) build -o $(BUILD_DIR)/darwin-arm64/$(SERVE_BINARY) $(SERVE_MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) macOS ARM64 Server 已编译\n"
-
-## build-serve/windows: 编译 Windows AMD64 Server
-build-serve/windows:
-	@mkdir -p $(BUILD_DIR)/windows-amd64
-	GOOS=windows GOARCH=amd64 $(GO) build -o $(BUILD_DIR)/windows-amd64/$(SERVE_BINARY).exe $(SERVE_MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) Windows AMD64 Server 已编译\n"
-
-## build-serve: 构建当前平台 Server
-build-serve:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 构建 Web 控制台服务...\n"
-	$(GO) build -o $(BUILD_DIR)/$(SERVE_BINARY) $(SERVE_MAIN_PATH)
-	@printf "$(BOLD)$(GREEN)✓$(NC) Web 控制台已构建: $(BUILD_DIR)/$(SERVE_BINARY)\n"
-
-## install-serve: 安装 Web 控制台到系统路径
-install-serve: build-serve
+install: ## 安装当前平台产物（owl 及已追加组件）到 ~/.local/bin
+	@$(MAKE) --no-print-directory build PLATFORMS='$(HOST_PLATFORM)'
 	@mkdir -p ~/.local/bin
-	cp $(BUILD_DIR)/$(SERVE_BINARY) ~/.local/bin/
-	@printf "$(BOLD)$(GREEN)✓$(NC) Web 控制台已安装: ~/.local/bin/$(SERVE_BINARY)\n"
-	@printf "$(BOLD)$(YELLOW)提示:$(NC) 可通过 'owl serve' 命令启动\n"
+	@for b in owl owl-serve owl-tui; do \
+		f=$(BUILD_DIR)/$(HOST_PLATDIR)/$$b; \
+		if [ -f "$$f" ]; then cp "$$f" ~/.local/bin/; printf 'installed %s\n' "$$b"; fi; \
+	done
 
-# ====================
-# 安装
-# ====================
-
-## install: 安装到系统路径
-install: build-duckdb
-ifneq ($(shell go env GOOS),windows)
-	@mkdir -p ~/.local/bin
-	cp $(BUILD_DIR)/$(BINARY_NAME) ~/.local/bin/
-	@printf "$(BOLD)$(GREEN)✓$(NC) 已安装到 ~/.local/bin/$(BINARY_NAME)\n"
-	@printf "$(BOLD)$(YELLOW)提示:$(NC) 请确保 ~/.local/bin 在您的 PATH 中\n"
-else
-	@mkdir -p "C:\Program Files\Owl"
-	cp $(BUILD_DIR)/$(BINARY_NAME).exe "C:\Program Files\Owl\"
-	@printf "$(BOLD)$(GREEN)✓$(NC) 已安装到 C:\Program Files\Owl\$(BINARY_NAME).exe\n"
-	@printf "$(BOLD)$(YELLOW)提示:$(NC) 请添加 C:\Program Files\Owl 到 PATH\n"
-endif
-
-## install-duckdb: 安装 DuckDB 版本
-install-duckdb: build-duckdb
-ifneq ($(shell go env GOOS),windows)
-	@mkdir -p ~/.local/bin
-	cp $(BUILD_DIR)/$(BINARY_NAME) ~/.local/bin/
-	@printf "$(BOLD)$(GREEN)✓$(NC) DuckDB 版本已安装: ~/.local/bin/$(BINARY_NAME)\n"
-else
-	@mkdir -p "C:\Program Files\Owl"
-	cp $(BUILD_DIR)/$(BINARY_NAME).exe "C:\Program Files\Owl\"
-	@printf "$(BOLD)$(GREEN)✓$(NC) DuckDB 版本已安装\n"
-endif
-
-## install-sqlite3: 安装 SQLite3 版本
-install-sqlite3: build-sqlite3
-ifneq ($(shell go env GOOS),windows)
-	@mkdir -p ~/.local/bin
-	cp $(BUILD_DIR)/$(SQLITE3_BINARY) ~/.local/bin/owl
-	@printf "$(BOLD)$(GREEN)✓$(NC) SQLite3 版本已安装: ~/.local/bin/owl\n"
-else
-	@mkdir -p "C:\Program Files\Owl"
-	cp $(BUILD_DIR)/$(SQLITE3_BINARY).exe "C:\Program Files\Owl\owl.exe"
-	@printf "$(BOLD)$(GREEN)✓$(NC) SQLite3 版本已安装\n"
-endif
-
-## install-gscp: 安装 gscp 到 ~/.owl/gscp/（需先执行 build-gscp 或 build/local-gscp）
-install-gscp:
-	@mkdir -p ~/.owl/gscp/linux-amd64 ~/.owl/gscp/linux-arm64 ~/.owl/gscp/darwin-amd64 ~/.owl/gscp/darwin-arm64
-	@for platform in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64; do \
-		if [ -f $(BUILD_DIR)/$$platform/gscp ]; then \
-			cp $(BUILD_DIR)/$$platform/gscp ~/.owl/gscp/$$platform/gscp; \
-			printf "$(BOLD)$(GREEN)✓$(NC) gscp ($$platform) → ~/.owl/gscp/$$platform/gscp\n"; \
-		else \
-			printf "$(BOLD)$(YELLOW)跳过:$(NC) $(BUILD_DIR)/$$platform/gscp 不存在\n"; \
+install-gscp: ## 安装 gscp（linux/darwin）到 ~/.owl/gscp/，中继传输自动发现
+	@$(MAKE) --no-print-directory build-gscp PLATFORMS='linux/amd64 linux/arm64 darwin/amd64 darwin/arm64'
+	@for p in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
+		os=$${p%/*}; arch=$${p#*/}; plat=$$os-$$arch; \
+		if [ -f $(BUILD_DIR)/$$plat/gscp ]; then \
+			mkdir -p ~/.owl/gscp/$$plat; cp $(BUILD_DIR)/$$plat/gscp ~/.owl/gscp/$$plat/gscp; \
+			printf 'installed gscp (%s)\n' "$$plat"; \
 		fi; \
 	done
-	@printf "$(BOLD)$(GREEN)✓$(NC) gscp 安装完成，扩散传输将自动使用\n"
 
-# ====================
-# 清理
-# ====================
+clean: ## 清理构建产物
+	rm -rf $(BUILD_DIR) coverage.out coverage.html
+	rm -f owl owl.exe cli cli.exe owl-serve owl-serve.exe owl-tui owl-tui.exe owl-duckdb owl-sqlite3
 
-## clean: 清理构建产物
-clean:
-	@printf "$(BOLD)$(YELLOW)==>$(NC) 清理构建产物...\n"
-	@rm -rf $(BUILD_DIR)
-	@rm -f $(BINARY_NAME) $(BINARY_NAME).exe
-	@rm -f $(DUCKDB_BINARY) $(DUCKDB_BINARY).exe
-	@rm -f $(SQLITE3_BINARY) $(SQLITE3_BINARY).exe
-	@printf "$(BOLD)$(GREEN)✓$(NC) 清理完成\n"
+test: ## 运行全部测试（委托 tests/）
+	@$(MAKE) --no-print-directory -C tests test-all
 
-# ====================
-# 测试
-# ====================
+test-unit: ## 运行单元测试
+	@$(MAKE) --no-print-directory -C tests test-unit
 
-## test: 运行测试（所有测试）
-test: test-all
+test-integration: ## 运行集成测试
+	@$(MAKE) --no-print-directory -C tests test-integration
 
-## test-all: 运行所有测试
-test-all:
-	@make -C tests test-all
+test-quick: ## 快速测试（跳过耗时项）
+	@$(MAKE) --no-print-directory -C tests test-quick
 
-## test-unit: 运行单元测试
-test-unit:
-	@make -C tests test-unit
+test-coverage: ## 测试并生成覆盖率报告 coverage.html
+	$(GO) test -coverprofile=coverage.out ./...
+	$(GO) tool cover -html=coverage.out -o coverage.html
 
-## test-integration: 运行集成测试
-test-integration:
-	@make -C tests test-integration
+fmt: ## 格式化代码
+	$(GO) fmt ./...
 
-## test-bash: 运行 Bash 脚本测试
-test-bash:
-	@make -C tests test-bash
+lint: ## golangci-lint 检查（未安装则跳过）
+	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run ./... || echo 'golangci-lint 未安装，跳过'
 
-## test-quick: 快速测试（仅运行单元测试）
-test-quick:
-	@make -C tests test-quick
+vet: ## go vet 静态检查
+	$(GO) vet ./...
 
-## test-clean: 清理测试环境
-test-clean:
-	@make -C tests test-clean
-
-## test-coverage: 运行测试并生成覆盖率报告
-test-coverage:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 运行测试（覆盖率）...\n"
-	@$(GO) test -v -coverprofile=coverage.out ./...
-	@$(GO) tool cover -html=coverage.out -o coverage.html
-	@printf "$(BOLD)$(GREEN)✓$(NC) 覆盖率报告: coverage.html\n"
-
-# ====================
-# 代码质量
-# ====================
-
-## fmt: 格式化代码
-fmt:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 格式化代码...\n"
-	@$(GO) fmt ./...
-	@printf "$(BOLD)$(GREEN)✓$(NC) 格式化完成\n"
-
-## lint: 代码检查
-lint:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 代码检查...\n"
-	@which golangci-lint > /dev/null || (printf "$(BOLD)$(YELLOW)警告:$(NC) golangci-lint 未安装，跳过...\n" && exit 0)
-	@golangci-lint run ./...
-
-## vet: 代码诊断
-vet:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 运行 go vet...\n"
-	@$(GO) vet ./...
-
-# ====================
-# 开发辅助
-# ====================
-
-## run: 运行程序
-run:
-	@$(GO) run $(MAIN_PATH) $(ARGS)
-
-## deps: 下载依赖
-deps:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 下载依赖...\n"
-	@$(GO) mod download
-	@$(GO) mod tidy
-	@printf "$(BOLD)$(GREEN)✓$(NC) 依赖下载完成\n"
-
-## init: 初始化项目
-init: deps
-	@printf "$(BOLD)$(BLUE)==>$(NC) 初始化项目...\n"
-	@$(GO) generate ./...
-	@printf "$(BOLD)$(GREEN)✓$(NC) 项目初始化完成\n"
-
-## build-debug: 调试版本构建
-build-debug:
-	@printf "$(BOLD)$(BLUE)==>$(NC) 构建调试版本...\n"
-ifneq ($(shell go env GOOS),windows)
-	$(GO) build -gcflags="all=-N -l" -o $(BUILD_DIR)/$(BINARY_NAME)-debug $(MAIN_PATH)
-else
-	$(GO) build -gcflags="all=-N -l" -o $(BUILD_DIR)/$(BINARY_NAME)-debug.exe $(MAIN_PATH)
-endif
-	@printf "$(BOLD)$(GREEN)✓$(NC) 调试版本构建完成\n"
-
-## version: 显示版本信息
-version:
-	@$(GO) run $(MAIN_PATH) --version
-
-# ====================
-# 帮助信息
-# ====================
-
-## help: 显示帮助信息
-help:
-	@printf ""
-	@printf "$(BOLD)$(BLUE)go-owl 跨平台构建工具$(NC)\n"
-	@printf ""
-	@printf "$(BOLD)用法:$(NC) make $(GREEN)<目标>$(NC)\n"
-	@printf ""
-	@printf "$(BOLD)跨平台编译:$(NC)\n"
-	@printf "  $(GREEN)build$(NC)              编译当前平台（DuckDB）\n"
-	@printf "  $(GREEN)build/linux$(NC)         编译 Linux AMD64\n"
-	@printf "  $(GREEN)build/windows$(NC)       编译 Windows AMD64\n"
-	@printf "  $(GREEN)build/darwin$(NC)        编译 macOS AMD64\n"
-	@printf "  $(GREEN)build/darwin-arm64$(NC)  编译 macOS ARM64 (Apple Silicon)\n"
-	@printf "  $(GREEN)build/all$(NC)           编译所有平台\n"
-	@printf ""
-	@printf "$(BOLD)数据库版本:$(NC)\n"
-	@printf "  $(GREEN)build-duckdb$(NC)        使用 DuckDB 构建（默认）\n"
-	@printf "  $(GREEN)build-sqlite3$(NC)       使用 SQLite3 构建\n"
-	@printf ""
-	@printf "$(BOLD)Metrics 功能:$(NC)\n"
-	@printf "  $(GREEN)build-metrics$(NC)         编译当前平台 + Metrics 功能\n"
-	@printf "  $(GREEN)build-metrics-linux$(NC)  编译 Linux AMD64 + Metrics\n"
-	@printf "  $(GREEN)build-metrics-darwin$(NC) 编译 macOS + Metrics\n"
-	@printf "  $(GREEN)build-all-metrics$(NC)    编译所有平台 + Metrics\n"
-	@printf ""
-	@printf "$(BOLD)Web 控制台 (owl-serve):$(NC)\n"
-	@printf "  $(GREEN)build-serve$(NC)          编译当前平台 Server\n"
-	@printf "  $(GREEN)build-serve/linux$(NC)    编译 Linux AMD64 Server\n"
-	@printf "  $(GREEN)build-serve/darwin$(NC)   编译 macOS AMD64 Server\n"
-	@printf "  $(GREEN)build-serve/darwin-arm64$(NC) 编译 macOS ARM64 Server\n"
-	@printf "  $(GREEN)build-serve/windows$(NC)  编译 Windows AMD64 Server\n"
-	@printf "  $(GREEN)install-serve$(NC)        安装 Server 到系统\n"
-	@printf ""
-	@printf "$(BOLD)分发包:$(NC)\n"
-	@printf "  $(GREEN)dist/windows$(NC)        创建 Windows 分发包\n"
-	@printf ""
-	@printf "$(BOLD)安装:$(NC)\n"
-	@printf "  $(GREEN)install$(NC)             安装到系统\n"
-	@printf "  $(GREEN)install-duckdb$(NC)      安装 DuckDB 版本\n"
-	@printf "  $(GREEN)install-sqlite3$(NC)     安装 SQLite3 版本\n"
-	@printf ""
-	@printf "$(BOLD)其他:$(NC)\n"
-	@printf "  $(GREEN)clean$(NC)               清理构建文件\n"
-	@printf "  $(GREEN)test$(NC)                运行测试\n"
-	@printf "  $(GREEN)test-cover$(NC)          运行测试（覆盖率）\n"
-	@printf "  $(GREEN)fmt$(NC)                 格式化代码\n"
-	@printf "  $(GREEN)lint$(NC)                代码检查\n"
-	@printf "  $(GREEN)deps$(NC)                下载依赖\n"
-	@printf "  $(GREEN)run$(NC)                 运行程序\n"
-	@printf ""
-	@printf "$(BOLD)当前平台:$(NC) $(GREEN)$(shell go env GOOS) $(shell go env GOARCH)$(NC)\n"
-	@printf ""
+help: ## 显示本帮助
+	@awk 'BEGIN{FS=":.*?## "} /^[a-zA-Z0-9\/_.-]+:.*?## /{printf "  \033[32m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)

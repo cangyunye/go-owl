@@ -49,15 +49,16 @@ cmd/plugins/serve/
 # 当前平台
 make build-serve
 
-# 跨平台
-make build-serve/linux
-make build-serve/darwin-arm64
-make build-serve/windows
+# 跨平台（指定任意平台组合）
+make build-serve PLATFORMS="linux/amd64 darwin/arm64 windows/amd64"
+
+# 随 owl 一起追加编译 server
+make build WITH=serve
 
 # 安装到 ~/.local/bin
-make install-serve
+make install WITH=serve
 
-# 全量编译（含 server）
+# 全平台 × 全组件（owl + serve + metrics + tui + gscp）
 make build/all
 ```
 
