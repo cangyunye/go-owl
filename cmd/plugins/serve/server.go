@@ -21,6 +21,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/control/node"
+	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 )
@@ -105,6 +106,10 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	}
 	if err := initSettings(context.Background(), db); err != nil {
 		return nil, fmt.Errorf("init settings: %w", err)
+	}
+
+	if _, err := history.NewDB(history.DefaultConfig()); err != nil {
+		return nil, fmt.Errorf("init shared history db: %w", err)
 	}
 
 	// JWT secret

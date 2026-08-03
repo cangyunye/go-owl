@@ -247,7 +247,7 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 		h.hub.BroadcastHistoryUpdate()
 	}
 
-	go h.executePlaybookRun(run.ID)
+	go h.executePlaybookRunV2(run.ID)
 
 	if h.hub != nil {
 		h.hub.Broadcast(WSMessage{Type: "playbook_run_update", Data: run})
