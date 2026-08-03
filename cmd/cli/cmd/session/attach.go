@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/cangyunye/go-owl/internal/session"
 	"github.com/cangyunye/go-owl/internal/ssh"
 	"github.com/spf13/cobra"
@@ -24,20 +26,20 @@ var (
 func NewAttachCmd() *cobra.Command {
 	attachCmd := &cobra.Command{
 		Use:   "attach [node-id]",
-		Short: "连接到交互式会话",
-		Long:  `建立持久 SSH 会话，支持单节点实时交互和多节点批量管理`,
+		Short: i18n.T("session.attach.short"),
+		Long:  i18n.T("session.attach.long"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runAttach,
 	}
 
 	attachCmd.Flags().StringVarP(&attachNodes, "nodes", "N", "",
-		"多节点模式，指定节点列表（逗号分隔）")
+		i18n.T("session.attach.flag_nodes"))
 	attachCmd.Flags().StringVar(&attachSSHConfig, "ssh-config", "",
-		"SSH config 路径（默认: ~/.ssh/config）")
+		i18n.T("session.attach.flag_ssh_config"))
 	attachCmd.Flags().StringVar(&attachKeyFile, "key", "",
-		"SSH 私钥文件路径")
+		i18n.T("session.attach.flag_key"))
 	attachCmd.Flags().StringVar(&sessionTimeout, "timeout", "30m",
-		"会话超时时间（如: 30m, 1h）")
+		i18n.T("session.attach.flag_timeout"))
 
 	return attachCmd
 }
@@ -57,13 +59,13 @@ func runAttach(cmd *cobra.Command, args []string) error {
 		nodeIDs = []string{args[0]}
 		mode = session.SessionModeSingle
 	} else {
-		return fmt.Errorf("请指定节点: <node-id> 或 --nodes <node1>,<node2>")
+		return errors.New(i18n.T("session.attach.err_no_node"))
 	}
 
 	// 解析超时时间
 	timeout, err := time.ParseDuration(sessionTimeout)
 	if err != nil {
-		return fmt.Errorf("无效的超时时间: %w", err)
+		return fmt.Errorf(i18n.Raw("session.attach.err_invalid_timeout"), err)
 	}
 
 	// 创建会话
@@ -72,13 +74,13 @@ func runAttach(cmd *cobra.Command, args []string) error {
 	// 准备节点配置
 	nodeConfigs, err := prepareNodeConfigs(nodeIDs)
 	if err != nil {
-		return fmt.Errorf("准备节点配置失败: %w", err)
+		return fmt.Errorf(i18n.Raw("session.attach.err_prepare_config"), err)
 	}
 
 	// 连接
-	fmt.Printf("正在连接到 %d 个节点...\n", len(nodeIDs))
+	fmt.Printf("%s", i18n.T("session.attach.connecting", i18n.F(len(nodeIDs))))
 	if err := sess.Connect(nodeConfigs); err != nil {
-		return fmt.Errorf("连接失败: %w", err)
+		return fmt.Errorf(i18n.Raw("session.attach.err_connect"), err)
 	}
 
 	// 显示欢迎信息
@@ -90,7 +92,7 @@ func runAttach(cmd *cobra.Command, args []string) error {
 	// 运行交互循环
 	interactor := session.NewInteractiveLoop(sess)
 	if err := interactor.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "交互失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("session.attach.err_interactive", err))
 	}
 
 	// 关闭会话
@@ -143,7 +145,7 @@ func prepareNodeConfigs(nodeIDs []string) ([]*session.NodeConfig, error) {
 		}
 
 		if sshConfig != nil {
-			fmt.Printf("找到 SSH 配置: %s -> %s\n", nodeID, sshConfig.HostName)
+			fmt.Printf("%s", i18n.T("session.attach.found_ssh_config", nodeID, sshConfig.HostName))
 
 			if config.User == "" && sshConfig.User != "" {
 				config.User = sshConfig.User
@@ -263,7 +265,7 @@ func getAuthMethodsWithConfig(sshConfig *ssh.SSHConfig, password, sshKey string)
 	}
 
 	if len(authMethods) == 0 {
-		return nil, fmt.Errorf("未找到可用的 SSH 认证方法")
+		return nil, errors.New(i18n.T("session.attach.err_no_auth"))
 	}
 
 	return authMethods, nil
@@ -273,12 +275,12 @@ func getAuthMethodsWithConfig(sshConfig *ssh.SSHConfig, password, sshKey string)
 func publicKeyAuth(keyFile string) (gossh.AuthMethod, error) {
 	key, err := ioutil.ReadFile(keyFile)
 	if err != nil {
-		return nil, fmt.Errorf("读取密钥文件失败: %w", err)
+		return nil, fmt.Errorf(i18n.Raw("session.attach.err_read_key"), err)
 	}
 
 	signer, err := gossh.ParsePrivateKey(key)
 	if err != nil {
-		return nil, fmt.Errorf("解析私钥失败: %w", err)
+		return nil, fmt.Errorf(i18n.Raw("session.attach.err_parse_key"), err)
 	}
 
 	return gossh.PublicKeys(signer), nil
@@ -294,19 +296,19 @@ func sshAgentAuth() gossh.AuthMethod {
 // printWelcome 显示欢迎信息
 func printWelcome(sess *session.Session, nodeCount int) {
 	fmt.Println("─────────────────────────────────────")
-	fmt.Printf("已连接到 %d 个节点\n", nodeCount)
-	fmt.Printf("会话 ID: %s\n", sess.ID)
-	fmt.Printf("会话超时: %s\n", sess.Timeout.String())
+	fmt.Printf("%s", i18n.T("session.attach.connected_count", i18n.F(nodeCount)))
+	fmt.Printf("%s", i18n.T("session.attach.session_id", sess.ID))
+	fmt.Printf("%s", i18n.T("session.attach.session_timeout", sess.Timeout.String()))
 	fmt.Println("─────────────────────────────────────")
 	fmt.Println()
-	fmt.Println("📌 程序命令（以 / 开头）:")
-	fmt.Println("  /help     - 显示帮助")
-	fmt.Println("  /exit     - 退出会话")
-	fmt.Println("  /status   - 显示状态")
-	fmt.Println("  /clear    - 清屏")
-	fmt.Println("  /broadcast - 广播模式")
+	fmt.Println(i18n.T("session.attach.help_title"))
+	fmt.Println(i18n.T("session.attach.help_help"))
+	fmt.Println(i18n.T("session.attach.help_exit"))
+	fmt.Println(i18n.T("session.attach.help_status"))
+	fmt.Println(i18n.T("session.attach.help_clear"))
+	fmt.Println(i18n.T("session.attach.help_broadcast"))
 	fmt.Println()
-	fmt.Println("💡 提示: 以 / 开头的命令在本地执行")
-	fmt.Println("        其他命令发送到 SSH 会话执行")
+	fmt.Println(i18n.T("session.attach.hint_local"))
+	fmt.Println(i18n.T("session.attach.hint_remote"))
 	fmt.Println()
 }

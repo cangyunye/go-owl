@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
@@ -22,22 +23,22 @@ var (
 func NewHistoryCmd() *cobra.Command {
 	historyCmd := &cobra.Command{
 		Use:   "history [session-id]",
-		Short: "查看会话历史",
-		Long:  `查看会话命令历史记录，支持按节点和时间筛选`,
+		Short: i18n.T("session.history.short"),
+		Long:  i18n.T("session.history.long"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runHistory,
 	}
 
 	historyCmd.Flags().StringVar(&historySessionID, "session-id", "",
-		"指定会话 ID")
+		i18n.T("session.history.flag_session_id"))
 	historyCmd.Flags().StringVar(&historyNode, "node", "",
-		"按节点筛选")
+		i18n.T("session.history.flag_node"))
 	historyCmd.Flags().StringVar(&historyLast, "last", "",
-		"查看最近时间（如: 1h, 30m, 1d）")
+		i18n.T("session.history.flag_last"))
 	historyCmd.Flags().BoolVarP(&historyVerbose, "verbose", "v", false,
-		"显示详细输出")
+		i18n.T("session.history.flag_verbose"))
 	historyCmd.Flags().IntVarP(&historyLimit, "limit", "n", 20,
-		"显示最近 N 条记录")
+		i18n.T("session.history.flag_limit"))
 
 	return historyCmd
 }
@@ -49,7 +50,7 @@ func runHistory(cmd *cobra.Command, args []string) error {
 	}
 
 	if history.GetGlobalDB() == nil {
-		fmt.Println("历史数据库未初始化")
+		fmt.Println(i18n.T("session.db_not_initialized"))
 		return nil
 	}
 
@@ -65,32 +66,32 @@ func runHistory(cmd *cobra.Command, args []string) error {
 func displaySessionHistory(sessionID string) {
 	session, err := history.GetSession(sessionID)
 	if err != nil || session == nil {
-		fmt.Printf("会话 %s 未找到\n", sessionID)
+		fmt.Printf("%s", i18n.T("session.history.not_found", sessionID))
 		return
 	}
 
 	fmt.Println("─────────────────────────────────────")
-	fmt.Printf("会话 ID:    %s\n", session.ID)
-	fmt.Printf("模式:      %s\n", session.Mode)
-	fmt.Printf("状态:      %s\n", session.Status)
-	fmt.Printf("创建时间:  %s\n", session.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Printf("%s", i18n.T("session.history.label_id", session.ID))
+	fmt.Printf("%s", i18n.T("session.history.label_mode", session.Mode))
+	fmt.Printf("%s", i18n.T("session.history.label_status", session.Status))
+	fmt.Printf("%s", i18n.T("session.history.label_created", session.CreatedAt.Format("2006-01-02 15:04:05")))
 	if session.ClosedAt != nil {
-		fmt.Printf("关闭时间:  %s\n", session.ClosedAt.Format("2006-01-02 15:04:05"))
+		fmt.Printf("%s", i18n.T("session.history.label_closed", session.ClosedAt.Format("2006-01-02 15:04:05")))
 	}
-	fmt.Printf("节点:      %s\n", strings.Join(session.NodeIDs, ", "))
+	fmt.Printf("%s", i18n.T("session.history.label_nodes", strings.Join(session.NodeIDs, ", ")))
 	fmt.Println("─────────────────────────────────────")
-	fmt.Printf("命令数:    %d\n", session.CommandCount)
-	fmt.Printf("成功:      %d\n", session.SuccessCount)
-	fmt.Printf("失败:      %d\n", session.ErrorCount)
+	fmt.Printf("%s", i18n.T("session.history.label_commands", i18n.F(session.CommandCount)))
+	fmt.Printf("%s", i18n.T("session.history.label_success", i18n.F(session.SuccessCount)))
+	fmt.Printf("%s", i18n.T("session.history.label_failed", i18n.F(session.ErrorCount)))
 	fmt.Println("─────────────────────────────────────")
 
 	commands, err := history.QuerySessionCommands(sessionID, "", 0, 100)
 	if err != nil || len(commands) == 0 {
-		fmt.Println("\n暂无命令历史")
+		fmt.Println(i18n.T("session.history.no_commands"))
 		return
 	}
 
-	fmt.Println("\n命令历史:")
+	fmt.Println(i18n.T("session.history.commands_title"))
 	fmt.Println(strings.Repeat("─", 80))
 	for i, c := range commands {
 		status := "✓"
@@ -103,12 +104,12 @@ func displaySessionHistory(sessionID string) {
 }
 
 func displayRecentHistory() {
-	fmt.Println("最近的会话:")
+	fmt.Println(i18n.T("session.history.recent_title"))
 	fmt.Println(strings.Repeat("─", 80))
 
 	sessions, err := history.QuerySessions(historyLimit)
 	if err != nil || len(sessions) == 0 {
-		fmt.Println("暂无会话历史")
+		fmt.Println(i18n.T("session.history.no_sessions"))
 		return
 	}
 
@@ -139,5 +140,5 @@ func displayRecentHistory() {
 	}
 
 	fmt.Println()
-	fmt.Printf("查看详情: owl session history --session-id <id>\n")
+	fmt.Printf("%s", i18n.T("session.history.detail_hint"))
 }

@@ -7,14 +7,15 @@ import (
 	"text/tabwriter"
 
 	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
 func NewListCmd() *cobra.Command {
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "列出历史会话记录",
-		Long:  `列出所有已记录的历史会话，用于查看过去的批量操作审计记录`,
+		Short: i18n.T("session.list.short"),
+		Long:  i18n.T("session.list.long"),
 		RunE:  runList,
 	}
 
@@ -23,13 +24,13 @@ func NewListCmd() *cobra.Command {
 
 func runList(cmd *cobra.Command, args []string) error {
 	if history.GetGlobalDB() == nil {
-		fmt.Println("历史数据库未初始化")
+		fmt.Println(i18n.T("session.db_not_initialized"))
 		return nil
 	}
 
 	sessions, err := history.QuerySessions(100)
 	if err != nil {
-		return fmt.Errorf("查询会话记录失败: %w", err)
+		return fmt.Errorf(i18n.Raw("session.list.err_query"), err)
 	}
 
 	printSessionList(cmd.OutOrStdout(), sessions)
@@ -38,16 +39,16 @@ func runList(cmd *cobra.Command, args []string) error {
 
 func printSessionList(w io.Writer, sessions []*history.Session) {
 	if len(sessions) == 0 {
-		fmt.Fprintln(w, "暂无历史会话记录")
+		fmt.Fprintln(w, i18n.T("session.list.empty"))
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "使用 'owl session attach <node-id>' 创建新会话")
+		fmt.Fprintln(w, i18n.T("session.list.empty_hint"))
 		return
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight|tabwriter.Debug)
 	defer tw.Flush()
 
-	fmt.Fprintln(tw, "会话 ID\t模式\t节点\t状态\t创建时间\t命令数\t成功率")
+	fmt.Fprintln(tw, i18n.T("session.list.header"))
 	fmt.Fprintln(tw, "────────\t────────\t────────\t────────\t────────\t────────\t────────")
 
 	for _, s := range sessions {
@@ -78,5 +79,5 @@ func printSessionList(w io.Writer, sessions []*history.Session) {
 	}
 
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "使用 'owl session history --session-id <id>' 查看会话详情")
+	fmt.Fprintln(w, i18n.T("session.list.detail_hint"))
 }
