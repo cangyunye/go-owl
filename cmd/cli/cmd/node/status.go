@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // statusFlags
@@ -20,23 +21,18 @@ var (
 func NewStatusCmd() *cobra.Command {
 	statusCmd := &cobra.Command{
 		Use:   "status [node-id]",
-		Short: "查看节点状态",
-		Long: `查看一个或所有节点的状态信息。
-
-示例：
-  owl node status node1
-  owl node status --all
-  owl node status --all -o json`,
-		Args: cobra.RangeArgs(0, 1),
-		Run:  runStatus,
+		Short: i18n.T("node.status.short"),
+		Long:  i18n.T("node.status.long"),
+		Args:  cobra.RangeArgs(0, 1),
+		Run:   runStatus,
 	}
 
 	statusCmd.Flags().BoolVarP(&statusAll, "all", "a", false,
-		"显示所有节点状态")
+		i18n.T("node.status.flag_all"))
 	statusCmd.Flags().StringVarP(&statusFormat, "output", "o", "detail",
-		"输出格式: detail, json, yaml")
+		i18n.T("node.status.flag_format"))
 	statusCmd.Flags().BoolVarP(&statusNoColor, "no-color", "C", false,
-		"禁用颜色输出")
+		i18n.T("node.status.flag_no_color"))
 
 	return statusCmd
 }
@@ -49,7 +45,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 		// 显示所有节点状态
 		nodes, err := store.List()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error listing nodes: %v\n", err)
+			fmt.Fprintln(os.Stderr, i18n.T("node.status.err_list", err))
 			os.Exit(1)
 		}
 
@@ -60,7 +56,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 		nodeID := args[0]
 		node, err := store.Get(nodeID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			fmt.Fprintln(os.Stderr, i18n.T("node.status.err_get", err))
 			os.Exit(1)
 		}
 

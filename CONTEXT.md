@@ -41,3 +41,31 @@ parallel or sequential, with configurable timeouts and retry.
 - **Command**: a single shell command string, run via `ssh <node> <command>`.
 - **Script**: executable content (could be multi-line), run inline via
   `echo '<content>' | ssh <node> bash` or uploaded then executed.
+
+## i18n
+
+## Message Catalog (消息目录)
+
+A per-language collection of key→translation entries used to render tool
+copy. The CLI never embeds user-facing Chinese literals; it references a
+message key and the active language decides which string is shown.
+_Avoid_: translation map, locale file
+
+## Character Encoding (字符编码)
+
+The byte-level encoding used to emit and consume text (UTF-8 / GBK / Big5).
+Determined independently of language: an English user can still be on GBK,
+a Chinese user on UTF-8.
+_Avoid_: charset only where it means bytes
+
+## Tool Copy (工具文案)
+
+Strings the tool itself generates and which are looked up in the Message
+Catalog. Only these are translated.
+_Avoid_: literal string, hardcoded text
+
+## Pass-through Data (透传数据)
+
+Content originating from remote hosts or files (node names, command output,
+playbook YAML bodies). It is never translated — only character-encoded.
+_Avoid_: translated data, localized output

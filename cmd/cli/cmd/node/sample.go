@@ -7,22 +7,15 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // NewSampleCmd 创建示例节点生成命令
 func NewSampleCmd() *cobra.Command {
 	sampleCmd := &cobra.Command{
 		Use:   "sample",
-		Short: "生成示例节点配置文件",
-		Long: `生成示例节点配置文件到 ~/.owl/sample_nodes.json
-
-该命令会在 ~/.owl 目录下创建 sample_nodes.json 文件，
-包含一些示例节点配置，方便用户参考或快速开始使用。
-
-示例：
-  owl node sample
-
-生成的文件可以直接编辑以添加自定义节点。`,
+		Short: i18n.T("node.sample.short"),
+		Long:  i18n.T("node.sample.long"),
 		Run: func(cmd *cobra.Command, args []string) {
 			runSample()
 		},
@@ -36,15 +29,15 @@ func runSample() {
 
 	// 检查文件是否已存在
 	if _, err := os.Stat(configFile); err == nil {
-		fmt.Printf("示例配置文件已存在: %s\n", configFile)
-		fmt.Println("如需重新生成，请先删除该文件。")
+		fmt.Printf("%s\n", i18n.T("node.sample.exists", configFile))
+		fmt.Println(i18n.T("node.sample.exists_hint"))
 		return
 	}
 
 	// 确保目录存在
 	configDir := common.GetConfigDir()
 	if err := os.MkdirAll(configDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "创建配置目录失败: %v\n", err)
+		fmt.Fprintln(os.Stderr, i18n.T("node.sample.err_mkdir", err))
 		os.Exit(1)
 	}
 
@@ -54,21 +47,21 @@ func runSample() {
 	// 写入文件
 	data, err := json.MarshalIndent(sampleNodes, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "序列化示例节点失败: %v\n", err)
+		fmt.Fprintln(os.Stderr, i18n.T("node.sample.err_serialize", err))
 		os.Exit(1)
 	}
 
 	if err := os.WriteFile(configFile, data, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "写入配置文件失败: %v\n", err)
+		fmt.Fprintln(os.Stderr, i18n.T("node.sample.err_write", err))
 		os.Exit(1)
 	}
 
-	fmt.Printf("✓ 已生成示例节点配置文件: %s\n", configFile)
-	fmt.Println("\n文件包含以下示例节点:")
+	fmt.Printf("%s\n", i18n.T("node.sample.ok", configFile))
+	fmt.Println(i18n.T("node.sample.list_title"))
 	for _, node := range sampleNodes {
-		fmt.Printf("  - %s (%s:%d) [%s]\n", node.Name, node.Address, node.Port, node.Groups)
+		fmt.Printf("%s\n", i18n.T("node.sample.list_item", node.Name, node.Address, node.Port, node.Groups))
 	}
-	fmt.Println("\n您可以编辑该文件以添加自定义节点。")
+	fmt.Println(i18n.T("node.sample.edit_hint"))
 }
 
 func getDefaultSampleNodes() []*common.NodeInfo {

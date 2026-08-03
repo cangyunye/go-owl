@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 var pingAll bool
@@ -17,31 +18,18 @@ var pingCount int
 // NewPingCmd 创建 ping 命令
 func NewPingCmd() *cobra.Command {
 	pingCmd := &cobra.Command{
-		Use:   "ping [node_id...]",
-		Short: "检查节点是否可达",
-		Long:  `Ping 一个或多个节点，检查是否可达。可使用 --all 检查所有节点。`,
-		Example: `# Ping 单个节点
-  owl node ping node1
-
-  # Ping 多个节点
-  owl node ping node1 node2 node3
-
-  # Ping 所有节点
-  owl node ping --all
-
-  # 设置超时时间和次数
-  owl node ping --all --timeout 5s --count 3
-
-  # Ping 3次取平均值
-  owl node ping node1 -n 3`,
+		Use:     "ping [node_id...]",
+		Short:   i18n.T("node.ping.short"),
+		Long:    i18n.T("node.ping.long"),
+		Example: i18n.T("node.ping.example"),
 		Run: func(cmd *cobra.Command, args []string) {
 			runPing(args)
 		},
 	}
 
-	pingCmd.Flags().BoolVarP(&pingAll, "all", "a", false, "检查所有节点")
-	pingCmd.Flags().DurationVarP(&pingTimeout, "timeout", "t", 3*time.Second, "每个 ping 的超时时间")
-	pingCmd.Flags().IntVarP(&pingCount, "count", "n", 1, "ping 次数（支持浮点数表示间隔时间）")
+	pingCmd.Flags().BoolVarP(&pingAll, "all", "a", false, i18n.T("node.ping.flag_all"))
+	pingCmd.Flags().DurationVarP(&pingTimeout, "timeout", "t", 3*time.Second, i18n.T("node.ping.flag_timeout"))
+	pingCmd.Flags().IntVarP(&pingCount, "count", "n", 1, i18n.T("node.ping.flag_count"))
 
 	return pingCmd
 }
@@ -55,30 +43,30 @@ func runPing(nodeIDs []string) {
 	if pingAll {
 		nodes, err = store.List()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "获取节点列表失败: %v\n", err)
+			fmt.Fprintln(os.Stderr, i18n.T("node.ping.err_list", err))
 			os.Exit(1)
 		}
 	} else if len(nodeIDs) > 0 {
 		for _, id := range nodeIDs {
 			node, err := store.Get(id)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "警告: 节点 '%s' 未找到，跳过\n", id)
+				fmt.Fprintln(os.Stderr, i18n.T("node.ping.warn_not_found", id))
 				continue
 			}
 			nodes = append(nodes, node)
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "错误: 请指定节点 ID 或使用 --all")
-		fmt.Fprintln(os.Stderr, "使用 'owl node ping --help' 获取更多信息")
+		fmt.Fprintln(os.Stderr, i18n.T("node.ping.err_no_target"))
+		fmt.Fprintln(os.Stderr, i18n.T("node.ping.err_help"))
 		os.Exit(1)
 	}
 
 	if len(nodes) == 0 {
-		fmt.Println("没有节点需要检查")
+		fmt.Println(i18n.T("node.ping.no_nodes"))
 		return
 	}
 
-	fmt.Printf("正在检查 %d 个节点... (超时: %s, 次数: %d)\n\n", len(nodes), pingTimeout, pingCount)
+	fmt.Print(i18n.T("node.ping.checking", len(nodes), pingTimeout, pingCount))
 
 	reachable := 0
 	unreachable := 0
@@ -126,19 +114,19 @@ func runPing(nodeIDs []string) {
 			}
 
 			if pingCount > 1 {
-				fmt.Printf("  ✓ %s (%s) - 可达\n", node.ID, node.Address)
-				fmt.Printf("    次数: %d, 平均: %v, 最小: %v, 最大: %v\n",
+				fmt.Print(i18n.T("node.ping.reachable", node.ID, node.Address))
+				fmt.Print(i18n.T("node.ping.stats",
 					len(latencies), avgLatency.Round(time.Millisecond),
-					minLatency.Round(time.Millisecond), maxLatency.Round(time.Millisecond))
+					minLatency.Round(time.Millisecond), maxLatency.Round(time.Millisecond)))
 			} else {
-				fmt.Printf("  ✓ %s (%s) - 可达 (%v)\n", node.ID, node.Address, avgLatency.Round(time.Millisecond))
+				fmt.Print(i18n.T("node.ping.reachable_single", node.ID, node.Address, avgLatency.Round(time.Millisecond)))
 			}
 			reachable++
 		} else {
-			fmt.Printf("  ✗ %s (%s) - 不可达\n", node.ID, node.Address)
+			fmt.Print(i18n.T("node.ping.unreachable", node.ID, node.Address))
 			unreachable++
 		}
 	}
 
-	fmt.Printf("\n总结: %d 可达, %d 不可达, 共 %d\n", reachable, unreachable, len(nodes))
+	fmt.Print(i18n.T("node.ping.summary", reachable, unreachable, len(nodes)))
 }

@@ -8,7 +8,15 @@ import (
 	"testing"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
+	"github.com/cangyunye/go-owl/internal/i18n"
+	"golang.org/x/text/language"
 )
+
+// TestMain 固定英文，保证对翻译后输出的断言稳定。
+func TestMain(m *testing.M) {
+	i18n.Init(language.English)
+	os.Exit(m.Run())
+}
 
 func TestParseLabels_Valid(t *testing.T) {
 	tests := []struct {

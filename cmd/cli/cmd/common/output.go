@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"gopkg.in/yaml.v3"
 )
 
@@ -202,7 +203,7 @@ func ParseHeaderFields(header string) []HeaderField {
 // FormatNodesWithFields 使用自定义字段格式化节点列表
 func (f *OutputFormatter) FormatNodesWithFields(nodes []*model.Node, fields []HeaderField) {
 	if len(nodes) == 0 {
-		fmt.Println("No nodes found.")
+		fmt.Println(i18n.T("common.no_nodes"))
 		return
 	}
 
@@ -234,7 +235,7 @@ func (f *OutputFormatter) FormatNodesWithFields(nodes []*model.Node, fields []He
 		fmt.Println(strings.Join(rowParts, " "))
 	}
 
-	fmt.Printf("\nTotal: %d nodes\n", len(nodes))
+	fmt.Printf("\n%s\n", i18n.T("common.total", len(nodes)))
 }
 
 // getFieldValue 获取节点的指定字段值
@@ -353,7 +354,7 @@ func (f *OutputFormatter) FormatTaskResults(results map[string]*model.Node) {
 func (f *OutputFormatter) printJSON(v interface{}) {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "JSON marshal error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n", i18n.T("common.json_marshal_error", err))
 		return
 	}
 	fmt.Println(string(data))
@@ -362,7 +363,7 @@ func (f *OutputFormatter) printJSON(v interface{}) {
 func (f *OutputFormatter) printYAML(v interface{}) {
 	data, err := yaml.Marshal(v)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "YAML marshal error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n", i18n.T("common.yaml_marshal_error", err))
 		return
 	}
 	fmt.Println(string(data))
@@ -370,7 +371,7 @@ func (f *OutputFormatter) printYAML(v interface{}) {
 
 func (f *OutputFormatter) printTable(nodes []*model.Node) {
 	if len(nodes) == 0 {
-		fmt.Println("No nodes found.")
+		fmt.Println(i18n.T("common.no_nodes"))
 		return
 	}
 
@@ -425,7 +426,7 @@ func (f *OutputFormatter) printTable(nodes []*model.Node) {
 			PadRight(TruncateByWidth(labels, 30), 30),
 			PadRight(truncate(lastCheck, 20), 20))
 	}
-	fmt.Printf("\nTotal: %d nodes\n", len(nodes))
+	fmt.Printf("\n%s\n", i18n.T("common.total", len(nodes)))
 }
 
 func (f *OutputFormatter) printNodeDetail(node *model.Node) {
@@ -475,7 +476,7 @@ func (f *OutputFormatter) printTaskResultsSimple(results map[string]*model.Node)
 		successStr = greenStr(successStr)
 		failedStr = redStr(failedStr)
 	}
-	fmt.Printf("\nSummary: %s succeeded, %s failed\n", successStr, failedStr)
+	fmt.Printf("\n%s\n", i18n.T("common.summary_ok", successStr, failedStr))
 }
 
 // Helper functions
