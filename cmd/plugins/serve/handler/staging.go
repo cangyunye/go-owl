@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -66,11 +65,8 @@ func (h *StagingHandler) diskFree() (uint64, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return 0, err
 	}
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(dir, &stat); err != nil {
-		return 0, err
-	}
-	return stat.Bavail * uint64(stat.Bsize), nil
+	_, free, err := fsStat(dir)
+	return free, err
 }
 
 func (h *StagingHandler) Upload(c *gin.Context) {
@@ -214,14 +210,12 @@ func (h *StagingHandler) DiskInfo(c *gin.Context) {
 		return
 	}
 
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(dir, &stat); err != nil {
+	total, free, err := fsStat(dir)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "cannot get disk info"})
 		return
 	}
 
-	total := stat.Blocks * uint64(stat.Bsize)
-	free := stat.Bavail * uint64(stat.Bsize)
 	used := total - free
 
 	c.JSON(http.StatusOK, DiskInfo{
