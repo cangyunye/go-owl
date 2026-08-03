@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/cangyunye/go-owl/internal/common/model"
 )
 
@@ -240,7 +241,7 @@ func NewScheduler(store TaskStore) Scheduler {
 	return &scheduler{
 		store: store,
 		idGen: func() string {
-			return fmt.Sprintf("task-%d", time.Now().UnixNano())
+			return "task-" + uuid.NewString()
 		},
 	}
 }
