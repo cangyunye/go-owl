@@ -358,6 +358,55 @@ func TestPlaybookScaffoldOutput(t *testing.T) {
 	}
 }
 
+func TestPlaybookScaffoldCommandType(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	out := testutil.ExecuteCommand(t, cmd, "--type", "command")
+
+	if !strings.Contains(out, "action: command") {
+		t.Errorf("expected command scaffold to contain 'action: command', got:\n%s", out)
+	}
+	if !strings.Contains(out, "cmd:") {
+		t.Errorf("expected command scaffold to contain 'cmd:', got:\n%s", out)
+	}
+}
+
+func TestPlaybookScaffoldUploadType(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	out := testutil.ExecuteCommand(t, cmd, "--type", "upload")
+
+	if !strings.Contains(out, "action: upload") {
+		t.Errorf("expected upload scaffold to contain 'action: upload', got:\n%s", out)
+	}
+	if !strings.Contains(out, "src:") || !strings.Contains(out, "dest:") {
+		t.Errorf("expected upload scaffold to contain src/dest args, got:\n%s", out)
+	}
+}
+
+func TestPlaybookScaffoldUnknownType(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	out := testutil.ExecuteCommand(t, cmd, "--type", "nonexistent")
+
+	if strings.Contains(out, "action:") {
+		t.Errorf("expected error output, got valid scaffold:\n%s", out)
+	}
+}
+
+func TestPlaybookScaffoldHelpListsTypes(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	help := testutil.ExecuteCommand(t, cmd, "--help")
+
+	expectedTypes := []string{"basic", "command", "script", "upload", "download", "include"}
+	for _, typ := range expectedTypes {
+		if !strings.Contains(help, typ) {
+			t.Errorf("expected help to list type %q, got:\n%s", typ, help)
+		}
+	}
+}
+
 func TestApplyDefaultConfig(t *testing.T) {
 	t.Run("CLI group not set, default has groups", func(t *testing.T) {
 		groups, _, _ := playbook.ApplyDefaultConfig(nil, "", "",
