@@ -52,7 +52,7 @@ func CreatePlaybookRun(run *PlaybookRun) error {
 	}
 	nodesJSON, _ := json.Marshal(run.Nodes)
 	_, err := GetGlobalDB().Connection().Exec(`
-		INSERT INTO playbook_runs (id, playbook_name, playbook_hash, nodes, status, started_at, total_steps, completed_steps, failed_steps)
+		INSERT INTO playbook_run_states (id, playbook_name, playbook_hash, nodes, status, started_at, total_steps, completed_steps, failed_steps)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, run.ID, run.PlaybookName, run.PlaybookHash, nodesJSON, run.Status, run.StartedAt, run.TotalSteps, run.CompletedSteps, run.FailedSteps)
 	return err
@@ -64,7 +64,7 @@ func FinishPlaybookRun(runID string, status string, completedSteps, failedSteps 
 	}
 	now := time.Now()
 	_, err := GetGlobalDB().Connection().Exec(`
-		UPDATE playbook_runs SET status = ?, finished_at = ?, completed_steps = ?, failed_steps = ? WHERE id = ?
+		UPDATE playbook_run_states SET status = ?, finished_at = ?, completed_steps = ?, failed_steps = ? WHERE id = ?
 	`, status, now, completedSteps, failedSteps, runID)
 	return err
 }
@@ -96,7 +96,7 @@ func ListPlaybookRuns(playbookName string, status string, limit int) ([]*Playboo
 	if GetGlobalDB() == nil {
 		return nil, nil
 	}
-	query := `SELECT id, playbook_name, playbook_hash, nodes, status, started_at, finished_at, total_steps, completed_steps, failed_steps FROM playbook_runs WHERE 1=1`
+	query := `SELECT id, playbook_name, playbook_hash, nodes, status, started_at, finished_at, total_steps, completed_steps, failed_steps FROM playbook_run_states WHERE 1=1`
 	var params []interface{}
 
 	if playbookName != "" {
@@ -142,7 +142,7 @@ func GetPlaybookRun(runID string) (*PlaybookRun, error) {
 	}
 	row := GetGlobalDB().Connection().QueryRow(`
 		SELECT id, playbook_name, playbook_hash, nodes, status, started_at, finished_at, total_steps, completed_steps, failed_steps
-		FROM playbook_runs WHERE id = ?
+		FROM playbook_run_states WHERE id = ?
 	`, runID)
 
 	var run PlaybookRun
@@ -218,7 +218,7 @@ func FindLastFailedRunByPlaybookName(playbookName string) (*PlaybookRun, error) 
 	}
 	row := GetGlobalDB().Connection().QueryRow(`
 		SELECT id, playbook_name, playbook_hash, nodes, status, started_at, finished_at, total_steps, completed_steps, failed_steps
-		FROM playbook_runs
+		FROM playbook_run_states
 		WHERE playbook_name = ? AND status = 'failed'
 		ORDER BY started_at DESC LIMIT 1
 	`, playbookName)

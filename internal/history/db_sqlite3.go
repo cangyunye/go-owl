@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 var _ DBInterface = (*SQLite3)(nil)
@@ -34,7 +34,7 @@ func NewDB(config *Config) (DBInterface, error) {
 
 	ensureDBDir(dbPath)
 
-	conn, err := sql.Open("sqlite3", dbPath)
+	conn, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ func (s *SQLite3) InitSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_aichat_session ON aichat(session_id, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_aichat_created ON aichat(created_at);`,
 
-		`CREATE TABLE IF NOT EXISTS playbook_runs (
+		`CREATE TABLE IF NOT EXISTS playbook_run_states (
 			id TEXT PRIMARY KEY,
 			playbook_name TEXT NOT NULL,
 			playbook_hash TEXT NOT NULL,
@@ -206,8 +206,8 @@ func (s *SQLite3) InitSchema() error {
 			completed_steps INTEGER DEFAULT 0,
 			failed_steps INTEGER DEFAULT 0
 		);`,
-		`CREATE INDEX IF NOT EXISTS idx_playbook_runs_status ON playbook_runs(status);`,
-		`CREATE INDEX IF NOT EXISTS idx_playbook_runs_name ON playbook_runs(playbook_name);`,
+		`CREATE INDEX IF NOT EXISTS idx_run_states_status ON playbook_run_states(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_run_states_name ON playbook_run_states(playbook_name);`,
 
 		`CREATE TABLE IF NOT EXISTS playbook_step_states (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,

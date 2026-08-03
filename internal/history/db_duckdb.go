@@ -195,7 +195,7 @@ tttttttexecution_mode VARCHAR DEFAULT '',
 
 		`CREATE SEQUENCE IF NOT EXISTS seq_step_states_id START 1;`,
 
-		`CREATE TABLE IF NOT EXISTS playbook_runs (
+		`CREATE TABLE IF NOT EXISTS playbook_run_states (
 			id VARCHAR PRIMARY KEY,
 			playbook_name VARCHAR NOT NULL,
 			playbook_hash VARCHAR NOT NULL,
@@ -207,8 +207,8 @@ tttttttexecution_mode VARCHAR DEFAULT '',
 			completed_steps INTEGER DEFAULT 0,
 			failed_steps INTEGER DEFAULT 0
 		);`,
-		`CREATE INDEX IF NOT EXISTS idx_playbook_runs_status ON playbook_runs(status);`,
-		`CREATE INDEX IF NOT EXISTS idx_playbook_runs_name ON playbook_runs(playbook_name);`,
+		`CREATE INDEX IF NOT EXISTS idx_run_states_status ON playbook_run_states(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_run_states_name ON playbook_run_states(playbook_name);`,
 
 		`CREATE TABLE IF NOT EXISTS playbook_step_states (
 			id BIGINT PRIMARY KEY DEFAULT NEXTVAL('seq_step_states_id'),
