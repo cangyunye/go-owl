@@ -49,7 +49,7 @@ func Execute() error {
 func NewRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "owl",
-		Short: "owl - 智能分布式运维工具",
+		Short: i18n.T("root.short"),
 		Long:  i18n.T("root.long_help"),
 
 		Version: version,

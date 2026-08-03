@@ -460,9 +460,9 @@ func (f *OutputFormatter) printTaskResultsSimple(results map[string]*model.Node)
 	failed := 0
 
 	for nodeID, node := range results {
-		status := greenStr("OK")
+		status := greenStr(i18n.T("common.node_ok"))
 		if node == nil {
-			status = redStr("FAIL")
+			status = redStr(i18n.T("common.node_fail"))
 			failed++
 		} else {
 			success++
@@ -484,7 +484,7 @@ func (f *OutputFormatter) printTaskResultsSimple(results map[string]*model.Node)
 // PrintLabels 打印标签
 func PrintLabels(labels map[string]string) {
 	if len(labels) == 0 {
-		fmt.Println("  (no labels)")
+		fmt.Println(i18n.T("common.labels_none"))
 		return
 	}
 	keys := make([]string, 0, len(labels))
@@ -546,7 +546,7 @@ func PadRight(s string, width int) string {
 
 func formatNodeStatusStr(node *model.Node) string {
 	if node == nil {
-		return "not found"
+		return i18n.T("common.not_found")
 	}
 	return string(node.Status)
 }
