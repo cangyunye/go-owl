@@ -32,7 +32,7 @@ func currentConsoleOutputCP() uint32 {
 // Setup 将控制台输入输出切到 UTF-8（CP65001），使原始 UTF-8 字节直接正确显示。
 func Setup() {
 	windows.SetConsoleOutputCP(65001)
-	windows.SetConsoleInputCP(65001)
+	windows.SetConsoleCP(65001)
 }
 
 // RawStdin / RawStdout / RawStderr 返回未包装的原始句柄，供子进程直连终端。
