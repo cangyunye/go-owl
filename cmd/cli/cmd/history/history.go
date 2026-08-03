@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -34,30 +35,24 @@ var (
 func NewHistoryCmd() *cobra.Command {
 	historyCmd := &cobra.Command{
 		Use:   "history",
-		Short: "查看历史操作记录",
-		Long: `查询和导出历史操作记录，支持按任务ID、节点、时间等条件筛选。
-
-示例：
-  owl history --task-id task-12345
-  owl history --node-id node1 --last 24h
-  owl history --op-type command --status completed
-  owl history --last 7d --format json --output report.json`,
-		Run: runHistory,
+		Short: i18n.T("history.cmd.short"),
+		Long:  i18n.T("history.cmd.long"),
+		Run:   runHistory,
 	}
 
-	historyCmd.Flags().StringVar(&taskID, "task-id", "", "按任务ID筛选")
-	historyCmd.Flags().StringVar(&nodeID, "node-id", "", "按节点ID筛选")
-	historyCmd.Flags().StringVar(&opType, "op-type", "", "按操作类型筛选 (command, file_transfer, playbook, node_manage)")
-	historyCmd.Flags().StringVar(&status, "status", "", "按状态筛选")
-	historyCmd.Flags().StringVar(&startTimeStr, "start-time", "", "开始时间 (ISO格式，如 2024-01-01T00:00:00Z)")
-	historyCmd.Flags().StringVar(&endTimeStr, "end-time", "", "结束时间 (ISO格式)")
-	historyCmd.Flags().StringVar(&lastDuration, "last", "", "相对时间 (如 1h, 24h, 7d)")
-	historyCmd.Flags().IntVar(&limit, "limit", 50, "结果数量限制 (默认 50，最大 1000)")
-	historyCmd.Flags().IntVar(&offset, "offset", 0, "偏移量 (分页)")
+	historyCmd.Flags().StringVar(&taskID, "task-id", "", i18n.T("history.flag_task_id"))
+	historyCmd.Flags().StringVar(&nodeID, "node-id", "", i18n.T("history.flag_node_id"))
+	historyCmd.Flags().StringVar(&opType, "op-type", "", i18n.T("history.flag_op_type"))
+	historyCmd.Flags().StringVar(&status, "status", "", i18n.T("history.flag_status"))
+	historyCmd.Flags().StringVar(&startTimeStr, "start-time", "", i18n.T("history.flag_start_time"))
+	historyCmd.Flags().StringVar(&endTimeStr, "end-time", "", i18n.T("history.flag_end_time"))
+	historyCmd.Flags().StringVar(&lastDuration, "last", "", i18n.T("history.flag_last"))
+	historyCmd.Flags().IntVar(&limit, "limit", 50, i18n.T("history.flag_limit"))
+	historyCmd.Flags().IntVar(&offset, "offset", 0, i18n.T("history.flag_offset"))
 
-	historyCmd.Flags().StringVar(&format, "format", "table", "输出格式 (table, json, yaml)")
-	historyCmd.Flags().StringVar(&outputFile, "output", "", "输出到文件")
-	historyCmd.Flags().BoolVar(&verbose, "verbose", false, "显示详细信息")
+	historyCmd.Flags().StringVar(&format, "format", "table", i18n.T("history.flag_format"))
+	historyCmd.Flags().StringVar(&outputFile, "output", "", i18n.T("history.flag_output"))
+	historyCmd.Flags().BoolVar(&verbose, "verbose", false, i18n.T("history.flag_verbose"))
 
 	historyCmd.AddCommand(NewCleanCmd())
 
@@ -70,12 +65,8 @@ func NewCleanCmd() *cobra.Command {
 
 	cleanCmd := &cobra.Command{
 		Use:   "clean",
-		Short: "清理过期的历史记录",
-		Long: `清理指定天数之前的历史记录，释放数据库空间。
-
-示例：
-  owl history clean --days 30
-  owl history clean --days 7 --force`,
+		Short: i18n.T("history.clean.short"),
+		Long:  i18n.T("history.clean.long"),
 		Run: func(cmd *cobra.Command, args []string) {
 			logger.Init(nil)
 			_, err := history.NewDB(history.DefaultConfig())
@@ -111,8 +102,8 @@ func NewCleanCmd() *cobra.Command {
 		},
 	}
 
-	cleanCmd.Flags().IntVar(&retentionDays, "days", 30, "保留天数，清理早于此天数的记录 (默认 30)")
-	cleanCmd.Flags().BoolVar(&force, "force", false, "跳过确认，直接清理")
+	cleanCmd.Flags().IntVar(&retentionDays, "days", 30, i18n.T("history.clean.flag_days"))
+	cleanCmd.Flags().BoolVar(&force, "force", false, i18n.T("history.clean.flag_force"))
 
 	return cleanCmd
 }

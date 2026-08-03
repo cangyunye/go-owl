@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
@@ -20,29 +21,16 @@ var (
 func NewServeCmd() *cobra.Command {
 	serveCmd := &cobra.Command{
 		Use:   "serve",
-		Short: "启动 OWL Web 管理控制台",
-		Long: `启动 OWL 的 Web 管理控制台，提供基于浏览器的节点管理和操作界面。
-
-功能：
-- 节点浏览、搜索和管理
-- 基于角色的多用户访问控制
-- RESTful JSON API
-
-示例：
-  owl serve
-  owl serve --port 9090
-  owl serve --host 0.0.0.0 --port 8080
-  owl serve --dev
-  owl serve --reset-admin --port 8080
-  owl serve --ai-debug`,
-		Run: runServe,
+		Short: i18n.T("serve.cmd.short"),
+		Long:  i18n.T("serve.cmd.long"),
+		Run:   runServe,
 	}
 
-	serveCmd.Flags().IntVarP(&port, "port", "p", 8080, "HTTP 监听端口")
-	serveCmd.Flags().StringVar(&host, "host", "127.0.0.1", "HTTP 监听地址")
-	serveCmd.Flags().BoolVar(&dev, "dev", false, "开发模式（前端从文件系统加载）")
-	serveCmd.Flags().BoolVar(&resetAdmin, "reset-admin", false, "重置管理员密码")
-	serveCmd.Flags().BoolVar(&aiDebug, "ai-debug", false, "AI 调试模式（记录完整提示词/回复）")
+	serveCmd.Flags().IntVarP(&port, "port", "p", 8080, i18n.T("serve.flag_port"))
+	serveCmd.Flags().StringVar(&host, "host", "127.0.0.1", i18n.T("serve.flag_host"))
+	serveCmd.Flags().BoolVar(&dev, "dev", false, i18n.T("serve.flag_dev"))
+	serveCmd.Flags().BoolVar(&resetAdmin, "reset-admin", false, i18n.T("serve.flag_reset_admin"))
+	serveCmd.Flags().BoolVar(&aiDebug, "ai-debug", false, i18n.T("serve.flag_ai_debug"))
 
 	return serveCmd
 }
@@ -51,7 +39,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	binPath, err := findServeBinary()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		fmt.Fprintf(os.Stderr, "请先构建 owl-serve:\n")
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("serve.build_hint"))
 		fmt.Fprintf(os.Stderr, "  cd go-owl && go build -o $(go env GOPATH)/bin/owl-serve ./cmd/owl-serve\n")
 		os.Exit(1)
 	}
