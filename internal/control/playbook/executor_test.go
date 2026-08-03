@@ -2,6 +2,7 @@ package playbook
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -645,4 +646,131 @@ func TestExecutor_Execute_FailContinueRunsAll(t *testing.T) {
 	if exec.Status != ExecutionStatusCompleted {
 		t.Errorf("expected Status Completed (fail_continue swallows error), got '%s'", exec.Status)
 	}
+}
+
+func TestExecutor_CheckMode_NoSideEffects(t *testing.T) {
+	mockNodeMgr := &MockNodeManager{}
+	mockCmd := &mockCmdExecutor{}
+	opts := &PlaybookOptions{CheckMode: true}
+	executor := NewExecutorWithOptions(mockNodeMgr, mockCmd, nil, nil, opts)
+
+	playbook := &ParsedPlaybook{
+		Raw:           &Playbook{Name: "check test", Hosts: []string{"web"}},
+		ExecutionMode: ExecutionModeFailContinue,
+		Variables:     make(map[string]interface{}),
+		Tasks: []*ParsedTask{
+			{Name: "task 1", Action: "command", Args: map[string]interface{}{"cmd": "echo hello"}},
+			{Name: "task 2", Action: "command", Args: map[string]interface{}{"cmd": "echo world"}},
+		},
+	}
+
+	exec, err := executor.Execute(playbook, []*model.Node{{ID: "node-1"}}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mockCmd.executedCmds) != 0 {
+		t.Errorf("check mode should not execute commands, but got: %v", mockCmd.executedCmds)
+	}
+
+	for taskName, results := range exec.Results {
+		for _, r := range results {
+			if r.ExitCode != 0 {
+				t.Errorf("check mode result for %s should have exit code 0, got %d", taskName, r.ExitCode)
+			}
+			if !strings.Contains(r.Output, "[check mode]") {
+				t.Errorf("check mode output should contain '[check mode]', got: %s", r.Output)
+			}
+		}
+	}
+
+	if exec.Status != ExecutionStatusCompleted {
+		t.Errorf("expected completed status, got %s", exec.Status)
+	}
+}
+
+func TestExecutor_CheckMode_MultipleNodes(t *testing.T) {
+	mockNodeMgr := &MockNodeManager{}
+	mockCmd := &mockCmdExecutor{}
+	opts := &PlaybookOptions{CheckMode: true}
+	executor := NewExecutorWithOptions(mockNodeMgr, mockCmd, nil, nil, opts)
+
+	playbook := &ParsedPlaybook{
+		Raw:           &Playbook{Name: "multi-node check", Hosts: []string{"web"}},
+		ExecutionMode: ExecutionModeFailContinue,
+		Variables:     make(map[string]interface{}),
+		Tasks: []*ParsedTask{
+			{Name: "deploy", Action: "command", Args: map[string]interface{}{"cmd": "deploy.sh"}},
+		},
+	}
+
+	nodes := []*model.Node{{ID: "node-1"}, {ID: "node-2"}, {ID: "node-3"}}
+	exec, err := executor.Execute(playbook, nodes, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mockCmd.executedCmds) != 0 {
+		t.Errorf("check mode executed %d commands", len(mockCmd.executedCmds))
+	}
+
+	results := exec.Results["deploy"]
+	if len(results) != 3 {
+		t.Errorf("expected 3 results (one per node), got %d", len(results))
+	}
+}
+
+func TestExecutor_CheckMode_UploadAction(t *testing.T) {
+	mockNodeMgr := &MockNodeManager{}
+	mockCmd := &mockCmdExecutor{}
+	opts := &PlaybookOptions{CheckMode: true}
+	executor := NewExecutorWithOptions(mockNodeMgr, mockCmd, nil, nil, opts)
+
+	playbook := &ParsedPlaybook{
+		Raw:           &Playbook{Name: "upload check", Hosts: []string{"web"}},
+		ExecutionMode: ExecutionModeFailContinue,
+		Variables:     make(map[string]interface{}),
+		Tasks: []*ParsedTask{
+			{Name: "upload file", Action: "upload", Args: map[string]interface{}{"src": "/local/file", "dest": "/remote/file"}},
+		},
+	}
+
+	exec, err := executor.Execute(playbook, []*model.Node{{ID: "node-1"}}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	results := exec.Results["upload file"]
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].ExitCode != 0 {
+		t.Errorf("check mode upload should succeed, got exit code %d", results[0].ExitCode)
+	}
+}
+
+func TestExecutor_SuccessFailureCount_MultiNode(t *testing.T) {
+	mockNodeMgr := &MockNodeManager{}
+	mockCmd := &mockCmdExecutor{failOnCall: 100}
+	executor := NewExecutor(mockNodeMgr, mockCmd, nil, nil)
+
+	playbook := &ParsedPlaybook{
+		Raw:           &Playbook{Name: "count test", Hosts: []string{"web"}},
+		ExecutionMode: ExecutionModeFailContinue,
+		Variables:     make(map[string]interface{}),
+		Tasks: []*ParsedTask{
+			{Name: "task 1", Action: "command", Args: map[string]interface{}{"cmd": "ok"}},
+		},
+	}
+
+	nodes := []*model.Node{{ID: "node-1"}, {ID: "node-2"}, {ID: "node-3"}}
+	exec, err := executor.Execute(playbook, nodes, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if exec.SuccessCount() != 3 {
+		t.Errorf("expected SuccessCount 3 (1 task × 3 nodes), got %d", exec.SuccessCount())
+	}
+	t.Logf("SuccessCount=%d, FailureCount=%d for 1 task × 3 nodes", exec.SuccessCount(), exec.FailureCount())
 }

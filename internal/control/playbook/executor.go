@@ -63,6 +63,7 @@ type PlaybookExecution struct {
 type PlaybookOptions struct {
 	TimeoutConfig *ssh.TimeoutConfig
 	RetryConfig   *command.RetryConfig
+	CheckMode     bool
 }
 
 type Executor interface {
@@ -177,6 +178,13 @@ func (r *defaultActionRunner) RunAction(action string, args map[string]interface
 		NodeID:    nodeID,
 		Action:    action,
 		StartTime: time.Now(),
+	}
+
+	if r.opts != nil && r.opts.CheckMode {
+		result.ExitCode = 0
+		result.Output = fmt.Sprintf("[check mode] would execute %s on %s", action, nodeID)
+		result.EndTime = time.Now()
+		return result, nil
 	}
 
 	// 根据 action 类型执行不同的操作

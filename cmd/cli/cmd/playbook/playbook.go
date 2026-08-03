@@ -2,24 +2,23 @@ package playbook
 
 import (
 	"github.com/spf13/cobra"
+
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // NewPlaybookCmd 创建剧本管理命令
 func NewPlaybookCmd() *cobra.Command {
 	pbCmd := &cobra.Command{
 		Use:   "playbook",
-		Short: "剧本管理",
-		Long: `剧本管理命令，支持以下操作：
-
-- list: 列出剧本
-- validate: 验证剧本语法
-- run: 执行剧本`,
+		Short: i18n.T("playbook.cmd.short"),
+		Long:  i18n.T("playbook.cmd.long"),
 	}
 
 	pbCmd.AddCommand(NewPlaybookListCmd())
 	pbCmd.AddCommand(NewPlaybookValidateCmd())
 	pbCmd.AddCommand(NewPlaybookRunCmd())
 	pbCmd.AddCommand(NewPlaybookTemplateCmd())
+	pbCmd.AddCommand(NewPlaybookStateCmd())
 	pbCmd.AddCommand(NewPlaybookNewCmd())
 	pbCmd.AddCommand(NewPlaybookScaffoldCmd())
 
