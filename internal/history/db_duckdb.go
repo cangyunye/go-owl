@@ -192,6 +192,44 @@ tttttttexecution_mode VARCHAR DEFAULT '',
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_aichat_session ON aichat(session_id, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_aichat_created ON aichat(created_at);`,
+
+		`CREATE SEQUENCE IF NOT EXISTS seq_step_states_id START 1;`,
+
+		`CREATE TABLE IF NOT EXISTS playbook_runs (
+			id VARCHAR PRIMARY KEY,
+			playbook_name VARCHAR NOT NULL,
+			playbook_hash VARCHAR NOT NULL,
+			nodes JSON NOT NULL,
+			status VARCHAR NOT NULL DEFAULT 'running',
+			started_at TIMESTAMP NOT NULL,
+			finished_at TIMESTAMP,
+			total_steps INTEGER NOT NULL,
+			completed_steps INTEGER DEFAULT 0,
+			failed_steps INTEGER DEFAULT 0
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_playbook_runs_status ON playbook_runs(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_playbook_runs_name ON playbook_runs(playbook_name);`,
+
+		`CREATE TABLE IF NOT EXISTS playbook_step_states (
+			id BIGINT PRIMARY KEY DEFAULT NEXTVAL('seq_step_states_id'),
+			run_id VARCHAR NOT NULL,
+			node_id VARCHAR NOT NULL,
+			step_index INTEGER NOT NULL,
+			step_name VARCHAR NOT NULL,
+			action VARCHAR NOT NULL,
+			status VARCHAR NOT NULL DEFAULT 'pending',
+			started_at TIMESTAMP,
+			finished_at TIMESTAMP,
+			duration_ms INTEGER,
+			exit_code INTEGER,
+			stdout VARCHAR,
+			stderr VARCHAR,
+			error VARCHAR,
+			retry_count INTEGER DEFAULT 0,
+			UNIQUE(run_id, node_id, step_index)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_step_states_run ON playbook_step_states(run_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_step_states_node ON playbook_step_states(run_id, node_id);`,
 	}
 
 	for _, schema := range schemas {

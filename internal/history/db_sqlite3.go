@@ -193,6 +193,42 @@ func (s *SQLite3) InitSchema() error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_aichat_session ON aichat(session_id, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_aichat_created ON aichat(created_at);`,
+
+		`CREATE TABLE IF NOT EXISTS playbook_runs (
+			id TEXT PRIMARY KEY,
+			playbook_name TEXT NOT NULL,
+			playbook_hash TEXT NOT NULL,
+			nodes TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'running',
+			started_at DATETIME NOT NULL,
+			finished_at DATETIME,
+			total_steps INTEGER NOT NULL,
+			completed_steps INTEGER DEFAULT 0,
+			failed_steps INTEGER DEFAULT 0
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_playbook_runs_status ON playbook_runs(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_playbook_runs_name ON playbook_runs(playbook_name);`,
+
+		`CREATE TABLE IF NOT EXISTS playbook_step_states (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id TEXT NOT NULL,
+			node_id TEXT NOT NULL,
+			step_index INTEGER NOT NULL,
+			step_name TEXT NOT NULL,
+			action TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			started_at DATETIME,
+			finished_at DATETIME,
+			duration_ms INTEGER,
+			exit_code INTEGER,
+			stdout TEXT,
+			stderr TEXT,
+			error TEXT,
+			retry_count INTEGER DEFAULT 0,
+			UNIQUE(run_id, node_id, step_index)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_step_states_run ON playbook_step_states(run_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_step_states_node ON playbook_step_states(run_id, node_id);`,
 	}
 
 	for _, schema := range schemas {
