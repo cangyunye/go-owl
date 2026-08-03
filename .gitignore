@@ -11,3 +11,5 @@ build/*
 .trae/
 admin.txt
 frontend-design/
+owl-serve
+
