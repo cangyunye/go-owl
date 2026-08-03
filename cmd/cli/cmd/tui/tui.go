@@ -7,25 +7,16 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 func NewTuiCmd() *cobra.Command {
 	tuiCmd := &cobra.Command{
 		Use:   "tui",
-		Short: "启动交互式终端用户界面",
-		Long: `启动 owl 工具的交互式终端用户界面（TUI）。
-
-通过 TUI，您可以：
-- 管理节点
-- 执行批量命令
-- 传输文件
-- 运行剧本
-- 使用 AI 助手
-- 管理会话
-
-示例：
-  owl tui`,
-		Run: runTui,
+		Short: i18n.T("tui.cmd.short"),
+		Long:  i18n.T("tui.cmd.long"),
+		Run:   runTui,
 	}
 
 	return tuiCmd

@@ -10,6 +10,7 @@ import (
 
 	common "github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/control/async"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 var (
@@ -19,15 +20,8 @@ var (
 func NewAsyncCmd() *cobra.Command {
 	asyncCmd := &cobra.Command{
 		Use:   "async",
-		Short: "管理异步任务",
-		Long: `管理异步执行的任务，包括查看状态、等待完成、取消任务等操作。
-
-示例：
-  owl async list
-  owl async status <task-id>
-  owl async wait <task-id>
-  owl async cancel <task-id>
-  owl async cleanup`,
+		Short: i18n.T("async.cmd.short"),
+		Long:  i18n.T("async.cmd.long"),
 	}
 
 	asyncCmd.AddCommand(NewListCmd())
@@ -42,19 +36,19 @@ func NewAsyncCmd() *cobra.Command {
 func NewListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "列出所有异步任务",
+		Short: i18n.T("async.list.short"),
 		Run: func(cmd *cobra.Command, args []string) {
 			manager := async.NewAsyncTaskManager(nil)
 			tasks := manager.ListTasks()
 
 			if len(tasks) == 0 {
-				fmt.Println("没有正在运行的异步任务")
+				fmt.Println(i18n.T("async.list.no_tasks"))
 				return
 			}
 
 			fmt.Printf("%s %s %s %s\n",
-				common.PadRight("任务ID", 36), common.PadRight("节点", 15),
-				common.PadRight("状态", 10), common.PadRight("启动时间", 20))
+				common.PadRight(i18n.T("async.list.col_task_id"), 36), common.PadRight(i18n.T("async.list.col_node"), 15),
+				common.PadRight(i18n.T("async.list.col_status"), 10), common.PadRight(i18n.T("async.list.col_start_time"), 20))
 			fmt.Println(strings.Repeat("-", 86))
 
 			for _, task := range tasks {
@@ -71,7 +65,7 @@ func NewListCmd() *cobra.Command {
 func NewStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status <task-id>",
-		Short: "查看任务状态",
+		Short: i18n.T("async.status.short"),
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			taskID := args[0]
@@ -79,31 +73,31 @@ func NewStatusCmd() *cobra.Command {
 			task := manager.GetTask(taskID)
 
 			if task == nil {
-				fmt.Printf("未找到任务: %s\n", taskID)
+				fmt.Printf("%s", i18n.T("async.status.not_found", taskID))
 				return
 			}
 
-			fmt.Printf("任务 ID: %s\n", task.ID)
-			fmt.Printf("节点: %s\n", task.NodeID)
-			fmt.Printf("命令: %s\n", task.Command)
-			fmt.Printf("状态: %s\n", task.Status)
-			fmt.Printf("启动时间: %s\n", task.StartTime.Format("2006-01-02 15:04:05"))
+			fmt.Printf("%s", i18n.T("async.status.task_id", task.ID))
+			fmt.Printf("%s", i18n.T("async.status.node", task.NodeID))
+			fmt.Printf("%s", i18n.T("async.status.command", task.Command))
+			fmt.Printf("%s", i18n.T("async.status.status", task.Status))
+			fmt.Printf("%s", i18n.T("async.status.start_time", task.StartTime.Format("2006-01-02 15:04:05")))
 
 			if !task.EndTime.IsZero() {
-				fmt.Printf("结束时间: %s\n", task.EndTime.Format("2006-01-02 15:04:05"))
-				fmt.Printf("执行时长: %v\n", task.Duration())
+				fmt.Printf("%s", i18n.T("async.status.end_time", task.EndTime.Format("2006-01-02 15:04:05")))
+				fmt.Printf("%s", i18n.T("async.status.duration", i18n.F(task.Duration())))
 			}
 
 			if task.Pid > 0 {
-				fmt.Printf("进程 PID: %d\n", task.Pid)
+				fmt.Printf("%s", i18n.T("async.status.pid", i18n.F(task.Pid)))
 			}
 
 			if task.ExitCode != 0 {
-				fmt.Printf("退出码: %d\n", task.ExitCode)
+				fmt.Printf("%s", i18n.T("async.status.exit_code", i18n.F(task.ExitCode)))
 			}
 
 			if task.Error != nil {
-				fmt.Printf("错误: %v\n", task.Error)
+				fmt.Printf("%s", i18n.T("async.status.error", task.Error))
 			}
 		},
 	}
@@ -112,7 +106,7 @@ func NewStatusCmd() *cobra.Command {
 func NewWaitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "wait <task-id>",
-		Short: "等待任务完成",
+		Short: i18n.T("async.wait.short"),
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			taskID := args[0]
@@ -120,16 +114,16 @@ func NewWaitCmd() *cobra.Command {
 			task := manager.GetTask(taskID)
 
 			if task == nil {
-				fmt.Printf("未找到任务: %s\n", taskID)
+				fmt.Printf("%s", i18n.T("async.status.not_found", taskID))
 				return
 			}
 
 			if task.IsCompleted() {
-				fmt.Printf("任务 %s 已完成，状态: %s\n", taskID, task.Status)
+				fmt.Printf("%s", i18n.T("async.wait.completed", taskID, task.Status))
 				return
 			}
 
-			fmt.Printf("等待任务 %s 完成...\n", taskID)
+			fmt.Printf("%s", i18n.T("async.wait.waiting", taskID))
 
 			pollInterval := asyncPollInterval
 			if pollInterval == 0 {
@@ -144,32 +138,32 @@ func NewWaitCmd() *cobra.Command {
 				case <-ticker.C:
 					task = manager.GetTask(taskID)
 					if task == nil {
-						fmt.Println("任务已被移除")
+						fmt.Println(i18n.T("async.wait.removed"))
 						return
 					}
 
 					if task.IsCompleted() {
-						fmt.Printf("任务 %s 完成，状态: %s\n", taskID, task.Status)
+						fmt.Printf("%s", i18n.T("async.wait.done", taskID, task.Status))
 						if task.Error != nil {
-							fmt.Printf("错误: %v\n", task.Error)
+							fmt.Printf("%s", i18n.T("async.status.error", task.Error))
 						}
 						return
 					}
 
-					fmt.Printf("状态: %s (运行中...)\n", task.Status)
+					fmt.Printf("%s", i18n.T("async.wait.status_running", task.Status))
 				}
 			}
 		},
 	}
 
-	cmd.Flags().DurationVar(&asyncPollInterval, "poll-interval", 10*time.Second, "轮询间隔")
+	cmd.Flags().DurationVar(&asyncPollInterval, "poll-interval", 10*time.Second, i18n.T("async.wait.flag_poll_interval"))
 	return cmd
 }
 
 func NewCancelCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "cancel <task-id>",
-		Short: "取消任务",
+		Short: i18n.T("async.cancel.short"),
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			taskID := args[0]
@@ -177,11 +171,11 @@ func NewCancelCmd() *cobra.Command {
 
 			err := manager.CancelTask(taskID)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "取消任务失败: %v\n", err)
+				fmt.Fprintf(os.Stderr, "%s", i18n.T("async.cancel.failed", err))
 				os.Exit(1)
 			}
 
-			fmt.Printf("任务 %s 已取消\n", taskID)
+			fmt.Printf("%s", i18n.T("async.cancel.done", taskID))
 		},
 	}
 }
@@ -189,11 +183,11 @@ func NewCancelCmd() *cobra.Command {
 func NewCleanupCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "cleanup",
-		Short: "清理已完成的任务",
+		Short: i18n.T("async.cleanup.short"),
 		Run: func(cmd *cobra.Command, args []string) {
 			manager := async.NewAsyncTaskManager(nil)
 			manager.CleanupCompletedTasks()
-			fmt.Println("已清理已完成的任务")
+			fmt.Println(i18n.T("async.cleanup.done"))
 		},
 	}
 }
