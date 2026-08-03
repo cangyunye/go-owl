@@ -8,7 +8,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func writeTestNodesJSONCmd(t *testing.T, dir string, nodes []*common.NodeInfo) string {
