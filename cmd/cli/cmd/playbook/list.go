@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	common "github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // playbookListFlags
@@ -22,20 +23,15 @@ var (
 func NewPlaybookListCmd() *cobra.Command {
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "列出剧本",
-		Long: `列出所有可用的剧本文件。
-
-示例：
-  owl playbook list
-  owl playbook list --library ./playbooks/
-  owl playbook list --library /etc/owl/playbooks/ -o json`,
-		Run: runPlaybookList,
+		Short: i18n.T("playbook.list.short"),
+		Long:  i18n.T("playbook.list.long"),
+		Run:   runPlaybookList,
 	}
 
 	listCmd.Flags().StringVar(&playbookListLibrary, "library", "",
-		"剧本库目录 (default: ~/.owl/playbooks)")
+		i18n.T("playbook.list.flag_library"))
 	listCmd.Flags().StringVarP(&playbookListFormat, "output", "o", "table",
-		"输出格式: table, json, yaml")
+		i18n.T("playbook.list.flag_format"))
 
 	return listCmd
 }

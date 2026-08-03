@@ -6,12 +6,14 @@ import (
 
 	pb "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/spf13/cobra"
+
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 func NewPlaybookTemplateListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "列出可用模板",
+		Short: i18n.T("playbook.template.list.short"),
 		Run:   runTemplateList,
 	}
 }
@@ -19,27 +21,27 @@ func NewPlaybookTemplateListCmd() *cobra.Command {
 func runTemplateList(cmd *cobra.Command, args []string) {
 	entries, err := pb.LoadTemplates("")
 	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "加载模板失败: %v\n", err)
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.template.list.err_load", err))
 		return
 	}
 
-	fmt.Fprintln(cmd.OutOrStdout(), "可用的 Playbook 模板：")
+	fmt.Fprintln(cmd.OutOrStdout(), i18n.T("playbook.template.list.title"))
 	fmt.Fprintln(cmd.OutOrStdout())
 
 	builtinByCategory := groupByCategory(filterBySource(entries, "builtin"))
 	userByCategory := groupByCategory(filterBySource(entries, "user"))
 
-	fmt.Fprintln(cmd.OutOrStdout(), "📦 内置模板:")
+	fmt.Fprintln(cmd.OutOrStdout(), i18n.T("playbook.template.list.builtin"))
 	if len(builtinByCategory) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "  (空)")
+		fmt.Fprintln(cmd.OutOrStdout(), i18n.T("playbook.template.list.empty"))
 	} else {
 		printCategories(cmd, builtinByCategory)
 	}
 
 	fmt.Fprintln(cmd.OutOrStdout())
-	fmt.Fprintln(cmd.OutOrStdout(), "👤 用户模板:")
+	fmt.Fprintln(cmd.OutOrStdout(), i18n.T("playbook.template.list.user"))
 	if len(userByCategory) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "  (空)")
+		fmt.Fprintln(cmd.OutOrStdout(), i18n.T("playbook.template.list.empty"))
 	} else {
 		printCategories(cmd, userByCategory)
 	}

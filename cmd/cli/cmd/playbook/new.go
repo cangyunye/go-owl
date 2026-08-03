@@ -9,6 +9,8 @@ import (
 
 	pb "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/spf13/cobra"
+
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 var (
@@ -20,18 +22,14 @@ var (
 func NewPlaybookNewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "new",
-		Short: "从模板创建 Playbook",
-		Long: `从模板创建 Playbook 文件。
-
-示例：
-  owl playbook new --from=utility/healthcheck/http --var url=http://example.com
-  owl playbook new --from=utility/healthcheck/http -o ./my-check.yaml`,
-		Run: runPlaybookNew,
+		Short: i18n.T("playbook.new.short"),
+		Long:  i18n.T("playbook.new.long"),
+		Run:   runPlaybookNew,
 	}
 
-	cmd.Flags().StringVar(&pbNewFrom, "from", "", "模板名称（必填）")
-	cmd.Flags().StringArrayVar(&pbNewVars, "var", nil, "参数值 (key=value)，可多次指定")
-	cmd.Flags().StringVarP(&pbNewOutput, "output", "o", "", "输出文件路径（默认: ./playbooks/<模板名>.yaml）")
+	cmd.Flags().StringVar(&pbNewFrom, "from", "", i18n.T("playbook.new.flag_from"))
+	cmd.Flags().StringArrayVar(&pbNewVars, "var", nil, i18n.T("playbook.new.flag_var"))
+	cmd.Flags().StringVarP(&pbNewOutput, "output", "o", "", i18n.T("playbook.new.flag_output"))
 
 	_ = cmd.MarkFlagRequired("from")
 
@@ -41,13 +39,13 @@ func NewPlaybookNewCmd() *cobra.Command {
 func runPlaybookNew(cmd *cobra.Command, args []string) {
 	entry, err := pb.GetTemplate(pbNewFrom, "")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err", err))
 		os.Exit(1)
 	}
 
 	meta, err := pb.ParseTemplateMeta(entry.Content)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err", err))
 		os.Exit(1)
 	}
 
@@ -57,26 +55,26 @@ func runPlaybookNew(cmd *cobra.Command, args []string) {
 
 	validated, err := pb.ValidateParams(meta.Parameters, provided)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err", err))
 		os.Exit(1)
 	}
 
 	rendered, err := pb.Instantiate(entry.Content, validated)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err", err))
 		os.Exit(1)
 	}
 
 	outputPath := determineNewOutputPath(pbNewFrom, pbNewOutput)
 
 	if err := savePlaybookFile(outputPath, rendered); err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err", err))
 		os.Exit(1)
 	}
 
-	fmt.Printf("✅ Playbook 已创建: %s\n", outputPath)
-	fmt.Println("💡 执行命令:")
-	fmt.Printf("   owl playbook run %s --nodes <节点> --dry-run\n", outputPath)
+	fmt.Printf("%s", i18n.T("playbook.new.ok_created", outputPath))
+	fmt.Println(i18n.T("playbook.new.hint_command"))
+	fmt.Printf("%s", i18n.T("playbook.new.run_hint", outputPath))
 }
 
 func parseVarFlags(vars []string) map[string]interface{} {
@@ -84,7 +82,7 @@ func parseVarFlags(vars []string) map[string]interface{} {
 	for _, v := range vars {
 		parts := strings.SplitN(v, "=", 2)
 		if len(parts) != 2 || parts[0] == "" {
-			fmt.Fprintf(os.Stderr, "错误: 无效的参数格式: %q（应为 key=value）\n", v)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err_var_invalid", v))
 			os.Exit(1)
 		}
 		provided[parts[0]] = parts[1]
@@ -99,18 +97,18 @@ func promptForMissingParams(params []pb.TemplateParameter, provided map[string]i
 			continue
 		}
 
-		prompt := fmt.Sprintf("参数 %s", p.Name)
+		prompt := i18n.T("playbook.new.prompt_param", p.Name)
 		if p.Description != "" {
-			prompt += fmt.Sprintf("（%s）", p.Description)
+			prompt += i18n.T("playbook.new.prompt_param_desc", p.Description)
 		}
 		if p.Default != nil {
-			prompt += fmt.Sprintf(" [默认: %v]", p.Default)
+			prompt += i18n.T("playbook.new.prompt_param_default", p.Default)
 		}
 		fmt.Printf("%s: ", prompt)
 
 		input, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err_read", err))
 			os.Exit(1)
 		}
 		if val := strings.TrimSpace(input); val != "" {

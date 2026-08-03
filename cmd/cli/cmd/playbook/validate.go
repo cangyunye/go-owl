@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	pbexec "github.com/cangyunye/go-owl/internal/control/playbook"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // ValidationResult 表示一个文件的验证结果
@@ -21,15 +22,10 @@ type ValidationResult struct {
 func NewPlaybookValidateCmd() *cobra.Command {
 	validateCmd := &cobra.Command{
 		Use:   "validate [playbook-files...]",
-		Short: "验证剧本语法",
-		Long: `验证 Ansible 风格剧本的 YAML 语法。
-
-示例：
-  owl playbook validate site.yml
-  owl playbook validate ./playbooks/*.yml
-  owl playbook validate a.yml b.yml`,
-		Args: cobra.ArbitraryArgs,
-		Run:  runPlaybookValidate,
+		Short: i18n.T("playbook.validate.short"),
+		Long:  i18n.T("playbook.validate.long"),
+		Args:  cobra.ArbitraryArgs,
+		Run:   runPlaybookValidate,
 	}
 
 	return validateCmd
@@ -37,10 +33,10 @@ func NewPlaybookValidateCmd() *cobra.Command {
 
 func runPlaybookValidate(cmd *cobra.Command, args []string) {
 	if len(args) == 0 {
-		fmt.Println("用法: owl playbook validate <playbook-file> [files...]")
+		fmt.Println(i18n.T("playbook.validate.usage"))
 		fmt.Println()
-		fmt.Println("请指定要验证的 playbook 文件路径")
-		fmt.Println("示例:")
+		fmt.Println(i18n.T("playbook.validate.prompt"))
+		fmt.Println(i18n.T("playbook.validate.examples"))
 		fmt.Println("  owl playbook validate site.yml")
 		fmt.Println("  owl playbook validate ./playbooks/*.yml")
 		fmt.Println("  owl playbook validate a.yml b.yml")
@@ -69,9 +65,9 @@ func runPlaybookValidate(cmd *cobra.Command, args []string) {
 	hasError := false
 	for _, r := range results {
 		if r.Valid {
-			fmt.Printf("  ✅ %s: 有效\n", r.File)
+			fmt.Printf("%s", i18n.T("playbook.validate.valid", r.File))
 		} else {
-			fmt.Printf("  ❌ %s: %v\n", r.File, r.Error)
+			fmt.Printf("%s", i18n.T("playbook.validate.invalid", r.File, r.Error))
 			hasError = true
 		}
 	}
