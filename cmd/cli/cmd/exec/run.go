@@ -19,6 +19,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
+	nodeselect "github.com/cangyunye/go-owl/internal/node/select"
 	"github.com/cangyunye/go-owl/internal/ssh"
 
 	"github.com/cangyunye/go-owl/internal/i18n"
@@ -134,37 +135,29 @@ func runExecRun(cmd *cobra.Command, args []string) {
 
 	var targetNodeIDs []string
 
-	if execNodes != "" {
-		targetNodeIDs = parseNodeList(execNodes)
-	} else if len(execGroup) > 0 {
-		nodes, err := node.ListNodesByGroups(nodeResolver, execGroup)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s", i18n.T("exec.run.err_list", err))
-			os.Exit(1)
+	selector := nodeselect.NewSelector(nodeselect.NewResolverSource(nodeResolver))
+	selectOpts := nodeselect.SelectOptions{}
+	switch {
+	case execNodes != "":
+		selectOpts.NodeIDs = parseNodeList(execNodes)
+	case len(execGroup) > 0:
+		selectOpts.Groups = execGroup
+	case len(execLabel) > 0:
+		labels := make(map[string]string)
+		if k, v, ok := strings.Cut(execLabel[0], "="); ok {
+			labels[k] = v
+		} else {
+			labels[execLabel[0]] = ""
 		}
-		for _, n := range nodes {
-			targetNodeIDs = append(targetNodeIDs, n.ID)
-		}
-	} else if len(execLabel) > 0 {
-		nodes, err := nodeResolver.ListNodes(&node.ListOptions{
-			Label: execLabel[0],
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s", i18n.T("exec.run.err_list", err))
-			os.Exit(1)
-		}
-		for _, n := range nodes {
-			targetNodeIDs = append(targetNodeIDs, n.ID)
-		}
-	} else {
-		nodes, err := nodeResolver.ListNodes(&node.ListOptions{})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s", i18n.T("exec.run.err_list", err))
-			os.Exit(1)
-		}
-		for _, n := range nodes {
-			targetNodeIDs = append(targetNodeIDs, n.ID)
-		}
+		selectOpts.Labels = labels
+	}
+	selected, err := selector.Select(context.Background(), selectOpts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("exec.run.err_list", err))
+		os.Exit(1)
+	}
+	for _, n := range selected {
+		targetNodeIDs = append(targetNodeIDs, n.ID)
 	}
 
 	if len(targetNodeIDs) == 0 {
