@@ -11,10 +11,10 @@ import (
 
 // SSHAuthError SSH 认证失败错误
 type SSHAuthError struct {
-	ExitCode  int
-	NodeID    string
-	Stderr    string
-	Cause     error
+	ExitCode int
+	NodeID   string
+	Stderr   string
+	Cause    error
 }
 
 func (e *SSHAuthError) Error() string {
@@ -44,7 +44,8 @@ func NewNodeExecutorFactoryWithSSHConfig(sshConfigPath string) *NodeExecutorFact
 
 // GetExecutorForNode 获取适合指定节点的执行器
 // 默认使用基于 crypto/ssh 的原生执行器（支持密钥优先、密码兜底）
-func (f *NodeExecutorFactory) GetExecutorForNode(nodeID, nodeAddress string, nodePort int, nodeUser, nodeKeyFile, nodePassword string) (NodeExecutor, error) {
+// proxyJump 非空时，执行器会先连跳板机再转发到目标节点
+func (f *NodeExecutorFactory) GetExecutorForNode(nodeID, nodeAddress string, nodePort int, nodeUser, nodeKeyFile, nodePassword, proxyJump string) (NodeExecutor, error) {
 	// 1. 如果是本地节点（127.0.0.1 或 localhost），使用本地执行器
 	if isLocalNode(nodeAddress) {
 		return &LocalNodeExecutor{}, nil
@@ -54,6 +55,9 @@ func (f *NodeExecutorFactory) GetExecutorForNode(nodeID, nodeAddress string, nod
 	connInfo, err := ResolveConnection(nodeID, nodeAddress, nodePort, nodeUser, nodeKeyFile, nodePassword, f.sshConfigPath)
 	if err != nil {
 		return nil, err
+	}
+	if proxyJump != "" {
+		connInfo.ProxyJump = proxyJump
 	}
 
 	// 3. 返回基于 crypto/ssh 的原生执行器
