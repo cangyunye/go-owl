@@ -245,6 +245,9 @@ func (e *WebExecutor) ExecuteScript(ctx context.Context, params ai2.ExecScriptPa
 		dest = "/tmp"
 	}
 	scriptName := "ai-script.sh"
+	if err := validateScriptTarget(dest, scriptName); err != nil {
+		return &ai2.ExecScriptResult{Text: err.Error()}, nil
+	}
 	execCmd := buildExecCommand("", ExecConfig{
 		ScriptContent: params.Script,
 		ScriptName:    scriptName,

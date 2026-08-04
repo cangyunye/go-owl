@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -156,6 +157,28 @@ func resolveNodeIDs(ctx context.Context, db *sql.DB, req execRequest) ([]string,
 	return ids, nil
 }
 
+// loadNodeUsers 加载节点 user 映射；Scan/rows.Err 出错即返回错误，
+// fail-closed：部分节点 user 缺失会导致 root 作用域黑名单规则失效。
+func loadNodeUsers(ctx context.Context, db *sql.DB) (map[string]string, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id, user FROM nodes`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	users := map[string]string{}
+	for rows.Next() {
+		var id, user string
+		if err := rows.Scan(&id, &user); err != nil {
+			return nil, err
+		}
+		users[id] = user
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
 func resolveScriptContent(req execRequest) (content string, name string, err error) {
 	if req.ScriptContent != "" {
 		name = req.ScriptName
@@ -219,6 +242,15 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		scriptContent = content
 		scriptName = name
 		command = "script: " + name
+
+		scriptDest := req.ScriptDest
+		if scriptDest == "" {
+			scriptDest = "/tmp"
+		}
+		if err := validateScriptTarget(scriptDest, scriptName); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+			return
+		}
 	} else {
 		if command == "" && req.ScriptContent != "" {
 			command = req.ScriptContent
@@ -230,25 +262,16 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	}
 
 	checkCmd := command
+	checkArgs := ""
 	if isScript {
 		checkCmd = scriptContent
-		if req.ScriptArgs != "" {
-			checkCmd += " " + req.ScriptArgs
-		}
+		checkArgs = req.ScriptArgs
 	}
-	users := map[string]string{}
-	rows, err := h.db.QueryContext(c.Request.Context(), `SELECT id, user FROM nodes`)
+	users, err := loadNodeUsers(c.Request.Context(), h.db)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query node users failed: " + err.Error()})
 		return
 	}
-	for rows.Next() {
-		var id, user string
-		if rows.Scan(&id, &user) == nil {
-			users[id] = user
-		}
-	}
-	rows.Close()
 
 	type blockedMatch struct {
 		Node    string `json:"node"`
@@ -264,6 +287,14 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		if err != nil {
 			for _, m := range result.Matches {
 				blocked = append(blocked, blockedMatch{Node: nid, Pattern: m.Pattern, Line: m.Line})
+			}
+		}
+		if checkArgs != "" {
+			result, err = h.checker.CheckForExec(users[nid], checkArgs, req.DangerConfirmed)
+			if err != nil {
+				for _, m := range result.Matches {
+					blocked = append(blocked, blockedMatch{Node: nid, Pattern: m.Pattern, Line: m.Line})
+				}
 			}
 		}
 	}
@@ -581,6 +612,26 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 	if h.hub != nil {
 		h.hub.BroadcastTaskUpdate(task)
 	}
+}
+
+var (
+	scriptDestRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+	scriptNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+)
+
+// validateScriptTarget 校验 script_dest/script_name 仅含白名单字符，
+// 防止未加引号拼入 shell 命令时注入元字符（如 ; | $()）。
+func validateScriptTarget(dest, name string) error {
+	if !strings.HasPrefix(dest, "/") || !scriptDestRe.MatchString(dest) {
+		return fmt.Errorf("invalid script_dest %q: must be an absolute path containing only [A-Za-z0-9._/-]", dest)
+	}
+	if strings.Contains(dest, "..") {
+		return fmt.Errorf("invalid script_dest %q: \"..\" is not allowed", dest)
+	}
+	if !scriptNameRe.MatchString(name) || name == "." || name == ".." {
+		return fmt.Errorf("invalid script_name %q: only [A-Za-z0-9._-] allowed", name)
+	}
+	return nil
 }
 
 func buildExecCommand(command string, cfg ExecConfig) string {

