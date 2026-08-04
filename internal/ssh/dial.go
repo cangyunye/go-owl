@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	gossh "golang.org/x/crypto/ssh"
@@ -62,7 +63,6 @@ func Dial(ctx context.Context, addr string, opts DialOptions) (*Client, error) {
 		User:            opts.User,
 		Auth:            auths,
 		HostKeyCallback: gossh.InsecureIgnoreHostKey(),
-		Timeout:         timeout,
 	}
 
 	if opts.ProxyJump != "" {
@@ -85,7 +85,7 @@ func Dial(ctx context.Context, addr string, opts DialOptions) (*Client, error) {
 			jump.Close()
 			return nil, connErr(addr, fmt.Errorf("经跳板转发到 %s 失败: %w", addr, err))
 		}
-		target, err := newSSHClient(forwarded, addr, config)
+		target, err := newSSHClient(ctx, forwarded, addr, config, timeout)
 		if err != nil {
 			forwarded.Close()
 			jump.Close()
@@ -98,16 +98,73 @@ func Dial(ctx context.Context, addr string, opts DialOptions) (*Client, error) {
 	if err != nil {
 		return nil, connErr(addr, err)
 	}
-	client, err := newSSHClient(netConn, addr, config)
+	client, err := newSSHClient(ctx, netConn, addr, config, timeout)
 	if err != nil {
 		return nil, err
 	}
 	return &Client{Client: client}, nil
 }
 
-// newSSHClient 在已建立的传输连接上执行 SSH 握手并装配客户端
-func newSSHClient(netConn net.Conn, addr string, config *gossh.ClientConfig) (*gossh.Client, error) {
+// newSSHClient 在已建立的传输连接上执行 SSH 握手并装配客户端。
+// NewClientConn 本身不受 gossh.ClientConfig.Timeout 约束（该字段只作用于
+// gossh.Dial 的 TCP 拨号），因此在握手前对底层连接设置 deadline，将握手
+// 限制在 timeout 与 ctx deadline 的更早者之内；握手结束后清除 deadline，
+// 避免后续命令执行被误杀。
+func newSSHClient(ctx context.Context, netConn net.Conn, addr string, config *gossh.ClientConfig, timeout time.Duration) (*gossh.Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, connErr(addr, err)
+	}
+
+	deadline := time.Now().Add(timeout)
+	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
+	}
+
+	// 优先用连接 deadline 限制握手；部分连接（如跳板 direct-tcpip 通道）不支持
+	// deadline，退化为到期后关闭连接来中止握手。
+	hasDeadline := netConn.SetDeadline(deadline) == nil
+	abort := func() {
+		if hasDeadline {
+			_ = netConn.SetDeadline(time.Unix(1, 0))
+		} else {
+			_ = netConn.Close()
+		}
+	}
+
+	// 监听超时与 ctx 取消：一旦触发即中止阻塞中的握手读写。
+	var mu sync.Mutex
+	done := false
+	watchDone := make(chan struct{})
+	go func() {
+		var timerCh <-chan time.Time
+		if !hasDeadline {
+			timer := time.NewTimer(time.Until(deadline))
+			defer timer.Stop()
+			timerCh = timer.C
+		}
+		select {
+		case <-timerCh:
+		case <-ctx.Done():
+		case <-watchDone:
+			return
+		}
+		mu.Lock()
+		if !done {
+			abort()
+		}
+		mu.Unlock()
+	}()
+
 	conn, chans, reqs, err := gossh.NewClientConn(netConn, addr, config)
+
+	mu.Lock()
+	done = true
+	if hasDeadline {
+		_ = netConn.SetDeadline(time.Time{}) // 成功路径必须清除，否则后续命令执行会被 deadline 误杀
+	}
+	mu.Unlock()
+	close(watchDone)
+
 	if err != nil {
 		return nil, connErr(addr, err)
 	}

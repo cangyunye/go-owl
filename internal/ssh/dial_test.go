@@ -208,6 +208,86 @@ func TestDial_ConnectTimeout(t *testing.T) {
 	}
 }
 
+// startSilentTCPServer 启动一个只接受 TCP 连接、不发送任何数据也不关闭连接的
+// 假 server（模拟 sshd MaxStartups tarpit：TCP 连上但 SSH banner 永远不来）。
+func startSilentTCPServer(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { ln.Close() })
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				buf := make([]byte, 256)
+				for {
+					if _, err := c.Read(buf); err != nil {
+						return
+					}
+				}
+			}(conn)
+		}
+	}()
+	return ln.Addr().String()
+}
+
+func TestDial_HandshakeTimeout_NoBanner(t *testing.T) {
+	// TCP 可达但对端不发 SSH banner：Dial 应在约 ConnectTimeout 后返回错误而非挂起
+	addr := startSilentTCPServer(t)
+	start := time.Now()
+	_, err := Dial(context.Background(), addr, DialOptions{
+		User: "u", Password: "pass", ConnectTimeout: 500 * time.Millisecond,
+	})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected handshake timeout error, got nil")
+	}
+	if elapsed > 3*time.Second {
+		t.Fatalf("Dial hung too long: %v", elapsed)
+	}
+}
+
+func TestDial_ProxyJump_HandshakeTimeout_NoBanner(t *testing.T) {
+	// 经跳板转发到不发 banner 的目标：跳板转发路径同样受握手超时约束
+	jump := startSSHServer(t, true)
+	silent := startSilentTCPServer(t)
+	start := time.Now()
+	_, err := Dial(context.Background(), silent, DialOptions{
+		User: "u", Password: "pass", ProxyJump: jump, ConnectTimeout: 500 * time.Millisecond,
+	})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected handshake timeout error, got nil")
+	}
+	if elapsed > 3*time.Second {
+		t.Fatalf("Dial hung too long: %v", elapsed)
+	}
+}
+
+func TestDial_HandshakeCtxDeadline(t *testing.T) {
+	// ctx deadline 早于 ConnectTimeout 时应取更早者
+	addr := startSilentTCPServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := Dial(ctx, addr, DialOptions{
+		User: "u", Password: "pass", ConnectTimeout: 5 * time.Second,
+	})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected error when ctx deadline expires during handshake")
+	}
+	if elapsed > 3*time.Second {
+		t.Fatalf("Dial hung too long: %v", elapsed)
+	}
+}
+
 func TestDial_ProxyJump_NoPortDefaultsTo22(t *testing.T) {
 	// 隔离 HOME，避免本机 ~/.ssh 默认密钥意外对 127.0.0.1:22 认证成功
 	t.Setenv("HOME", t.TempDir())
