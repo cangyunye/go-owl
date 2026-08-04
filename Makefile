@@ -1,7 +1,14 @@
 # go-owl Makefile —— 组件化跨平台构建
 #
-# 组件: owl CLI（核心，必编）+ 可选追加 serve / metrics / tui / gscp
-# 全部组件均为纯 Go（CGO_ENABLED=0），任意平台可交叉编译。
+# make build 只编译纯的 owl CLI 核心功能：零外部依赖（不依赖兄弟目录、
+# 不需要网络），离线仓库可直接编译。全部目标均为纯 Go（CGO_ENABLED=0），
+# 任意平台可交叉编译。
+#
+# serve / metrics / tui / gscp 均为可选插件，仅通过 WITH= 或专用目标显式编译：
+#   serve   无附加要求（仓库内 cmd/owl-serve）
+#   metrics 需兄弟目录 ../go-owl-metrics（经 metrics.work 引入，不写入 go.mod）
+#   tui     需兄弟目录 ../go-owl-tui（可 TUI_SRC= 指定，否则克隆 TUI_REPO）
+#   gscp    克隆 GSCP_REPO（或 build/local-gscp GSCP_LOCAL= 指定本地源码）
 #
 # 常用:
 #   make build                                   # 当前平台 owl CLI
@@ -38,25 +45,30 @@ GSCP_SRC  := $(BUILD_DIR)/.gscp-src
 TUI_SRC   ?= ../go-owl-tui
 TUI_REPO  ?= https://github.com/cangyunye/go-owl-tui.git
 TUI_CLONE := $(BUILD_DIR)/.tui-src
+# metrics 为可选插件：不写入 go.mod，仅在显式启用时经 metrics.work 引入兄弟目录源码
+METRICS_SRC  ?= ../go-owl-metrics
+METRICS_WORK := $(CURDIR)/metrics.work
+metrics_check = @if [ ! -d '$(METRICS_SRC)' ]; then echo 'metrics 需要兄弟目录 $(METRICS_SRC)（可选插件，默认不编译）'; exit 1; fi
 
 .PHONY: build build/all build-serve build-metrics build-tui build-gscp build/local-gscp \
 	install install-gscp clean test test-unit test-integration test-quick test-coverage \
 	fmt lint vet help
 
-# 通用跨平台编译: $(1)=附加编译参数 $(2)=包路径 $(3)=二进制名
+# 通用跨平台编译: $(1)=附加编译参数 $(2)=包路径 $(3)=二进制名 $(4)=附加环境变量
 define cross_build
 	@set -e; for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; ext=; \
 		if [ "$$os" = windows ]; then ext=.exe; fi; \
 		mkdir -p $(BUILD_DIR)/$$os-$$arch; \
 		printf '==> %-10s %s\n' '$(3)' "$$p"; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build $(1) -o $(BUILD_DIR)/$$os-$$arch/$(3)$$ext $(2); \
+		CGO_ENABLED=0 $(4) GOOS=$$os GOARCH=$$arch $(GO) build $(1) -o $(BUILD_DIR)/$$os-$$arch/$(3)$$ext $(2); \
 	done
 endef
 
-build: ## 编译 owl CLI；WITH=serve,metrics,tui,gscp 追加组件
+build: ## 编译 owl CLI（纯核心）；WITH=serve,metrics,tui,gscp 追加组件
 ifneq (,$(filter metrics,$(COMPS)))
-	$(call cross_build,-tags metrics $(LDFLAGS),$(CLI_MAIN),owl)
+	$(metrics_check)
+	$(call cross_build,-tags metrics $(LDFLAGS),$(CLI_MAIN),owl,GOWORK=$(METRICS_WORK))
 else
 	$(call cross_build,$(LDFLAGS),$(CLI_MAIN),owl)
 endif
@@ -76,8 +88,9 @@ build/all: ## 全部平台 × 全部组件
 build-serve: ## 编译 Web 控制台 owl-serve（纯 Go，可交叉编译）
 	$(call cross_build,,$(SERVE_MAIN),owl-serve)
 
-build-metrics: ## 编译带 metrics 功能的 owl CLI（需兄弟目录 ../go-owl-metrics）
-	$(call cross_build,-tags metrics $(LDFLAGS),$(CLI_MAIN),owl)
+build-metrics: ## 编译带 metrics 功能的 owl CLI（可选插件，需兄弟目录 ../go-owl-metrics）
+	$(metrics_check)
+	$(call cross_build,-tags metrics $(LDFLAGS),$(CLI_MAIN),owl,GOWORK=$(METRICS_WORK))
 
 build-tui: ## 编译 owl-tui（默认源码 ../go-owl-tui，可 TUI_SRC= 覆盖；缺失时克隆 TUI_REPO）
 	@set -e; src=$(TUI_SRC); \

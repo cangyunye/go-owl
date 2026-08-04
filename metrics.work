@@ -1,0 +1,10 @@
+go 1.26.0
+
+// metrics 组件专用工作区：仅在 make build WITH=metrics / build-metrics 时通过
+// GOWORK=metrics.work 启用，保证默认构建不依赖兄弟目录 ../go-owl-metrics。
+use (
+	.
+	./cmd/plugins/serve
+	./cmd/owl-serve
+	../go-owl-metrics
+)
