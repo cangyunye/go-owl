@@ -11,6 +11,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	pb "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
@@ -23,10 +24,11 @@ type PlaybookHandler struct {
 	nodes     *store.NodeStore
 	hub       *WSHub
 	History   *store.HistoryStore
+	checker   *blacklist.Checker
 }
 
 func NewPlaybookHandler(db *sql.DB, ps *store.PlaybookStore, rs *store.PlaybookRunStore, ns *store.NodeStore, hub *WSHub) *PlaybookHandler {
-	return &PlaybookHandler{db: db, playbooks: ps, runs: rs, nodes: ns, hub: hub}
+	return &PlaybookHandler{db: db, playbooks: ps, runs: rs, nodes: ns, hub: hub, checker: newBlacklistChecker()}
 }
 
 type refreshRequest struct {
@@ -34,15 +36,15 @@ type refreshRequest struct {
 }
 
 type createTemplateRequest struct {
-	Name          string                 `json:"name"`
-	Description   string                 `json:"description,omitempty"`
-	Version       string                 `json:"version,omitempty"`
-	ExecutionMode string                 `json:"execution_mode,omitempty"`
-	Vars          map[string]interface{} `json:"vars,omitempty"`
-	DefaultGroups   []string             `json:"default_groups,omitempty"`
-	DefaultTags     []string             `json:"default_tags,omitempty"`
-	DefaultSkipTags []string             `json:"default_skip_tags,omitempty"`
-	Tasks         []createTemplateTask   `json:"tasks"`
+	Name            string                 `json:"name"`
+	Description     string                 `json:"description,omitempty"`
+	Version         string                 `json:"version,omitempty"`
+	ExecutionMode   string                 `json:"execution_mode,omitempty"`
+	Vars            map[string]interface{} `json:"vars,omitempty"`
+	DefaultGroups   []string               `json:"default_groups,omitempty"`
+	DefaultTags     []string               `json:"default_tags,omitempty"`
+	DefaultSkipTags []string               `json:"default_skip_tags,omitempty"`
+	Tasks           []createTemplateTask   `json:"tasks"`
 }
 
 type createTemplateTask struct {
@@ -195,10 +197,11 @@ func (h *PlaybookHandler) GetFile(c *gin.Context) {
 }
 
 type runRequest struct {
-	TargetNodes []string          `json:"target_nodes"`
-	Groups      []string          `json:"groups,omitempty"`
-	ExtraVars   map[string]string `json:"extra_vars,omitempty"`
-	Tags        string            `json:"tags,omitempty"`
+	TargetNodes     []string          `json:"target_nodes"`
+	Groups          []string          `json:"groups,omitempty"`
+	ExtraVars       map[string]string `json:"extra_vars,omitempty"`
+	Tags            string            `json:"tags,omitempty"`
+	DangerConfirmed bool              `json:"danger_confirmed,omitempty"`
 }
 
 func (h *PlaybookHandler) Run(c *gin.Context) {
@@ -233,7 +236,7 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 		return
 	}
 
-	run, err := h.runs.Create(c.Request.Context(), pb.ID, pb.Name, pb.FilePath, req.TargetNodes, req.ExtraVars, req.Tags)
+	run, err := h.runs.Create(c.Request.Context(), pb.ID, pb.Name, pb.FilePath, req.TargetNodes, req.ExtraVars, req.Tags, req.DangerConfirmed)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "create run failed"})
 		return
@@ -345,10 +348,10 @@ func (h *PlaybookHandler) executePlaybookRun(runID string) {
 	}
 
 	var pbDef struct {
-		Name      string                     `yaml:"name"`
-		PreTasks  []map[string]interface{}   `yaml:"pre_tasks"`
-		Tasks     []map[string]interface{}   `yaml:"tasks"`
-		PostTasks []map[string]interface{}   `yaml:"post_tasks"`
+		Name      string                   `yaml:"name"`
+		PreTasks  []map[string]interface{} `yaml:"pre_tasks"`
+		Tasks     []map[string]interface{} `yaml:"tasks"`
+		PostTasks []map[string]interface{} `yaml:"post_tasks"`
 	}
 	if err := yaml.Unmarshal(data, &pbDef); err != nil {
 		h.runs.UpdateStatus(ctx, runID, model.RunStatusFailed, "parse playbook failed: "+err.Error())

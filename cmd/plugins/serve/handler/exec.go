@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	nodeselect "github.com/cangyunye/go-owl/internal/node/select"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -37,33 +38,45 @@ type ExecHandler struct {
 	exec    Executor
 	hub     *WSHub
 	History *store.HistoryStore
+	checker *blacklist.Checker
+}
+
+func newBlacklistChecker() *blacklist.Checker {
+	cfg, err := blacklist.LoadConfig()
+	if err != nil {
+		log.Printf("load blacklist config: %v (using defaults)", err)
+		cfg = &blacklist.Config{Rules: blacklist.DefaultRules()}
+	}
+	return blacklist.NewChecker(cfg)
 }
 
 func NewExecHandler(db *sql.DB, ts *store.TaskStore, hub *WSHub) *ExecHandler {
 	return &ExecHandler{
-		db:   db,
-		task: ts,
-		exec: &sshExecutor{db: db},
-		hub:  hub,
+		db:      db,
+		task:    ts,
+		exec:    &sshExecutor{db: db},
+		hub:     hub,
+		checker: newBlacklistChecker(),
 	}
 }
 
 type execRequest struct {
-	NodeID        string            `json:"node_id"`
-	NodeIDs       []string          `json:"node_ids"`
-	Mode          string            `json:"mode"`
-	Command       string            `json:"command"`
-	ScriptContent string            `json:"script_content"`
-	ScriptName    string            `json:"script_name"`
-	ScriptArgs    string            `json:"script_args"`
-	ScriptURL     string            `json:"script_url"`
-	ScriptDest    string            `json:"script_dest"`
-	ScriptKeep    bool              `json:"script_keep"`
-	Group         string            `json:"group"`
-	Groups        []string          `json:"groups"`
-	Labels        map[string]string `json:"labels"`
-	Status        string            `json:"status"`
-	Force         string            `json:"force,omitempty"`
+	NodeID          string            `json:"node_id"`
+	NodeIDs         []string          `json:"node_ids"`
+	Mode            string            `json:"mode"`
+	Command         string            `json:"command"`
+	ScriptContent   string            `json:"script_content"`
+	ScriptName      string            `json:"script_name"`
+	ScriptArgs      string            `json:"script_args"`
+	ScriptURL       string            `json:"script_url"`
+	ScriptDest      string            `json:"script_dest"`
+	ScriptKeep      bool              `json:"script_keep"`
+	Group           string            `json:"group"`
+	Groups          []string          `json:"groups"`
+	Labels          map[string]string `json:"labels"`
+	Status          string            `json:"status"`
+	Force           string            `json:"force,omitempty"`
+	DangerConfirmed bool              `json:"danger_confirmed"`
 
 	Async             bool   `json:"async"`
 	AsyncMaxPollCount int    `json:"async_max_poll_count"`
@@ -214,6 +227,49 @@ func (h *ExecHandler) Create(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "command or script_content is required"})
 			return
 		}
+	}
+
+	checkCmd := command
+	if isScript {
+		checkCmd = scriptContent
+	}
+	users := map[string]string{}
+	if rows, err := h.db.QueryContext(c.Request.Context(),
+		`SELECT id, user FROM nodes`); err == nil {
+		for rows.Next() {
+			var id, user string
+			if rows.Scan(&id, &user) == nil {
+				users[id] = user
+			}
+		}
+		rows.Close()
+	}
+
+	type blockedMatch struct {
+		Node    string `json:"node"`
+		Pattern string `json:"pattern"`
+		Line    string `json:"line"`
+	}
+	var blocked []blockedMatch
+	for _, nid := range nodeIDs {
+		if h.checker == nil {
+			break
+		}
+		result, err := h.checker.CheckForExec(users[nid], checkCmd, req.DangerConfirmed)
+		if err != nil {
+			for _, m := range result.Matches {
+				blocked = append(blocked, blockedMatch{Node: nid, Pattern: m.Pattern, Line: m.Line})
+			}
+		}
+	}
+	if len(blocked) > 0 {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    http.StatusForbidden,
+			"message": "危险命令已被黑名单拦截; 如确需执行请带 danger_confirmed=true 重新提交",
+			"blocked": true,
+			"matches": blocked,
+		})
+		return
 	}
 
 	scriptDest := req.ScriptDest

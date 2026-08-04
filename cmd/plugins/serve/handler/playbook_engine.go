@@ -13,6 +13,7 @@ import (
 	webmodel "github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	commonmodel "github.com/cangyunye/go-owl/internal/common/model"
+	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	controlnode "github.com/cangyunye/go-owl/internal/control/node"
 	pbexec "github.com/cangyunye/go-owl/internal/control/playbook"
 	"github.com/cangyunye/go-owl/internal/control/task"
@@ -21,7 +22,9 @@ import (
 )
 
 type webCommandExecutor struct {
-	ssh *sshExecutor
+	ssh   *sshExecutor
+	check *blacklist.Checker
+	force bool
 }
 
 func (e *webCommandExecutor) Execute(tk *task.Task, nodeMgr controlnode.Manager) error {
@@ -29,6 +32,20 @@ func (e *webCommandExecutor) Execute(tk *task.Task, nodeMgr controlnode.Manager)
 }
 
 func (e *webCommandExecutor) ExecuteOnNode(nodeID string, cmd string, timeout time.Duration) (*task.TaskResult, error) {
+	if e.check != nil {
+		var user string
+		if info, err := e.ssh.getNodeInfo(nodeID); err == nil {
+			user = info.User
+		}
+		if _, err := e.check.CheckForExec(user, cmd, e.force); err != nil {
+			now := time.Now()
+			return &task.TaskResult{
+				NodeID: nodeID, ExitCode: -1, Error: err,
+				Output: err.Error(), StartTime: now, EndTime: now,
+			}, err
+		}
+	}
+
 	ctx := context.Background()
 	if timeout > 0 {
 		var cancel context.CancelFunc
@@ -79,8 +96,8 @@ func newWebNodeManager(db *sql.DB, nodeIDs []string) *webNodeManager {
 	return m
 }
 
-func (m *webNodeManager) Register(node *commonmodel.Node) error  { return nil }
-func (m *webNodeManager) Unregister(id string) error              { return nil }
+func (m *webNodeManager) Register(node *commonmodel.Node) error                       { return nil }
+func (m *webNodeManager) Unregister(id string) error                                  { return nil }
 func (m *webNodeManager) UpdateStatus(id string, status commonmodel.NodeStatus) error { return nil }
 
 func (m *webNodeManager) GetByID(id string) (*commonmodel.Node, error) {
@@ -167,7 +184,11 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 	}
 
 	nodeMgr := newWebNodeManager(h.db, run.TargetNodes)
-	cmdExec := &webCommandExecutor{ssh: &sshExecutor{db: h.db}}
+	cmdExec := &webCommandExecutor{
+		ssh:   &sshExecutor{db: h.db},
+		check: h.checker,
+		force: run.DangerConfirmed,
+	}
 	nodeResolver := node.NewNodeResolver()
 
 	pbExecutor := pbexec.NewExecutorWithOptions(nodeMgr, cmdExec, nil, nodeResolver, &pbexec.PlaybookOptions{})

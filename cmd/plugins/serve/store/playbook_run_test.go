@@ -24,7 +24,7 @@ func TestPlaybookRunStore_CreateAndGet(t *testing.T) {
 	s := openPlaybookRunTestDB(t)
 	ctx := context.Background()
 
-	run, err := s.Create(ctx, "abc123", "deploy-web", "/playbooks/deploy.yaml", []string{"node1", "node2"}, map[string]string{"env": "prod"}, "deploy")
+	run, err := s.Create(ctx, "abc123", "deploy-web", "/playbooks/deploy.yaml", []string{"node1", "node2"}, map[string]string{"env": "prod"}, "deploy", false)
 	require.NoError(t, err)
 	assert.NotEmpty(t, run.ID)
 	assert.Equal(t, "abc123", run.PlaybookID)
@@ -53,11 +53,11 @@ func TestPlaybookRunStore_List(t *testing.T) {
 	s := openPlaybookRunTestDB(t)
 	ctx := context.Background()
 
-	_, err := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "")
+	_, err := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "", false)
 	require.NoError(t, err)
-	_, err = s.Create(ctx, "pb2", "run2", "/b.yaml", nil, nil, "")
+	_, err = s.Create(ctx, "pb2", "run2", "/b.yaml", nil, nil, "", false)
 	require.NoError(t, err)
-	_, err = s.Create(ctx, "pb3", "run3", "/c.yaml", nil, nil, "")
+	_, err = s.Create(ctx, "pb3", "run3", "/c.yaml", nil, nil, "", false)
 	require.NoError(t, err)
 
 	runs, total, err := s.List(ctx, 10, 0)
@@ -73,7 +73,7 @@ func TestPlaybookRunStore_ListPagination(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		_, err := s.Create(ctx, "pb", "run", "/x.yaml", nil, nil, "")
+		_, err := s.Create(ctx, "pb", "run", "/x.yaml", nil, nil, "", false)
 		require.NoError(t, err)
 	}
 
@@ -92,7 +92,7 @@ func TestPlaybookRunStore_UpdateStatus(t *testing.T) {
 	s := openPlaybookRunTestDB(t)
 	ctx := context.Background()
 
-	run, _ := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "")
+	run, _ := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "", false)
 
 	err := s.UpdateStatus(ctx, run.ID, "running", "")
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestPlaybookRunStore_UpdateStatusFailed(t *testing.T) {
 	s := openPlaybookRunTestDB(t)
 	ctx := context.Background()
 
-	run, _ := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "")
+	run, _ := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "", false)
 
 	err := s.UpdateStatus(ctx, run.ID, "failed", "something broke")
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestPlaybookRunStore_AppendResult(t *testing.T) {
 	s := openPlaybookRunTestDB(t)
 	ctx := context.Background()
 
-	run, _ := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "")
+	run, _ := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "", false)
 
 	step := &stepResult{TaskName: "task1", NodeID: "node1", Status: "completed", ExitCode: 0}
 	err := s.AppendResult(ctx, run.ID, toStepResult(step))
@@ -157,7 +157,7 @@ func TestPlaybookRunStore_InitIdempotent(t *testing.T) {
 	require.NoError(t, s.Init(context.Background()))
 	require.NoError(t, s.Init(context.Background()))
 
-	_, err = s.Create(context.Background(), "pb1", "run1", "/a.yaml", nil, nil, "")
+	_, err = s.Create(context.Background(), "pb1", "run1", "/a.yaml", nil, nil, "", false)
 	require.NoError(t, err)
 }
 
@@ -165,13 +165,56 @@ func TestPlaybookRunStore_CreateWithEmptyOptionals(t *testing.T) {
 	s := openPlaybookRunTestDB(t)
 	ctx := context.Background()
 
-	run, err := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "")
+	run, err := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "", false)
 	require.NoError(t, err)
 
 	got, _ := s.Get(ctx, run.ID)
 	assert.Empty(t, got.TargetNodes)
 	assert.NotNil(t, got.ExtraVars)
 	assert.Empty(t, got.Tags)
+}
+
+func TestPlaybookRunStore_DangerConfirmedRoundTrip(t *testing.T) {
+	s := openPlaybookRunTestDB(t)
+	ctx := context.Background()
+
+	run, err := s.Create(ctx, "pb1", "run1", "/a.yaml", nil, nil, "", true)
+	require.NoError(t, err)
+	assert.True(t, run.DangerConfirmed)
+
+	got, err := s.Get(ctx, run.ID)
+	require.NoError(t, err)
+	assert.True(t, got.DangerConfirmed)
+
+	runs, _, err := s.List(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.True(t, runs[0].DangerConfirmed)
+}
+
+func TestPlaybookRunStore_InitMigratesLegacySchema(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	_, err = db.Exec(`CREATE TABLE playbook_runs (
+		id TEXT PRIMARY KEY, playbook_id TEXT NOT NULL, playbook_name TEXT NOT NULL DEFAULT '',
+		playbook_file TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued',
+		target_nodes TEXT NOT NULL DEFAULT '[]', extra_vars TEXT DEFAULT '{}', tags TEXT DEFAULT '',
+		error TEXT DEFAULT '', results TEXT DEFAULT '[]', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		started_at TIMESTAMP, completed_at TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	s := NewPlaybookRunStore(db)
+	require.NoError(t, s.Init(context.Background()))
+
+	run, err := s.Create(context.Background(), "pb1", "run1", "/a.yaml", nil, nil, "", true)
+	require.NoError(t, err)
+
+	got, err := s.Get(context.Background(), run.ID)
+	require.NoError(t, err)
+	assert.True(t, got.DangerConfirmed)
 }
 
 type stepResult struct {

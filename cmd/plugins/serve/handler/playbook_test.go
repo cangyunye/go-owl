@@ -33,7 +33,7 @@ func TestPlaybookRun_RecordsHistory(t *testing.T) {
 	h := NewPlaybookHandler(db, ps, rs, ns, nil)
 	h.History = hs
 
-	run, err := rs.Create(t.Context(), "pb-1", "demo", "/nonexistent.yaml", []string{"n1"}, nil, "")
+	run, err := rs.Create(t.Context(), "pb-1", "demo", "/nonexistent.yaml", []string{"n1"}, nil, "", false)
 	require.NoError(t, err)
 
 	op := &store.Operation{TaskID: run.ID, OpType: "playbook", Command: "playbook run demo", Targets: []string{"n1"}, PlaybookPath: "/nonexistent.yaml", Status: "running"}

@@ -9,26 +9,28 @@ import (
 	"sync"
 	"time"
 
-	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	ai2 "github.com/cangyunye/go-owl/internal/ai"
+	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
 type WebExecutor struct {
-	db                 *sql.DB
-	taskStore          *store.TaskStore
+	db                  *sql.DB
+	taskStore           *store.TaskStore
 	transferRecordStore *store.TransferRecordStore
-	playbookRunStore   *store.PlaybookRunStore
-	nodeStore          *store.NodeStore
-	playbookStore      *store.PlaybookStore
-	auditStore         *store.AIAuditStore
-	keyManager         *KeyManager
-	debugMode          bool
-	userRole           string
-	History            *store.HistoryStore
-	PlaybookHandler    *PlaybookHandler
+	playbookRunStore    *store.PlaybookRunStore
+	nodeStore           *store.NodeStore
+	playbookStore       *store.PlaybookStore
+	auditStore          *store.AIAuditStore
+	keyManager          *KeyManager
+	debugMode           bool
+	userRole            string
+	History             *store.HistoryStore
+	PlaybookHandler     *PlaybookHandler
+	checker             *blacklist.Checker
 }
 
 func (e *WebExecutor) requireOperator() error {
@@ -49,6 +51,7 @@ func NewWebExecutor(db *sql.DB, taskStore *store.TaskStore, transferRecordStore 
 		playbookRunStore: playbookRunStore, nodeStore: nodeStore,
 		playbookStore: playbookStore, auditStore: auditStore,
 		keyManager: keyManager, debugMode: debugMode,
+		checker: newBlacklistChecker(),
 	}
 }
 
@@ -164,6 +167,18 @@ func (e *WebExecutor) ExecuteCommand(ctx context.Context, params ai2.ExecCommand
 		return &ai2.ExecResult{Text: "未找到目标节点"}, nil
 	}
 
+	if e.checker != nil {
+		for _, nodeID := range nodeIDs {
+			var user string
+			if info, err := (&sshExecutor{db: e.db}).getNodeInfo(nodeID); err == nil {
+				user = info.User
+			}
+			if _, err := e.checker.CheckForExec(user, params.Command, false); err != nil {
+				return &ai2.ExecResult{Text: err.Error()}, nil
+			}
+		}
+	}
+
 	type nodeResult struct {
 		nodeID   string
 		output   string
@@ -237,6 +252,21 @@ func (e *WebExecutor) ExecuteScript(ctx context.Context, params ai2.ExecScriptPa
 		ScriptDest:    dest,
 		ScriptKeep:    params.Keep,
 	})
+
+	if e.checker != nil {
+		for _, nodeID := range nodeIDs {
+			var user string
+			if info, err := (&sshExecutor{db: e.db}).getNodeInfo(nodeID); err == nil {
+				user = info.User
+			}
+			if _, err := e.checker.CheckForExec(user, params.Script, false); err != nil {
+				return &ai2.ExecScriptResult{Text: err.Error()}, nil
+			}
+			if _, err := e.checker.CheckForExec(user, execCmd, false); err != nil {
+				return &ai2.ExecScriptResult{Text: err.Error()}, nil
+			}
+		}
+	}
 
 	type nodeResult struct {
 		nodeID   string
@@ -574,7 +604,7 @@ func (e *WebExecutor) RunPlaybook(ctx context.Context, params ai2.RunPlaybookPar
 		return &ai2.RunPlaybookResult{Text: fmt.Sprintf("剧本文件已不存在: %s", pb.FilePath)}, nil
 	}
 
-	run, err := e.playbookRunStore.Create(ctx, pb.ID, pb.Name, pb.FilePath, nodeIDs, nil, params.Tags)
+	run, err := e.playbookRunStore.Create(ctx, pb.ID, pb.Name, pb.FilePath, nodeIDs, nil, params.Tags, false)
 	if err != nil {
 		return nil, fmt.Errorf("create playbook run: %w", err)
 	}
