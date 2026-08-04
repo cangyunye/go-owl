@@ -162,7 +162,8 @@ func TestExecCreate_NodeNotFound(t *testing.T) {
 	_, h := execTestSetup(t)
 	router := execRBACRouter(t, h)
 	w := execPOST(t, router, map[string]string{"node_id": "nonexistent", "command": "uptime"})
-	assert.Equal(t, 404, w.Code)
+	assert.Equal(t, 400, w.Code)
+	assert.Contains(t, w.Body.String(), "节点不存在")
 }
 
 func TestExecCreate_ScriptMode(t *testing.T) {

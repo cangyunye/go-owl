@@ -53,37 +53,54 @@ func NewWebExecutor(db *sql.DB, taskStore *store.TaskStore, transferRecordStore 
 }
 
 func (e *WebExecutor) resolveAINodeIDs(ctx context.Context, nodes []string, group, label, search string) []string {
-	if len(nodes) > 0 {
-		return nodes
-	}
-	query := "SELECT id FROM nodes WHERE 1=1"
-	args := []interface{}{}
-	if group != "" {
-		query += " AND groups LIKE ?"
-		args = append(args, "%\""+group+"\"%")
-	}
-	if label != "" && strings.Contains(label, "=") {
-		parts := strings.SplitN(label, "=", 2)
-		query += " AND labels LIKE ?"
-		args = append(args, "%\""+parts[0]+"\":\""+parts[1]+"\"%")
-	}
-	if search != "" {
-		query += " AND (name LIKE ? OR address LIKE ? OR id LIKE ?)"
-		args = append(args, "%"+search+"%", "%"+search+"%", "%"+search+"%")
-	}
-	rows, err := e.db.QueryContext(ctx, query, args...)
+	src := &dbNodeSource{db: e.db}
+	rows, err := src.List(ctx)
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err == nil {
-			ids = append(ids, id)
+
+	var out []string
+	for _, r := range rows {
+		if len(nodes) > 0 {
+			hit := false
+			for _, id := range nodes {
+				if id == r.ID || id == r.Name {
+					hit = true
+					break
+				}
+			}
+			if !hit {
+				continue
+			}
 		}
+		if group != "" {
+			hit := false
+			for _, g := range r.Groups {
+				if g == group {
+					hit = true
+					break
+				}
+			}
+			if !hit {
+				continue
+			}
+		}
+		if label != "" && strings.Contains(label, "=") {
+			k, v, _ := strings.Cut(label, "=")
+			if r.Labels[k] != v {
+				continue
+			}
+		}
+		if search != "" {
+			needle := strings.ToLower(search)
+			if !strings.Contains(strings.ToLower(r.Name), needle) &&
+				!strings.Contains(strings.ToLower(r.ID), needle) {
+				continue
+			}
+		}
+		out = append(out, r.ID)
 	}
-	return ids
+	return out
 }
 
 func aggregateStatus(success, total int) string {

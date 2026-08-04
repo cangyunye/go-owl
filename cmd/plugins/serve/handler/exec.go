@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	nodeselect "github.com/cangyunye/go-owl/internal/node/select"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -108,76 +109,38 @@ type ExecConfig struct {
 	ScriptKeep    bool
 }
 
-func resolveNodeIDs(db *sql.DB, req execRequest) []string {
-	if len(req.NodeIDs) > 0 {
-		return req.NodeIDs
+func resolveNodeIDs(ctx context.Context, db *sql.DB, req execRequest) ([]string, error) {
+	sel := nodeselect.NewSelector(&dbNodeSource{db: db})
+
+	opts := nodeselect.SelectOptions{NodeIDs: req.NodeIDs}
+	if len(opts.NodeIDs) == 0 && req.NodeID != "" {
+		opts.NodeIDs = []string{req.NodeID}
 	}
-	if req.NodeID != "" {
-		return []string{req.NodeID}
+	groups := req.Groups
+	if len(groups) == 0 && req.Group != "" {
+		groups = strings.Split(req.Group, ",")
 	}
-	groupNames := req.Groups
-	if len(groupNames) == 0 && req.Group != "" {
-		groupNames = strings.Split(req.Group, ",")
-	}
-	if len(groupNames) > 0 {
-		var allIDs []string
-		seen := make(map[string]bool)
-		for _, gn := range groupNames {
-			gn = strings.TrimSpace(gn)
-			if gn == "" {
-				continue
-			}
-			pattern := "%" + gn + "%"
-			rows, err := db.Query(`SELECT id FROM nodes WHERE groups LIKE ?`, pattern)
-			if err != nil || rows == nil {
-				continue
-			}
-			func() {
-				defer rows.Close()
-				for rows.Next() {
-					var id string
-					rows.Scan(&id)
-					if !seen[id] {
-						seen[id] = true
-						allIDs = append(allIDs, id)
-					}
-				}
-			}()
-		}
-		if len(allIDs) > 0 {
-			return allIDs
+	for _, g := range groups {
+		if g = strings.TrimSpace(g); g != "" {
+			opts.Groups = append(opts.Groups, g)
 		}
 	}
-	if len(req.Labels) > 0 {
-		for k, v := range req.Labels {
-			pattern := "%\"" + k + "\":\"" + v + "%"
-			rows, _ := db.Query(`SELECT id FROM nodes WHERE labels LIKE ?`, pattern)
-			if rows != nil {
-				defer rows.Close()
-				var ids []string
-				for rows.Next() {
-					var id string
-					rows.Scan(&id)
-					ids = append(ids, id)
-				}
-				return ids
-			}
-		}
+	opts.Labels = req.Labels
+	opts.Status = req.Status
+
+	if opts.Empty() {
+		return nil, nil
 	}
-	if req.Status != "" {
-		rows, _ := db.Query(`SELECT id FROM nodes WHERE status = ?`, req.Status)
-		if rows != nil {
-			defer rows.Close()
-			var ids []string
-			for rows.Next() {
-				var id string
-				rows.Scan(&id)
-				ids = append(ids, id)
-			}
-			return ids
-		}
+
+	nodes, err := sel.Select(ctx, opts)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	ids := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		ids = append(ids, n.ID)
+	}
+	return ids, nil
 }
 
 func resolveScriptContent(req execRequest) (content string, name string, err error) {
@@ -220,7 +183,11 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		return
 	}
 
-	nodeIDs := resolveNodeIDs(h.db, req)
+	nodeIDs, err := resolveNodeIDs(c.Request.Context(), h.db, req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
 	if len(nodeIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "no target nodes specified"})
 		return
