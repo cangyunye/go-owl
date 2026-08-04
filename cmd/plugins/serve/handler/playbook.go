@@ -444,6 +444,19 @@ func (h *PlaybookHandler) executePlaybookTask(ctx context.Context, exec Executor
 		}
 	}
 
+	if h.checker != nil {
+		var user string
+		if info, err := (&sshExecutor{db: h.db}).getNodeInfo(nodeID); err == nil {
+			user = info.User
+		}
+		if _, err := h.checker.CheckForExec(user, command, false); err != nil {
+			return &model.StepResult{
+				TaskName: taskName, NodeID: nodeID, Action: extractAction(taskMap),
+				Status: "failed", ExitCode: -1, Error: err.Error(),
+			}
+		}
+	}
+
 	output, exitCode, execErr := exec.Execute(ctx, nodeID, command)
 	status := "completed"
 	errMsg := ""

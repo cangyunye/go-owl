@@ -1,11 +1,15 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
@@ -153,4 +157,115 @@ func TestWebExecutor_ExecuteScript_DangerousBlocked(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.Contains(t, res.Text, "黑名单")
+}
+
+func TestExecCreate_ScriptWithDangerousArgsBlocked(t *testing.T) {
+	_, h := execTestSetup(t)
+	r := execRBACRouter(t, h)
+
+	w := execPOST(t, r, map[string]interface{}{
+		"node_id":        "test-node",
+		"mode":           "script",
+		"script_content": "#!/bin/bash\necho hello",
+		"script_args":    "; rm -rf /var/data",
+	})
+	require.Equal(t, http.StatusForbidden, w.Code)
+
+	var resp struct {
+		Blocked bool `json:"blocked"`
+		Matches []struct {
+			Node    string `json:"node"`
+			Pattern string `json:"pattern"`
+			Line    string `json:"line"`
+		} `json:"matches"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.True(t, resp.Blocked)
+	require.NotEmpty(t, resp.Matches)
+	assert.Equal(t, "test-node", resp.Matches[0].Node)
+	assert.Contains(t, resp.Matches[0].Line, "rm -rf")
+}
+
+func TestExecCreate_ScriptWithDangerousArgsConfirmed(t *testing.T) {
+	_, h := execTestSetup(t)
+	r := execRBACRouter(t, h)
+
+	w := execPOST(t, r, map[string]interface{}{
+		"node_id":          "test-node",
+		"mode":             "script",
+		"script_content":   "#!/bin/bash\necho hello",
+		"script_args":      "; rm -rf /var/data",
+		"danger_confirmed": true,
+	})
+	require.NotEqual(t, http.StatusForbidden, w.Code)
+}
+
+type recordingExecutor struct {
+	called int
+}
+
+func (r *recordingExecutor) Execute(_ context.Context, _, _ string) (string, int, error) {
+	r.called++
+	return "ok", 0, nil
+}
+
+func (r *recordingExecutor) ExecuteStream(_ context.Context, _, _ string, _ chan<- OutputLine) (int, error) {
+	r.called++
+	return 0, nil
+}
+
+func TestExecutePlaybookTask_DangerousCommandBlocked(t *testing.T) {
+	db := blacklistTestNodeDB(t)
+	h := &PlaybookHandler{db: db, checker: blacklist.NewDefaultChecker()}
+	rec := &recordingExecutor{}
+
+	step := h.executePlaybookTask(t.Context(), rec, "test-node", "cleanup",
+		map[string]interface{}{"command": "rm -rf /var/data"})
+
+	assert.Zero(t, rec.called)
+	assert.Equal(t, "failed", step.Status)
+	assert.Equal(t, -1, step.ExitCode)
+	assert.Contains(t, step.Error, "黑名单")
+}
+
+func TestExecutePlaybookTask_SafeCommandAllowed(t *testing.T) {
+	db := blacklistTestNodeDB(t)
+	h := &PlaybookHandler{db: db, checker: blacklist.NewDefaultChecker()}
+	rec := &recordingExecutor{}
+
+	step := h.executePlaybookTask(t.Context(), rec, "test-node", "check",
+		map[string]interface{}{"command": "uptime"})
+
+	assert.Equal(t, 1, rec.called)
+	assert.Equal(t, "completed", step.Status)
+	assert.Equal(t, 0, step.ExitCode)
+}
+
+func TestExecutePlaybookRun_V1_DangerousStepBlocked(t *testing.T) {
+	db := blacklistTestNodeDB(t)
+
+	rs := store.NewPlaybookRunStore(db)
+	require.NoError(t, rs.Init(t.Context()))
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(t.Context()))
+
+	h := NewPlaybookHandler(db, nil, rs, nil, nil)
+	h.History = hs
+	h.checker = blacklist.NewDefaultChecker()
+
+	pbFile := filepath.Join(t.TempDir(), "evil.yaml")
+	content := "name: evil\ntasks:\n  - cleanup:\n      command: rm -rf /var/data\n"
+	require.NoError(t, os.WriteFile(pbFile, []byte(content), 0644))
+
+	run, err := rs.Create(t.Context(), "pb-1", "evil", pbFile, []string{"test-node"}, nil, "", false)
+	require.NoError(t, err)
+
+	h.executePlaybookRun(run.ID)
+
+	finished, err := rs.Get(t.Context(), run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.RunStatusFailed, finished.Status)
+	require.Len(t, finished.Results, 1)
+	assert.Equal(t, -1, finished.Results[0].ExitCode)
+	assert.Contains(t, finished.Results[0].Error, "黑名单")
 }

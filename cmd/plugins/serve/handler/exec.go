@@ -232,18 +232,23 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	checkCmd := command
 	if isScript {
 		checkCmd = scriptContent
+		if req.ScriptArgs != "" {
+			checkCmd += " " + req.ScriptArgs
+		}
 	}
 	users := map[string]string{}
-	if rows, err := h.db.QueryContext(c.Request.Context(),
-		`SELECT id, user FROM nodes`); err == nil {
-		for rows.Next() {
-			var id, user string
-			if rows.Scan(&id, &user) == nil {
-				users[id] = user
-			}
-		}
-		rows.Close()
+	rows, err := h.db.QueryContext(c.Request.Context(), `SELECT id, user FROM nodes`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query node users failed: " + err.Error()})
+		return
 	}
+	for rows.Next() {
+		var id, user string
+		if rows.Scan(&id, &user) == nil {
+			users[id] = user
+		}
+	}
+	rows.Close()
 
 	type blockedMatch struct {
 		Node    string `json:"node"`
