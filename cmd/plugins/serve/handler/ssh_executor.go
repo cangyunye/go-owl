@@ -6,28 +6,33 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"time"
 
-	"golang.org/x/crypto/ssh"
+	owlssh "github.com/cangyunye/go-owl/internal/ssh"
+	gossh "golang.org/x/crypto/ssh"
 )
+
+const sshConnectTimeout = 10 * time.Second
 
 type sshExecutor struct {
 	db *sql.DB
 }
 
 type nodeSSHInfo struct {
-	Address  string
-	Port     int
-	User     string
-	Password string
-	SSHKey   string
+	Address   string
+	Port      int
+	User      string
+	Password  string
+	SSHKey    string
+	ProxyJump string
 }
 
 func (e *sshExecutor) getNodeInfo(nodeID string) (*nodeSSHInfo, error) {
 	var info nodeSSHInfo
-	var pw, key sql.NullString
+	var pw, key, jump sql.NullString
 	err := e.db.QueryRow(
-		`SELECT address, port, user, password, ssh_key FROM nodes WHERE id = ?`, nodeID,
-	).Scan(&info.Address, &info.Port, &info.User, &pw, &key)
+		`SELECT COALESCE(address, ''), port, user, password, ssh_key, COALESCE(proxy_jump, '') FROM nodes WHERE id = ?`, nodeID,
+	).Scan(&info.Address, &info.Port, &info.User, &pw, &key, &jump)
 	if err != nil {
 		return nil, err
 	}
@@ -37,36 +42,33 @@ func (e *sshExecutor) getNodeInfo(nodeID string) (*nodeSSHInfo, error) {
 	if key.Valid {
 		info.SSHKey = key.String
 	}
+	info.ProxyJump = jump.String
 	return &info, nil
 }
 
-func (e *sshExecutor) Execute(ctx context.Context, nodeID, command string) (string, int, error) {
+func (e *sshExecutor) dialNode(ctx context.Context, nodeID string) (*owlssh.Client, error) {
 	info, err := e.getNodeInfo(nodeID)
 	if err != nil {
-		return "", -1, fmt.Errorf("resolve node: %w", err)
+		return nil, fmt.Errorf("resolve node: %w", err)
 	}
-
-	config := &ssh.ClientConfig{
-		User:            info.User,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         0,
-	}
-
-	if info.Password != "" {
-		config.Auth = append(config.Auth, ssh.Password(info.Password))
-	}
-	if info.SSHKey != "" {
-		signer, err := ssh.ParsePrivateKey([]byte(info.SSHKey))
-		if err != nil {
-			return "", -1, fmt.Errorf("parse ssh key: %w", err)
-		}
-		config.Auth = append(config.Auth, ssh.PublicKeys(signer))
-	}
-
 	addr := info.Address + ":" + strconv.Itoa(info.Port)
-	client, err := ssh.Dial("tcp", addr, config)
+	return owlssh.Dial(ctx, addr, owlssh.DialOptions{
+		User:           info.User,
+		Password:       info.Password,
+		KeyContent:     info.SSHKey,
+		ProxyJump:      info.ProxyJump,
+		ConnectTimeout: sshConnectTimeout,
+	})
+}
+
+func (e *sshExecutor) dial(nodeID string) (*owlssh.Client, error) {
+	return e.dialNode(context.Background(), nodeID)
+}
+
+func (e *sshExecutor) Execute(ctx context.Context, nodeID, command string) (string, int, error) {
+	client, err := e.dialNode(ctx, nodeID)
 	if err != nil {
-		return "", -1, fmt.Errorf("ssh dial: %w", err)
+		return "", -1, err
 	}
 	defer client.Close()
 
@@ -79,46 +81,17 @@ func (e *sshExecutor) Execute(ctx context.Context, nodeID, command string) (stri
 	output, err := session.CombinedOutput(command)
 	exitCode := 0
 	if err != nil {
-		if exitErr, ok := err.(*ssh.ExitError); ok {
+		if exitErr, ok := err.(*gossh.ExitError); ok {
 			exitCode = exitErr.ExitStatus()
 		} else {
 			return "", -1, fmt.Errorf("ssh exec: %w", err)
 		}
 	}
-
 	return string(output), exitCode, nil
 }
 
-func (e *sshExecutor) dial(nodeID string) (*ssh.Client, error) {
-	info, err := e.getNodeInfo(nodeID)
-	if err != nil {
-		return nil, fmt.Errorf("resolve node: %w", err)
-	}
-	config := &ssh.ClientConfig{
-		User:            info.User,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         0,
-	}
-	if info.Password != "" {
-		config.Auth = append(config.Auth, ssh.Password(info.Password))
-	}
-	if info.SSHKey != "" {
-		signer, err := ssh.ParsePrivateKey([]byte(info.SSHKey))
-		if err != nil {
-			return nil, fmt.Errorf("parse ssh key: %w", err)
-		}
-		config.Auth = append(config.Auth, ssh.PublicKeys(signer))
-	}
-	addr := info.Address + ":" + strconv.Itoa(info.Port)
-	client, err := ssh.Dial("tcp", addr, config)
-	if err != nil {
-		return nil, fmt.Errorf("ssh dial: %w", err)
-	}
-	return client, nil
-}
-
 func (e *sshExecutor) ExecuteStream(ctx context.Context, nodeID, command string, outputCh chan<- OutputLine) (int, error) {
-	client, err := e.dial(nodeID)
+	client, err := e.dialNode(ctx, nodeID)
 	if err != nil {
 		return -1, err
 	}
@@ -144,7 +117,6 @@ func (e *sshExecutor) ExecuteStream(ctx context.Context, nodeID, command string,
 	}
 
 	done := make(chan struct{}, 2)
-
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
@@ -175,7 +147,7 @@ func (e *sshExecutor) ExecuteStream(ctx context.Context, nodeID, command string,
 	<-done
 
 	exitCode := 0
-	if exitErr, ok := err.(*ssh.ExitError); ok {
+	if exitErr, ok := err.(*gossh.ExitError); ok {
 		exitCode = exitErr.ExitStatus()
 		err = nil
 	}
