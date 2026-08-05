@@ -248,6 +248,9 @@ func TestDial_HandshakeTimeout_NoBanner(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected handshake timeout error, got nil")
 	}
+	if elapsed < 400*time.Millisecond {
+		t.Fatalf("Dial returned too fast (%v), handshake timeout likely not engaged", elapsed)
+	}
 	if elapsed > 3*time.Second {
 		t.Fatalf("Dial hung too long: %v", elapsed)
 	}
@@ -264,6 +267,9 @@ func TestDial_ProxyJump_HandshakeTimeout_NoBanner(t *testing.T) {
 	elapsed := time.Since(start)
 	if err == nil {
 		t.Fatal("expected handshake timeout error, got nil")
+	}
+	if elapsed < 400*time.Millisecond {
+		t.Fatalf("Dial returned too fast (%v), handshake timeout likely not engaged", elapsed)
 	}
 	if elapsed > 3*time.Second {
 		t.Fatalf("Dial hung too long: %v", elapsed)
@@ -282,6 +288,9 @@ func TestDial_HandshakeCtxDeadline(t *testing.T) {
 	elapsed := time.Since(start)
 	if err == nil {
 		t.Fatal("expected error when ctx deadline expires during handshake")
+	}
+	if elapsed < 250*time.Millisecond {
+		t.Fatalf("Dial returned too fast (%v), ctx deadline likely not engaged", elapsed)
 	}
 	if elapsed > 3*time.Second {
 		t.Fatalf("Dial hung too long: %v", elapsed)

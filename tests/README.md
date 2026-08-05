@@ -425,7 +425,7 @@ test-all: test-unit test-integration test-e2e
 # 单元测试
 test-unit:
 	@echo "运行单元测试..."
-	@go test -v ./tests/unit/...
+	@cd .. && go test ./cmd/cli/cmd/... ./internal/...
 
 # 集成测试
 test-integration:
@@ -445,7 +445,7 @@ test-e2e:
 # 快速测试
 test-quick:
 	@echo "运行快速测试..."
-	@OWL_TEST_QUICK=true go test -v ./tests/unit/...
+	@cd .. && go test ./cmd/cli/cmd/... ./internal/...
 	@bash tests/scripts/test-exec.sh
 
 # 清理测试环境
@@ -457,8 +457,8 @@ test-clean:
 # 测试覆盖率
 test-coverage:
 	@echo "生成测试覆盖率报告..."
-	@go test -coverprofile=coverage.out ./tests/unit/...
-	@go tool cover -html=coverage.out -o coverage.html
+	@cd .. && go test -coverprofile=tests/coverage.out ./cmd/cli/cmd/... ./internal/...
+	@cd .. && go tool cover -html=tests/coverage.out -o tests/coverage.html
 	@echo "报告已生成: coverage.html"
 ```
 
