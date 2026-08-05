@@ -16,9 +16,9 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/gin-gonic/gin"
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func transferTestSetup(t *testing.T) (*sql.DB, *TransferHandler, *gin.Engine, string) {
@@ -36,7 +36,8 @@ func transferTestSetup(t *testing.T) (*sql.DB, *TransferHandler, *gin.Engine, st
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
 		id TEXT PRIMARY KEY, name TEXT, address TEXT, port INTEGER DEFAULT 22,
 		user TEXT, password TEXT, ssh_key TEXT, status TEXT DEFAULT 'unknown',
-		groups TEXT DEFAULT '[]', labels TEXT DEFAULT '{}'
+		groups TEXT DEFAULT '[]', labels TEXT DEFAULT '{}',
+		proxy_jump TEXT DEFAULT '', created_at TIMESTAMP, updated_at TIMESTAMP
 	)`)
 	require.NoError(t, err)
 

@@ -509,7 +509,7 @@ func (e *WebExecutor) NodeCheck(ctx context.Context, params ai2.NodeCheckParams)
 			sb.WriteString(fmt.Sprintf("✗ [%s] %v\n", nid, err))
 			continue
 		}
-		r := checkNodeSSH(e.db, nid, info.Address, info.Port, info.User, info.Password, info.SSHKey, timeout)
+		r := checkNodeSSH(e.db, nid, info.Address, info.Port, info.User, info.Password, info.SSHKey, info.ProxyJump, timeout)
 		if r.Success {
 			successCount++
 		}

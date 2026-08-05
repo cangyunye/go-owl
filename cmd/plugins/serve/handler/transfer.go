@@ -193,8 +193,8 @@ func resolveNodeSSH(db *sql.DB, nodeID string) (*nodeSSHInfo, error) {
 	var info nodeSSHInfo
 	var pw, key sql.NullString
 	err := db.QueryRow(
-		`SELECT address, port, user, password, ssh_key FROM nodes WHERE id = ?`, nodeID,
-	).Scan(&info.Address, &info.Port, &info.User, &pw, &key)
+		`SELECT address, port, user, password, ssh_key, COALESCE(proxy_jump, '') FROM nodes WHERE id = ?`, nodeID,
+	).Scan(&info.Address, &info.Port, &info.User, &pw, &key, &info.ProxyJump)
 	if err != nil {
 		return nil, fmt.Errorf("node not found: %w", err)
 	}

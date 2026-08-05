@@ -15,9 +15,10 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	owlssh "github.com/cangyunye/go-owl/internal/ssh"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/ssh"
+	gossh "golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
 
@@ -101,7 +102,9 @@ func (h *NodeHandler) List(c *gin.Context) {
 		clauses := []string{}
 		for _, gn := range groupNames {
 			gn = strings.TrimSpace(gn)
-			if gn == "" { continue }
+			if gn == "" {
+				continue
+			}
 			clauses = append(clauses, "(groups LIKE ? OR groups LIKE ? OR groups LIKE ?)")
 			args = append(args, `%"`+gn+`"%`, `%`+gn+`%`, `%`+gn+`"%"`)
 		}
@@ -568,8 +571,8 @@ type exportRequest struct {
 }
 
 type nodeExportFile struct {
-	Version string         `json:"version" yaml:"version"`
-	Nodes   []nodeExport   `json:"nodes" yaml:"nodes"`
+	Version string       `json:"version" yaml:"version"`
+	Nodes   []nodeExport `json:"nodes" yaml:"nodes"`
 }
 
 type nodeExport struct {
@@ -844,7 +847,7 @@ func (h *NodeHandler) Ping(c *gin.Context) {
 }
 
 type checkResult struct {
-	NodeID string `json:"node_id"`
+	NodeID  string `json:"node_id"`
 	Success bool   `json:"success"`
 	Method  string `json:"method,omitempty"`
 	Error   string `json:"error,omitempty"`
@@ -862,20 +865,21 @@ func (h *NodeHandler) Check(c *gin.Context) {
 	}
 
 	type nodeSSH struct {
-		ID       string
-		Address  string
-		Port     int
-		User     string
-		Password string
-		SSHKey   string
+		ID        string
+		Address   string
+		Port      int
+		User      string
+		Password  string
+		SSHKey    string
+		ProxyJump string
 	}
 
 	var nodes []nodeSSH
 	for _, id := range req.NodeIDs {
 		var n nodeSSH
 		var pw, key sql.NullString
-		err := h.db.QueryRow("SELECT id, address, port, user, password, ssh_key FROM nodes WHERE id = ?", id).
-			Scan(&n.ID, &n.Address, &n.Port, &n.User, &pw, &key)
+		err := h.db.QueryRow("SELECT id, address, port, user, password, ssh_key, COALESCE(proxy_jump, '') FROM nodes WHERE id = ?", id).
+			Scan(&n.ID, &n.Address, &n.Port, &n.User, &pw, &key, &n.ProxyJump)
 		if err != nil {
 			continue
 		}
@@ -897,7 +901,7 @@ func (h *NodeHandler) Check(c *gin.Context) {
 		wg.Add(1)
 		go func(idx int, n nodeSSH) {
 			defer wg.Done()
-			r := checkNodeSSH(h.db, n.ID, n.Address, n.Port, n.User, n.Password, n.SSHKey, timeout)
+			r := checkNodeSSH(h.db, n.ID, n.Address, n.Port, n.User, n.Password, n.SSHKey, n.ProxyJump, timeout)
 			results[idx] = r
 
 			status := "offline"
@@ -912,22 +916,22 @@ func (h *NodeHandler) Check(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"results": results})
 }
 
-func checkNodeSSH(db *sql.DB, nodeID, address string, port int, user, password, sshKey string, timeout time.Duration) checkResult {
+func checkNodeSSH(db *sql.DB, nodeID, address string, port int, user, password, sshKey, proxyJump string, timeout time.Duration) checkResult {
 	addr := fmt.Sprintf("%s:%d", address, port)
 	if user == "" {
 		user = "root"
 	}
+	ctx := context.Background()
 
 	if sshKey != "" {
-		signer, err := ssh.ParsePrivateKey([]byte(sshKey))
+		signer, err := gossh.ParsePrivateKey([]byte(sshKey))
 		if err == nil {
-			config := &ssh.ClientConfig{
-				User:            user,
-				Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-				Timeout:         timeout,
-			}
-			client, err := ssh.Dial("tcp", addr, config)
+			client, err := owlssh.Dial(ctx, addr, owlssh.DialOptions{
+				User:           user,
+				AuthMethods:    []gossh.AuthMethod{gossh.PublicKeys(signer)},
+				ProxyJump:      proxyJump,
+				ConnectTimeout: timeout,
+			})
 			if err == nil {
 				client.Close()
 				return checkResult{NodeID: nodeID, Success: true, Method: "key"}
@@ -939,13 +943,12 @@ func checkNodeSSH(db *sql.DB, nodeID, address string, port int, user, password, 
 	}
 
 	if password != "" {
-		config := &ssh.ClientConfig{
-			User:            user,
-			Auth:            []ssh.AuthMethod{ssh.Password(password)},
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-			Timeout:         timeout,
-		}
-		client, err := ssh.Dial("tcp", addr, config)
+		client, err := owlssh.Dial(ctx, addr, owlssh.DialOptions{
+			User:           user,
+			AuthMethods:    []gossh.AuthMethod{gossh.Password(password)},
+			ProxyJump:      proxyJump,
+			ConnectTimeout: timeout,
+		})
 		if err == nil {
 			client.Close()
 			return checkResult{NodeID: nodeID, Success: true, Method: "password"}
