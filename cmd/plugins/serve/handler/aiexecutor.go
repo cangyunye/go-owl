@@ -13,6 +13,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
+	nodeselect "github.com/cangyunye/go-owl/internal/node/select"
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
@@ -480,15 +481,12 @@ func (e *WebExecutor) NodeCheck(ctx context.Context, params ai2.NodeCheckParams)
 			nodeIDs = append(nodeIDs, id)
 		}
 	} else if params.Group != "" {
-		rows, err := e.db.QueryContext(ctx, "SELECT id FROM nodes WHERE groups LIKE ?", "%\""+params.Group+"\"%")
+		rows, err := nodeselect.NewSelector(&dbNodeSource{db: e.db}).Select(ctx, nodeselect.SelectOptions{Groups: []string{params.Group}})
 		if err != nil {
-			return nil, fmt.Errorf("query nodes: %w", err)
+			return nil, fmt.Errorf("select nodes: %w", err)
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var id string
-			rows.Scan(&id)
-			nodeIDs = append(nodeIDs, id)
+		for _, r := range rows {
+			nodeIDs = append(nodeIDs, r.ID)
 		}
 	} else {
 		nodeIDs = params.Nodes
