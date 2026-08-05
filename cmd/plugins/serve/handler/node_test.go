@@ -149,6 +149,39 @@ func TestNodeList_FilterByLabel(t *testing.T) {
 	assert.Len(t, resp.Data, 3)
 }
 
+func TestNodeList_FilterByMultiLabel(t *testing.T) {
+	h, _ := newTestNodeHandler(t)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/api/v1/nodes", h.List)
+
+	// 多 label 参数为 AND 语义:env=prod 且 tier=frontend -> web-01/web-02
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/nodes?label=env:prod&label=tier:frontend", nil)
+	router.ServeHTTP(w, req)
+
+	var resp struct {
+		Data []NodeResponse `json:"data"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.Len(t, resp.Data, 2)
+	ids := []string{resp.Data[0].ID, resp.Data[1].ID}
+	assert.Contains(t, ids, "web-01")
+	assert.Contains(t, ids, "web-02")
+
+	// env=prod 且 tier=backend -> 仅 db-01
+	w2 := httptest.NewRecorder()
+	req2, _ := http.NewRequest("GET", "/api/v1/nodes?label=env:prod&label=tier:backend", nil)
+	router.ServeHTTP(w2, req2)
+	var resp2 struct {
+		Data []NodeResponse `json:"data"`
+	}
+	json.Unmarshal(w2.Body.Bytes(), &resp2)
+	require.Len(t, resp2.Data, 1)
+	assert.Equal(t, "db-01", resp2.Data[0].ID)
+}
+
 func TestNodeList_CombinedFilters(t *testing.T) {
 	h, _ := newTestNodeHandler(t)
 

@@ -151,9 +151,46 @@ func TestExecCreate_Success(t *testing.T) {
 	assert.Equal(t, store.TaskStatusQueued, resp.Tasks[0].Status)
 }
 
-func TestExecCreate_MissingNodeID(t *testing.T) {
+func TestExecCreate_NoSelection_RunsOnAllNodes(t *testing.T) {
 	_, h := execTestSetup(t)
 	router := execRBACRouter(t, h)
+
+	_, err := h.db.Exec(`INSERT INTO nodes (id, name, address, port, user, status) VALUES ('node2', 'node2', '10.0.0.2', 22, 'root', 'online')`)
+	require.NoError(t, err)
+
+	// 未选择任何节点、无 group/label 过滤 -> 等价于对全部节点执行
+	w := execPOST(t, router, map[string]string{"command": "uptime"})
+	require.Equal(t, 202, w.Code)
+	var resp execResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.Len(t, resp.Tasks, 2)
+	ids := []string{resp.Tasks[0].NodeID, resp.Tasks[1].NodeID}
+	assert.Contains(t, ids, "test-node")
+	assert.Contains(t, ids, "node2")
+}
+
+func TestExecCreate_EmptyDB_NoTargetNodes(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
+		id TEXT PRIMARY KEY, name TEXT, address TEXT, port INTEGER DEFAULT 22,
+		user TEXT, password TEXT, ssh_key TEXT, status TEXT DEFAULT 'unknown',
+		groups TEXT DEFAULT '[]', labels TEXT DEFAULT '{}',
+		proxy_jump TEXT DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	ts := store.NewTaskStore(db)
+	require.NoError(t, ts.Init(t.Context()))
+
+	h := NewExecHandler(db, ts, nil)
+	h.exec = &mockExecutor{output: "ok\n", exitCode: 0}
+	router := execRBACRouter(t, h)
+
 	w := execPOST(t, router, map[string]string{"command": "uptime"})
 	assert.Equal(t, 400, w.Code)
 }
@@ -229,6 +266,31 @@ func TestExecCreate_ByLabel(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	require.Len(t, resp.Tasks, 1)
 	assert.Equal(t, "app-a", resp.Tasks[0].NodeID)
+}
+
+func TestExecCreate_GroupAndLabelIntersect(t *testing.T) {
+	db, h := execTestSetup(t)
+	router := execRBACRouter(t, h)
+
+	db.Exec(`INSERT INTO nodes (id, name, address, port, user, status, groups, labels) VALUES
+		('web-prod', 'web-prod', '10.0.1.1', 22, 'root', 'online', '["web","prod"]', '{"env":"prod"}')`)
+	db.Exec(`INSERT INTO nodes (id, name, address, port, user, status, groups, labels) VALUES
+		('web-stg', 'web-stg', '10.0.1.2', 22, 'root', 'online', '["web"]', '{"env":"stg"}')`)
+	db.Exec(`INSERT INTO nodes (id, name, address, port, user, status, groups, labels) VALUES
+		('db-prod', 'db-prod', '10.0.2.1', 22, 'root', 'online', '["db"]', '{"env":"prod"}')`)
+
+	// 同时传 groups + labels 时取交集:web 组 且 env=prod -> 仅 web-prod
+	w := execPOST(t, router, map[string]interface{}{
+		"groups":  []string{"web"},
+		"labels":  map[string]string{"env": "prod"},
+		"command": "uptime",
+	})
+
+	require.Equal(t, 202, w.Code)
+	var resp execResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.Len(t, resp.Tasks, 1)
+	assert.Equal(t, "web-prod", resp.Tasks[0].NodeID)
 }
 
 func TestExecCreate_ForceMultiNode(t *testing.T) {

@@ -40,6 +40,11 @@ export function renderFiles(render, navigate, user, api, shell) {
     sessionStorage.setItem('files_selected_nodes', JSON.stringify(Array.from(selectedNodes)));
   }
 
+  function updateSelectedCount() {
+    const el = document.getElementById('selected-count');
+    if (el) el.textContent = selectedNodes.size === 0 ? '未选择（默认全部匹配节点）' : `已选 ${selectedNodes.size} 个节点`;
+  }
+
   function updatePathLabels() {
     const srcLabel = document.getElementById('src-label');
     const dstLabel = document.getElementById('dst-label');
@@ -79,18 +84,35 @@ export function renderFiles(render, navigate, user, api, shell) {
         <span style="color:var(--muted);font-size:12px">加载中…</span>
       </div>
       <div class="panel-node-footer" id="panel-node-footer">
+        <div style="display:flex;gap:4px;align-items:center">
+          <button class="btn btn-ghost btn-sm" id="select-all-btn">全选</button>
+          <button class="btn btn-ghost btn-sm" id="clear-selection-btn">清空</button>
+          <span style="flex:1"></span>
+          <span class="selected-count" id="selected-count">已选 ${selectedNodes.size} 个节点</span>
+        </div>
         <div class="pagination" id="node-pagination"></div>
-        <div class="selected-count" id="selected-count">已选 ${selectedNodes.size} 个节点</div>
       </div>
     </div>
   `);
 
+  function buildNodeQuery() {
+    const opts = {};
+    if (activeGroups.length) opts.group = activeGroups.join(',');
+    if (statusFilter) opts.status = statusFilter;
+    if (searchQuery) opts.q = searchQuery;
+    const labels = labelInputs.map(l => {
+      const i = l.indexOf('=');
+      return i > 0 ? l.slice(0, i) + ':' + l.slice(i + 1) : null;
+    }).filter(Boolean);
+    if (labels.length) opts.label = labels;
+    return opts;
+  }
+
   async function loadNodes() {
     try {
-      const opts = { page: currentPage, page_size: pageSize };
-      if (activeGroups.length) opts.group = activeGroups.join(',');
-      if (statusFilter) opts.status = statusFilter;
-      if (searchQuery) opts.q = searchQuery;
+      const opts = buildNodeQuery();
+      opts.page = currentPage;
+      opts.page_size = pageSize;
       const res = await api.nodes(opts);
       allNodes = res.data || [];
       totalNodes = res.meta?.total || 0;
@@ -98,6 +120,30 @@ export function renderFiles(render, navigate, user, api, shell) {
       renderPanelNodeList();
       renderPagination();
     } catch { allNodes = []; }
+  }
+
+  async function selectAllFiltered() {
+    try {
+      const base = buildNodeQuery();
+      let page = 1;
+      while (true) {
+        const res = await api.nodes({ ...base, page, page_size: 100 });
+        const data = res.data || [];
+        data.forEach(n => selectedNodes.add(n.id));
+        if (data.length < 100) break;
+        page++;
+      }
+      saveSelection();
+      renderPanelNodeList();
+      updateSelectedCount();
+    } catch {}
+  }
+
+  function clearSelection() {
+    selectedNodes.clear();
+    saveSelection();
+    renderPanelNodeList();
+    updateSelectedCount();
   }
 
   function renderPanelNodeList() {
@@ -120,7 +166,7 @@ export function renderFiles(render, navigate, user, api, shell) {
         if (selectedNodes.has(id)) { selectedNodes.delete(id); chip.classList.remove('selected'); }
         else { selectedNodes.add(id); chip.classList.add('selected'); }
         saveSelection();
-        document.getElementById('selected-count').textContent = `已选 ${selectedNodes.size} 个节点`;
+        updateSelectedCount();
       });
     });
   }
@@ -255,24 +301,35 @@ export function renderFiles(render, navigate, user, api, shell) {
     }
   }
 
+  function buildTransferPayload(action, src, dst) {
+    const payload = {
+      action: action,
+      source_path: src,
+      dest_path: dst,
+      direction: action,
+      overwrite: document.getElementById('files-overwrite')?.checked || false,
+      mode: document.getElementById('files-mode')?.value.trim() || '0644',
+      parallel: document.getElementById('files-parallel')?.checked ?? true,
+      resume: document.getElementById('files-resume')?.checked ?? true,
+    };
+    if (selectedNodes.size > 0) payload.node_ids = Array.from(selectedNodes);
+    if (activeGroups.length) payload.groups = activeGroups;
+    if (labelInputs.length) {
+      payload.labels = {};
+      labelInputs.forEach(l => {
+        const idx = l.indexOf('=');
+        if (idx > 0) payload.labels[l.substring(0, idx)] = l.substring(idx + 1);
+      });
+    }
+    return payload;
+  }
+
   async function handleTransfer(action) {
     const src = document.getElementById('src-path').value.trim();
     const dst = document.getElementById('dst-path').value.trim();
     if (!src || !dst) { alert('请填写源路径和目标路径'); return; }
-    if (selectedNodes.size === 0) { alert('请在左侧选择目标节点'); return; }
     try {
-      const payload = {
-        action: action,
-        node_ids: Array.from(selectedNodes),
-        source_path: src,
-        dest_path: dst,
-        direction: action,
-        overwrite: document.getElementById('files-overwrite')?.checked || false,
-        mode: document.getElementById('files-mode')?.value.trim() || '0644',
-        parallel: document.getElementById('files-parallel')?.checked ?? true,
-        resume: document.getElementById('files-resume')?.checked ?? true,
-      };
-      const res = await api.transfer(payload);
+      const res = await api.transfer(buildTransferPayload(action, src, dst));
       if (res.transfers) {
         alert(`传输任务已提交：${res.transfers.length} 个节点`);
         loadTransfers();
@@ -319,12 +376,16 @@ export function renderFiles(render, navigate, user, api, shell) {
       labelInputs.push(val);
       input.value = '';
       renderLabelTags();
+      currentPage = 1;
+      loadNodes();
     }
   }
 
   function removeLabel(l) {
     labelInputs = labelInputs.filter(x => x !== l);
     renderLabelTags();
+    currentPage = 1;
+    loadNodes();
   }
 
   function renderLabelTags() {
@@ -618,6 +679,7 @@ export function renderFiles(render, navigate, user, api, shell) {
     loadFilters();
     loadStaging();
     startAutoRefresh();
+    updateSelectedCount();
 
     updatePathLabels();
 
@@ -639,6 +701,9 @@ export function renderFiles(render, navigate, user, api, shell) {
       loadNodes();
     });
 
+    document.getElementById('select-all-btn').addEventListener('click', selectAllFiltered);
+    document.getElementById('clear-selection-btn').addEventListener('click', clearSelection);
+
     document.querySelectorAll('.status-btn[data-status]').forEach(btn => {
       btn.addEventListener('click', function() {
         document.querySelectorAll('.status-btn[data-status]').forEach(b => b.classList.remove('active'));
@@ -648,7 +713,7 @@ export function renderFiles(render, navigate, user, api, shell) {
         selectedNodes.clear();
         saveSelection();
         loadNodes();
-        document.getElementById('selected-count').textContent = `已选 ${selectedNodes.size} 个节点`;
+        updateSelectedCount();
       });
     });
 
@@ -720,23 +785,12 @@ document.getElementById('staging-multi-btn').addEventListener('click', function(
     const dstInput = document.getElementById('dst-path');
     const dst = dstInput ? dstInput.value.trim() : '';
     if (!dst) { alert('请填写节点路径'); return; }
-    if (selectedNodes.size === 0) { alert('请选择目标节点'); return; }
     const stagingDir = diskInfo ? diskInfo.staging_dir : '';
     let success = 0, fail = 0;
     for (const name of stagingSelected) {
       const fullPath = stagingDir ? stagingDir + '/' + name : name;
       try {
-        await api.transfer({
-          action: 'push',
-          node_ids: Array.from(selectedNodes),
-          source_path: fullPath,
-          dest_path: dst,
-          direction: 'push',
-          overwrite: document.getElementById('files-overwrite')?.checked || false,
-          mode: document.getElementById('files-mode')?.value.trim() || '0644',
-          parallel: document.getElementById('files-parallel')?.checked ?? true,
-          resume: document.getElementById('files-resume')?.checked ?? true,
-        });
+        await api.transfer(buildTransferPayload('push', fullPath, dst));
         success++;
       } catch (e) {
         fail++;

@@ -35,7 +35,11 @@ export const api = {
 
   nodes: (params = {}) => {
     const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null || v === '') continue;
+      if (Array.isArray(v)) v.forEach(x => { if (x !== '' && x != null) q.append(k, x); });
+      else q.set(k, v);
+    }
     return request('GET', `/nodes?${q}`);
   },
 

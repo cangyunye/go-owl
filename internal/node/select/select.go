@@ -65,6 +65,31 @@ func (s *Selector) Select(ctx context.Context, opts SelectOptions) ([]NodeRow, e
 	}
 }
 
+// SelectIntersect 供 Web 端使用：未指定 NodeIDs 时，groups 与 labels 取交集，
+// 与节点列表 API 的过滤结果（AND 语义）一致，保证「左侧预览所见即所得」。
+// status 不参与：Web 左侧的在线/离线仅是浏览筛选，不作为执行目标条件。
+// 空选项返回全部节点，即「零筛选=全量执行」。
+func (s *Selector) SelectIntersect(ctx context.Context, opts SelectOptions) ([]NodeRow, error) {
+	all, err := s.source.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("节点列表获取失败: %w", err)
+	}
+	if opts.Empty() {
+		return all, nil
+	}
+	if len(opts.NodeIDs) > 0 {
+		return selectByIDOrName(all, opts.NodeIDs)
+	}
+	out := all
+	if len(opts.Groups) > 0 {
+		out = selectByGroups(out, opts.Groups)
+	}
+	if len(opts.Labels) > 0 {
+		out = selectByLabels(out, opts.Labels)
+	}
+	return out, nil
+}
+
 func selectByIDOrName(all []NodeRow, ids []string) ([]NodeRow, error) {
 	byID := make(map[string]NodeRow, len(all))
 	byName := make(map[string]NodeRow, len(all))

@@ -17,7 +17,7 @@ type dbNodeSource struct {
 
 func (s *dbNodeSource) List(ctx context.Context) ([]nodeselect.NodeRow, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, COALESCE(groups,'[]'), COALESCE(labels,'{}'), COALESCE(status,'') FROM nodes`)
+		`SELECT id, COALESCE(name,''), COALESCE(groups,'[]'), COALESCE(labels,'{}'), COALESCE(status,'') FROM nodes`)
 	if err != nil {
 		return nil, fmt.Errorf("查询节点表失败: %w", err)
 	}

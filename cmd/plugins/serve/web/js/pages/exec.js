@@ -54,18 +54,35 @@ export function renderExec(render, navigate, user, api, shell) {
         <span style="color:var(--muted);font-size:12px">加载中…</span>
       </div>
       <div class="panel-node-footer" id="panel-node-footer">
+        <div style="display:flex;gap:4px;align-items:center">
+          <button class="btn btn-ghost btn-sm" id="select-all-btn">全选</button>
+          <button class="btn btn-ghost btn-sm" id="clear-selection-btn">清空</button>
+          <span style="flex:1"></span>
+          <span class="selected-count" id="selected-count">已选 0 个节点</span>
+        </div>
         <div class="pagination" id="node-pagination"></div>
-        <div class="selected-count" id="selected-count">已选 0 个节点</div>
       </div>
     </div>
   `);
 
+  function buildNodeQuery() {
+    const opts = {};
+    if (activeGroups.length) opts.group = activeGroups.join(',');
+    if (statusFilter) opts.status = statusFilter;
+    if (searchQuery) opts.q = searchQuery;
+    const labels = labelInputs.map(l => {
+      const i = l.indexOf('=');
+      return i > 0 ? l.slice(0, i) + ':' + l.slice(i + 1) : null;
+    }).filter(Boolean);
+    if (labels.length) opts.label = labels;
+    return opts;
+  }
+
   async function loadNodes() {
     try {
-      const opts = { page: currentPage, page_size: pageSize };
-      if (activeGroups.length) opts.group = activeGroups.join(',');
-      if (statusFilter) opts.status = statusFilter;
-      if (searchQuery) opts.q = searchQuery;
+      const opts = buildNodeQuery();
+      opts.page = currentPage;
+      opts.page_size = pageSize;
       const res = await api.nodes(opts);
       allNodes = res.data || [];
       totalNodes = res.meta?.total || 0;
@@ -74,6 +91,32 @@ export function renderExec(render, navigate, user, api, shell) {
       renderPagination();
       updateExecButton();
     } catch { allNodes = []; }
+  }
+
+  async function selectAllFiltered() {
+    try {
+      const base = buildNodeQuery();
+      let page = 1;
+      while (true) {
+        const res = await api.nodes({ ...base, page, page_size: 100 });
+        const data = res.data || [];
+        data.forEach(n => selectedNodes.add(n.id));
+        if (data.length < 100) break;
+        page++;
+      }
+      saveSelection();
+      updateSelectedCount();
+      updateExecButton();
+      renderPanelNodeList();
+    } catch {}
+  }
+
+  function clearSelection() {
+    selectedNodes.clear();
+    saveSelection();
+    updateSelectedCount();
+    updateExecButton();
+    renderPanelNodeList();
   }
 
   function renderPanelNodeList() {
@@ -148,7 +191,7 @@ export function renderExec(render, navigate, user, api, shell) {
 
   function updateSelectedCount() {
     const el = document.getElementById('selected-count');
-    if (el) el.textContent = `已选 ${selectedNodes.size} 个节点`;
+    if (el) el.textContent = selectedNodes.size === 0 ? '未选择（默认全部匹配节点）' : `已选 ${selectedNodes.size} 个节点`;
   }
 
   async function loadFilters() {
@@ -234,12 +277,16 @@ export function renderExec(render, navigate, user, api, shell) {
       labelInputs.push(val);
       input.value = '';
       renderLabelTags();
+      currentPage = 1;
+      loadNodes();
     }
   }
 
   function removeLabel(l) {
     labelInputs = labelInputs.filter(x => x !== l);
     renderLabelTags();
+    currentPage = 1;
+    loadNodes();
   }
 
   function renderLabelTags() {
@@ -266,9 +313,9 @@ export function renderExec(render, navigate, user, api, shell) {
     const count = selectedNodes.size;
     const cmd = document.getElementById('cmd-input').value.trim();
     const ready = execMode === 'script' ? hasScriptInput() : !!cmd;
-    btn.disabled = count === 0 || !ready;
+    btn.disabled = !ready;
     const verb = execMode === 'script' ? '执行脚本' : '执行命令';
-    btn.textContent = count === 0 ? '选择目标节点' : count === 1 ? verb : `在 ${count} 个节点上${verb}`;
+    btn.textContent = count === 0 ? `在全部匹配节点上${verb}` : count === 1 ? verb : `在 ${count} 个节点上${verb}`;
   }
 
   function switchExecMode(mode) {
@@ -342,9 +389,9 @@ export function renderExec(render, navigate, user, api, shell) {
     const commandTimeout = document.getElementById('command-timeout')?.value || '';
 
     const payload = {
-      node_ids: nodeIDs,
       force: 'true',
     };
+    if (nodeIDs.length) payload.node_ids = nodeIDs;
 
     if (execMode === 'script') {
       payload.mode = 'script';
@@ -391,7 +438,6 @@ export function renderExec(render, navigate, user, api, shell) {
   }
 
   async function handleExec() {
-    if (selectedNodes.size === 0) return;
     const cmd = document.getElementById('cmd-input').value.trim();
     if (execMode === 'script') {
       if (!hasScriptInput()) return;
@@ -405,7 +451,7 @@ export function renderExec(render, navigate, user, api, shell) {
 
     clearTerminal();
     const modeLabel = (isAsync ? '[异步]' : '') + (execMode === 'script' ? '[脚本]' : '');
-    appendTerminal(`${modeLabel}正在连接 ${nodeIDs.length} 个节点…`, 'ts');
+    appendTerminal(`${modeLabel}正在连接 ${nodeIDs.length === 0 ? '全部匹配' : nodeIDs.length + ' 个'} 节点…`, 'ts');
 
     try {
       const payload = buildExecPayload();
@@ -684,6 +730,9 @@ free -m</textarea>
       currentPage = 1;
       loadNodes();
     });
+
+    document.getElementById('select-all-btn').addEventListener('click', selectAllFiltered);
+    document.getElementById('clear-selection-btn').addEventListener('click', clearSelection);
 
     const noRetryCb = document.getElementById('no-retry');
     if (noRetryCb) {

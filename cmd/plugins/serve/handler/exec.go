@@ -142,11 +142,9 @@ func resolveNodeIDs(ctx context.Context, db *sql.DB, req execRequest) ([]string,
 	opts.Labels = req.Labels
 	opts.Status = req.Status
 
-	if opts.Empty() {
-		return nil, nil
-	}
-
-	nodes, err := sel.Select(ctx, opts)
+	// Web 语义:未选 node_ids 时 groups/labels 取交集(与左侧预览一致);
+	// 空选项返回全部节点,即「零筛选=全量执行」。
+	nodes, err := sel.SelectIntersect(ctx, opts)
 	if err != nil {
 		return nil, err
 	}

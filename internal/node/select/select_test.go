@@ -100,3 +100,45 @@ func TestSelect_EmptyReturnsAll(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, got, 4)
 }
+
+func TestSelectIntersect_GroupAndLabel(t *testing.T) {
+	s := NewSelector(&fakeSource{rows: sampleRows()})
+	// groups 与 labels 取交集:web 组 + env=prod -> n1
+	got, err := s.SelectIntersect(context.Background(), SelectOptions{
+		Groups: []string{"web"},
+		Labels: map[string]string{"env": "prod"},
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "n1", got[0].ID)
+}
+
+func TestSelectIntersect_EmptyReturnsAll(t *testing.T) {
+	s := NewSelector(&fakeSource{rows: sampleRows()})
+	got, err := s.SelectIntersect(context.Background(), SelectOptions{})
+	require.NoError(t, err)
+	assert.Len(t, got, 4)
+}
+
+func TestSelectIntersect_GroupOnly(t *testing.T) {
+	s := NewSelector(&fakeSource{rows: sampleRows()})
+	got, err := s.SelectIntersect(context.Background(), SelectOptions{Groups: []string{"web"}})
+	require.NoError(t, err)
+	var ids []string
+	for _, n := range got {
+		ids = append(ids, n.ID)
+	}
+	assert.ElementsMatch(t, []string{"n1", "n4"}, ids)
+}
+
+func TestSelectIntersect_NodeIDsTakePrecedence(t *testing.T) {
+	s := NewSelector(&fakeSource{rows: sampleRows()})
+	got, err := s.SelectIntersect(context.Background(), SelectOptions{
+		NodeIDs: []string{"n2"},
+		Groups:  []string{"web"},
+		Labels:  map[string]string{"env": "prod"},
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "n2", got[0].ID)
+}

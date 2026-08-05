@@ -141,6 +141,44 @@ func TestTransferPull_NoSourceCheck(t *testing.T) {
 	assert.Equal(t, 202, w.Code)
 }
 
+// 未传 node_ids 时按 group/label 过滤解析目标节点
+func TestTransferResolve_ByGroupAndLabel(t *testing.T) {
+	db, _, router, token := transferTestSetup(t)
+
+	_, err := db.Exec(`INSERT INTO nodes (id, name, address, port, user, status, groups, labels) VALUES
+		('web-1', 'web-1', '10.0.1.1', 22, 'root', 'online', '["web","prod"]', '{"env":"prod"}')`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO nodes (id, name, address, port, user, status, groups, labels) VALUES
+		('web-2', 'web-2', '10.0.1.2', 22, 'root', 'online', '["web"]', '{"env":"stg"}')`)
+	require.NoError(t, err)
+
+	body := map[string]interface{}{
+		"action":      "push",
+		"groups":      []string{"web"},
+		"labels":      map[string]string{"env": "prod"},
+		"source_path": "/tmp/deploy.tar",
+		"dest_path":   "/tmp/",
+		"direction":   "push",
+	}
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/transfer", &buf)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, 202, w.Code)
+	var resp struct {
+		Transfers []transferResponse `json:"transfers"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	// 命中 web 组 + env=prod 的节点,且 node_ids 为空 -> 解析出 web-1
+	require.Len(t, resp.Transfers, 1)
+	assert.Equal(t, "web-1", resp.Transfers[0].NodeID)
+}
+
 func TestTransferCreate_RecordsHistory(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)

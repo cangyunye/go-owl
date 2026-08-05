@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	nodeselect "github.com/cangyunye/go-owl/internal/node/select"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -29,15 +30,17 @@ type TransferHandler struct {
 }
 
 type transferRequest struct {
-	Action     string   `json:"action"` // "upload" or "download"
-	NodeIDs    []string `json:"node_ids"`
-	SourcePath string   `json:"source_path"`
-	DestPath   string   `json:"dest_path"`
-	Direction  string   `json:"direction"` // "push" or "pull"
-	Overwrite  bool     `json:"overwrite"`
-	Mode       string   `json:"mode"`
-	Parallel   *bool    `json:"parallel"`
-	Resume     bool     `json:"resume"`
+	Action     string            `json:"action"` // "upload" or "download"
+	NodeIDs    []string          `json:"node_ids"`
+	Groups     []string          `json:"groups"`
+	Labels     map[string]string `json:"labels"`
+	SourcePath string            `json:"source_path"`
+	DestPath   string            `json:"dest_path"`
+	Direction  string            `json:"direction"` // "push" or "pull"
+	Overwrite  bool              `json:"overwrite"`
+	Mode       string            `json:"mode"`
+	Parallel   *bool             `json:"parallel"`
+	Resume     bool              `json:"resume"`
 }
 
 type transferOptions struct {
@@ -72,6 +75,18 @@ func (h *TransferHandler) Create(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request body"})
 		return
+	}
+	if len(req.NodeIDs) == 0 {
+		sel := nodeselect.NewSelector(&dbNodeSource{db: h.db})
+		opts := nodeselect.SelectOptions{Groups: req.Groups, Labels: req.Labels}
+		nodes, err := sel.SelectIntersect(c.Request.Context(), opts)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+			return
+		}
+		for _, n := range nodes {
+			req.NodeIDs = append(req.NodeIDs, n.ID)
+		}
 	}
 	if len(req.NodeIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "no target nodes specified"})

@@ -124,7 +124,8 @@ func (h *NodeHandler) List(c *gin.Context) {
 		query += fmt.Sprintf(" AND user = ?")
 		args = append(args, u)
 	}
-	if l := c.Query("label"); l != "" {
+	// 支持多个 label 参数,逐条 AND,满足多标签同时匹配
+	for _, l := range c.QueryArray("label") {
 		parts := strings.SplitN(l, ":", 2)
 		if len(parts) == 2 {
 			query += ` AND labels LIKE ?`
