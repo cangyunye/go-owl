@@ -21,7 +21,7 @@ func NewPlaybookTemplateInfoCmd() *cobra.Command {
 
 func runTemplateInfo(cmd *cobra.Command, args []string) {
 	name := args[0]
-	entry, err := pb.GetTemplate(name, "")
+	entry, err := pb.GetTemplate(name, pb.DefaultUserTemplatePath())
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.template.info.err_get", err))
 		return

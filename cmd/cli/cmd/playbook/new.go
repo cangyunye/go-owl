@@ -3,12 +3,14 @@ package playbook
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	pb "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/cangyunye/go-owl/internal/i18n"
 )
@@ -37,7 +39,7 @@ func NewPlaybookNewCmd() *cobra.Command {
 }
 
 func runPlaybookNew(cmd *cobra.Command, args []string) {
-	entry, err := pb.GetTemplate(pbNewFrom, "")
+	entry, err := pb.GetTemplate(pbNewFrom, pb.DefaultUserTemplatePath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err", err))
 		os.Exit(1)
@@ -51,7 +53,8 @@ func runPlaybookNew(cmd *cobra.Command, args []string) {
 
 	provided := parseVarFlags(pbNewVars)
 
-	promptForMissingParams(meta.Parameters, provided)
+	interactive := term.IsTerminal(int(os.Stdin.Fd()))
+	promptForMissingParams(meta.Parameters, provided, os.Stdin, interactive)
 
 	validated, err := pb.ValidateParams(meta.Parameters, provided)
 	if err != nil {
@@ -90,8 +93,11 @@ func parseVarFlags(vars []string) map[string]interface{} {
 	return provided
 }
 
-func promptForMissingParams(params []pb.TemplateParameter, provided map[string]interface{}) {
-	reader := bufio.NewReader(os.Stdin)
+func promptForMissingParams(params []pb.TemplateParameter, provided map[string]interface{}, r io.Reader, interactive bool) {
+	if !interactive {
+		return
+	}
+	reader := bufio.NewReader(r)
 	for _, p := range params {
 		if _, ok := provided[p.Name]; ok {
 			continue

@@ -19,7 +19,7 @@ func NewPlaybookTemplateListCmd() *cobra.Command {
 }
 
 func runTemplateList(cmd *cobra.Command, args []string) {
-	entries, err := pb.LoadTemplates("")
+	entries, err := pb.LoadTemplates(pb.DefaultUserTemplatePath())
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.template.list.err_load", err))
 		return

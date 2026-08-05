@@ -28,7 +28,7 @@ func NewPlaybookTemplateExportCmd() *cobra.Command {
 
 func runTemplateExport(cmd *cobra.Command, args []string) {
 	name := args[0]
-	entry, err := pb.GetTemplate(name, "")
+	entry, err := pb.GetTemplate(name, pb.DefaultUserTemplatePath())
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.template.export.err_get", err))
 		return
