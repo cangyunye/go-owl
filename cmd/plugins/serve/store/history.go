@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -196,7 +197,17 @@ func (s *HistoryStore) ensureForcedColumn(ctx context.Context) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`)
+	return s.addForcedColumn(ctx)
+}
+
+// addForcedColumn 执行 ALTER 迁移。CLI 与 serve 可能并发迁移同一旧库，
+// 后到者的 ALTER 会收到 "duplicate column name: forced"，视为成功（幂等，
+// 与 playbook_run.go 的容错模式一致）。
+func (s *HistoryStore) addForcedColumn(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`)
+	if err != nil && strings.Contains(err.Error(), "duplicate column name") {
+		return nil
+	}
 	return err
 }
 
@@ -297,7 +308,7 @@ func (s *HistoryStore) Query(ctx context.Context, opts *QueryOptions) ([]*Record
 		return nil, 0, err
 	}
 
-	query := "SELECT id, task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, created_at FROM operations" + where + " ORDER BY created_at DESC"
+	query := "SELECT id, task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, created_at FROM operations" + where + " ORDER BY created_at DESC"
 	listArgs := append([]interface{}{}, args...)
 	if opts.Limit > 0 {
 		query += " LIMIT ? OFFSET ?"
@@ -314,9 +325,11 @@ func (s *HistoryStore) Query(ctx context.Context, opts *QueryOptions) ([]*Record
 	for rows.Next() {
 		var op Operation
 		var targetsJSON string
-		if err := rows.Scan(&op.ID, &op.TaskID, &op.OpType, &op.Command, &targetsJSON, &op.Status, &op.ExecutionMode, &op.PlaybookPath, &op.CurrentTaskIndex, &op.CurrentTaskPhase, &op.CreatedAt); err != nil {
+		var forced int
+		if err := rows.Scan(&op.ID, &op.TaskID, &op.OpType, &op.Command, &targetsJSON, &op.Status, &op.ExecutionMode, &op.PlaybookPath, &op.CurrentTaskIndex, &op.CurrentTaskPhase, &forced, &op.CreatedAt); err != nil {
 			continue
 		}
+		op.Forced = forced == 1
 		json.Unmarshal([]byte(targetsJSON), &op.Targets)
 		records = append(records, &Record{Operation: &op})
 	}

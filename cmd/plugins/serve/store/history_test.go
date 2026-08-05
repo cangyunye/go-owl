@@ -186,3 +186,49 @@ func TestHistoryStore_UpdateOperationStatus(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "completed", rec.Operation.Status)
 }
+
+// TestHistoryStore_ForcedColumnMigration_AlterRace 模拟 CLI 与 serve 并发迁移竞态：
+// 另一进程已完成 ALTER（列已存在），本进程的 ALTER 步骤收到
+// "duplicate column name: forced" 必须视为成功（参照 playbook_run.go 的容错模式）。
+func TestHistoryStore_ForcedColumnMigration_AlterRace(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	_, err := db.Exec(`CREATE TABLE operations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, op_type TEXT,
+		command TEXT, targets TEXT, status TEXT,
+		execution_mode TEXT DEFAULT '', playbook_path TEXT DEFAULT '',
+		current_task_index INTEGER DEFAULT 0, current_task_phase TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+
+	// 另一进程先完成了迁移
+	_, err = db.Exec(`ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`)
+	require.NoError(t, err)
+
+	s := NewHistoryStore(db)
+	// 晚到的进程：ALTER 步骤须容忍 duplicate column
+	require.NoError(t, s.addForcedColumn(ctx))
+	// 整体入口同样不报错（列已存在走前置检查短路）
+	require.NoError(t, s.ensureForcedColumn(ctx))
+}
+
+func TestHistoryStore_QueryExposesForced(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "op-forced", OpType: "playbook", Command: "run deploy.yaml", Targets: []string{"n1"}, Status: "completed", Forced: true}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "op-normal", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed"}))
+
+	recs, _, err := s.Query(ctx, &QueryOptions{TaskID: "op-forced"})
+	require.NoError(t, err)
+	require.Len(t, recs, 1)
+	assert.True(t, recs[0].Operation.Forced, "Query 读回的 forced 应为 true")
+
+	recs, _, err = s.Query(ctx, &QueryOptions{TaskID: "op-normal"})
+	require.NoError(t, err)
+	require.Len(t, recs, 1)
+	assert.False(t, recs[0].Operation.Forced)
+}

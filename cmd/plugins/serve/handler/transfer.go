@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -223,7 +224,7 @@ func dialSFTP(info *nodeSSHInfo) (*sftp.Client, *ssh.Client, error) {
 		}
 		config.Auth = append(config.Auth, ssh.PublicKeys(signer))
 	}
-	addr := fmt.Sprintf("%s:%d", info.Address, info.Port)
+	addr := net.JoinHostPort(info.Address, strconv.Itoa(info.Port))
 	sshClient, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ssh dial: %w", err)

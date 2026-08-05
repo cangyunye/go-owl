@@ -164,8 +164,7 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 		return
 	}
 
-	runCheck, _ := h.runs.Get(ctx, runID)
-	if runCheck.Status == webmodel.RunStatusCancelled {
+	if run.Status == webmodel.RunStatusCancelled {
 		return
 	}
 

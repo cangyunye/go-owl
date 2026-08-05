@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"strconv"
 	"time"
 
@@ -51,7 +52,7 @@ func (e *sshExecutor) dialNode(ctx context.Context, nodeID string) (*owlssh.Clie
 	if err != nil {
 		return nil, fmt.Errorf("resolve node: %w", err)
 	}
-	addr := info.Address + ":" + strconv.Itoa(info.Port)
+	addr := net.JoinHostPort(info.Address, strconv.Itoa(info.Port))
 	return owlssh.Dial(ctx, addr, owlssh.DialOptions{
 		User:           info.User,
 		Password:       info.Password,
