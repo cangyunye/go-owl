@@ -145,6 +145,34 @@ func TestHistoryStore_Stats(t *testing.T) {
 	assert.Equal(t, 1, st.ByStatus["failed"])
 }
 
+func TestHistoryStore_ForcedColumnMigration_LegacyDB(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	_, err := db.Exec(`CREATE TABLE operations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, op_type TEXT,
+		command TEXT, targets TEXT, status TEXT,
+		execution_mode TEXT DEFAULT '', playbook_path TEXT DEFAULT '',
+		current_task_index INTEGER DEFAULT 0, current_task_phase TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "t1", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "running", Forced: true}))
+
+	var forced int
+	require.NoError(t, db.QueryRow(`SELECT forced FROM operations WHERE task_id = 't1'`).Scan(&forced))
+	assert.Equal(t, 1, forced)
+
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "t2", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "running"}))
+	require.NoError(t, db.QueryRow(`SELECT forced FROM operations WHERE task_id = 't2'`).Scan(&forced))
+	assert.Equal(t, 0, forced)
+}
+
 func TestHistoryStore_UpdateOperationStatus(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()

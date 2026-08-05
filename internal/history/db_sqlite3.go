@@ -77,6 +77,7 @@ func (s *SQLite3) InitSchema() error {
 			playbook_path TEXT DEFAULT '',
 			current_task_index INTEGER DEFAULT 0,
 			current_task_phase TEXT DEFAULT '',
+			forced INTEGER DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_operations_task_id ON operations (task_id);`,
@@ -241,7 +242,34 @@ func (s *SQLite3) InitSchema() error {
 	// 迁移：兼容旧表缺少的列
 	_, _ = s.conn.Exec("ALTER TABLE nodes ADD COLUMN last_check_at DATETIME")
 
-	return nil
+	return s.EnsureForcedColumn()
+}
+
+// EnsureForcedColumn 为存量库补充 operations.forced 列（幂等）。
+func (s *SQLite3) EnsureForcedColumn() error {
+	rows, err := s.conn.Query(`PRAGMA table_info(operations)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == "forced" {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.conn.Exec(`ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`)
+	return err
 }
 
 // Close 关闭连接

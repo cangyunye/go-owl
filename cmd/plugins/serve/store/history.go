@@ -22,6 +22,7 @@ type Operation struct {
 	PlaybookPath     string    `json:"playbook_path"`
 	CurrentTaskIndex int       `json:"current_task_index"`
 	CurrentTaskPhase string    `json:"current_task_phase"`
+	Forced           bool      `json:"forced"`
 	CreatedAt        time.Time `json:"created_at"`
 }
 
@@ -112,6 +113,7 @@ func (s *HistoryStore) Init(ctx context.Context) error {
 			playbook_path TEXT DEFAULT '',
 			current_task_index INTEGER DEFAULT 0,
 			current_task_phase TEXT DEFAULT '',
+			forced INTEGER DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_operations_task_id ON operations (task_id)`,
@@ -168,7 +170,34 @@ func (s *HistoryStore) Init(ctx context.Context) error {
 			return err
 		}
 	}
-	return nil
+	return s.ensureForcedColumn(ctx)
+}
+
+// ensureForcedColumn 为存量库补充 operations.forced 列（幂等）。
+func (s *HistoryStore) ensureForcedColumn(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(operations)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == "forced" {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`)
+	return err
 }
 
 func (s *HistoryStore) RecordOperation(ctx context.Context, op *Operation) error {
@@ -179,10 +208,14 @@ func (s *HistoryStore) RecordOperation(ctx context.Context, op *Operation) error
 		op.CreatedAt = time.Now().UTC()
 	}
 	targetsJSON, _ := json.Marshal(op.Targets)
+	forced := 0
+	if op.Forced {
+		forced = 1
+	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, op.TaskID, op.OpType, op.Command, string(targetsJSON), op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, op.CreatedAt)
+		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, op.TaskID, op.OpType, op.Command, string(targetsJSON), op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, forced, op.CreatedAt)
 	return err
 }
 

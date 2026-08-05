@@ -159,10 +159,11 @@ type testDB struct {
 	conn *sql.DB
 }
 
-func (d *testDB) Connection() *sql.DB     { return d.conn }
-func (d *testDB) InitSchema() error        { return nil }
-func (d *testDB) Close() error             { return d.conn.Close() }
-func (d *testDB) Cleanup(int) error        { return nil }
+func (d *testDB) Connection() *sql.DB       { return d.conn }
+func (d *testDB) InitSchema() error         { return nil }
+func (d *testDB) Close() error              { return d.conn.Close() }
+func (d *testDB) Cleanup(int) error         { return nil }
+func (d *testDB) EnsureForcedColumn() error { return nil }
 
 func setupTestDB(t *testing.T) func() {
 	t.Helper()

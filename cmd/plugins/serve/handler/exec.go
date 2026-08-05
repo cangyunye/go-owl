@@ -405,7 +405,7 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		if isScript {
 			opType = "script"
 		}
-		op := &store.Operation{TaskID: opID, OpType: opType, Command: command, Targets: opTargets, Status: "running", CreatedAt: time.Now().UTC()}
+		op := &store.Operation{TaskID: opID, OpType: opType, Command: command, Targets: opTargets, Status: "running", CreatedAt: time.Now().UTC(), Forced: req.DangerConfirmed}
 		if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
 			log.Printf("record history: %v", err)
 		}

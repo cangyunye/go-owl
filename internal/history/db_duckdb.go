@@ -71,6 +71,7 @@ func (d *DuckDB) InitSchema() error {
 			playbook_path VARCHAR DEFAULT '',
 			current_task_index INTEGER DEFAULT 0,
 			current_task_phase VARCHAR DEFAULT '',
+			forced INTEGER DEFAULT 0,
 			status VARCHAR,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		);`,
@@ -242,7 +243,13 @@ tttttttexecution_mode VARCHAR DEFAULT '',
 	// 迁移：兼容旧表缺少的列
 	_, _ = d.conn.Exec("ALTER TABLE nodes ADD COLUMN last_check_at TIMESTAMP")
 
-	return nil
+	return d.EnsureForcedColumn()
+}
+
+// EnsureForcedColumn 为存量库补充 operations.forced 列（幂等）。
+func (d *DuckDB) EnsureForcedColumn() error {
+	_, err := d.conn.Exec(`ALTER TABLE operations ADD COLUMN IF NOT EXISTS forced INTEGER DEFAULT 0`)
+	return err
 }
 
 // Close 关闭连接
