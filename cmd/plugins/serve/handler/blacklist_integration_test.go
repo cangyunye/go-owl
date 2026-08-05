@@ -159,6 +159,56 @@ func TestWebExecutor_ExecuteScript_DangerousBlocked(t *testing.T) {
 	assert.Contains(t, res.Text, "黑名单")
 }
 
+func newBlacklistTestWebExecutor(t *testing.T, db *sql.DB) *WebExecutor {
+	t.Helper()
+	ts := store.NewTaskStore(db)
+	require.NoError(t, ts.Init(t.Context()))
+	trs := store.NewTransferRecordStore(db)
+	require.NoError(t, trs.Init(t.Context()))
+	prs := store.NewPlaybookRunStore(db)
+	require.NoError(t, prs.Init(t.Context()))
+	ns := store.NewNodeStore(db)
+	pbs := store.NewPlaybookStore(db)
+	require.NoError(t, pbs.Init(t.Context()))
+	audit := store.NewAIAuditStore(db)
+	require.NoError(t, audit.Init(t.Context()))
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(t.Context()))
+
+	e := NewWebExecutor(db, ts, trs, prs, ns, pbs, audit, NewKeyManager(), false)
+	e.userRole = "admin"
+	e.History = hs
+	return e
+}
+
+func TestWebExecutor_ExecuteScript_KeepFalseBenignScriptNotBlocked(t *testing.T) {
+	db := blacklistTestNodeDB(t)
+	e := newBlacklistTestWebExecutor(t, db)
+
+	res, err := e.ExecuteScript(t.Context(), ai2.ExecScriptParams{
+		Nodes:  []string{"test-node"},
+		Script: "echo hi",
+		Keep:   false,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.NotContains(t, res.Text, "黑名单")
+}
+
+func TestWebExecutor_ExecuteScript_DangerousArgsBlocked(t *testing.T) {
+	db := blacklistTestNodeDB(t)
+	e := newBlacklistTestWebExecutor(t, db)
+
+	res, err := e.ExecuteScript(t.Context(), ai2.ExecScriptParams{
+		Nodes:  []string{"test-node"},
+		Script: "#!/bin/bash\necho hello",
+		Args:   "; rm -rf /var/data",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Contains(t, res.Text, "黑名单")
+}
+
 func TestExecCreate_ScriptWithDangerousArgsBlocked(t *testing.T) {
 	_, h := execTestSetup(t)
 	r := execRBACRouter(t, h)

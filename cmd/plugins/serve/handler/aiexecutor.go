@@ -265,7 +265,7 @@ func (e *WebExecutor) ExecuteScript(ctx context.Context, params ai2.ExecScriptPa
 			if _, err := e.checker.CheckForExec(user, params.Script, false); err != nil {
 				return &ai2.ExecScriptResult{Text: err.Error()}, nil
 			}
-			if _, err := e.checker.CheckForExec(user, execCmd, false); err != nil {
+			if _, err := e.checker.CheckForExec(user, params.Args, false); err != nil {
 				return &ai2.ExecScriptResult{Text: err.Error()}, nil
 			}
 		}
