@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -268,7 +269,16 @@ func (s *SQLite3) EnsureForcedColumn() error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	_, err = s.conn.Exec(`ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`)
+	return s.addForcedColumn()
+}
+
+// addForcedColumn 执行 ALTER 迁移。CLI 与 serve 可能并发迁移同一旧库，
+// 后到者的 ALTER 会收到 "duplicate column name: forced"，视为成功（幂等）。
+func (s *SQLite3) addForcedColumn() error {
+	_, err := s.conn.Exec(`ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`)
+	if err != nil && strings.Contains(err.Error(), "duplicate column name") {
+		return nil
+	}
 	return err
 }
 

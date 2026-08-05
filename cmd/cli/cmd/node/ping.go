@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -82,7 +83,7 @@ func runPing(nodeIDs []string) {
 
 		for i := 0; i < pingCount; i++ {
 			start := time.Now()
-			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", addr, node.Port), pingTimeout)
+			conn, err := net.DialTimeout("tcp", net.JoinHostPort(addr, strconv.Itoa(node.Port)), pingTimeout)
 			latency := time.Since(start)
 
 			if err == nil {

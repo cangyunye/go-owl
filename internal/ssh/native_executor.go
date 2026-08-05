@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	gossh "golang.org/x/crypto/ssh"
@@ -35,7 +37,7 @@ func (e *NativeNodeExecutor) WriteFile(localPath, remotePath string) error {
 		return fmt.Errorf("读取本地文件 %s 失败: %w", localPath, err)
 	}
 
-	addr := fmt.Sprintf("%s:%d", e.connInfo.Address, e.connInfo.Port)
+	addr := net.JoinHostPort(e.connInfo.Address, strconv.Itoa(e.connInfo.Port))
 
 	client, err := Dial(context.Background(), addr, DialOptions{
 		User:           e.connInfo.GetUser(),
@@ -80,7 +82,7 @@ func (e *NativeNodeExecutor) ExecuteWithConfig(command string, config *TimeoutCo
 }
 
 func (e *NativeNodeExecutor) execute(command string, dialTimeout, commandTimeout time.Duration) (int, string, error) {
-	addr := fmt.Sprintf("%s:%d", e.connInfo.Address, e.connInfo.Port)
+	addr := net.JoinHostPort(e.connInfo.Address, strconv.Itoa(e.connInfo.Port))
 
 	client, err := Dial(context.Background(), addr, DialOptions{
 		User:           e.connInfo.GetUser(),

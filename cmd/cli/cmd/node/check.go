@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -200,7 +202,7 @@ func filterCheckNodes(nodes []*common.NodeInfo, groups, labels []string, onlyFai
 }
 
 func checkNodeSSH(n *common.NodeInfo) checkResult {
-	addr := fmt.Sprintf("%s:%d", n.Address, n.Port)
+	addr := net.JoinHostPort(n.Address, strconv.Itoa(n.Port))
 	ctx := context.Background()
 
 	sshUser := n.User

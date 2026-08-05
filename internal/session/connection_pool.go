@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -80,7 +82,7 @@ func (p *SSHConnectionPool) Connect(nodeID, address string, port int, user strin
 
 // createConnection 创建新连接（统一走 owlssh.Dial：超时/认证链/ProxyJump）
 func (p *SSHConnectionPool) createConnection(nodeID, address string, port int, user string, authMethods []gossh.AuthMethod, proxyJump string) (*SSHConnection, error) {
-	addr := fmt.Sprintf("%s:%d", address, port)
+	addr := net.JoinHostPort(address, strconv.Itoa(port))
 
 	ctx, cancel := context.WithTimeout(context.Background(), p.config.ConnectTimeout)
 	defer cancel()
