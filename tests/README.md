@@ -21,8 +21,6 @@ go-owl/
 │   │   └── playbooks/           # 测试用 playbook
 │   │       ├── test-command.yaml
 │   │       └── test-deploy.yaml
-│   ├── unit/                    # 单元测试 (Go)
-│   │   └── *.go
 │   ├── integration/             # 集成测试 (Go)
 │   │   └── *.go
 │   └── scripts/                 # Bash 测试脚本
@@ -99,118 +97,9 @@ nodes:
 - 确保测试目录有写入权限
 
 ---
+## 3. Go 集成测试 (tests/integration/)
 
-## 3. Go 单元测试 (tests/unit/)
-
-### 3.1 测试文件命名规范
-- 文件名以 `_test.go` 结尾
-- 示例：`command_test.go`, `executor_test.go`
-
-### 3.2 测试用例结构
-```go
-// tests/unit/command_test.go
-package unit
-
-import (
-    "testing"
-    "github.com/cangyunye/go-owl/internal/control/command"
-)
-
-func TestCommandExecutor(t *testing.T) {
-    tests := []struct {
-        name     string
-        command  string
-        wantErr  bool
-    }{
-        {
-            name:    "测试简单命令",
-            command: "echo hello",
-            wantErr: false,
-        },
-        {
-            name:    "测试带管道的命令",
-            command: "echo hello | cat",
-            wantErr: false,
-        },
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            // 测试逻辑
-            if tt.wantErr {
-                t.Error("预期错误但没有发生")
-            }
-        })
-    }
-}
-```
-
-### 3.3 常用测试用例
-
-#### 3.3.1 命令解析测试
-```go
-// tests/unit/command_parser_test.go
-func TestParseNodeList(t *testing.T) {
-    tests := []struct {
-        input    string
-        expected []string
-    }{
-        {input: "node1", expected: []string{"node1"}},
-        {input: "node1,node2", expected: []string{"node1", "node2"}},
-        {input: "node1, node2, node3", expected: []string{"node1", "node2", "node3"}},
-    }
-    
-    for _, tt := range tests {
-        t.Run(tt.input, func(t *testing.T) {
-            result := parseNodeList(tt.input)
-            if !reflect.DeepEqual(result, tt.expected) {
-                t.Errorf("expected %v, got %v", tt.expected, result)
-            }
-        })
-    }
-}
-```
-
-#### 3.3.2 变量替换测试
-```go
-// tests/unit/variable_test.go
-func TestVariableInterpolation(t *testing.T) {
-    tests := []struct {
-        name     string
-        template string
-        vars     map[string]string
-        expected string
-    }{
-        {
-            name:     "简单变量",
-            template: "echo {{name}}",
-            vars:     map[string]string{"name": "world"},
-            expected: "echo world",
-        },
-        {
-            name:     "多个变量",
-            template: "{{greeting}} {{name}}!",
-            vars:     map[string]string{"greeting": "Hello", "name": "World"},
-            expected: "Hello World!",
-        },
-    }
-    
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            result := interpolate(tt.template, tt.vars)
-            if result != tt.expected {
-                t.Errorf("expected %q, got %q", tt.expected, result)
-            }
-        })
-    }
-}
-```
-
----
-
-## 4. Go 集成测试 (tests/integration/)
-
-### 4.1 测试文件结构
+### 3.1 测试文件结构
 ```go
 // tests/integration/exec_test.go
 package integration
@@ -257,9 +146,9 @@ func TestExecRun(t *testing.T) {
 }
 ```
 
-### 4.2 测试用例覆盖
+### 3.2 测试用例覆盖
 
-#### 4.2.1 命令执行测试
+#### 3.2.1 命令执行测试
 ```go
 func TestExecRunCommand(t *testing.T)     // 测试基本命令执行
 func TestExecRunMultipleNodes(t *testing.T) // 测试多节点执行
@@ -268,7 +157,7 @@ func TestExecRunParallel(t *testing.T)     // 测试并行执行
 func TestExecRunSerial(t *testing.T)      // 测试串行执行
 ```
 
-#### 4.2.2 脚本执行测试
+#### 3.2.2 脚本执行测试
 ```go
 func TestScriptFileMode(t *testing.T)     // 测试文件模式
 func TestScriptInlineMode(t *testing.T)   // 测试内联模式
@@ -276,7 +165,7 @@ func TestScriptWithArgs(t *testing.T)     // 测试带参数
 func TestScriptKeepFile(t *testing.T)     // 测试保留文件
 ```
 
-#### 4.2.3 文件传输测试
+#### 3.2.3 文件传输测试
 ```go
 func TestUploadFile(t *testing.T)        // 测试上传
 func TestDownloadFile(t *testing.T)      // 测试下载
@@ -284,7 +173,7 @@ func TestUploadOverwrite(t *testing.T)   // 测试覆盖
 func TestDownloadSubdir(t *testing.T)    // 测试子目录
 ```
 
-#### 4.2.4 历史记录测试
+#### 3.2.4 历史记录测试
 ```go
 func TestHistoryRecord(t *testing.T)     // 测试记录
 func TestHistoryQuery(t *testing.T)      // 测试查询
@@ -293,9 +182,9 @@ func TestHistoryClear(t *testing.T)       // 测试清理
 
 ---
 
-## 5. Bash 测试脚本 (tests/scripts/)
+## 4. Bash 测试脚本 (tests/scripts/)
 
-### 5.1 脚本结构规范
+### 4.1 脚本结构规范
 ```bash
 #!/bin/bash
 # tests/scripts/test-exec.sh
@@ -350,7 +239,7 @@ echo "========================================="
 [ $FAILED -eq 0 ]
 ```
 
-### 5.2 测试脚本列表
+### 4.2 测试脚本列表
 
 | 脚本 | 用途 | 测试内容 |
 |------|------|---------|
@@ -360,7 +249,7 @@ echo "========================================="
 | `test-history.sh` | history 命令测试 | show, query |
 | `test-settings.sh` | settings 命令测试 | show, set |
 
-### 5.3 测试脚本示例：test-exec.sh
+### 4.3 测试脚本示例：test-exec.sh
 
 ```bash
 #!/bin/bash
@@ -507,9 +396,9 @@ main "$@"
 
 ---
 
-## 6. Makefile 测试脚本
+## 5. Makefile 测试脚本
 
-### 6.1 Makefile 内容
+### 5.1 Makefile 内容
 ```makefile
 .PHONY: help test test-unit test-integration test-e2e test-all test-clean test-quick
 
@@ -575,9 +464,9 @@ test-coverage:
 
 ---
 
-## 7. 用户配置指南
+## 6. 用户配置指南
 
-### 7.1 快速开始
+### 6.1 快速开始
 
 **步骤 1：创建测试节点配置**
 ```bash
@@ -609,7 +498,7 @@ make test-integration # 集成测试
 make test-e2e        # 端到端测试
 ```
 
-### 7.2 常见问题
+### 6.2 常见问题
 
 **Q: 测试节点需要什么权限？**
 A: 基本执行权限即可，不需要 root。
@@ -625,9 +514,9 @@ A: 使用 `--debug` 选项查看详细错误信息。
 
 ---
 
-## 8. 持续集成（可选）
+## 7. 持续集成（可选）
 
-### 8.1 CI 的作用
+### 7.1 CI 的作用
 
 | 场景 | 没有 CI | 有 CI |
 |------|--------|------|
@@ -636,7 +525,7 @@ A: 使用 `--debug` 选项查看详细错误信息。
 | 问题发现 | 上线后发现 | 提交时发现 |
 | 团队协作 | 难以保证代码质量 | 自动保证 |
 
-### 8.2 CI 配置示例
+### 7.2 CI 配置示例
 
 如果您决定使用 CI，可以在 `.github/workflows/test.yml` 中配置：
 
@@ -685,39 +574,38 @@ jobs:
 
 ---
 
-## 9. 测试最佳实践
+## 8. 测试最佳实践
 
-### 9.1 测试命名规范
+### 8.1 测试命名规范
 - 测试函数：`Test` 开头
 - 测试用例：描述性名称，如 `TestExecRunMultipleNodes`
 - 使用 Go 惯例：`func TestSomething(t *testing.T)`
 
-### 9.2 测试组织
+### 8.2 测试组织
 - 每个功能模块一个测试文件
 - 相关测试放在同一个 package
 - 使用 table-driven tests 减少重复代码
 
-### 9.3 测试隔离
+### 8.3 测试隔离
 - 每个测试前后清理环境
 - 使用唯一的测试数据（如带时间戳）
 - 不依赖测试执行顺序
 
-### 9.4 错误处理
+### 8.4 错误处理
 - 预期错误要明确标记
 - 提供有意义的错误信息
 - 包含实际值和期望值
 
 ---
 
-## 10. 下一步
+## 9. 下一步
 
 确认此方案后，我将创建：
 
 1. ✅ 完整的测试目录结构
-2. ✅ Go 单元测试示例（command, variable）
-3. ✅ Go 集成测试示例（exec, history）
-4. ✅ Bash 测试脚本（test-exec.sh）
-5. ✅ Makefile 测试脚本
-6. ✅ 测试数据文件
+2. ✅ Go 集成测试示例（exec, history）
+3. ✅ Bash 测试脚本（test-exec.sh）
+4. ✅ Makefile 测试脚本
+5. ✅ 测试数据文件
 
 您确认可以开始实现了吗？
