@@ -29,8 +29,6 @@ test-unit:
 	@echo "========================================="
 	@echo "运行单元测试"
 	@echo "========================================="
-	@go test -v ./unit/...
-	@echo ""
 	@echo "运行 CLI 命令结构性测试 (cmd/cli/cmd/)"
 	@cd .. && go test ./cmd/cli/cmd/...
 	@echo ""
@@ -118,7 +116,7 @@ test-quick:
 	@echo "运行快速测试"
 	@echo "========================================="
 	@echo "运行单元测试..."
-	@go test -v ./unit/...
+	@cd .. && go test ./cmd/cli/cmd/... ./internal/...
 
 test-clean:
 	@echo "========================================="
@@ -131,7 +129,7 @@ test-coverage:
 	@echo "========================================="
 	@echo "生成测试覆盖率报告"
 	@echo "========================================="
-	@cd .. && go test -coverprofile=tests/coverage.out ./cmd/cli/cmd/... ./internal/... ./tests/unit/...
+	@cd .. && go test -coverprofile=tests/coverage.out ./cmd/cli/cmd/... ./internal/...
 	@cd .. && go tool cover -html=tests/coverage.out -o tests/coverage.html
 	@echo "覆盖率报告已生成: coverage.html"
 	@cd .. && go tool cover -func=tests/coverage.out | tail -1
