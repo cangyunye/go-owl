@@ -17,9 +17,10 @@ type DialOptions struct {
 	User           string
 	Password       string
 	KeyFile        string
-	KeyContent     string        // 内联 PEM 私钥
-	ProxyJump      string        // 跳板机 "host" 或 "host:port"
-	ConnectTimeout time.Duration // 连接超时，<=0 时默认 10s
+	KeyContent     string             // 内联 PEM 私钥
+	ProxyJump      string             // 跳板机 "host" 或 "host:port"
+	ConnectTimeout time.Duration      // 连接超时，<=0 时默认 10s
+	AuthMethods    []gossh.AuthMethod // 非空时直接使用，跳过内建认证链；跳板连接同样使用
 }
 
 // Client 包装 gossh.Client；Close 会连带关闭经由 ProxyJump 建立的跳板连接。
@@ -49,7 +50,10 @@ func Dial(ctx context.Context, addr string, opts DialOptions) (*Client, error) {
 		timeout = 10 * time.Second
 	}
 
-	auths := buildDialAuth(opts)
+	auths := opts.AuthMethods
+	if len(auths) == 0 {
+		auths = buildDialAuth(opts)
+	}
 	if len(auths) == 0 {
 		return nil, &SSHAuthError{
 			ExitCode: -1,
@@ -75,6 +79,7 @@ func Dial(ctx context.Context, addr string, opts DialOptions) (*Client, error) {
 			Password:       opts.Password,
 			KeyFile:        opts.KeyFile,
 			KeyContent:     opts.KeyContent,
+			AuthMethods:    opts.AuthMethods,
 			ConnectTimeout: opts.ConnectTimeout,
 		})
 		if err != nil {

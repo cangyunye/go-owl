@@ -288,6 +288,62 @@ func TestDial_HandshakeCtxDeadline(t *testing.T) {
 	}
 }
 
+func TestDial_AuthMethodsOverride(t *testing.T) {
+	// AuthMethods 非空时直接使用，跳过内建认证链（无需隔离 HOME）
+	addr := startSSHServer(t, false)
+	client, err := Dial(context.Background(), addr, DialOptions{
+		User:           "u",
+		AuthMethods:    []gossh.AuthMethod{gossh.Password("pass")},
+		ConnectTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Dial with AuthMethods: %v", err)
+	}
+	defer client.Close()
+}
+
+func TestDial_AuthMethodsOverride_WrongPassword(t *testing.T) {
+	addr := startSSHServer(t, false)
+	_, err := Dial(context.Background(), addr, DialOptions{
+		User:           "u",
+		AuthMethods:    []gossh.AuthMethod{gossh.Password("wrong")},
+		ConnectTimeout: 5 * time.Second,
+	})
+	if err == nil {
+		t.Fatal("expected auth failure with wrong password in AuthMethods")
+	}
+}
+
+func TestDial_AuthMethodsOverride_ProxyJump(t *testing.T) {
+	// 经跳板拨号时 AuthMethods 必须同样传递到跳板连接
+	target := startSSHServer(t, false)
+	jump := startSSHServer(t, true)
+
+	client, err := Dial(context.Background(), target, DialOptions{
+		User:           "u",
+		AuthMethods:    []gossh.AuthMethod{gossh.Password("pass")},
+		ProxyJump:      jump,
+		ConnectTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Dial via jump with AuthMethods: %v", err)
+	}
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer session.Close()
+	out, err := session.CombinedOutput("uptime")
+	if err != nil {
+		t.Fatalf("CombinedOutput: %v", err)
+	}
+	if string(out) != "ok" {
+		t.Fatalf("expected output %q, got %q", "ok", string(out))
+	}
+}
+
 func TestDial_ProxyJump_NoPortDefaultsTo22(t *testing.T) {
 	// 隔离 HOME，避免本机 ~/.ssh 默认密钥意外对 127.0.0.1:22 认证成功
 	t.Setenv("HOME", t.TempDir())

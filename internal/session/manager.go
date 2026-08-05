@@ -105,7 +105,7 @@ func (s *Session) Connect(nodeConfigs []*NodeConfig) error {
 
 	successCount := 0
 	for _, config := range nodeConfigs {
-		_, err := s.pool.Connect(config.ID, config.Address, config.Port, config.User, config.Auth)
+		_, err := s.pool.Connect(config.ID, config.Address, config.Port, config.User, config.Auth, config.ProxyJump)
 		if err != nil {
 			fmt.Printf("连接节点 %s 失败: %v\n", config.ID, err)
 			continue

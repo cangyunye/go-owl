@@ -3,11 +3,13 @@ package session
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
-	"golang.org/x/crypto/ssh"
+	owlssh "github.com/cangyunye/go-owl/internal/ssh"
+	gossh "golang.org/x/crypto/ssh"
 )
 
 // SSHConnection SSH 连接
@@ -16,7 +18,7 @@ type SSHConnection struct {
 	Address    string
 	Port       int
 	User       string
-	client     *ssh.Client
+	client     *owlssh.Client
 	connected  bool
 	lastActive time.Time
 	mu         sync.RWMutex
@@ -57,7 +59,7 @@ func NewSSHConnectionPool(config *PoolConfig) *SSHConnectionPool {
 }
 
 // Connect 建立连接
-func (p *SSHConnectionPool) Connect(nodeID, address string, port int, user string, authMethods []ssh.AuthMethod) (*SSHConnection, error) {
+func (p *SSHConnectionPool) Connect(nodeID, address string, port int, user string, authMethods []gossh.AuthMethod, proxyJump string) (*SSHConnection, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -67,7 +69,7 @@ func (p *SSHConnectionPool) Connect(nodeID, address string, port int, user strin
 	}
 
 	// 创建新连接
-	conn, err := p.createConnection(nodeID, address, port, user, authMethods)
+	conn, err := p.createConnection(nodeID, address, port, user, authMethods, proxyJump)
 	if err != nil {
 		return nil, err
 	}
@@ -76,37 +78,24 @@ func (p *SSHConnectionPool) Connect(nodeID, address string, port int, user strin
 	return conn, nil
 }
 
-// createConnection 创建新连接
-func (p *SSHConnectionPool) createConnection(nodeID, address string, port int, user string, authMethods []ssh.AuthMethod) (*SSHConnection, error) {
-	config := &ssh.ClientConfig{
-		User:            user,
-		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         p.config.ConnectTimeout,
-	}
-
+// createConnection 创建新连接（统一走 owlssh.Dial：超时/认证链/ProxyJump）
+func (p *SSHConnectionPool) createConnection(nodeID, address string, port int, user string, authMethods []gossh.AuthMethod, proxyJump string) (*SSHConnection, error) {
 	addr := fmt.Sprintf("%s:%d", address, port)
 
 	ctx, cancel := context.WithTimeout(context.Background(), p.config.ConnectTimeout)
 	defer cancel()
 
-	// 使用 DialContext 支持超时
-	var client *ssh.Client
-	var err error
-
-	done := make(chan struct{})
-	go func() {
-		client, err = ssh.Dial("tcp", addr, config)
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		if err != nil {
-			return nil, fmt.Errorf("SSH 连接失败: %w", err)
+	client, err := owlssh.Dial(ctx, addr, owlssh.DialOptions{
+		User:           user,
+		AuthMethods:    authMethods,
+		ProxyJump:      proxyJump,
+		ConnectTimeout: p.config.ConnectTimeout,
+	})
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("SSH 连接超时")
 		}
-	case <-ctx.Done():
-		return nil, fmt.Errorf("SSH 连接超时")
+		return nil, fmt.Errorf("SSH 连接失败: %w", err)
 	}
 
 	conn := &SSHConnection{
@@ -205,7 +194,7 @@ func (c *SSHConnection) Execute(command string, timeout time.Duration) (int, str
 		}
 
 		if err != nil {
-			if exitErr, ok := err.(*ssh.ExitError); ok {
+			if exitErr, ok := err.(*gossh.ExitError); ok {
 				return exitErr.ExitStatus(), output, nil
 			}
 			return -1, output, err

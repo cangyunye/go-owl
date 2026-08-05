@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -11,10 +12,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/ssh"
+	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/i18n"
+	owlssh "github.com/cangyunye/go-owl/internal/ssh"
 )
 
 var checkAll bool
@@ -199,6 +201,7 @@ func filterCheckNodes(nodes []*common.NodeInfo, groups, labels []string, onlyFai
 
 func checkNodeSSH(n *common.NodeInfo) checkResult {
 	addr := fmt.Sprintf("%s:%d", n.Address, n.Port)
+	ctx := context.Background()
 
 	sshUser := n.User
 	if sshUser == "" {
@@ -214,14 +217,12 @@ func checkNodeSSH(n *common.NodeInfo) checkResult {
 	if n.SSHKey != "" {
 		signer, err := parsePrivateKey(n.SSHKey)
 		if err == nil {
-			config := &ssh.ClientConfig{
-				User:            sshUser,
-				Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-				Timeout:         checkTimeout,
-			}
-
-			client, err := ssh.Dial("tcp", addr, config)
+			client, err := owlssh.Dial(ctx, addr, owlssh.DialOptions{
+				User:           sshUser,
+				AuthMethods:    []gossh.AuthMethod{gossh.PublicKeys(signer)},
+				ProxyJump:      n.ProxyJump,
+				ConnectTimeout: checkTimeout,
+			})
 			if err == nil {
 				client.Close()
 				return checkResult{node: n, success: true, method: "key"}
@@ -246,14 +247,12 @@ func checkNodeSSH(n *common.NodeInfo) checkResult {
 
 	// 密钥认证失败或无密钥，尝试密码认证
 	if n.Password != "" {
-		config := &ssh.ClientConfig{
-			User:            sshUser,
-			Auth:            []ssh.AuthMethod{ssh.Password(n.Password)},
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-			Timeout:         checkTimeout,
-		}
-
-		client, err := ssh.Dial("tcp", addr, config)
+		client, err := owlssh.Dial(ctx, addr, owlssh.DialOptions{
+			User:           sshUser,
+			AuthMethods:    []gossh.AuthMethod{gossh.Password(n.Password)},
+			ProxyJump:      n.ProxyJump,
+			ConnectTimeout: checkTimeout,
+		})
 		if err == nil {
 			client.Close()
 			return checkResult{node: n, success: true, method: "password"}
@@ -274,7 +273,7 @@ func checkNodeSSH(n *common.NodeInfo) checkResult {
 	}
 }
 
-func parsePrivateKey(keyPath string) (ssh.Signer, error) {
+func parsePrivateKey(keyPath string) (gossh.Signer, error) {
 	expandedPath := keyPath
 	if len(keyPath) > 2 && keyPath[:2] == "~/" {
 		home, err := os.UserHomeDir()
@@ -289,7 +288,7 @@ func parsePrivateKey(keyPath string) (ssh.Signer, error) {
 		return nil, fmt.Errorf(i18n.Raw("node.check.err_read_key"), err)
 	}
 
-	signer, err := ssh.ParsePrivateKey(keyData)
+	signer, err := gossh.ParsePrivateKey(keyData)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.Raw("node.check.err_parse_key"), err)
 	}
