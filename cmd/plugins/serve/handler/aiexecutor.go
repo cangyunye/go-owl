@@ -57,6 +57,9 @@ func NewWebExecutor(db *sql.DB, taskStore *store.TaskStore, transferRecordStore 
 }
 
 func (e *WebExecutor) resolveAINodeIDs(ctx context.Context, nodes []string, group, label, search string) []string {
+	if len(nodes) == 0 && group == "" && label == "" && search == "" {
+		return nil
+	}
 	src := &dbNodeSource{db: e.db}
 	rows, err := src.List(ctx)
 	if err != nil {

@@ -829,7 +829,7 @@ func (h *NodeHandler) Ping(c *gin.Context) {
 		wg.Add(1)
 		go func(idx int, n nodeAddr) {
 			defer wg.Done()
-			addr := fmt.Sprintf("%s:%d", n.Address, n.Port)
+			addr := net.JoinHostPort(n.Address, strconv.Itoa(n.Port))
 			start := time.Now()
 			conn, err := net.DialTimeout("tcp", addr, timeout)
 			latency := time.Since(start)
@@ -917,7 +917,7 @@ func (h *NodeHandler) Check(c *gin.Context) {
 }
 
 func checkNodeSSH(db *sql.DB, nodeID, address string, port int, user, password, sshKey, proxyJump string, timeout time.Duration) checkResult {
-	addr := fmt.Sprintf("%s:%d", address, port)
+	addr := net.JoinHostPort(address, strconv.Itoa(port))
 	if user == "" {
 		user = "root"
 	}

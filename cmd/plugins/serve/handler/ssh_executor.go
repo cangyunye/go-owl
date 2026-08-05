@@ -61,10 +61,6 @@ func (e *sshExecutor) dialNode(ctx context.Context, nodeID string) (*owlssh.Clie
 	})
 }
 
-func (e *sshExecutor) dial(nodeID string) (*owlssh.Client, error) {
-	return e.dialNode(context.Background(), nodeID)
-}
-
 func (e *sshExecutor) Execute(ctx context.Context, nodeID, command string) (string, int, error) {
 	client, err := e.dialNode(ctx, nodeID)
 	if err != nil {

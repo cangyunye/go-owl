@@ -725,6 +725,45 @@ func TestPing_WithRealServer(t *testing.T) {
 	assert.GreaterOrEqual(t, resp.Results[0].LatencyMs, 0.0)
 }
 
+func TestPing_IPv6Address(t *testing.T) {
+	db, _, router := featuresTestSetup(t)
+
+	ln, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 loopback unavailable: %v", err)
+	}
+	defer ln.Close()
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+
+	_, portStr, err := net.SplitHostPort(ln.Addr().String())
+	require.NoError(t, err)
+	port, _ := strconv.Atoi(portStr)
+
+	db.Exec("INSERT INTO nodes (id, name, address, port, user, status) VALUES ('ping-v6', 'Ping V6', '::1', ?, 'root', 'unknown')", port)
+
+	body := map[string]interface{}{
+		"node_ids": []string{"ping-v6"},
+	}
+	w := authRequest(t, router, "POST", "/api/v1/nodes/ping", body, "editor")
+	assert.Equal(t, 200, w.Code)
+
+	var resp struct {
+		Results []pingResult `json:"results"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.Len(t, resp.Results, 1)
+	assert.True(t, resp.Results[0].Success, "IPv6 ping failed: %s", resp.Results[0].Error)
+}
+
 func TestImport_EmptyNodes(t *testing.T) {
 	_, _, router := featuresTestSetup(t)
 

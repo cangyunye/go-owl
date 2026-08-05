@@ -242,7 +242,7 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 		return
 	}
 
-	op := &store.Operation{TaskID: run.ID, OpType: "playbook", Command: "playbook run " + pb.Name, Targets: req.TargetNodes, PlaybookPath: pb.FilePath, Status: "running", CreatedAt: time.Now().UTC()}
+	op := &store.Operation{TaskID: run.ID, OpType: "playbook", Command: "playbook run " + pb.Name, Targets: req.TargetNodes, PlaybookPath: pb.FilePath, Status: "running", CreatedAt: time.Now().UTC(), Forced: req.DangerConfirmed}
 	if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
 		log.Printf("record history: %v", err)
 	}

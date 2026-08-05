@@ -149,6 +149,79 @@ func TestWebExecutor_RunPlaybook_E2E(t *testing.T) {
 	assert.Contains(t, res.Text, "Say hello")
 }
 
+func aiExecutorSetupOffline(t *testing.T) *WebExecutor {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
+		id TEXT PRIMARY KEY, name TEXT, address TEXT, port INTEGER DEFAULT 22,
+		user TEXT, password TEXT, ssh_key TEXT, status TEXT DEFAULT 'unknown',
+		groups TEXT DEFAULT '[]', labels TEXT DEFAULT '{}',
+		proxy_jump TEXT DEFAULT '', created_at TIMESTAMP, updated_at TIMESTAMP)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO nodes (id, name, address, port, user, password, ssh_key, status, groups, labels, proxy_jump) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		"n1", "Node1", "127.0.0.1", 22, "root", "", "", "online", `["g1"]`, `{}`, "")
+	require.NoError(t, err)
+
+	ts := store.NewTaskStore(db)
+	require.NoError(t, ts.Init(context.Background()))
+	trs := store.NewTransferRecordStore(db)
+	require.NoError(t, trs.Init(context.Background()))
+	prs := store.NewPlaybookRunStore(db)
+	require.NoError(t, prs.Init(context.Background()))
+	ns := store.NewNodeStore(db)
+	pbs := store.NewPlaybookStore(db)
+	require.NoError(t, pbs.Init(context.Background()))
+	audit := store.NewAIAuditStore(db)
+	require.NoError(t, audit.Init(context.Background()))
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(context.Background()))
+
+	e := NewWebExecutor(db, ts, trs, prs, ns, pbs, audit, NewKeyManager(), false)
+	e.userRole = "admin"
+	e.History = hs
+	return e
+}
+
+func TestWebExecutor_ResolveAINodeIDs_AllParamsEmpty(t *testing.T) {
+	e := aiExecutorSetupOffline(t)
+	ctx := context.Background()
+
+	assert.Nil(t, e.resolveAINodeIDs(ctx, nil, "", "", ""))
+	assert.Nil(t, e.resolveAINodeIDs(ctx, []string{}, "", "", ""))
+	assert.Equal(t, []string{"n1"}, e.resolveAINodeIDs(ctx, nil, "g1", "", ""))
+	assert.Equal(t, []string{"n1"}, e.resolveAINodeIDs(ctx, []string{"n1"}, "", "", ""))
+}
+
+func TestWebExecutor_ExecuteCommand_NoTargetParams_NoFanout(t *testing.T) {
+	e := aiExecutorSetupOffline(t)
+	ctx := context.Background()
+
+	res, err := e.ExecuteCommand(ctx, ai2.ExecCommandParams{Command: "echo should_not_run"})
+	require.NoError(t, err)
+	assert.Equal(t, "未找到目标节点", res.Text)
+
+	_, total, err := e.History.Query(ctx, &store.QueryOptions{OpType: "command"})
+	require.NoError(t, err)
+	assert.Equal(t, 0, total)
+}
+
+func TestWebExecutor_ExecuteScript_NoTargetParams_NoFanout(t *testing.T) {
+	e := aiExecutorSetupOffline(t)
+	ctx := context.Background()
+
+	res, err := e.ExecuteScript(ctx, ai2.ExecScriptParams{Script: "echo should_not_run"})
+	require.NoError(t, err)
+	assert.Equal(t, "未找到目标节点", res.Text)
+
+	_, total, err := e.History.Query(ctx, &store.QueryOptions{OpType: "script"})
+	require.NoError(t, err)
+	assert.Equal(t, 0, total)
+}
+
 func readKey(t *testing.T) string {
 	t.Helper()
 	home, _ := os.UserHomeDir()

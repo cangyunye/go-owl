@@ -80,7 +80,7 @@ func (h *TerminalHandler) Terminal(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	client, err := (&sshExecutor{db: h.db}).dial(nodeID)
+	client, err := (&sshExecutor{db: h.db}).dialNode(ctx, nodeID)
 	if err != nil {
 		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "连接失败: " + err.Error() + "\r\n"})
 		writeTermMsg(ctx, conn, termMessage{Type: "exit", Code: 1})
