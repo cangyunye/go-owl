@@ -1,9 +1,32 @@
+import { SlashMenu } from '../slash-menu.js';
+
 export function renderAI(render, navigate, user, api, shell) {
   let sessionId = null;
   let publicKeySpki = null;
   let chatMessages = [];
   let currentConvId = null;
   let isProcessing = false;
+
+  // ---- Slash command catalog ----
+  // 任务类:展开为提示词模板;导航/系统类:直接执行动作。
+  const SLASH_COMMANDS = [
+    { name: 'exec', category: 'task', icon: '▶️', label: '执行命令', desc: '在指定节点上执行 shell 命令', template: '在 {nodes} 上执行命令 {command}', args: ['nodes', 'command'] },
+    { name: 'check', category: 'task', icon: '🩺', label: '节点连通性检查', desc: '检查 SSH 连通性,支持所有/分组/指定节点,并列出不可达节点', template: '检查 {nodes} 的 SSH 连通性，找出不可达节点', args: ['nodes'] },
+    { name: 'diagnose', category: 'task', icon: '🔍', label: '故障诊断', desc: '对目标节点或服务进行全栈故障诊断', template: '对 {target} 进行全栈故障诊断并给出修复建议', args: ['target'] },
+    { name: 'query', category: 'task', icon: '📊', label: '节点查询', desc: '查询符合条件的节点信息', template: '查询 {condition} 的节点信息', args: ['condition'] },
+    { name: 'playbook', category: 'task', icon: '🛠️', label: '生成剧本', desc: '生成一个 Ansible playbook', template: '生成一个 playbook 实现 {requirement}', args: ['requirement'] },
+    { name: 'transfer', category: 'task', icon: '📤', label: '传输文件', desc: '把文件传输到目标节点', template: '把 {source_file} 传输到 {nodes} 的 {dest_dir}', args: ['source_file', 'nodes', 'dest_dir'] },
+    { name: 'script', category: 'task', icon: '🧩', label: '执行脚本', desc: '在指定节点上运行脚本', template: '在 {nodes} 上运行脚本 {script}', args: ['nodes', 'script'] },
+
+    { name: 'nodes', category: 'nav', icon: '🖥️', label: '节点管理', desc: '跳转到节点管理页', action: () => navigate('/nodes') },
+    { name: 'exec-page', category: 'nav', icon: '⚡', label: '命令执行页', desc: '跳转到命令执行页', action: () => navigate('/exec') },
+    { name: 'playbooks', category: 'nav', icon: '📜', label: '剧本管理页', desc: '跳转到剧本管理页', action: () => navigate('/playbooks') },
+    { name: 'files', category: 'nav', icon: '🗂️', label: '文件传输页', desc: '跳转到文件传输页', action: () => navigate('/files') },
+    { name: 'new', category: 'nav', icon: '➕', label: '新建对话', desc: '开始一个新对话', action: () => newConversation() },
+    { name: 'clear', category: 'nav', icon: '🗑️', label: '清空对话', desc: '删除当前对话并回到空态', action: () => clearConversation() },
+    { name: 'help', category: 'nav', icon: 'ℹ️', label: '命令帮助', desc: '查看全部斜杠命令说明', action: (ta) => toggleHelp(ta) },
+  ];
+
 
   async function loadSessionKey() {
     try {
@@ -218,6 +241,52 @@ export function renderAI(render, navigate, user, api, shell) {
     if (sug) sug.style.display = 'flex';
     document.querySelectorAll('.ai-conv-item').forEach(el => el.classList.remove('active'));
   }
+
+  async function clearConversation() {
+    if (currentConvId) {
+      try { await window.AIStorage.deleteConversation(currentConvId); } catch {}
+    }
+    const chatArea = document.getElementById('ai-chat-messages');
+    if (chatArea) chatArea.innerHTML = '';
+    newConversation();
+    loadHistory();
+  }
+
+  function toggleHelp(textarea) {
+    const main = textarea.closest('.ai-main');
+    if (!main) return;
+    const existing = document.getElementById('ai-help-overlay');
+    if (existing) { existing.remove(); return; }
+
+    const groups = {};
+    SLASH_COMMANDS.forEach((c) => { (groups[c.category] = groups[c.category] || []).push(c); });
+    const groupTitle = { task: '任务', nav: '导航/系统' };
+
+    const overlay = document.createElement('div');
+    overlay.className = 'ai-help-overlay';
+    overlay.id = 'ai-help-overlay';
+    overlay.innerHTML =
+      '<div class="ai-help-box">' +
+      '<div class="ai-help-head"><span class="ai-help-title">斜杠命令</span>' +
+      '<button class="ai-help-close" aria-label="关闭">✕</button></div>' +
+      Object.keys(groups).map((k) =>
+        '<div class="ai-help-group">' + (groupTitle[k] || k) + '</div>' +
+        groups[k].map((c) =>
+          '<div class="ai-help-item">' +
+          '<span class="ai-help-name">/' + esc(c.name) + '</span>' +
+          '<span class="ai-help-label">' + esc(c.label) + '</span>' +
+          '<span class="ai-help-desc">' + esc(c.template || c.desc || '') + '</span>' +
+          '</div>'
+        ).join('')
+      ).join('') +
+      '<div class="ai-help-foot">输入 / 呼出补全,↑↓ 选择,Enter 确认,Esc 关闭</div>' +
+      '</div>';
+
+    main.appendChild(overlay);
+    overlay.querySelector('.ai-help-close').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  }
+
 
   async function deleteConversation(id, convs) {
     try {
@@ -458,7 +527,7 @@ export function renderAI(render, navigate, user, api, shell) {
 
         <!-- Input area -->
         <div class="ai-input-area">
-          <textarea id="ai-chat-input" placeholder="输入指令，例如「查看在线节点」「执行 uptime」…" aria-label="输入指令" rows="1"></textarea>
+          <textarea id="ai-chat-input" placeholder="输入指令,例如「查看在线节点」「执行 uptime」…输入 / 呼出命令补全" aria-label="输入指令" rows="1"></textarea>
           <button class="ai-send-btn" id="ai-send-btn" title="发送" aria-label="发送" disabled>
             <svg width="16" height="16" aria-hidden="true"><use href="#icon-send"/></svg>
           </button>
@@ -508,13 +577,14 @@ export function renderAI(render, navigate, user, api, shell) {
     // Send
     const input = document.getElementById('ai-chat-input');
     const sendBtn = document.getElementById('ai-send-btn');
+    const slash = new SlashMenu(input, { commands: SLASH_COMMANDS });
 
     sendBtn.addEventListener('click', () => sendMsg(input.value));
 
     input.addEventListener('input', () => { updateSendBtn(); autoResize(); });
 
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter' && !e.shiftKey && !e.defaultPrevented) {
         e.preventDefault();
         sendMsg(input.value);
       }
@@ -538,5 +608,7 @@ export function renderAI(render, navigate, user, api, shell) {
     });
 
     updateSendBtn();
+
+    return () => slash.destroy();
   });
 }
