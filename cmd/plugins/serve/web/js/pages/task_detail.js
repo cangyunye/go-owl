@@ -59,7 +59,7 @@ export function renderTaskDetail(render, navigate, user, api, taskId) {
         '<div class="stream-output" id="stream-output">'+(t.output ? esc(t.output) : '<span style="color:var(--text-muted)">(awaiting output...)</span>')+'</div>' +
       '</div>' +
       ((t.status === 'queued' || t.status === 'running') && user.role === 'admin'
-        ? '<button class="btn-danger" id="cancel-btn" style="margin-top:16px">Cancel Task</button>'
+        ? '<button class="btn btn-danger" id="cancel-btn" style="margin-top:16px">Cancel Task</button>'
         : '');
     const cancelBtn = document.getElementById('cancel-btn');
     if (cancelBtn) {

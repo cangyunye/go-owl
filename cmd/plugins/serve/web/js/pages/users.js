@@ -107,8 +107,8 @@ export function renderUsers(render, navigate, user, api) {
         </div>
         <p class="error-msg" id="user-add-error"></p>
         <div class="modal-actions">
-          <button class="btn-cancel" id="user-add-cancel">Cancel</button>
-          <button class="btn-primary" id="user-add-submit">Create</button>
+          <button class="btn btn-secondary" id="user-add-cancel">Cancel</button>
+          <button class="btn btn-primary" id="user-add-submit">Create</button>
         </div>
       </div>
     </div>
@@ -131,8 +131,8 @@ export function renderUsers(render, navigate, user, api) {
         </div>
         <p class="error-msg" id="user-edit-error"></p>
         <div class="modal-actions">
-          <button class="btn-cancel" id="user-edit-cancel">Cancel</button>
-          <button class="btn-primary" id="user-edit-submit">Save</button>
+          <button class="btn btn-secondary" id="user-edit-cancel">Cancel</button>
+          <button class="btn btn-primary" id="user-edit-submit">Save</button>
         </div>
       </div>
     </div>

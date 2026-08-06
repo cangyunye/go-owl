@@ -809,22 +809,34 @@ tr:hover td { background: var(--surface-2); }
 /* ================================================================
    COMPONENTS — Buttons
    ================================================================ */
-.btn {
+/* 尺寸/布局直接写在各变体上，保证不带 .btn 基类也能完整渲染；
+   .btn 作为推荐基类保留，重复声明同值无副作用。所有变体统一
+   1px 边框（transparent 也算），保证同行按钮高度一致。 */
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-ghost,
+.btn-danger {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 7px 14px;
   border-radius: var(--radius-sm);
   font: 500 13px/1 var(--font-body);
   letter-spacing: 0.02em;
   cursor: pointer;
-  border: none;
-  transition: all var(--transition);
   white-space: nowrap;
+  user-select: none;
+  text-decoration: none;
+  transition: all var(--transition);
 }
+.btn { border: none; }
+
 .btn-primary {
   background: var(--accent);
   color: #fff;
+  border: 1px solid transparent;
 }
 .btn-primary:hover { background: var(--accent-hover, var(--primary-hover)); }
 .btn-primary:active { background: color-mix(in srgb, var(--accent-hover, var(--primary-hover)) 85%, #000); }
@@ -844,12 +856,24 @@ tr:hover td { background: var(--surface-2); }
 .btn-ghost {
   background: transparent;
   color: var(--muted);
+  border: 1px solid transparent;
 }
 .btn-ghost:hover { color: var(--fg); background: var(--surface-2); }
 .btn-ghost:active { background: var(--border); }
 .btn-ghost:disabled,
 .btn-ghost[disabled] { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border: 1px solid transparent;
+}
+.btn-danger:hover { filter: brightness(1.12); }
+.btn-danger:active { filter: brightness(0.9); }
+.btn-danger:disabled,
+.btn-danger[disabled] { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+/* 尺寸修饰类放在变体之后声明，确保同特异性下能覆盖变体的 padding */
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 .btn-icon {
   width: 32px; height: 32px;
@@ -857,28 +881,16 @@ tr:hover td { background: var(--surface-2); }
   display: grid; place-items: center;
 }
 
-.btn-cancel {
-  background: var(--surface);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  padding: 8px 18px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  font-size: 14px;
+/* 选中态：与导航/页签 active 一致，用于方向/模式切换按钮 */
+.btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
 }
-.btn-cancel:hover { border-color: var(--muted); }
-
-.btn-danger {
-  background: var(--danger);
-  color: #fff;
-  border: none;
-  padding: 8px 18px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  font-size: 14px;
+.btn-primary.active {
+  border-color: color-mix(in oklch, var(--accent) 60%, #fff);
+  background: var(--accent-hover, var(--primary-hover));
 }
-.btn-danger:hover { opacity: 0.9; }
-.btn-danger:disabled { opacity: 0.5; }
 
 /* ================================================================
    COMPONENTS — Inputs & Forms
@@ -1346,18 +1358,6 @@ tr:hover td { background: var(--surface-2); }
 }
 .exec-summary .info { font-size: 12px; color: var(--muted); }
 .exec-summary .info strong { color: var(--fg); }
-.exec-summary .btn-exec {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  padding: 8px 24px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-}
-.exec-summary .btn-exec:hover { background: var(--accent-hover, var(--primary-hover)); }
-.exec-summary .btn-exec:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .results-panel {
   margin-top: 16px;
@@ -1932,6 +1932,71 @@ tr:hover td { background: var(--surface-2); }
   letter-spacing: 0.5px;
 }
 .detail-field .value { font-size: 14px; }
+
+/* Node detail — hero header */
+.node-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+.node-hero .node-title {
+  font: 600 18px/1.3 var(--font-display);
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.node-hero .node-meta {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.node-hero .spacer { flex: 1; }
+
+/* Node detail — action bar */
+.node-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+.node-actions .actions-group { display: flex; align-items: center; gap: 8px; }
+.node-actions .actions-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  margin: 0 4px;
+}
+.node-actions .spacer { flex: 1; }
+
+/* Node detail — probe result badge */
+.probe-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.probe-result.ok { color: var(--success); background: color-mix(in oklch, var(--success) 15%, transparent); }
+.probe-result.err { color: var(--danger); background: color-mix(in oklch, var(--danger) 15%, transparent); }
+.probe-result.pending { color: var(--muted); background: var(--surface-2); }
 
 /* ================================================================
    COMPONENTS — Permission matrix

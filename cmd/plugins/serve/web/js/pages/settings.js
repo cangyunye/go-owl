@@ -249,8 +249,8 @@ export function renderSettings(render, navigate, user, api) {
         </div>
         <p class="error-msg" id="settings-error"></p>
         <div class="modal-actions">
-          <button class="btn-cancel" id="settings-cancel">Cancel</button>
-          <button class="btn-primary" id="settings-save">Save</button>
+          <button class="btn btn-secondary" id="settings-cancel">Cancel</button>
+          <button class="btn btn-primary" id="settings-save">Save</button>
         </div>
       </div>
     </div>
@@ -264,8 +264,8 @@ export function renderSettings(render, navigate, user, api) {
         </div>
         <p class="error-msg" id="add-setting-error"></p>
         <div class="modal-actions">
-          <button class="btn-cancel" id="add-setting-cancel">Cancel</button>
-          <button class="btn-primary" id="add-setting-submit">Add</button>
+          <button class="btn btn-secondary" id="add-setting-cancel">Cancel</button>
+          <button class="btn btn-primary" id="add-setting-submit">Add</button>
         </div>
       </div>
     </div>

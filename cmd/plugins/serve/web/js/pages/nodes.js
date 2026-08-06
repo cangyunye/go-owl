@@ -524,7 +524,7 @@ export function renderNodes(render, navigate, user, api, shell) {
       <button class="btn btn-secondary btn-sm" id="batch-group-btn">管理分组</button>
       <button class="btn btn-secondary btn-sm" id="batch-ping-btn">Ping</button>
       <button class="btn btn-secondary btn-sm" id="batch-check-btn">SSH 检查</button>
-      <button class="btn btn-secondary btn-sm" id="batch-delete-btn">删除</button>
+      <button class="btn btn-danger btn-sm" id="batch-delete-btn">删除</button>
       <span style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" id="clearSelection">取消选择</button>
     </div>

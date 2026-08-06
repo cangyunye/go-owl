@@ -297,8 +297,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         </div>
         <p class="error-msg" id="run-playbook-error"></p>
         <div class="modal-actions">
-          <button class="btn-cancel" id="run-playbook-cancel">Cancel</button>
-          <button class="btn-primary" id="run-playbook-submit">Execute</button>
+          <button class="btn btn-secondary" id="run-playbook-cancel">Cancel</button>
+          <button class="btn btn-primary" id="run-playbook-submit">Execute</button>
         </div>
       </div>
     </div>
@@ -318,8 +318,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
           </div>
         </div>
         <div class="modal-actions">
-          <button class="btn-cancel" id="detail-cancel-btn">关闭</button>
-          <button class="btn-primary" id="detail-run-btn">运行</button>
+          <button class="btn btn-secondary" id="detail-cancel-btn">关闭</button>
+          <button class="btn btn-primary" id="detail-run-btn">运行</button>
         </div>
       </div>
     </div>
@@ -403,9 +403,9 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
           </div>
         </div>
         <div class="modal-actions">
-          <button class="btn-cancel" id="cp-prev-btn" style="display:none">上一步</button>
-          <button class="btn-primary" id="cp-next-btn">下一步</button>
-          <button class="btn-primary" id="cp-save-btn" style="display:none">保存剧本</button>
+          <button class="btn btn-secondary" id="cp-prev-btn" style="display:none">上一步</button>
+          <button class="btn btn-primary" id="cp-next-btn">下一步</button>
+          <button class="btn btn-primary" id="cp-save-btn" style="display:none">保存剧本</button>
         </div>
         <p class="error-msg" id="cp-error"></p>
       </div>

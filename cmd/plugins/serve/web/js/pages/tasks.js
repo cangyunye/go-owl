@@ -300,7 +300,7 @@ export function renderTasks(render, navigate, user, api) {
     <div class="app-content">
       <div class="page-header">
         <h2>Tasks</h2>
-        ${canExec ? '<button class="btn-primary" id="exec-btn" style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">▶</span> Execute</button>' : ''}
+        ${canExec ? '<button class="btn btn-primary" id="exec-btn"><span style="font-size:16px">▶</span> Execute</button>' : ''}
       </div>
       <div class="card">
         <table>
@@ -379,8 +379,8 @@ export function renderTasks(render, navigate, user, api) {
         <div class="exec-summary">
           <span class="info">Target <strong id="exec-summary-count">0</strong> node(s)</span>
           <div style="display:flex;gap:8px">
-            <button class="btn-cancel" id="exec-cancel" style="padding:8px 20px;font-size:13px">Cancel</button>
-            <button class="btn-exec" id="exec-submit" disabled>Execute</button>
+            <button class="btn btn-secondary" id="exec-cancel">Cancel</button>
+            <button class="btn btn-primary" id="exec-submit" disabled>Execute</button>
           </div>
         </div>
         <p class="error-msg" id="exec-error" style="margin-top:8px"></p>

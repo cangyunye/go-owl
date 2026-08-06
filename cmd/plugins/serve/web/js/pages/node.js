@@ -13,12 +13,12 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
 
     <div class="modal-overlay" id="delete-modal">
       <div class="modal modal-sm">
-        <h3>Delete Node</h3>
-        <p>Are you sure you want to delete <strong id="delete-name"></strong>?</p>
+        <h3>删除节点</h3>
+        <p>确定要删除 <strong id="delete-name"></strong> 吗？此操作不可撤销。</p>
         <p class="error-msg" id="delete-error"></p>
         <div class="modal-actions">
-          <button class="btn-cancel" id="delete-cancel">Cancel</button>
-          <button class="btn-danger" id="delete-confirm">Delete</button>
+          <button class="btn btn-secondary" id="delete-cancel">取消</button>
+          <button class="btn btn-danger" id="delete-confirm">删除</button>
         </div>
       </div>
     </div>
@@ -93,13 +93,15 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
     document.getElementById('edit-modal-overlay').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) hideEditModal();
     });
-    document.addEventListener('keydown', (e) => {
+    const onKeyEscape = (e) => {
       if (e.key === 'Escape') {
         const overlay = document.querySelector('.modal-overlay.open');
         if (overlay) overlay.classList.remove('open');
       }
-    });
+    };
+    document.addEventListener('keydown', onKeyEscape);
     loadNode();
+    return () => document.removeEventListener('keydown', onKeyEscape);
   });
 
   let currentNode = null;
@@ -181,78 +183,110 @@ export function renderNodeDetail(render, navigate, user, api, nodeId) {
     const labels = Object.entries(n.labels || {}).map(([k, v]) =>
       `<span class="tag">${esc(k)}: ${esc(v)}</span>`).join('');
 
+    const IC = {
+      ping: '<svg width="14" height="14" aria-hidden="true"><use href="#icon-activity"/></svg>',
+      check: '<svg width="14" height="14" aria-hidden="true"><use href="#icon-check"/></svg>',
+      term: '<svg width="14" height="14" aria-hidden="true"><use href="#icon-terminal"/></svg>',
+      edit: '<svg width="14" height="14" aria-hidden="true"><use href="#icon-edit"/></svg>',
+      del: '<svg width="14" height="14" aria-hidden="true"><use href="#icon-x"/></svg>'
+    };
+
     container.innerHTML = `
-      <div class="page-header">
-        <h2>${esc(n.name || n.id)}</h2>
-        <span class="status-badge status-${n.status || 'unknown'}">${esc(n.status || 'unknown')}</span>
-        <span id="ping-result" style="font-size:13px;margin-left:8px"></span>
-        <span id="check-result" style="font-size:13px;margin-left:8px"></span>
+      <div class="card node-hero">
+        <div>
+          <div class="node-title">${esc(n.name || n.id)}
+            <span class="status-badge status-${n.status || 'unknown'}">${esc(n.status || 'unknown')}</span>
+          </div>
+          <div class="node-meta">${esc(n.id)} · ${esc(n.address)}:${n.port} · ${esc(n.user)}${n.proxy_jump ? ' · jump ' + esc(n.proxy_jump) : ''}</div>
+        </div>
+        <span class="spacer"></span>
       </div>
       <div class="node-detail-grid">
         <div class="card">
-          <div class="detail-field"><label>ID</label><div class="value">${esc(n.id)}</div></div>
-          <div class="detail-field"><label>Address</label><div class="value">${esc(n.address)}:${n.port}</div></div>
-          <div class="detail-field"><label>User</label><div class="value">${esc(n.user)}</div></div>
-          <div class="detail-field"><label>Proxy Jump</label><div class="value">${n.proxy_jump ? esc(n.proxy_jump) : '<span style="color:var(--text-muted)">None</span>'}</div></div>
+          <div class="card-header"><h3>连接信息</h3></div>
+          <div class="card-body">
+            <div class="detail-field"><label>ID</label><div class="value">${esc(n.id)}</div></div>
+            <div class="detail-field"><label>Address</label><div class="value">${esc(n.address)}:${n.port}</div></div>
+            <div class="detail-field"><label>User</label><div class="value">${esc(n.user)}</div></div>
+            <div class="detail-field"><label>Proxy Jump</label><div class="value">${n.proxy_jump ? esc(n.proxy_jump) : '<span style="color:var(--muted)">None</span>'}</div></div>
+          </div>
         </div>
         <div class="card">
-          <div class="detail-field"><label>Groups</label><div class="value">${groups || '<span style="color:var(--text-muted)">None</span>'}</div></div>
-          <div class="detail-field"><label>Labels</label><div class="value">${labels || '<span style="color:var(--text-muted)">None</span>'}</div></div>
-          <div class="detail-field"><label>Created</label><div class="value">${n.created_at ? new Date(n.created_at).toLocaleString() : '-'}</div></div>
-          <div class="detail-field"><label>Updated</label><div class="value">${n.updated_at ? new Date(n.updated_at).toLocaleString() : '-'}</div></div>
+          <div class="card-header"><h3>分组与标签</h3></div>
+          <div class="card-body">
+            <div class="detail-field"><label>Groups</label><div class="value">${groups || '<span style="color:var(--muted)">None</span>'}</div></div>
+            <div class="detail-field"><label>Labels</label><div class="value">${labels || '<span style="color:var(--muted)">None</span>'}</div></div>
+            <div class="detail-field"><label>Created</label><div class="value">${n.created_at ? new Date(n.created_at).toLocaleString() : '-'}</div></div>
+            <div class="detail-field"><label>Updated</label><div class="value">${n.updated_at ? new Date(n.updated_at).toLocaleString() : '-'}</div></div>
+          </div>
         </div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${canWrite ? `<button class="btn-secondary" id="ping-btn">Ping</button>` : ''}
-        ${canWrite ? `<button class="btn-secondary" id="check-btn">SSH 检查</button>` : ''}
-        ${canExec ? `<button class="btn-secondary" id="terminal-btn">终端</button>` : ''}
-        ${canWrite ? `<button class="btn-primary" id="edit-btn">编辑</button>` : ''}
-        ${isAdmin ? `<button class="btn-danger" id="delete-btn">删除</button>` : ''}
-      </div>
+      ${(canWrite || canExec) ? `<div class="node-actions">
+        ${canWrite ? `<div class="actions-group">
+          <button class="btn btn-secondary" id="ping-btn">${IC.ping} Ping</button>
+          <span class="probe-result" id="ping-result" style="display:none"></span>
+          <button class="btn btn-secondary" id="check-btn">${IC.check} SSH 检查</button>
+          <span class="probe-result" id="check-result" style="display:none"></span>
+        </div>` : ''}
+        ${canExec ? `<span class="actions-sep"></span>
+        <div class="actions-group">
+          <button class="btn btn-secondary" id="terminal-btn">${IC.term} 终端</button>
+        </div>` : ''}
+        <span class="spacer"></span>
+        ${canWrite ? `<div class="actions-group">
+          <button class="btn btn-primary" id="edit-btn">${IC.edit} 编辑</button>
+          ${isAdmin ? `<button class="btn btn-danger" id="delete-btn">${IC.del} 删除</button>` : ''}
+        </div>` : ''}
+      </div>` : ''}
     `;
 
     if (canWrite) {
       document.getElementById('edit-btn').addEventListener('click', () => showEditModal(n));
-      if (canExec) {
-        document.getElementById('terminal-btn').addEventListener('click', () => navigate('/terminal/' + encodeURIComponent(nodeId)));
-      }
       document.getElementById('ping-btn').addEventListener('click', async () => {
         const btn = document.getElementById('ping-btn');
         const result = document.getElementById('ping-result');
-        btn.disabled = true; btn.textContent = 'Pinging…';
-        result.innerHTML = '<span style="color:var(--muted)">⏳</span>';
+        btn.disabled = true; btn.innerHTML = IC.ping + ' Ping…';
+        result.style.display = ''; result.className = 'probe-result pending'; result.textContent = '检测中…';
         try {
           const res = await api.pingNodes([nodeId]);
           const r = res.results[0];
           if (r && r.success) {
-            result.innerHTML = `<span style="color:var(--success)">✓ ${r.latency_ms}ms</span>`;
+            result.className = 'probe-result ok'; result.textContent = `✓ ${r.latency_ms}ms`;
           } else {
-            result.innerHTML = `<span style="color:var(--danger)">✗ ${r?.error || 'failed'}</span>`;
+            result.className = 'probe-result err'; result.textContent = `✗ ${r?.error || 'failed'}`;
           }
-        } catch (e) { result.innerHTML = `<span style="color:var(--danger)">${esc(e.message)}</span>`; }
-        btn.disabled = false; btn.textContent = 'Ping';
+        } catch (e) {
+          result.className = 'probe-result err'; result.textContent = `✗ ${e.message}`;
+        }
+        btn.disabled = false; btn.innerHTML = IC.ping + ' Ping';
       });
       document.getElementById('check-btn').addEventListener('click', async () => {
         const btn = document.getElementById('check-btn');
         const result = document.getElementById('check-result');
-        btn.disabled = true; btn.textContent = 'Checking…';
-        result.innerHTML = '<span style="color:var(--muted)">⏳</span>';
+        btn.disabled = true; btn.innerHTML = IC.check + ' 检查中…';
+        result.style.display = ''; result.className = 'probe-result pending'; result.textContent = '检测中…';
         try {
           const res = await api.checkNodes([nodeId]);
           const r = res.results[0];
           if (r && r.success) {
-            result.innerHTML = `<span style="color:var(--success)">✓ SSH ${r.method}</span>`;
+            result.className = 'probe-result ok'; result.textContent = `✓ SSH ${r.method}`;
             loadNode();
           } else {
-            result.innerHTML = `<span style="color:var(--danger)">✗ ${r?.error || 'failed'}</span>`;
+            result.className = 'probe-result err'; result.textContent = `✗ ${r?.error || 'failed'}`;
           }
-        } catch (e) { result.innerHTML = `<span style="color:var(--danger)">${esc(e.message)}</span>`; }
-        btn.disabled = false; btn.textContent = 'SSH 检查';
+        } catch (e) {
+          result.className = 'probe-result err'; result.textContent = `✗ ${e.message}`;
+        }
+        btn.disabled = false; btn.innerHTML = IC.check + ' SSH 检查';
       });
+    }
+    if (canExec) {
+      document.getElementById('terminal-btn').addEventListener('click', () => navigate('/terminal/' + encodeURIComponent(nodeId)));
     }
     if (isAdmin) {
       document.getElementById('delete-btn').addEventListener('click', () => {
         document.getElementById('delete-name').textContent = n.name || n.id;
+        document.getElementById('delete-error').textContent = '';
         document.getElementById('delete-modal').classList.add('open');
         document.getElementById('delete-confirm').onclick = async () => {
           try {
