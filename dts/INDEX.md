@@ -1,6 +1,12 @@
 # dts 问题档案索引
 
-共 8 条 · 未解决 0 · 已解决 8 · 更新于 2026-08-07T00:09:15+08:00
+共 9 条 · 未解决 1 · 已解决 8 · 更新于 2026-08-07T00:16:56+08:00
+
+## fix-ai-chat
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-ai-chat_list-nodes-answers-ansible](fix-ai-chat_list-nodes-answers-ansible/dts.md) | 2026-08-07 | 为什么在 AI 对话中询问"列出所有节点"没有执行 owl node list,而是返回了 ansible 命令提示(用了 ansible-inventory) | **open** |
 
 ## fix-auth
 

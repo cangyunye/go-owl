@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +24,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type mockChatModel struct {
+	responses []string
+	idx       int
+}
+
+func (m *mockChatModel) Generate(_ context.Context, _ []ai2.Message) (string, error) {
+	if m.idx >= len(m.responses) {
+		return "", fmt.Errorf("mockChatModel: out of responses")
+	}
+	reply := m.responses[m.idx]
+	m.idx++
+	return reply, nil
+}
 
 func seedNodes(t *testing.T, db *sql.DB, ctx context.Context) {
 	t.Helper()
@@ -184,6 +199,98 @@ func TestChat_MissingSessionID_UsesNew(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.Reply)
 	assert.NotEmpty(t, resp.SessionID)
+}
+
+func TestChat_WithKey_RoutesThroughAgentQueryNodes(t *testing.T) {
+	_, h := aiTestSetup(t)
+
+	mock := &mockChatModel{responses: []string{
+		"node_list",
+		"```json\n{\"tool_calls\":[{\"name\":\"query_nodes\",\"arguments\":{}}]}\n```",
+	}}
+	h.newChatAgent = func(llmReq *LLMRequest) (*ai2.Agent, error) {
+		nodeStore := &dbNodeStoreAdapter{db: h.db}
+		nodeMgr := ai2.InitNodeManager(nodeStore)
+		agent, err := ai2.NewAgent(h.executor, &ai2.Config{}, nodeMgr, nodeStore, nil, false)
+		if err != nil {
+			return nil, err
+		}
+		agent.SetChatModel(mock)
+		return agent, nil
+	}
+
+	session, err := h.keyManager.CreateSession()
+	require.NoError(t, err)
+	encryptedKey := encryptTestKey(t, h.keyManager, session.SessionID)
+
+	router := gin.New()
+	router.POST("/api/v1/ai/chat", h.Chat)
+
+	w := httptest.NewRecorder()
+	body, _ := json.Marshal(map[string]string{
+		"message":           "列出所有节点",
+		"session_id":        session.SessionID,
+		"encrypted_api_key": encryptedKey,
+		"provider":          "openai",
+		"model":             "test-model",
+		"base_url":          "https://api.example.com/v1",
+		"api_type":          "openai",
+	})
+	req, _ := http.NewRequest("POST", "/api/v1/ai/chat", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+
+	var resp struct {
+		Reply string `json:"reply"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp.Reply, "web-01", "reply should list the seeded node web-01")
+	assert.Contains(t, resp.Reply, "db-01")
+	assert.NotContains(t, resp.Reply, "我不确定您要做什么")
+	assert.NotContains(t, resp.Reply, "ansible")
+}
+
+func TestChat_DeepSeek_Integration(t *testing.T) {
+	apiKey := os.Getenv("DEEPSEEK_API_KEY")
+	if apiKey == "" {
+		t.Skip("Skipping: DEEPSEEK_API_KEY not set")
+	}
+
+	_, h := aiTestSetup(t)
+
+	session, err := h.keyManager.CreateSession()
+	require.NoError(t, err)
+
+	plaintextB64 := base64.StdEncoding.EncodeToString([]byte(apiKey))
+
+	router := gin.New()
+	router.POST("/api/v1/ai/chat", h.Chat)
+
+	w := httptest.NewRecorder()
+	body, _ := json.Marshal(map[string]string{
+		"message":           "列出所有节点",
+		"session_id":        session.SessionID,
+		"encrypted_api_key": "__plain__:" + plaintextB64,
+		"provider":          "deepseek",
+		"model":             "deepseek-v4-flash",
+		"base_url":          "https://api.deepseek.com",
+		"api_type":          "openai",
+	})
+	req, _ := http.NewRequest("POST", "/api/v1/ai/chat", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, 200, w.Code)
+
+	var resp struct {
+		Reply string `json:"reply"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.NotEmpty(t, resp.Reply)
+	assert.Contains(t, resp.Reply, "web-01", "reply should list the seeded node web-01")
+	assert.NotContains(t, resp.Reply, "ansible")
 }
 
 func TestChat_WithEncryptedKey_Success(t *testing.T) {

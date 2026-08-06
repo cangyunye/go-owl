@@ -24,16 +24,55 @@ type AIHandler struct {
 	sessionMgr *ai2.SessionManager
 	keyManager *KeyManager
 	debugMode  bool
+	// newChatAgent builds an agent bound to the user-provided LLM config.
+	// Overridable in tests to inject a mock chat model.
+	newChatAgent func(llmReq *LLMRequest) (*ai2.Agent, error)
 }
 
 func NewAIHandler(db *sql.DB, auditStore *store.AIAuditStore, executor *WebExecutor,
 	keyManager *KeyManager, agent *ai2.Agent, debugMode bool) *AIHandler {
-	return &AIHandler{
+	h := &AIHandler{
 		db: db, auditStore: auditStore, executor: executor,
 		keyManager: keyManager, agent: agent,
 		sessionMgr: ai2.NewSessionManager(),
 		debugMode:  debugMode,
 	}
+	h.newChatAgent = h.buildChatAgent
+	return h
+}
+
+// webLLMChatModel adapts the generic CallLLM HTTP client to ai2.ChatModel so
+// the agent framework (router + group prompts + tool calling) runs on the
+// user-provided API key/model instead of a bare chat completion.
+type webLLMChatModel struct {
+	req *LLMRequest
+}
+
+func (m *webLLMChatModel) Generate(ctx context.Context, messages []ai2.Message) (string, error) {
+	msgs := make([]LLMMessage, len(messages))
+	for i, msg := range messages {
+		msgs[i] = LLMMessage{Role: msg.Role, Content: msg.Content}
+	}
+	req := *m.req
+	req.Messages = msgs
+	resp, err := CallLLM(ctx, &req)
+	if err != nil {
+		return "", err
+	}
+	return resp.Content, nil
+}
+
+// buildChatAgent constructs an agent that executes against the serve database
+// (via WebExecutor + dbNodeStoreAdapter) and uses the given LLM credentials.
+func (h *AIHandler) buildChatAgent(llmReq *LLMRequest) (*ai2.Agent, error) {
+	nodeStore := &dbNodeStoreAdapter{db: h.db}
+	nodeMgr := ai2.InitNodeManager(nodeStore)
+	agent, err := ai2.NewAgent(h.executor, &ai2.Config{}, nodeMgr, nodeStore, nil, h.debugMode)
+	if err != nil {
+		return nil, err
+	}
+	agent.SetChatModel(&webLLMChatModel{req: llmReq})
+	return agent, nil
 }
 
 func (h *AIHandler) GetSessionKey(c *gin.Context) {
@@ -57,10 +96,6 @@ type aiChatRequest struct {
 	BaseURL         string `json:"base_url"`
 	APIType         string `json:"api_type"`
 }
-
-const systemPrompt = `你是 OWL Agent，一个运维智能助手。
-你可以帮助用户管理服务器节点、执行命令、运行剧本和传输文件。
-请用中文回答，保持专业且简洁。`
 
 func (h *AIHandler) Chat(c *gin.Context) {
 	var req aiChatRequest
@@ -86,57 +121,46 @@ func (h *AIHandler) Chat(c *gin.Context) {
 
 	h.executor.userRole = c.GetString("role")
 
-	// Try LLM if API key + model configured
-	if req.EncryptedAPIKey != "" && req.Model != "" {
-		apiKeyBytes, err := h.keyManager.Decrypt(req.SessionID, req.EncryptedAPIKey)
-		if err == nil {
-			apiKey := string(apiKeyBytes)
-			apiType := req.APIType
-			if apiType == "" {
-				apiType = "openai"
-			}
-			baseURL := req.BaseURL
-			if baseURL == "" {
-				baseURL = defaultBaseURL(req.Provider)
-			}
-
-			msgs := []LLMMessage{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: req.Message},
-			}
-
-			startTime := time.Now()
-			llmResp, llmErr := CallLLM(c.Request.Context(), &LLMRequest{
-				APIKey:   apiKey,
-				BaseURL:  baseURL,
-				Model:    req.Model,
-				APIType:  apiType,
-				Messages: msgs,
-			})
-			durationMs := time.Since(startTime).Milliseconds()
-
-			if llmErr == nil {
-				go h.logAudit(userID, "conversation", "success", req.Message, llmResp.Content, durationMs, h.debugMode)
-				c.JSON(http.StatusOK, gin.H{
-					"reply":      llmResp.Content,
-					"session_id": sessionID,
-				})
-				return
-			}
-
-			// LLM failed — fall through to agent but log the error
-			go h.logAudit(userID, "conversation", "llm_error: "+llmErr.Error(), req.Message, "", durationMs, h.debugMode)
-		}
-	}
-
-	// Fallback: use internal agent
 	session, exists := h.sessionMgr.GetSession(sessionID)
 	if !exists {
-		session = h.sessionMgr.CreateSession(sessionID, h.agent)
+		agent := h.agent
+		if req.EncryptedAPIKey != "" && req.Model != "" {
+			if apiKeyBytes, err := h.keyManager.Decrypt(req.SessionID, req.EncryptedAPIKey); err == nil {
+				apiType := req.APIType
+				if apiType == "" {
+					apiType = "openai"
+				}
+				baseURL := req.BaseURL
+				if baseURL == "" {
+					baseURL = defaultBaseURL(req.Provider)
+				}
+				llmReq := &LLMRequest{
+					APIKey:  string(apiKeyBytes),
+					BaseURL: baseURL,
+					Model:   req.Model,
+					APIType: apiType,
+				}
+				if chatAgent, err := h.newChatAgent(llmReq); err == nil {
+					agent = chatAgent
+				}
+			}
+		}
+		session = h.sessionMgr.CreateSession(sessionID, agent)
 	}
 
 	startTime := time.Now()
 	reply, err := session.Send(c.Request.Context(), req.Message)
+	if err != nil {
+		// The LLM-backed agent failed (invalid key, provider error, etc.).
+		// Degrade gracefully to the rule-based default agent.
+		fallbackID := "fallback:" + sessionID
+		if fallback, ok := h.sessionMgr.GetSession(fallbackID); ok {
+			session = fallback
+		} else {
+			session = h.sessionMgr.CreateSession(fallbackID, h.agent)
+		}
+		reply, err = session.Send(c.Request.Context(), req.Message)
+	}
 	durationMs := time.Since(startTime).Milliseconds()
 
 	if err != nil {
