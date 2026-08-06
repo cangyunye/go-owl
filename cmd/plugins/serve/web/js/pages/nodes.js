@@ -95,20 +95,20 @@ export function renderNodes(render, navigate, user, api, shell) {
         const caret = `<span class="expand-caret${expanded ? ' open' : ''}"><svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg></span>`;
         let actions = '';
         if (canWrite) {
-          actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-ping="${esc(n.id)}" title="Ping 检测" aria-label="Ping 检测">${IC.ping}</button>
-            <button class="btn btn-ghost btn-icon btn-sm row-action" data-check="${esc(n.id)}" title="SSH 检查" aria-label="SSH 检查">${IC.check}</button>`;
+          actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-ping="${esc(n.id)}" data-tip="Ping 检测" aria-label="Ping 检测">${IC.ping}</button>
+            <button class="btn btn-ghost btn-icon btn-sm row-action" data-check="${esc(n.id)}" data-tip="SSH 检查" aria-label="SSH 检查">${IC.check}</button>`;
         }
         if (canExec) {
-          actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-term="${esc(n.id)}" title="打开终端" aria-label="打开终端">${IC.term}</button>`;
+          actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-term="${esc(n.id)}" data-tip="打开终端" aria-label="打开终端">${IC.term}</button>`;
         }
         if (canWrite) {
-          actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-edit="${esc(n.id)}" title="编辑节点" aria-label="编辑节点">${IC.edit}</button>`;
+          actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-edit="${esc(n.id)}" data-tip="编辑节点" aria-label="编辑节点">${IC.edit}</button>`;
           if (isAdmin) {
-            actions += `<button class="btn btn-ghost btn-icon btn-sm row-action danger" data-del="${esc(n.id)}" title="删除节点" aria-label="删除节点">${IC.del}</button>`;
+            actions += `<button class="btn btn-ghost btn-icon btn-sm row-action danger" data-del="${esc(n.id)}" data-tip="删除节点" aria-label="删除节点">${IC.del}</button>`;
           }
         }
         if (!actions) {
-          actions = `<button class="btn btn-ghost btn-icon btn-sm row-action" data-toggle="${esc(n.id)}" title="展开详情" aria-label="展开详情"><svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg></button>`;
+          actions = `<button class="btn btn-ghost btn-icon btn-sm row-action" data-toggle="${esc(n.id)}" data-tip="展开详情" aria-label="展开详情"><svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg></button>`;
         }
         return `<tr data-toggle="${esc(n.id)}">
           <td class="checkbox-col"><input type="checkbox" class="node-check" value="${esc(n.id)}" ${checked ? 'checked' : ''} onchange="updateBatch()"></td>

@@ -41,6 +41,8 @@
   --chat-user:      oklch(62% 0.18 255 / 0.1);
   --sidebar-hover:  oklch(62% 0.18 255 / 0.08);
   --accent-fg:      oklch(98% 0 0);
+  --tooltip-bg:     oklch(30% 0.02 250);
+  --tooltip-fg:     oklch(95% 0.01 250);
 }
 
 html[data-theme="light-sky"] {
@@ -70,6 +72,8 @@ html[data-theme="light-sky"] {
   --chat-user:      oklch(58% 0.22 150 / 0.1);
   --sidebar-hover:  oklch(58% 0.22 150 / 0.06);
   --accent-fg:      oklch(100% 0 0);
+  --tooltip-bg:     oklch(24% 0.03 150);
+  --tooltip-fg:     oklch(96% 0.01 150);
 }
 
 html[data-theme="dark-warm"] {
@@ -99,6 +103,8 @@ html[data-theme="dark-warm"] {
   --chat-user:      oklch(60% 0.16 50 / 0.1);
   --sidebar-hover:  oklch(60% 0.16 50 / 0.06);
   --accent-fg:      oklch(100% 0 0);
+  --tooltip-bg:     oklch(30% 0.02 55);
+  --tooltip-fg:     oklch(95% 0.02 55);
 }
 
 html, body {
@@ -721,11 +727,45 @@ tr:hover td { background: var(--surface-2); }
 }
 
 /* Node list row actions & inline expansion */
-.data-table .row-action { width: 26px; height: 26px; }
+.data-table .row-action { width: 26px; height: 26px; position: relative; }
 .data-table .row-action.danger:hover {
   color: var(--danger);
   background: color-mix(in oklch, var(--danger) 12%, transparent);
 }
+.data-table .row-action[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-fg);
+  font: 500 11px/1 var(--font-body);
+  letter-spacing: 0.02em;
+  padding: 6px 9px;
+  border-radius: 5px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease 0.15s;
+  z-index: 60;
+}
+.data-table .row-action[data-tip]::before {
+  content: '';
+  position: absolute;
+  right: calc(100% + 4px);
+  top: 50%;
+  transform: translateY(-50%);
+  border: 4px solid transparent;
+  border-left-color: var(--tooltip-bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease 0.15s;
+  z-index: 60;
+}
+.data-table .row-action[data-tip]:hover::after,
+.data-table .row-action[data-tip]:hover::before { opacity: 1; }
 .data-table .cell-name { cursor: pointer; }
 .data-table .cell-name:hover .node-name { color: var(--accent); }
 .data-table .expand-caret {
