@@ -194,6 +194,32 @@ func (h *NodeHandler) List(c *gin.Context) {
 	})
 }
 
+func (h *NodeHandler) Stats(c *gin.Context) {
+	var total, online, offline, warn int
+	if err := h.db.QueryRow(`SELECT COUNT(*) FROM nodes`).Scan(&total); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
+		return
+	}
+	if err := h.db.QueryRow(`SELECT COUNT(*) FROM nodes WHERE status = 'online'`).Scan(&online); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
+		return
+	}
+	if err := h.db.QueryRow(`SELECT COUNT(*) FROM nodes WHERE status IN ('offline', 'unknown')`).Scan(&offline); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
+		return
+	}
+	if err := h.db.QueryRow(`SELECT COUNT(*) FROM nodes WHERE status IN ('warn', 'warning')`).Scan(&warn); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"total":   total,
+		"online":  online,
+		"offline": offline,
+		"warn":    warn,
+	})
+}
+
 func (h *NodeHandler) Get(c *gin.Context) {
 	id := c.Param("id")
 

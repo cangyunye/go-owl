@@ -220,6 +220,7 @@ func (s *Server) setupRoutes() {
 		reader := auth.Group("", s.authHandler.RBACMiddleware(model.RoleViewer, model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{
 			reader.GET("/nodes", s.nodeHandler.List)
+			reader.GET("/nodes/stats", s.nodeHandler.Stats)
 			reader.GET("/nodes/search", s.nodeHandler.Search)
 			reader.GET("/nodes/filters", s.nodeHandler.Filters)
 			reader.GET("/nodes/:id", s.nodeHandler.Get)

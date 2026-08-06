@@ -43,6 +43,9 @@ export const api = {
     return request('GET', `/nodes?${q}`);
   },
 
+  nodeStats: () =>
+    request('GET', '/nodes/stats'),
+
   node: (id) =>
     request('GET', `/nodes/${encodeURIComponent(id)}`),
 

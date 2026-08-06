@@ -353,11 +353,13 @@ function requireAuth() {
 }
 
 function loadTopbarStats() {
-  if (!api || !api.nodes) return;
-  api.nodes({ page: 1, page_size: 1 }).then(res => {
-    // Minimal: just show counts from first page meta if available
+  if (!api || !api.nodeStats) return;
+  api.nodeStats().then(res => {
+    const online = document.getElementById('statOnline');
+    const offline = document.getElementById('statOffline');
+    if (online) online.textContent = res.online || 0;
+    if (offline) offline.textContent = res.offline || 0;
   }).catch(() => {});
-  // Phase 2+: fetch real stats from API
 }
 
 function setTheme(theme) {

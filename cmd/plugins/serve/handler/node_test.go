@@ -387,4 +387,60 @@ func TestNodeFilters(t *testing.T) {
 	assert.ElementsMatch(t, []string{"env", "tier"}, resp.Labels)
 }
 
+func TestNodeStats(t *testing.T) {
+	h, _ := newTestNodeHandler(t)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/api/v1/nodes/stats", h.Stats)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/nodes/stats", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+
+	var resp struct {
+		Total   int `json:"total"`
+		Online  int `json:"online"`
+		Offline int `json:"offline"`
+		Warn    int `json:"warn"`
+	}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, 4, resp.Total)
+	assert.Equal(t, 3, resp.Online)
+	assert.Equal(t, 1, resp.Offline)
+	assert.Equal(t, 0, resp.Warn)
+}
+
+func TestNodeStats_OfflineIncludesUnknown(t *testing.T) {
+	h, db := newTestNodeHandler(t)
+
+	_, err := db.Exec(`INSERT INTO nodes (id, name, address, port, user, status) VALUES
+		('unk-01', 'unk-01', '10.0.9.99', 22, 'root', 'unknown'),
+		('warn-01', 'warn-01', '10.0.9.98', 22, 'root', 'warning')`)
+	require.NoError(t, err)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/api/v1/nodes/stats", h.Stats)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/nodes/stats", nil)
+	router.ServeHTTP(w, req)
+
+	var resp struct {
+		Total   int `json:"total"`
+		Online  int `json:"online"`
+		Offline int `json:"offline"`
+		Warn    int `json:"warn"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, 6, resp.Total)
+	assert.Equal(t, 3, resp.Online)
+	assert.Equal(t, 2, resp.Offline)
+	assert.Equal(t, 1, resp.Warn)
+}
+
 

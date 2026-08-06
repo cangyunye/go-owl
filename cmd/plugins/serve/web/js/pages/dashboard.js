@@ -7,18 +7,25 @@ export function renderDashboard(render, navigate, user, api, shell) {
 
   async function loadAll() {
     try {
-      const [nodeRes, taskRes] = await Promise.all([
-        api.nodes({ page: 1, page_size: 100 }),
+      const [statsRes, taskRes] = await Promise.all([
+        api.nodeStats(),
         api.tasks({ page: 1, page_size: 5 })
       ]);
-      const nodes = nodeRes.data || [];
-      stats.total = nodes.length;
-      stats.online = nodes.filter(n => n.status === 'online').length;
-      stats.offline = nodes.filter(n => n.status === 'offline' || n.status === 'unknown').length;
-      stats.warn = nodes.filter(n => n.status === 'warn' || n.status === 'warning').length;
+      stats.total = statsRes.total || 0;
+      stats.online = statsRes.online || 0;
+      stats.offline = statsRes.offline || 0;
+      stats.warn = statsRes.warn || 0;
       recentTasks = taskRes.data || [];
     } catch {}
     renderCards();
+    updateTopbar();
+  }
+
+  function updateTopbar() {
+    const online = document.getElementById('statOnline');
+    const offline = document.getElementById('statOffline');
+    if (online) online.textContent = stats.online;
+    if (offline) offline.textContent = stats.offline;
   }
 
   function statusDot(s) {
