@@ -1,8 +1,18 @@
 export function renderNodes(render, navigate, user, api, shell) {
-  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', status: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '', pingResults: {}, checkResults: {}, selectedIds: [] };
+  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', status: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '', pingResults: {}, checkResults: {}, selectedIds: [], expandedId: null };
   const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
+  const canExec = ['admin', 'operator'].includes(user.role);
+  const isAdmin = user.role === 'admin';
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+  const IC = {
+    ping: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-activity"/></svg>',
+    check: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-check"/></svg>',
+    term: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-terminal"/></svg>',
+    edit: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-edit"/></svg>',
+    del: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-x"/></svg>'
+  };
   function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 7); }
   function statusClass(s) { return 'status-badge status-' + (s || 'unknown'); }
   function statusDot(s) {
@@ -81,18 +91,47 @@ export function renderNodes(render, navigate, user, api, shell) {
         if (checkResult) {
           statusExtra += checkResult.success ? `<span style="color:var(--success);font-size:11px;margin-left:4px" title="SSH: ${checkResult.method}">🔑</span>` : '<span style="color:var(--danger);font-size:11px;margin-left:4px" title="SSH failed">🔒</span>';
         }
-        return `<tr>
+        const expanded = state.expandedId === n.id;
+        const caret = `<span class="expand-caret${expanded ? ' open' : ''}"><svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg></span>`;
+        let actions = '';
+        if (canWrite) {
+          actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-ping="${esc(n.id)}" title="Ping 检测" aria-label="Ping 检测">${IC.ping}</button>
+            <button class="btn btn-ghost btn-icon btn-sm row-action" data-check="${esc(n.id)}" title="SSH 检查" aria-label="SSH 检查">${IC.check}</button>`;
+        }
+        if (canExec) {
+          actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-term="${esc(n.id)}" title="打开终端" aria-label="打开终端">${IC.term}</button>`;
+        }
+        if (canWrite) {
+          actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-edit="${esc(n.id)}" title="编辑节点" aria-label="编辑节点">${IC.edit}</button>`;
+          if (isAdmin) {
+            actions += `<button class="btn btn-ghost btn-icon btn-sm row-action danger" data-del="${esc(n.id)}" title="删除节点" aria-label="删除节点">${IC.del}</button>`;
+          }
+        }
+        if (!actions) {
+          actions = `<button class="btn btn-ghost btn-icon btn-sm row-action" data-toggle="${esc(n.id)}" title="展开详情" aria-label="展开详情"><svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg></button>`;
+        }
+        return `<tr data-toggle="${esc(n.id)}">
           <td class="checkbox-col"><input type="checkbox" class="node-check" value="${esc(n.id)}" ${checked ? 'checked' : ''} onchange="updateBatch()"></td>
-          <td><div class="cell-name"><a href="/nodes/${esc(n.id)}" style="color:var(--fg);text-decoration:none">${esc(n.name || n.id)}</a> <span class="sub">${esc(n.os || '')}</span></div></td>
+          <td><div class="cell-name">${caret}<span class="node-name">${esc(n.name || n.id)}</span> <span class="sub">${esc(n.os || '')}</span></div></td>
           <td style="font-family:var(--font-mono);font-size:12px">${esc(n.address)}:${n.port}</td>
           <td>${groups ? groups : '<span style="color:var(--muted);font-size:12px">-</span>'}</td>
           <td>${statusDot(n.status)}${statusExtra}</td>
           <td><div class="cell-tags">${labels || '<span style="color:var(--muted);font-size:12px">-</span>'}</div></td>
           <td style="font-size:12px;color:var(--muted)">${onlineLabel}</td>
-          <td><div class="cell-actions">
-            ${canWrite ? `<button class="btn btn-ghost btn-icon btn-sm" data-edit-id="${esc(n.id)}" aria-label="编辑"><svg width="14" height="14" aria-hidden="true"><use href="#icon-edit"/></svg></button>` : `<button class="btn btn-ghost btn-icon btn-sm" onclick="window.location='/nodes/${esc(n.id)}'" aria-label="详情"><svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg></button>`}
-          </div></td>
-        </tr>`;
+          <td><div class="cell-actions">${actions}</div></td>
+        </tr>
+        ${expanded ? `<tr class="node-expand-row">
+          <td colspan="8">
+            <div class="expand-detail">
+              <div class="detail-field"><label>节点 ID</label><div class="value">${esc(n.id)}</div></div>
+              <div class="detail-field"><label>SSH 用户</label><div class="value">${esc(n.user || '-')}</div></div>
+              <div class="detail-field"><label>地址</label><div class="value" style="font-family:var(--font-mono)">${esc(n.address)}:${n.port}</div></div>
+              <div class="detail-field"><label>代理跳板</label><div class="value">${n.proxy_jump ? esc(n.proxy_jump) : '<span class="value-none">无</span>'}</div></div>
+              <div class="detail-field"><label>创建时间</label><div class="value">${n.created_at ? esc(new Date(n.created_at).toLocaleString()) : '-'}</div></div>
+              <div class="detail-field"><label>更新时间</label><div class="value">${n.updated_at ? esc(new Date(n.updated_at).toLocaleString()) : '-'}</div></div>
+            </div>
+          </td>
+        </tr>` : ''}`;
       }).join('');
     }
     const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
@@ -499,6 +538,40 @@ export function renderNodes(render, navigate, user, api, shell) {
     } catch (e) { alert('SSH 检查失败: ' + e.message); }
   }
 
+  async function handleRowPing(id) {
+    try {
+      const res = await api.pingNodes([id]);
+      const r = res.results[0];
+      if (r) state.pingResults[id] = r;
+      renderTable();
+    } catch (e) { alert('Ping 失败: ' + e.message); }
+  }
+
+  async function handleRowCheck(id) {
+    try {
+      const res = await api.checkNodes([id]);
+      const r = res.results[0];
+      if (r) state.checkResults[id] = r;
+      renderTable();
+      await loadNodes();
+    } catch (e) { alert('SSH 检查失败: ' + e.message); }
+  }
+
+  async function handleRowDelete(id) {
+    const n = state.nodes.find(x => x.id === id);
+    if (!confirm(`确定删除节点 ${n ? n.name || n.id : id}？此操作不可撤销。`)) return;
+    try {
+      await api.deleteNode(id);
+      if (state.expandedId === id) state.expandedId = null;
+      await loadNodes();
+    } catch (e) { alert('删除失败: ' + e.message); }
+  }
+
+  function toggleExpand(id) {
+    state.expandedId = state.expandedId === id ? null : id;
+    renderTable();
+  }
+
   shell.setPanelContent('<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载分组…</li>');
 
   loadNodes();
@@ -806,8 +879,22 @@ export function renderNodes(render, navigate, user, api, shell) {
     });
 
     document.getElementById('node-list').addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-edit-id]');
-      if (btn) showEditModal(btn.dataset.editId);
+      const toggleBtn = e.target.closest('button[data-toggle]');
+      if (toggleBtn) { toggleExpand(toggleBtn.dataset.toggle); return; }
+      const pingBtn = e.target.closest('[data-ping]');
+      if (pingBtn) { handleRowPing(pingBtn.dataset.ping); return; }
+      const checkBtn = e.target.closest('[data-check]');
+      if (checkBtn) { handleRowCheck(checkBtn.dataset.check); return; }
+      const termBtn = e.target.closest('[data-term]');
+      if (termBtn) { navigate('/terminal/' + encodeURIComponent(termBtn.dataset.term)); return; }
+      const editBtn = e.target.closest('[data-edit]');
+      if (editBtn) { showEditModal(editBtn.dataset.edit); return; }
+      const delBtn = e.target.closest('[data-del]');
+      if (delBtn) { handleRowDelete(delBtn.dataset.del); return; }
+      const row = e.target.closest('tr[data-toggle]');
+      if (row && !e.target.closest('input, a, button')) {
+        toggleExpand(row.dataset.toggle);
+      }
     });
     document.getElementById('edit-cancel').addEventListener('click', hideEditModal);
     document.getElementById('edit-save').addEventListener('click', handleEditSubmit);
