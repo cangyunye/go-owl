@@ -75,7 +75,7 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	if err := ensureDBDir(s.Config.DBPath); err != nil {
 		return nil, fmt.Errorf("ensure db dir: %w", err)
 	}
-	db, err := sql.Open("sqlite", s.Config.DBPath)
+	db, err := sql.Open("sqlite", sqliteDSN(s.Config.DBPath))
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
@@ -467,11 +467,21 @@ func ensureDBDir(dbPath string) error {
 	return nil
 }
 
+// sqliteDSN 在 DSN 中注入 PRAGMA,确保连接池的每个连接都带上
+// WAL / busy_timeout。仅靠启动时 Exec PRAGMA 只作用于单个池化连接,
+// 并发写(shell 流式落库)时其他连接会立即报 "database is locked"。
+func sqliteDSN(dbPath string) string {
+	if strings.Contains(dbPath, "?") {
+		return dbPath
+	}
+	return dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL"
+}
+
 func (s *Server) ResetAdmin() (*AdminCredentials, error) {
 	if err := ensureDBDir(s.Config.DBPath); err != nil {
 		return nil, fmt.Errorf("ensure db dir: %w", err)
 	}
-	db, err := sql.Open("sqlite", s.Config.DBPath)
+	db, err := sql.Open("sqlite", sqliteDSN(s.Config.DBPath))
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}

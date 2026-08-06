@@ -19,6 +19,8 @@ import (
 	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"nhooyr.io/websocket"
+	"nhooyr.io/websocket/wsjson"
 )
 
 type mockExecutor struct {
@@ -537,6 +539,63 @@ func TestExecCreate_RecordsHistory(t *testing.T) {
 func TestBuildExecCommand_CommandMode(t *testing.T) {
 	cfg := ExecConfig{Command: "uptime"}
 	assert.Equal(t, "uptime", buildExecCommand("uptime", cfg))
+}
+
+func TestExecuteTask_StreamsOutputToWS(t *testing.T) {
+	_, h := execTestSetup(t)
+
+	hub := NewWSHub()
+	h.hub = hub
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		require.NoError(t, err)
+		hub.Subscribe(r.Context(), conn)
+		<-r.Context().Done()
+	}))
+	defer s.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, s.URL, nil)
+	require.NoError(t, err)
+	defer conn.CloseNow()
+	time.Sleep(50 * time.Millisecond)
+
+	h.exec = &mockExecutor{output: "line1\nline2\n", exitCode: 0}
+
+	task, err := h.task.Create(ctx, "test-node", "uptime")
+	require.NoError(t, err)
+
+	go h.executeTask(task.ID, ExecConfig{Command: "uptime", Retry: 0})
+
+	var seenOutput []string
+	completed := false
+	for !completed {
+		var msg struct {
+			Type string                 `json:"type"`
+			Data map[string]interface{} `json:"data"`
+		}
+		err := wsjson.Read(ctx, conn, &msg)
+		require.NoError(t, err)
+		switch msg.Type {
+		case "task_output":
+			line, _ := msg.Data["line"].(string)
+			seenOutput = append(seenOutput, line)
+		case "task_update":
+			if msg.Data["id"] == task.ID && msg.Data["status"] == "completed" {
+				completed = true
+			}
+		}
+	}
+
+	require.Equal(t, []string{"line1", "line2"}, seenOutput)
+
+	got, err := h.task.Get(ctx, task.ID)
+	require.NoError(t, err)
+	require.Equal(t, store.TaskStatusCompleted, got.Status)
+	require.Contains(t, got.Output, "line1")
+	require.Contains(t, got.Output, "line2")
 }
 
 func TestBuildExecCommand_ScriptMode(t *testing.T) {

@@ -24,7 +24,8 @@ type WSHub struct {
 }
 
 type wsClient struct {
-	conn *websocket.Conn
+	conn   *websocket.Conn
+	sendCh chan WSMessage
 }
 
 func NewWSHub() *WSHub {
@@ -34,13 +35,34 @@ func NewWSHub() *WSHub {
 }
 
 func (h *WSHub) Subscribe(ctx context.Context, conn *websocket.Conn) {
-	client := &wsClient{conn: conn}
+	client := &wsClient{conn: conn, sendCh: make(chan WSMessage, 128)}
+	id := fmt.Sprintf("%p", conn)
 	h.mu.Lock()
-	h.clients[fmt.Sprintf("%p", conn)] = client
+	h.clients[id] = client
 	h.mu.Unlock()
 
+	go h.writeLoop(ctx, client)
+
 	<-ctx.Done()
-	h.Unsubscribe(fmt.Sprintf("%p", conn))
+	h.Unsubscribe(id)
+}
+
+// writeLoop 单写者串行下发消息，保证同一客户端收到的广播顺序与发送顺序一致。
+func (h *WSHub) writeLoop(ctx context.Context, client *wsClient) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-client.sendCh:
+			wctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := wsjson.Write(wctx, client.conn, msg); err != nil {
+				log.Printf("ws write error: %v", err)
+				cancel()
+				return
+			}
+			cancel()
+		}
+	}
 }
 
 func (h *WSHub) Unsubscribe(id string) {
@@ -57,13 +79,11 @@ func (h *WSHub) Broadcast(msg WSMessage) {
 	defer h.mu.RUnlock()
 
 	for _, client := range h.clients {
-		go func(c *wsClient) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := wsjson.Write(ctx, c.conn, msg); err != nil {
-				log.Printf("ws write error: %v", err)
-			}
-		}(client)
+		select {
+		case client.sendCh <- msg:
+		default:
+			// 客户端积压时丢弃，避免阻塞执行 goroutine
+		}
 	}
 }
 

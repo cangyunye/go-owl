@@ -89,8 +89,13 @@ export function renderHistory(render, navigate, user, api, shell) {
     let rec;
     try { rec = await api.historyGet(taskId); } catch { alert('加载详情失败'); return; }
     const op = rec.operation || {};
-    const execRows = (rec.command_executions || []).map(e =>
-      `<tr><td>${esc(e.node_id)}</td><td>${e.exit_code}</td><td>${e.duration_ms}ms</td><td>${e.success ? '✅' : '❌'}</td><td>${esc(e.command)}</td></tr>`).join('');
+    const execBlocks = (rec.command_executions || []).map((e, i) => {
+      const out = (e.stdout || '') + (e.stderr ? ((e.stdout ? '\n' : '') + '[stderr] ' + e.stderr) : '');
+      return `<details class="exec-detail" ${i === 0 ? 'open' : ''} style="margin-bottom:6px;border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;background:var(--surface)">
+        <summary style="cursor:pointer;font-size:12px;color:var(--fg)">${esc(e.node_id)} · 退出码 ${e.exit_code} · ${e.duration_ms}ms · ${e.success ? '✅ 成功' : '❌ 失败'} · <span style="font-family:var(--font-mono)">${esc(e.command)}</span></summary>
+        <pre style="margin:8px 0 0;padding:10px;background:var(--bg);border-radius:var(--radius);font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--fg);max-height:320px;overflow:auto">${esc(out || '(无输出)')}</pre>
+      </details>`;
+    }).join('');
     const tfRows = (rec.transfers || []).map(f =>
       `<tr><td>${esc(f.node_id)}</td><td>${esc(f.file_name)}</td><td>${f.file_size || '-'}</td><td>${esc(f.transfer_type)}</td><td>${esc(f.status)}</td></tr>`).join('');
     const commRows = (rec.communications || []).map(cm =>
@@ -104,10 +109,10 @@ export function renderHistory(render, navigate, user, api, shell) {
       <div class="modal-body">
         <p style="color:var(--muted);font-size:12px">类型: ${OP_LABELS[op.op_type] || esc(op.op_type)} · 状态: ${STATUS_TEXT[op.status] || esc(op.status)} · 时间: ${esc(op.created_at)}</p>
         <p style="color:var(--muted);font-size:12px">目标: ${(op.targets || []).map(esc).join(', ') || '无'}</p>
-        ${execRows ? `<h4>命令执行</h4><table class="table"><thead><tr><th>节点</th><th>退出码</th><th>耗时</th><th>状态</th><th>命令</th></tr></thead><tbody>${execRows}</tbody></table>` : ''}
+        ${execBlocks ? `<h4>命令执行</h4>${execBlocks}` : ''}
         ${tfRows ? `<h4>文件传输</h4><table class="table"><thead><tr><th>节点</th><th>文件</th><th>大小</th><th>类型</th><th>状态</th></tr></thead><tbody>${tfRows}</tbody></table>` : ''}
         ${commRows ? `<h4>节点通信</h4><table class="table"><thead><tr><th>节点</th><th>方向</th><th>类型</th><th>状态</th></tr></thead><tbody>${commRows}</tbody></table>` : ''}
-        ${(!execRows && !tfRows && !commRows) ? '<p style="color:var(--muted)">无明细数据</p>' : ''}
+        ${(!execBlocks && !tfRows && !commRows) ? '<p style="color:var(--muted)">无明细数据</p>' : ''}
       </div>
     </div>`;
     document.body.appendChild(overlay);

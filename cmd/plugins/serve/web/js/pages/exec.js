@@ -446,7 +446,6 @@ export function renderExec(render, navigate, user, api, shell) {
     }
 
     const nodeIDs = Array.from(selectedNodes);
-    const isSingle = nodeIDs.length === 1;
     const isAsync = document.getElementById('async-toggle')?.checked || false;
 
     clearTerminal();
@@ -460,31 +459,45 @@ export function renderExec(render, navigate, user, api, shell) {
       const tasks = res.tasks || [];
       currentTaskIDs = tasks.map(t => t.id);
 
-      if (isSingle && tasks.length === 1 && !isAsync) {
-        appendTerminal(`任务已创建: ${esc(tasks[0].id)}`, 'ok');
-        appendTerminal('等待实时输出…', 'ts');
+      if (tasks.length === 0) {
+        appendTerminal('✗ 未创建任何任务', 'err');
+        return;
+      }
 
-        if (wsCleanup) wsCleanup.close();
-        wsCleanup = api.connectWebSocket(msg => {
-          if (msg.type === 'task_output' && msg.data.task_id === tasks[0].id) {
-            appendTerminal(esc(msg.data.line), 'out');
-          } else if (msg.type === 'task_update' && msg.data.id === tasks[0].id) {
-            const status = msg.data.status;
-            if (status === 'completed') {
-              appendTerminal('✓ 执行完成', 'ok');
-            } else if (status === 'failed' || status === 'cancelled') {
-              appendTerminal('✗ 执行失败: ' + esc(msg.data.error || ''), 'err');
-            }
-            if (wsCleanup) wsCleanup.close();
-          }
-        });
+      const isSingle = tasks.length === 1;
+
+      if (isSingle) {
+        appendTerminal(`任务已创建: ${esc(tasks[0].id)}`, 'ok');
       } else {
         tasks.forEach(t => {
           appendTerminal(`[${esc(t.node_id)}] 任务: ${esc(t.id)}`, 'out');
         });
-        const count = tasks.length;
-        appendTerminal(`✓ 已提交 ${count} 个任务${isAsync ? ' (异步模式)' : ''}`, 'ok');
       }
+      appendTerminal(isAsync ? '提交成功，等待异步完成…' : '等待实时输出…', 'ts');
+
+      if (wsCleanup) wsCleanup.close();
+      const finished = new Set();
+      wsCleanup = api.connectWebSocket(msg => {
+        if (msg.type === 'task_output') {
+          const t = msg.data;
+          if (!t || !currentTaskIDs.includes(t.task_id)) return;
+          const prefix = isSingle ? '' : `[${esc(t.node_id)}] `;
+          appendTerminal(prefix + esc(t.line), t.type === 'stderr' ? 'err' : 'out');
+        } else if (msg.type === 'task_update') {
+          const t = msg.data;
+          if (!t || !currentTaskIDs.includes(t.id) || finished.has(t.id)) return;
+          finished.add(t.id);
+          if (t.status === 'completed') {
+            appendTerminal(isSingle ? '✓ 执行完成' : `[${esc(t.node_id)}] ✓ 完成`, 'ok');
+          } else if (t.status === 'failed' || t.status === 'cancelled') {
+            appendTerminal(isSingle ? `✗ ${t.status === 'cancelled' ? '已取消' : '执行失败'}` : `[${esc(t.node_id)}] ✗ ${t.status === 'cancelled' ? '已取消' : '执行失败'}`, 'err');
+          }
+          if (finished.size >= currentTaskIDs.length) {
+            appendTerminal('— 全部任务已结束，可在任务历史中查看输出 —', 'ts');
+            if (wsCleanup) wsCleanup.close();
+          }
+        }
+      });
     } catch (e) {
       appendTerminal('✗ 执行失败: ' + esc(e.message || '未知错误'), 'err');
     }
@@ -552,6 +565,7 @@ free -m</textarea>
             </div>
             <span class="term-title">输出</span>
             <span style="flex:1"></span>
+            <button class="btn btn-ghost btn-sm" onclick="window.location='/history'">历史记录</button>
             <button class="btn btn-ghost btn-sm" id="clear-term-btn">清屏</button>
           </div>
           <div class="term-body" id="term-body">

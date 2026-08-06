@@ -571,7 +571,7 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 			))
 		}
 
-		output, exitCode, lastError = h.exec.Execute(ctx, task.NodeID, buildExecCommand(task.Command, cfg))
+		output, exitCode, lastError = h.streamExecute(ctx, taskID, task.NodeID, task.Command, cfg)
 		if lastError == nil {
 			break
 		}
@@ -580,12 +580,16 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 	}
 
 	if lastError != nil {
+		outputStr := output
+		if outputStr != "" {
+			outputStr += "\n"
+		}
 		errMsg := lastError.Error()
 		if cfg.Debug {
 			errMsg = fmt.Sprintf("所有 %d 次尝试均失败: %s", retryCount+1, errMsg)
 		}
-		h.task.UpdateStatus(ctx, taskID, store.TaskStatusFailed, errMsg, &exitCode)
-		h.recordCommandExecution(ctx, task, exitCode, "", errMsg, time.Since(start).Milliseconds(), false)
+		h.updateTaskStatus(ctx, taskID, store.TaskStatusFailed, outputStr+errMsg, &exitCode)
+		h.recordCommandExecution(ctx, task, exitCode, output, errMsg, time.Since(start).Milliseconds(), false)
 		h.updateOpStatus(ctx, task.RecordID)
 		task, _ = h.task.Get(ctx, taskID)
 		if h.hub != nil {
@@ -603,12 +607,80 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 			task.NodeID, task.Command, exitCode, output)
 	}
 
-	h.task.UpdateStatus(ctx, taskID, store.TaskStatusCompleted, outputStr, &exitCode)
+	h.updateTaskStatus(ctx, taskID, store.TaskStatusCompleted, outputStr, &exitCode)
 	h.recordCommandExecution(ctx, task, exitCode, outputStr, "", time.Since(start).Milliseconds(), true)
 	h.updateOpStatus(ctx, task.RecordID)
 	task, _ = h.task.Get(ctx, taskID)
 	if h.hub != nil {
 		h.hub.BroadcastTaskUpdate(task)
+	}
+}
+
+// updateTaskStatus 带有限重试的状态落库,规避 sqlite 并发写瞬时锁冲突。
+func (h *ExecHandler) updateTaskStatus(ctx context.Context, taskID string, status store.TaskStatus, output string, exitCode *int) {
+	for attempt := 0; attempt < 5; attempt++ {
+		if err := h.task.UpdateStatus(ctx, taskID, status, output, exitCode); err == nil {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+type streamResult struct {
+	code int
+	err  error
+}
+
+// streamExecute 以 ExecuteStream 方式执行单条命令：逐行广播到 WS(task_output)
+// 并累积到任务输出，保证前端能实时看到执行输出。
+func (h *ExecHandler) streamExecute(ctx context.Context, taskID, nodeID, command string, cfg ExecConfig) (string, int, error) {
+	outputCh := make(chan OutputLine, 256)
+	resCh := make(chan streamResult, 1)
+	go func() {
+		code, err := h.exec.ExecuteStream(ctx, nodeID, buildExecCommand(command, cfg), outputCh)
+		resCh <- streamResult{code: code, err: err}
+	}()
+
+	var buf strings.Builder
+	var lastFlush time.Time
+	flush := func() {
+		h.task.UpdateStatus(ctx, taskID, store.TaskStatusRunning, buf.String(), nil)
+	}
+	defer flush()
+	appendLine := func(line OutputLine) {
+		buf.WriteString(line.Line)
+		buf.WriteString("\n")
+		if h.hub != nil {
+			h.hub.BroadcastTaskOutput(taskID, line.NodeID, line.Line, line.Type)
+		}
+		// 限频落库:逐行写库在并发执行时会放大 sqlite 锁竞争,实时性以 WS 广播承担
+		if time.Since(lastFlush) >= 150*time.Millisecond {
+			lastFlush = time.Now()
+			h.task.UpdateStatus(ctx, taskID, store.TaskStatusRunning, buf.String(), nil)
+		}
+	}
+
+	for {
+		select {
+		case line, ok := <-outputCh:
+			if !ok {
+				res := <-resCh
+				return buf.String(), res.code, res.err
+			}
+			appendLine(line)
+		case res := <-resCh:
+			for {
+				select {
+				case line, ok := <-outputCh:
+					if !ok {
+						return buf.String(), res.code, res.err
+					}
+					appendLine(line)
+				default:
+					return buf.String(), res.code, res.err
+				}
+			}
+		}
 	}
 }
 
