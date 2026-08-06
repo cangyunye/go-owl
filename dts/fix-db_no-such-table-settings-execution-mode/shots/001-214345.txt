@@ -1,0 +1,11 @@
+$ HOME=$TMPHOME ./build/owl-serve --reset-admin --port 18098
+Admin password has been reset.
+Username: admin
+Password: kxNCb3Xxqerq
+
+operations cols: ['id','task_id','op_type','command','targets','status','created_at','execution_mode','playbook_path','current_task_index','current_task_phase','forced']
+settings exists: True
+
+exec resp: {"tasks":[{"id":"d4d86f02-...","node_id":"node-01","command":"uptime","status":"queued","record_id":"7260618d-...",...}]}
+
+history: {"operation":{"id":2,"task_id":"7260618d-...","op_type":"command","command":"uptime","targets":["node-01"],"status":"running","execution_mode":"","playbook_path":"","current_task_index":0,"current_task_phase":"","forced":false,...}}

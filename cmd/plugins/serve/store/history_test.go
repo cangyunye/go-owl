@@ -173,6 +173,61 @@ func TestHistoryStore_ForcedColumnMigration_LegacyDB(t *testing.T) {
 	assert.Equal(t, 0, forced)
 }
 
+// TestHistoryStore_OperationsColumnMigration_LegacyDB 覆盖早期 CLI 建库场景：
+// operations 表仅有 id/task_id/op_type/command/targets/status/created_at 七列，
+// 缺失 execution_mode/playbook_path/current_task_index/current_task_phase/forced。
+// CREATE TABLE IF NOT EXISTS 对存量表不生效，必须逐列 ALTER 补齐，
+// 否则前端执行命令时 RecordOperation 报 "has no column named execution_mode"。
+func TestHistoryStore_OperationsColumnMigration_LegacyDB(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	_, err := db.Exec(`CREATE TABLE operations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id TEXT,
+		op_type TEXT,
+		command TEXT,
+		targets TEXT,
+		status TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	for _, col := range []string{"execution_mode", "playbook_path", "current_task_index", "current_task_phase", "forced"} {
+		var n int
+		require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('operations') WHERE name = ?`, col).Scan(&n))
+		assert.Equal(t, 1, n, "column %s should be migrated into legacy operations table", col)
+	}
+
+	op := &Operation{
+		TaskID:           "legacy-1",
+		OpType:           "command",
+		Command:          "uptime",
+		Targets:          []string{"n1"},
+		Status:           "running",
+		ExecutionMode:    "serial",
+		PlaybookPath:     "/tmp/demo.yaml",
+		CurrentTaskIndex: 3,
+		CurrentTaskPhase: "run",
+		Forced:           true,
+		CreatedAt:        time.Now().UTC(),
+	}
+	require.NoError(t, s.RecordOperation(ctx, op))
+
+	rec, err := s.GetByTaskID(ctx, "legacy-1")
+	require.NoError(t, err)
+	assert.Equal(t, "serial", rec.Operation.ExecutionMode)
+	assert.Equal(t, "/tmp/demo.yaml", rec.Operation.PlaybookPath)
+	assert.Equal(t, 3, rec.Operation.CurrentTaskIndex)
+	assert.Equal(t, "run", rec.Operation.CurrentTaskPhase)
+	assert.True(t, rec.Operation.Forced)
+
+	require.NoError(t, s.Init(ctx))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "legacy-2", OpType: "command", Status: "running"}))
+}
+
 func TestHistoryStore_UpdateOperationStatus(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
@@ -207,10 +262,9 @@ func TestHistoryStore_ForcedColumnMigration_AlterRace(t *testing.T) {
 	require.NoError(t, err)
 
 	s := NewHistoryStore(db)
-	// 晚到的进程：ALTER 步骤须容忍 duplicate column
-	require.NoError(t, s.addForcedColumn(ctx))
-	// 整体入口同样不报错（列已存在走前置检查短路）
-	require.NoError(t, s.ensureForcedColumn(ctx))
+	// 另一进程已先完成迁移：晚到的进程须容忍 duplicate column，整体入口不报错
+	require.NoError(t, s.ensureOperationColumns(ctx))
+	require.NoError(t, s.ensureOperationColumns(ctx))
 }
 
 func TestHistoryStore_QueryExposesForced(t *testing.T) {

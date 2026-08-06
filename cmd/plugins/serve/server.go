@@ -499,6 +499,10 @@ func (s *Server) ResetAdmin() (*AdminCredentials, error) {
 		return nil, fmt.Errorf("init user store: %w", err)
 	}
 
+	if err := initSettings(context.Background(), db); err != nil {
+		return nil, fmt.Errorf("init settings: %w", err)
+	}
+
 	secret, err := getOrCreateJWTSecret(context.Background(), db, s.Config.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("jwt secret: %w", err)

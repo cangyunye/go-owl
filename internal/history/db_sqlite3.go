@@ -243,16 +243,33 @@ func (s *SQLite3) InitSchema() error {
 	// 迁移：兼容旧表缺少的列
 	_, _ = s.conn.Exec("ALTER TABLE nodes ADD COLUMN last_check_at DATETIME")
 
-	return s.EnsureForcedColumn()
+	return s.EnsureOperationColumns()
 }
 
-// EnsureForcedColumn 为存量库补充 operations.forced 列（幂等）。
-func (s *SQLite3) EnsureForcedColumn() error {
+// operationColumnSpecs 存量 operations 表可能缺失的列。
+// 早期 schema 仅含 id/task_id/op_type/command/targets/status/created_at，
+// 后续新增 execution_mode 等列；CREATE TABLE IF NOT EXISTS 对存量表不生效，
+// 必须逐列 ALTER 补齐。与 cmd/plugins/serve/store/history.go 定义保持一致。
+var operationColumnSpecs = []struct {
+	name string
+	ddl  string
+}{
+	{"execution_mode", `ALTER TABLE operations ADD COLUMN execution_mode TEXT DEFAULT ''`},
+	{"playbook_path", `ALTER TABLE operations ADD COLUMN playbook_path TEXT DEFAULT ''`},
+	{"current_task_index", `ALTER TABLE operations ADD COLUMN current_task_index INTEGER DEFAULT 0`},
+	{"current_task_phase", `ALTER TABLE operations ADD COLUMN current_task_phase TEXT DEFAULT ''`},
+	{"forced", `ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`},
+}
+
+// EnsureOperationColumns 为存量库补齐 operations 缺失的列（幂等）。
+// CLI 与 serve 可能并发迁移同一旧库，后到者的 ALTER 会收到
+// "duplicate column name: xxx"，视为成功（与 playbook_run.go 的容错模式一致）。
+func (s *SQLite3) EnsureOperationColumns() error {
+	cols := map[string]bool{}
 	rows, err := s.conn.Query(`PRAGMA table_info(operations)`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var cid int
 		var name, ctype string
@@ -260,26 +277,27 @@ func (s *SQLite3) EnsureForcedColumn() error {
 		var dflt interface{}
 		var pk int
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
 			return err
 		}
-		if name == "forced" {
-			return nil
-		}
+		cols[name] = true
 	}
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	return s.addForcedColumn()
-}
-
-// addForcedColumn 执行 ALTER 迁移。CLI 与 serve 可能并发迁移同一旧库，
-// 后到者的 ALTER 会收到 "duplicate column name: forced"，视为成功（幂等）。
-func (s *SQLite3) addForcedColumn() error {
-	_, err := s.conn.Exec(`ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`)
-	if err != nil && strings.Contains(err.Error(), "duplicate column name") {
-		return nil
+	for _, spec := range operationColumnSpecs {
+		if cols[spec.name] {
+			continue
+		}
+		if _, err := s.conn.Exec(spec.ddl); err != nil {
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 // Close 关闭连接

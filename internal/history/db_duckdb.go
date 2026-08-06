@@ -146,10 +146,6 @@ func (d *DuckDB) InitSchema() error {
 			session_id VARCHAR,
 			command VARCHAR,
 			targets JSON,
-tttttttcurrent_task_phase VARCHAR DEFAULT '',
-tttttttcurrent_task_index INTEGER DEFAULT 0,
-tttttttplaybook_path VARCHAR DEFAULT '',
-tttttttexecution_mode VARCHAR DEFAULT '',
 			results JSON,
 			executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (session_id) REFERENCES sessions(id)
@@ -243,13 +239,30 @@ tttttttexecution_mode VARCHAR DEFAULT '',
 	// 迁移：兼容旧表缺少的列
 	_, _ = d.conn.Exec("ALTER TABLE nodes ADD COLUMN last_check_at TIMESTAMP")
 
-	return d.EnsureForcedColumn()
+	return d.EnsureOperationColumns()
 }
 
-// EnsureForcedColumn 为存量库补充 operations.forced 列（幂等）。
-func (d *DuckDB) EnsureForcedColumn() error {
-	_, err := d.conn.Exec(`ALTER TABLE operations ADD COLUMN IF NOT EXISTS forced INTEGER DEFAULT 0`)
-	return err
+// operationColumnSpecsDuckDB 与 operationColumnSpecs（sqlite3）等价，
+// DuckDB 用 VARCHAR 类型与 ADD COLUMN IF NOT EXISTS 幂等写法。
+var operationColumnSpecsDuckDB = []struct {
+	name string
+	ddl  string
+}{
+	{"execution_mode", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS execution_mode VARCHAR DEFAULT ''`},
+	{"playbook_path", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS playbook_path VARCHAR DEFAULT ''`},
+	{"current_task_index", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS current_task_index INTEGER DEFAULT 0`},
+	{"current_task_phase", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS current_task_phase VARCHAR DEFAULT ''`},
+	{"forced", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS forced INTEGER DEFAULT 0`},
+}
+
+// EnsureOperationColumns 为存量库补齐 operations 缺失的列（幂等）。
+func (d *DuckDB) EnsureOperationColumns() error {
+	for _, spec := range operationColumnSpecsDuckDB {
+		if _, err := d.conn.Exec(spec.ddl); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Close 关闭连接

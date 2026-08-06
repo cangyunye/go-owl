@@ -13,7 +13,7 @@ type DBInterface interface {
 	InitSchema() error
 	Close() error
 	Cleanup(retentionDays int) error
-	EnsureForcedColumn() error
+	EnsureOperationColumns() error
 }
 
 // NewDBFunc 定义创建数据库实例的函数类型

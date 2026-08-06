@@ -1,6 +1,12 @@
 # dts 问题档案索引
 
-共 5 条 · 未解决 0 · 已解决 5 · 更新于 2026-08-06T18:45:09+08:00
+共 6 条 · 未解决 0 · 已解决 6 · 更新于 2026-08-06T21:43:56+08:00
+
+## fix-db
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-db_no-such-table-settings-execution-mode](fix-db_no-such-table-settings-execution-mode/dts.md) | 2026-08-06 | 1. owl-serve 报错 no such table settings;2. 前端节点执行命令提示 has no column named executi | resolved |
 
 ## fix-exec
 

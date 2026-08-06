@@ -171,16 +171,34 @@ func (s *HistoryStore) Init(ctx context.Context) error {
 			return err
 		}
 	}
-	return s.ensureForcedColumn(ctx)
+	return s.ensureOperationColumns(ctx)
 }
 
-// ensureForcedColumn 为存量库补充 operations.forced 列（幂等）。
-func (s *HistoryStore) ensureForcedColumn(ctx context.Context) error {
+// operationColumnSpecs 存量 operations 表可能缺失的列。
+// 早期 CLI schema 仅含 id/task_id/op_type/command/targets/status/created_at，
+// execution_mode 等列为后续新增；CREATE TABLE IF NOT EXISTS 对存量表不生效，
+// 必须逐列 ALTER 补齐，否则写入时报 "has no column named execution_mode"。
+// 与 internal/history 侧定义保持一致。
+var operationColumnSpecs = []struct {
+	name string
+	ddl  string
+}{
+	{"execution_mode", `ALTER TABLE operations ADD COLUMN execution_mode TEXT DEFAULT ''`},
+	{"playbook_path", `ALTER TABLE operations ADD COLUMN playbook_path TEXT DEFAULT ''`},
+	{"current_task_index", `ALTER TABLE operations ADD COLUMN current_task_index INTEGER DEFAULT 0`},
+	{"current_task_phase", `ALTER TABLE operations ADD COLUMN current_task_phase TEXT DEFAULT ''`},
+	{"forced", `ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`},
+}
+
+// ensureOperationColumns 为存量库补齐 operations 缺失的列（幂等）。
+// CLI 与 serve 可能并发迁移同一旧库，后到者的 ALTER 会收到
+// "duplicate column name: xxx"，视为成功（与 playbook_run.go 的容错模式一致）。
+func (s *HistoryStore) ensureOperationColumns(ctx context.Context) error {
+	cols := map[string]bool{}
 	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(operations)`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var cid int
 		var name, ctype string
@@ -188,27 +206,27 @@ func (s *HistoryStore) ensureForcedColumn(ctx context.Context) error {
 		var dflt interface{}
 		var pk int
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
 			return err
 		}
-		if name == "forced" {
-			return nil
-		}
+		cols[name] = true
 	}
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	return s.addForcedColumn(ctx)
-}
-
-// addForcedColumn 执行 ALTER 迁移。CLI 与 serve 可能并发迁移同一旧库，
-// 后到者的 ALTER 会收到 "duplicate column name: forced"，视为成功（幂等，
-// 与 playbook_run.go 的容错模式一致）。
-func (s *HistoryStore) addForcedColumn(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`)
-	if err != nil && strings.Contains(err.Error(), "duplicate column name") {
-		return nil
+	for _, spec := range operationColumnSpecs {
+		if cols[spec.name] {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, spec.ddl); err != nil {
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 func (s *HistoryStore) RecordOperation(ctx context.Context, op *Operation) error {
