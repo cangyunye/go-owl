@@ -1,0 +1,8 @@
+root: go build ./... && go test -count=1 ./internal/... ./cmd/cli/... ./pkg/... → exit=0, 33 pkgs ok, no FAIL
+serve: go build ./... && go vet ./... && go test -count=1 ./... → exit=0, 4 pkgs ok, no FAIL, vet zero warnings
+owl-serve: go build ./... → OK
+ok  github.com/cangyunye/go-owl/internal/history  (incl. TestForcedColumnMigration_ConcurrentAlterRace)
+ok  github.com/cangyunye/go-owl/cmd/plugins/serve/store  (incl. TestHistoryStore_ForcedColumnMigration_AlterRace, TestHistoryStore_QueryExposesForced)
+
+fa42336 fix(ssh): tolerate concurrent migration and use IPv6-safe dial addrs
+5f1477e fix(serve): expose forced in history query, harden playbook run and IPv6 addrs

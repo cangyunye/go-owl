@@ -1,0 +1,16 @@
+[WS 实时流]
+OUTPUT task=8ffcee9e node=localhost-real type=stdout line=18:30  up 37 mins, 1 user, load averages: 6.04 4.07 3.81
+OUTPUT ... line=--- / Filesystem df -h 输出
+OUTPUT ... type=stderr line=zsh:1: command not found: free
+UPDATE task=8ffcee9e status=completed
+
+[多节点并行流式]
+tasks: localhost-real(221c4a8b) + localhost-real2(c3962829)
+OUTPUT node=localhost-real2 line=82 from ...
+OUTPUT node=localhost-real line=5 from ...
+UPDATE 221c4a8b completed / UPDATE c3962829 completed
+
+[UI Playwright 断言]
+DASH total=45 rate=64% online=29 offline=16 | topbar 29/16
+EXEC terminal 含 UI-E2E-OK + hostname, 结尾 "✓ 执行完成"
+HISTORY detail 含 "命令执行" 输出块

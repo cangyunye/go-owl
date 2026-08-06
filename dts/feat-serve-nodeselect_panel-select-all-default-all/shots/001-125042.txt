@@ -1,0 +1,19 @@
+select-all visible: true
+clear visible: true
+count initial: 未选择（默认全部匹配节点）
+exec disabled (no sel): false
+exec text (no sel): 在全部匹配节点上执行命令
+count after select-all: 已选 43 个节点
+exec disabled after select-all: false
+count after clear: 未选择（默认全部匹配节点）
+left nodes after label env=prod: 13
+exec disabled label filter no sel: false
+exec text label filter: 在全部匹配节点上执行命令
+exec POST status: 202
+exec tasks returned: 11
+files select-all visible: true
+files clear visible: true
+files count after select-all: 已选 43 个节点
+--- console errors ---
+DONE
+截图文件: /tmp/owl_exec_cleared.png /tmp/owl_exec_label_filter.png /tmp/owl_exec_submitted.png /tmp/owl_files_selectall.png
