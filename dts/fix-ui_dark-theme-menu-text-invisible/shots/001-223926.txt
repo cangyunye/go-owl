@@ -1,0 +1,5 @@
+Playwright 计算样式验证(修复后):
+dark nodes: panelHeader=oklch(0.92 0.01 250)=var(--fg)白, panelItem=oklch(0.92 0.01 250)=var(--fg)白, dataTd=oklch(0.92 0.01 250)=var(--fg)白 ✓ 三者一致
+light nodes: panelHeader=panelItem=dataTd=oklch(0.16 0.02 150)=var(--fg) 深色 ✓ 浅色主题同样一致
+go test ./cmd/plugins/serve/ PASS
+截图: /tmp/owl_nodes_fixed.png 已存 dts shots/fixed_dark_nodes.png

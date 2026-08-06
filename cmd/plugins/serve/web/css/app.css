@@ -205,7 +205,7 @@ a:hover { color: var(--accent-hover, var(--primary-hover)); }
   padding: 14px 16px 10px;
   font: 600 13px/1 var(--font-display);
   letter-spacing: 0.08em;
-  color: var(--muted);
+  color: var(--fg);
   text-transform: uppercase;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -235,7 +235,7 @@ a:hover { color: var(--accent-hover, var(--primary-hover)); }
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
-  color: var(--muted);
+  color: var(--fg);
   transition: all var(--transition);
   overflow: hidden;
 }
