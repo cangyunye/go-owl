@@ -1,0 +1,24 @@
+== viewer GET /nodes (expect 200) ==
+200
+== editor GET /nodes (expect 200) ==
+200
+== op GET /nodes (expect 200) ==
+200
+== viewer GET /nodes/stats (expect 200) ==
+200
+== viewer POST /nodes (expect 403) ==
+403
+== editor POST /nodes (expect 201) ==
+201
+== op POST /exec (expect 201) ==
+202
+== viewer POST /exec (expect 403) ==
+403
+== viewer DELETE /nodes/:id (expect 403) ==
+403
+== admin DELETE /nodes/:id (expect 204) ==
+200
+
+EDITOR_ACTIONS: ["Ping 检测","SSH 检查","编辑节点"]
+VIEWER_ACTIONS: data-toggle 展开详情 (仅此按钮)
+go test ./... 全绿；go vet 通过。

@@ -94,6 +94,36 @@ func TestRBAC_ForbiddenWithWrongRole(t *testing.T) {
 	assert.Equal(t, "insufficient permissions", resp.Message)
 }
 
+func TestRBAC_ReaderGroupAllowsLowestRole(t *testing.T) {
+	router := rbacTestRouter(t, model.RoleViewer, model.RoleEditor, model.RoleOperator, model.RoleAdmin)
+	for _, role := range []string{"viewer", "editor", "operator", "admin"} {
+		w := injectAuth(router, testToken(t, role, role))
+		assert.Equal(t, 200, w.Code, "role %s should access the reader group", role)
+	}
+}
+
+func TestRBAC_WriterGroupRequiresAtLeastEditor(t *testing.T) {
+	router := rbacTestRouter(t, model.RoleEditor, model.RoleOperator, model.RoleAdmin)
+	for _, role := range []string{"editor", "operator", "admin"} {
+		w := injectAuth(router, testToken(t, role, role))
+		assert.Equal(t, 200, w.Code, "role %s should access the writer group", role)
+	}
+	w := injectAuth(router, testToken(t, "viewer", "viewer"))
+	assert.Equal(t, 403, w.Code, "viewer should be denied the writer group")
+}
+
+func TestRBAC_OperatorGroupRequiresAtLeastOperator(t *testing.T) {
+	router := rbacTestRouter(t, model.RoleOperator, model.RoleAdmin)
+	for _, role := range []string{"operator", "admin"} {
+		w := injectAuth(router, testToken(t, role, role))
+		assert.Equal(t, 200, w.Code, "role %s should access the operator group", role)
+	}
+	for _, role := range []string{"viewer", "editor"} {
+		w := injectAuth(router, testToken(t, role, role))
+		assert.Equal(t, 403, w.Code, "role %s should be denied the operator group", role)
+	}
+}
+
 func TestRBAC_Unauthenticated(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

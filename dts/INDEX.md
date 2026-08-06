@@ -1,6 +1,12 @@
 # dts 问题档案索引
 
-共 7 条 · 未解决 0 · 已解决 7 · 更新于 2026-08-06T22:39:52+08:00
+共 8 条 · 未解决 0 · 已解决 8 · 更新于 2026-08-07T00:09:15+08:00
+
+## fix-auth
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-auth_rbac-reader-group-requires-admin](fix-auth_rbac-reader-group-requires-admin/dts.md) | 2026-08-07 | RBACMiddleware 取 allowedRoles 的最大等级而非最小，导致 reader(writer/operator) 分组实际要求 admin  | resolved |
 
 ## fix-ui
 

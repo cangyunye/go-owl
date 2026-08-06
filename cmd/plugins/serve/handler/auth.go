@@ -110,12 +110,17 @@ var roleHierarchy = map[string]int{
 	"admin":    3,
 }
 
+// RBACMiddleware 要求用户角色等级不低于 allowedRoles 中最低等级的角色，
+// 即该分组对列表中的每个角色及其以上等级的角色放行。
 func (h *AuthHandler) RBACMiddleware(allowedRoles ...model.Role) gin.HandlerFunc {
-	minLevel := 0
+	minLevel := -1
 	for _, r := range allowedRoles {
-		if lvl, ok := roleHierarchy[string(r)]; ok && lvl > minLevel {
+		if lvl, ok := roleHierarchy[string(r)]; ok && (minLevel == -1 || lvl < minLevel) {
 			minLevel = lvl
 		}
+	}
+	if minLevel == -1 {
+		minLevel = 0
 	}
 	return func(c *gin.Context) {
 		role := c.GetString("role")
