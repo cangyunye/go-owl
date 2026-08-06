@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -534,6 +537,37 @@ func TestExecCreate_RecordsHistory(t *testing.T) {
 	require.Len(t, recs[0].CommandExecutions, 1)
 	assert.Equal(t, "test-node", recs[0].CommandExecutions[0].NodeID)
 	assert.True(t, recs[0].CommandExecutions[0].Success)
+}
+
+func TestExecuteTask_WritesExecutionLog_SuccessAndFailure(t *testing.T) {
+	t.Setenv("OWL_LOG_DIR", t.TempDir())
+	_, h := execTestSetup(t)
+	h.LogWriter = logfile.NewNodeLogWriter("")
+
+	ctx := context.Background()
+
+	// success (mock streams line1/line2)
+	h.exec = &mockExecutor{output: "log-out-1\n", exitCode: 0}
+	ts, err := h.task.CreateWithRecord(ctx, "test-node", "uptime", "op-succ")
+	require.NoError(t, err)
+	h.executeTask(ts.ID, ExecConfig{Command: "uptime", Retry: 0})
+
+	succPath := filepath.Join(logfile.ExecutionsDir(), "op-succ", "test-node.log")
+	succData, err := os.ReadFile(succPath)
+	require.NoError(t, err, "success log should exist")
+	require.Contains(t, string(succData), "COMMAND: uptime")
+	require.Contains(t, string(succData), "line1")
+
+	// failure: error message preserved
+	h.exec = &mockExecutor{output: "partial\n", exitCode: 1, err: assert.AnError}
+	tf, err := h.task.CreateWithRecord(ctx, "test-node", "bad-cmd", "op-fail")
+	require.NoError(t, err)
+	h.executeTask(tf.ID, ExecConfig{Command: "bad-cmd", Retry: 0, NoRetry: true})
+
+	failPath := filepath.Join(logfile.ExecutionsDir(), "op-fail", "test-node.log")
+	failData, err := os.ReadFile(failPath)
+	require.NoError(t, err, "failure log should exist")
+	require.Contains(t, string(failData), "ERROR:")
 }
 
 func TestBuildExecCommand_CommandMode(t *testing.T) {

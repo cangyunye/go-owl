@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
 )
@@ -157,5 +160,33 @@ func (h *HistoryHandler) Clean(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "cleanup failed"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"deleted": deleted})
+	logsRemoved := cleanExecutionLogs(days)
+	c.JSON(http.StatusOK, gin.H{"deleted": deleted, "logs_removed": logsRemoved})
+}
+
+// cleanExecutionLogs 删除 ~/.owl/logs/executions 下最后写入早于 N 天的批次目录,
+// 与历史 DB 清理保持一致。
+func cleanExecutionLogs(days int) int {
+	cutoff := time.Now().AddDate(0, 0, -days)
+	dir := logfile.ExecutionsDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	removed := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if fi.ModTime().Before(cutoff) {
+			if err := os.RemoveAll(filepath.Join(dir, e.Name())); err == nil {
+				removed++
+			}
+		}
+	}
+	return removed
 }

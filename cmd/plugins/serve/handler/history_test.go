@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -188,4 +191,24 @@ func TestHistoryClean_AdminOnly(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, int64(1), resp.Deleted)
+}
+
+func TestCleanExecutionLogs(t *testing.T) {
+	t.Setenv("OWL_LOG_DIR", t.TempDir())
+	root := logfile.ExecutionsDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "op-old"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "op-new"), 0755))
+
+	old := time.Now().Add(-40 * 24 * time.Hour)
+	require.NoError(t, os.Chtimes(filepath.Join(root, "op-old"), old, old))
+
+	removed := cleanExecutionLogs(30)
+	assert.Equal(t, 1, removed)
+
+	if _, err := os.Stat(filepath.Join(root, "op-old")); !os.IsNotExist(err) {
+		t.Error("op-old should have been removed")
+	}
+	if _, err := os.Stat(filepath.Join(root, "op-new")); err != nil {
+		t.Error("op-new should be kept")
+	}
 }

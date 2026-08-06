@@ -17,6 +17,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
+	"github.com/cangyunye/go-owl/internal/logfile"
 	nodeselect "github.com/cangyunye/go-owl/internal/node/select"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -40,6 +41,7 @@ type ExecHandler struct {
 	hub     *WSHub
 	History *store.HistoryStore
 	checker *blacklist.Checker
+	LogWriter *logfile.NodeLogWriter
 }
 
 func newBlacklistChecker() *blacklist.Checker {
@@ -589,6 +591,7 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 			errMsg = fmt.Sprintf("所有 %d 次尝试均失败: %s", retryCount+1, errMsg)
 		}
 		h.updateTaskStatus(ctx, taskID, store.TaskStatusFailed, outputStr+errMsg, &exitCode)
+		h.writeExecutionLog(task, exitCode, output, errMsg, time.Since(start))
 		h.recordCommandExecution(ctx, task, exitCode, output, errMsg, time.Since(start).Milliseconds(), false)
 		h.updateOpStatus(ctx, task.RecordID)
 		task, _ = h.task.Get(ctx, taskID)
@@ -608,6 +611,7 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 	}
 
 	h.updateTaskStatus(ctx, taskID, store.TaskStatusCompleted, outputStr, &exitCode)
+	h.writeExecutionLog(task, exitCode, outputStr, "", time.Since(start))
 	h.recordCommandExecution(ctx, task, exitCode, outputStr, "", time.Since(start).Milliseconds(), true)
 	h.updateOpStatus(ctx, task.RecordID)
 	task, _ = h.task.Get(ctx, taskID)
@@ -719,6 +723,16 @@ func buildExecCommand(command string, cfg ExecConfig) string {
 		execCmd += "; rc=$?; rm -f " + remotePath + "; exit $rc"
 	}
 	return execCmd
+}
+
+// writeExecutionLog 将本次执行(单节点)日志落盘;失败不阻塞任务执行。
+func (h *ExecHandler) writeExecutionLog(task *store.Task, exitCode int, output, errMsg string, duration time.Duration) {
+	if h.LogWriter == nil || task == nil || task.RecordID == "" {
+		return
+	}
+	if _, err := h.LogWriter.WriteExecutionLog(task.RecordID, task.NodeID, task.ID, task.Command, exitCode, output, errMsg, duration); err != nil {
+		log.Printf("write execution log: %v", err)
+	}
 }
 
 func (h *ExecHandler) recordCommandExecution(ctx context.Context, task *store.Task, exitCode int, stdout, stderr string, durationMs int64, success bool) {

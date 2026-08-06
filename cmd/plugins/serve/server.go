@@ -22,6 +22,7 @@ import (
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 )
@@ -63,6 +64,7 @@ type Server struct {
 	aiHandler          *handler.AIHandler
 	wsHub              *handler.WSHub
 	historyHandler     *handler.HistoryHandler
+	logHandler         *handler.LogHandler
 	History            *store.HistoryStore
 	terminalHandler    *handler.TerminalHandler
 }
@@ -190,12 +192,14 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	s.nodeHandler.History = s.History
 	s.nodeHandler.Hub = s.wsHub
 	s.execHandler.History = s.History
+	s.execHandler.LogWriter = logfile.NewNodeLogWriter("")
 	s.transferHandler.History = s.History
 	s.transferHandler.Hub = s.wsHub
 	s.playbookHandler.History = s.History
 	webExecutor.History = s.History
 	webExecutor.PlaybookHandler = s.playbookHandler
 	s.historyHandler = handler.NewHistoryHandler(s.History)
+	s.logHandler = handler.NewLogHandler()
 	s.terminalHandler = handler.NewTerminalHandler(db, s.Auth)
 
 	s.setupRoutes()
@@ -242,6 +246,9 @@ func (s *Server) setupRoutes() {
 		reader.GET("/history/stats", s.historyHandler.Stats)
 		reader.GET("/history/export", s.historyHandler.Export)
 		reader.GET("/history/detail/:task_id", s.historyHandler.Get)
+		reader.GET("/executions/:op_id/logs", s.logHandler.List)
+		reader.GET("/executions/:op_id/logs/archive", s.logHandler.Archive)
+		reader.GET("/executions/:op_id/logs/:node_id", s.logHandler.Download)
 
 		writer := auth.Group("", s.authHandler.RBACMiddleware(model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{
