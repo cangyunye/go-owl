@@ -100,6 +100,13 @@ export function renderHistory(render, navigate, user, api, shell) {
       `<tr><td>${esc(f.node_id)}</td><td>${esc(f.file_name)}</td><td>${f.file_size || '-'}</td><td>${esc(f.transfer_type)}</td><td>${esc(f.status)}</td></tr>`).join('');
     const commRows = (rec.communications || []).map(cm =>
       `<tr><td>${esc(cm.node_id)}</td><td>${esc(cm.direction)}</td><td>${esc(cm.message_type)}</td><td>${cm.success ? '✅' : '❌'}</td></tr>`).join('');
+    const isCmd = op.op_type === 'command' || op.op_type === 'script';
+    const dlRow = isCmd && op.task_id
+      ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="btn btn-secondary btn-sm" id="dl-zip"><svg width="14" height="14" aria-hidden="true"><use href="#icon-download"/></svg> 下载日志 zip</button>
+          ${(op.targets || []).map(n => `<button class="btn btn-ghost btn-sm" data-dl-node="${esc(n)}">${esc(n)}.log</button>`).join('')}
+        </div>`
+      : '';
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay open';
@@ -109,6 +116,7 @@ export function renderHistory(render, navigate, user, api, shell) {
       <div class="modal-body">
         <p style="color:var(--muted);font-size:12px">类型: ${OP_LABELS[op.op_type] || esc(op.op_type)} · 状态: ${STATUS_TEXT[op.status] || esc(op.status)} · 时间: ${esc(op.created_at)}</p>
         <p style="color:var(--muted);font-size:12px">目标: ${(op.targets || []).map(esc).join(', ') || '无'}</p>
+        ${dlRow}
         ${execBlocks ? `<h4>命令执行</h4>${execBlocks}` : ''}
         ${tfRows ? `<h4>文件传输</h4><table class="table"><thead><tr><th>节点</th><th>文件</th><th>大小</th><th>类型</th><th>状态</th></tr></thead><tbody>${tfRows}</tbody></table>` : ''}
         ${commRows ? `<h4>节点通信</h4><table class="table"><thead><tr><th>节点</th><th>方向</th><th>类型</th><th>状态</th></tr></thead><tbody>${commRows}</tbody></table>` : ''}
@@ -118,6 +126,14 @@ export function renderHistory(render, navigate, user, api, shell) {
     document.body.appendChild(overlay);
     overlay.querySelector('#detail-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('#dl-zip')?.addEventListener('click', () => {
+      api.executionLogArchive(op.task_id).catch(e => alert('下载失败: ' + (e.message || e)));
+    });
+    overlay.querySelectorAll('[data-dl-node]').forEach(b => {
+      b.addEventListener('click', () => {
+        api.executionLogDownload(op.task_id, b.dataset.dlNode).catch(e => alert('下载失败: ' + (e.message || e)));
+      });
+    });
   }
 
   render(`

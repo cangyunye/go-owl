@@ -3,6 +3,8 @@ export function renderExec(render, navigate, user, api, shell) {
   let selectedNodes = new Set();
   let wsCleanup = null;
   let currentTaskIDs = [];
+  let currentTasks = [];
+  let currentOpID = '';
   let activeGroups = [];
   let allGroups = [];
   let allLabels = [];
@@ -374,6 +376,31 @@ export function renderExec(render, navigate, user, api, shell) {
     body.innerHTML = '<div class="line cursor-blink"></div>';
   }
 
+  function renderLogDownloads() {
+    const el = document.getElementById('exec-log-downloads');
+    if (!el || !currentOpID) return;
+    const nodes = Array.from(new Set(currentTasks.map(t => t.node_id).filter(Boolean)));
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header"><h3>执行日志</h3><span style="font-size:12px;color:var(--muted)">按节点保存，可下载</span></div>
+        <div class="card-body">
+          <button class="btn btn-secondary btn-sm" id="dl-zip"><svg width="14" height="14" aria-hidden="true"><use href="#icon-download"/></svg> 下载全部日志 (zip)</button>
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+            ${nodes.map(n => `<button class="btn btn-ghost btn-sm" data-dl-node="${esc(n)}">${esc(n)}.log</button>`).join('')}
+          </div>
+        </div>
+      </div>`;
+    el.style.display = '';
+    el.querySelector('#dl-zip').addEventListener('click', () => {
+      api.executionLogArchive(currentOpID).catch(e => alert('下载失败: ' + (e.message || e)));
+    });
+    el.querySelectorAll('[data-dl-node]').forEach(b => {
+      b.addEventListener('click', () => {
+        api.executionLogDownload(currentOpID, b.dataset.dlNode).catch(e => alert('下载失败: ' + (e.message || e)));
+      });
+    });
+  }
+
   function buildExecPayload() {
     const nodeIDs = Array.from(selectedNodes);
     const cmd = document.getElementById('cmd-input').value.trim();
@@ -449,6 +476,8 @@ export function renderExec(render, navigate, user, api, shell) {
     const isAsync = document.getElementById('async-toggle')?.checked || false;
 
     clearTerminal();
+    const dl = document.getElementById('exec-log-downloads');
+    if (dl) dl.style.display = 'none';
     const modeLabel = (isAsync ? '[异步]' : '') + (execMode === 'script' ? '[脚本]' : '');
     appendTerminal(`${modeLabel}正在连接 ${nodeIDs.length === 0 ? '全部匹配' : nodeIDs.length + ' 个'} 节点…`, 'ts');
 
@@ -458,6 +487,8 @@ export function renderExec(render, navigate, user, api, shell) {
 
       const tasks = res.tasks || [];
       currentTaskIDs = tasks.map(t => t.id);
+      currentTasks = tasks;
+      currentOpID = (tasks[0] && tasks[0].record_id) || '';
 
       if (tasks.length === 0) {
         appendTerminal('✗ 未创建任何任务', 'err');
@@ -494,6 +525,7 @@ export function renderExec(render, navigate, user, api, shell) {
           }
           if (finished.size >= currentTaskIDs.length) {
             appendTerminal('— 全部任务已结束，可在任务历史中查看输出 —', 'ts');
+            renderLogDownloads();
             if (wsCleanup) wsCleanup.close();
           }
         }
@@ -573,6 +605,8 @@ free -m</textarea>
             <div class="line cursor-blink"></div>
           </div>
         </div>
+
+        <div id="exec-log-downloads" style="display:none;margin-top:12px"></div>
       </div>
 
       <div class="exec-sidebar">

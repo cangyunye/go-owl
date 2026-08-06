@@ -26,6 +26,30 @@ async function request(method, path, body) {
   return res.json();
 }
 
+async function downloadFile(path, fallbackName) {
+  const t = token();
+  const res = await fetch(`${API_BASE}${path}`, { headers: { 'Authorization': `Bearer ${t}` } });
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) throw new Error('下载失败');
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^";]+)"?/);
+  const filename = (match && match[1]) || fallbackName;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   login: (username, password) =>
     request('POST', '/login', { username, password }),
@@ -259,6 +283,15 @@ export const api = {
 
   historyClean: (days) =>
     request('DELETE', `/history?days=${encodeURIComponent(days)}`),
+
+  executionLogs: (opId) =>
+    request('GET', `/executions/${encodeURIComponent(opId)}/logs`),
+
+  executionLogDownload: (opId, nodeId) =>
+    downloadFile(`/executions/${encodeURIComponent(opId)}/logs/${encodeURIComponent(nodeId)}`, `${nodeId}.log`),
+
+  executionLogArchive: (opId) =>
+    downloadFile(`/executions/${encodeURIComponent(opId)}/logs/archive`, `executions-${opId}.zip`),
 
   historyExport: async (params = {}, format = 'json') => {
     const t = token();
