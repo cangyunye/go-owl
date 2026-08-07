@@ -222,6 +222,15 @@ func NewAgent(executor Executor, config *Config, nodeMgr node.Manager, nodeStore
 	registry.Register(NewPlaybookInfoTool(executor))
 	registry.Register(NewValidatePlaybookTool(executor))
 	registry.Register(NewNodeCheckTool(executor, nodeMgr))
+	registry.Register(NewNodeAddTool(executor, nodeStore))
+	registry.Register(NewNodeRemoveTool(executor, nodeStore))
+	registry.Register(NewNodeUpdateTool(executor, nodeStore))
+	registry.Register(NewNodeStatusTool(executor, nodeMgr))
+	registry.Register(NewNodePingTool(executor, nodeMgr))
+	registry.Register(NewNodeGroupsTool(executor))
+	registry.Register(NewNodeLabelsTool(executor))
+	registry.Register(NewNodeImportTool(executor))
+	registry.Register(NewNodeExportTool(executor))
 
 	isDebug := len(debug) > 0 && debug[0]
 

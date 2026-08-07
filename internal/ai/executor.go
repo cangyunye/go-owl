@@ -85,7 +85,18 @@ type Executor interface {
 	ValidatePlaybook(ctx context.Context, params ValidatePlaybookParams) (*ValidateResult, error)
 	NodeCheck(ctx context.Context, params NodeCheckParams) (*NodeCheckResult, error)
 	QueryDatabase(ctx context.Context, params QueryDatabaseParams) (*QueryDatabaseResult, error)
+	AddNode(ctx context.Context, params NodeAddParams) (*NodeResult, error)
+	RemoveNode(ctx context.Context, params NodeRemoveParams) (*NodeResult, error)
+	UpdateNode(ctx context.Context, params NodeUpdateParams) (*NodeResult, error)
+	NodeStatus(ctx context.Context, params NodeStatusParams) (*NodeResult, error)
+	NodePing(ctx context.Context, params NodePingParams) (*NodeResult, error)
+	NodeGroups(ctx context.Context, params NodeGroupsParams) (*NodeResult, error)
+	NodeLabels(ctx context.Context, params NodeLabelsParams) (*NodeResult, error)
+	NodeImport(ctx context.Context, params NodeImportParams) (*NodeResult, error)
+	NodeExport(ctx context.Context, params NodeExportParams) (*NodeResult, error)
 }
+
+type NodeResult struct{ Text string }
 
 type PlaybookInfoParams struct {
 	Name string `json:"name"`
@@ -111,3 +122,75 @@ type QueryDatabaseParams struct {
 	Search string                 `json:"search"`
 	Format string                 `json:"format"`
 }
+
+type (
+	NodeAddParams struct {
+		Name      string                 `json:"name"`
+		Address   string                 `json:"address"`
+		Port      int                    `json:"port"`
+		User      string                 `json:"user"`
+		Password  string                 `json:"password"`
+		SSHKey    string                 `json:"ssh_key"`
+		ProxyJump string                 `json:"proxy_jump"`
+		Groups    string                 `json:"groups"`
+		Labels    map[string]interface{} `json:"labels"`
+	}
+
+	NodeRemoveParams struct {
+		Nodes []string `json:"nodes"`
+	}
+
+	NodeUpdateParams struct {
+		ID        string                 `json:"id"`
+		Name      string                 `json:"name"`
+		Address   string                 `json:"address"`
+		Port      int                    `json:"port"`
+		User      string                 `json:"user"`
+		Password  string                 `json:"password"`
+		SSHKey    string                 `json:"ssh_key"`
+		ProxyJump string                 `json:"proxy_jump"`
+		Groups    string                 `json:"groups"`
+		Labels    map[string]interface{} `json:"labels"`
+		Status    string                 `json:"status"`
+	}
+
+	NodeStatusParams struct {
+		Nodes  []string `json:"nodes"`
+		All    bool     `json:"all"`
+		Format string   `json:"format"`
+	}
+
+	NodePingParams struct {
+		Nodes   []string `json:"nodes"`
+		All     bool     `json:"all"`
+		Count   int      `json:"count"`
+		Timeout int      `json:"timeout_sec"`
+	}
+
+	NodeGroupsParams struct {
+		Action string `json:"action"`
+		Node   string `json:"node"`
+		Group  string `json:"group"`
+	}
+
+	NodeLabelsParams struct {
+		Action string                 `json:"action"`
+		Node   string                 `json:"node"`
+		Key    string                 `json:"key"`
+		Labels map[string]interface{} `json:"labels"`
+	}
+
+	NodeImportParams struct {
+		File      string `json:"file"`
+		Format    string `json:"format"`
+		Overwrite bool   `json:"overwrite"`
+		DryRun    bool   `json:"dry_run"`
+	}
+
+	NodeExportParams struct {
+		File   string   `json:"file"`
+		Format string   `json:"format"`
+		Nodes  []string `json:"nodes"`
+		Groups []string `json:"groups"`
+	}
+)

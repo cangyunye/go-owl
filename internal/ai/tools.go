@@ -250,6 +250,221 @@ func (e *CLIExecutor) QueryDatabase(ctx context.Context, p QueryDatabaseParams) 
 	return &QueryDatabaseResult{Text: result}, nil
 }
 
+// ---------- node management executor methods ----------
+
+func (e *CLIExecutor) AddNode(ctx context.Context, p NodeAddParams) (*NodeResult, error) {
+	args := []string{"node", "add", "--no-color"}
+	if p.Name != "" {
+		args = append(args, "--name", p.Name)
+	}
+	if p.Address != "" {
+		args = append(args, "--address", p.Address)
+	}
+	if p.Port != 0 && p.Port != 22 {
+		args = append(args, "--port", fmt.Sprintf("%d", p.Port))
+	}
+	if p.User != "" {
+		args = append(args, "--user", p.User)
+	}
+	if p.Password != "" {
+		args = append(args, "--password", p.Password)
+	}
+	if p.SSHKey != "" {
+		args = append(args, "--ssh-key", p.SSHKey)
+	}
+	if p.ProxyJump != "" {
+		args = append(args, "--proxy-jump", p.ProxyJump)
+	}
+	if p.Groups != "" {
+		args = append(args, "--groups", p.Groups)
+	}
+	if len(p.Labels) > 0 {
+		for k, v := range p.Labels {
+			if s, ok := v.(string); ok {
+				args = append(args, "--label", fmt.Sprintf("%s=%s", k, s))
+			}
+		}
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) RemoveNode(ctx context.Context, p NodeRemoveParams) (*NodeResult, error) {
+	args := []string{"node", "remove", "--no-color"}
+	args = append(args, p.Nodes...)
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) UpdateNode(ctx context.Context, p NodeUpdateParams) (*NodeResult, error) {
+	args := []string{"node", "update", p.ID, "--no-color"}
+	if p.Name != "" {
+		args = append(args, "--name", p.Name)
+	}
+	if p.Address != "" {
+		args = append(args, "--address", p.Address)
+	}
+	if p.Port != 0 {
+		args = append(args, "--port", fmt.Sprintf("%d", p.Port))
+	}
+	if p.User != "" {
+		args = append(args, "--user", p.User)
+	}
+	if p.Password != "" {
+		args = append(args, "--password", p.Password)
+	}
+	if p.SSHKey != "" {
+		args = append(args, "--ssh-key", p.SSHKey)
+	}
+	if p.ProxyJump != "" {
+		args = append(args, "--proxy-jump", p.ProxyJump)
+	}
+	if p.Groups != "" {
+		args = append(args, "--groups", p.Groups)
+	}
+	if p.Status != "" {
+		args = append(args, "--status", p.Status)
+	}
+	if len(p.Labels) > 0 {
+		for k, v := range p.Labels {
+			if s, ok := v.(string); ok {
+				args = append(args, "--label", fmt.Sprintf("%s=%s", k, s))
+			}
+		}
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) NodeStatus(ctx context.Context, p NodeStatusParams) (*NodeResult, error) {
+	args := []string{"node", "status", "--no-color"}
+	if p.All || len(p.Nodes) == 0 {
+		args = append(args, "--all")
+	} else {
+		args = append(args, p.Nodes...)
+	}
+	if p.Format != "" && p.Format != "detail" {
+		args = append(args, "--output", p.Format)
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) NodePing(ctx context.Context, p NodePingParams) (*NodeResult, error) {
+	args := []string{"node", "ping", "--no-color"}
+	if p.All || len(p.Nodes) == 0 {
+		args = append(args, "--all")
+	} else {
+		args = append(args, p.Nodes...)
+	}
+	if p.Count > 0 && p.Count != 1 {
+		args = append(args, "--count", fmt.Sprintf("%d", p.Count))
+	}
+	if p.Timeout > 0 && p.Timeout != 3 {
+		args = append(args, "--timeout", fmt.Sprintf("%ds", p.Timeout))
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) NodeGroups(ctx context.Context, p NodeGroupsParams) (*NodeResult, error) {
+	var args []string
+	switch p.Action {
+	case "add":
+		args = []string{"node", "groups", "add", p.Node, p.Group}
+	case "remove":
+		args = []string{"node", "groups", "remove", p.Node, p.Group}
+	case "show":
+		args = []string{"node", "groups", "show", p.Group}
+	default:
+		args = []string{"node", "groups", "list"}
+	}
+	args = append(args, "--no-color")
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) NodeLabels(ctx context.Context, p NodeLabelsParams) (*NodeResult, error) {
+	var args []string
+	switch p.Action {
+	case "set":
+		args = []string{"node", "labels", "set", p.Node}
+		for k, v := range p.Labels {
+			if s, ok := v.(string); ok {
+				args = append(args, fmt.Sprintf("%s=%s", k, s))
+			}
+		}
+	case "remove":
+		args = []string{"node", "labels", "remove", p.Node, p.Key}
+	case "show":
+		args = []string{"node", "labels", "show", p.Node}
+	}
+	args = append(args, "--no-color")
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) NodeImport(ctx context.Context, p NodeImportParams) (*NodeResult, error) {
+	args := []string{"node", "import", "--file", p.File}
+	if p.Format != "" && p.Format != "yaml" {
+		args = append(args, "--format", p.Format)
+	}
+	if p.Overwrite {
+		args = append(args, "--overwrite")
+	}
+	if p.DryRun {
+		args = append(args, "--dry-run")
+	}
+	args = append(args, "--no-color")
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) NodeExport(ctx context.Context, p NodeExportParams) (*NodeResult, error) {
+	args := []string{"node", "export", "--no-color"}
+	if p.Format != "" && p.Format != "yaml" {
+		args = append(args, "--format", p.Format)
+	}
+	if p.File != "" {
+		args = append(args, "--file", p.File)
+	}
+	if len(p.Nodes) > 0 {
+		args = append(args, "--nodes", strings.Join(p.Nodes, ","))
+	}
+	if len(p.Groups) > 0 {
+		args = append(args, "--groups", strings.Join(p.Groups, ","))
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeResult{Text: result}, nil
+}
+
 // getOwlPath finds the owl executable path
 func getOwlPath() string {
 	// First check if we're in the project directory
