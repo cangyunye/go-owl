@@ -101,13 +101,6 @@ export function renderDashboard(render, navigate, user, api, shell) {
     }
   }
 
-  shell.setPanelContent(`
-    <li class="panel-item active"><span class="dot" style="background:var(--accent)"></span>全部节点 <span class="count" id="panel-total">${stats.total}</span></li>
-    <li class="panel-item"><span class="dot" style="background:var(--success)"></span>在线 <span class="count" id="panel-online">${stats.online}</span></li>
-    <li class="panel-item"><span class="dot" style="background:var(--muted)"></span>离线 <span class="count" id="panel-offline">${stats.offline}</span></li>
-    <li class="panel-item"><span class="dot" style="background:var(--warn)"></span>告警 <span class="count" id="panel-warn">${stats.warn}</span></li>
-  `);
-
   render(`
     <div class="stats-grid">
       <div class="stat-card">
@@ -195,6 +188,14 @@ export function renderDashboard(render, navigate, user, api, shell) {
       </div>
     </div>
   `, () => {
+    // Hide shell panel and toggle: dashboard no longer has the overview panel
+    const sidePanel = document.getElementById('sidePanel');
+    const panelToggle = document.getElementById('panelToggle');
+    const viewContainer = document.querySelector('.view-container');
+    if (sidePanel) sidePanel.style.display = 'none';
+    if (panelToggle) panelToggle.style.display = 'none';
+    if (viewContainer) viewContainer.style.padding = '0';
+
     loadAll();
   });
 }

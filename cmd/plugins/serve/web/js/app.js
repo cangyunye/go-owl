@@ -23,7 +23,7 @@ const VIEW_TITLES = {
 };
 
 const PANEL_TITLES = {
-  dashboard: '概览', nodes: '节点分组', exec: '节点选择',
+  nodes: '节点分组', exec: '节点选择',
   playbooks: '剧本分类', files: '节点选择', ai: '对话上下文',
   history: '过滤条件', settings: '系统配置', users: '用户角色'
 };
@@ -118,7 +118,7 @@ function renderShell() {
   </nav>
   <aside class="panel" id="sidePanel">
     <div class="panel-header" id="panelTitle">
-      <span>概览</span>
+      <span>导航</span>
     </div>
     <ul class="panel-list" id="panelList"></ul>
   </aside>
