@@ -539,6 +539,92 @@ a:hover { color: var(--accent-hover, var(--primary-hover)); }
 }
 .card-body { padding: 16px 18px; }
 
+/* Stat Cards */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: var(--shadow-card);
+  transition: all var(--transition);
+  cursor: default;
+}
+.stat-card:hover { border-color: var(--accent-dim); }
+.stat-card .label {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stat-card .value {
+  font: 700 28px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.stat-card .trend {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.stat-card .trend.up { color: var(--success); }
+.stat-card .trend.down { color: var(--danger); }
+
+/* Chart Row */
+.chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* Donut Chart */
+.donut-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.donut {
+  width: 120px; height: 120px;
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+.donut svg { transform: rotate(-90deg); }
+.donut .center-text {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font: 600 24px/1 var(--font-mono);
+}
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.donut-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.donut-legend .legend-item .swatch {
+  width: 10px; height: 10px; border-radius: 3px;
+}
+.donut-legend .legend-item .l-val {
+  margin-left: auto;
+  font: 600 13px/1 var(--font-mono);
+}
+
 /* Task List */
 .task-list { list-style: none; }
 .task-item {
@@ -576,6 +662,35 @@ a:hover { color: var(--accent-hover, var(--primary-hover)); }
   width: 8px; height: 8px; border-radius: 50%;
   animation: pulse 1.5s ease-in-out infinite;
 }
+
+/* Quick Actions */
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.quick-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.quick-card:hover { border-color: var(--accent-dim); background: var(--surface-2); }
+.quick-card .qc-icon {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-active);
+  display: grid; place-items: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.quick-card .qc-text { font-size: 13px; font-weight: 500; }
+.quick-card .qc-sub { font-size: 11px; color: var(--muted); }
 
 /* ================================================================
    COMPONENTS — Table
@@ -2203,7 +2318,8 @@ tr:hover td { background: var(--surface-2); }
 .nav-item:focus-visible,
 .theme-btn:focus-visible,
 .chip:focus-visible,
-.node-chip:focus-visible {
+.node-chip:focus-visible,
+.quick-card:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -2227,9 +2343,12 @@ tr:hover td { background: var(--surface-2); }
    ================================================================ */
 @media (max-width: 1024px) {
   .panel { display: none; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-row { grid-template-columns: 1fr; }
   .exec-layout { flex-direction: column; }
   .exec-layout .exec-sidebar { width: auto; }
   .playbook-grid { grid-template-columns: 1fr; }
+  .quick-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 768px) {
@@ -2250,6 +2369,7 @@ tr:hover td { background: var(--surface-2); }
   .nav-label { display: none; }
   .nav-rail.expanded .nav-label { display: none; }
   .nav-toggle svg { transform: none; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .topbar-stats { display: none; }
   .view-container { padding: 16px; }
 }
