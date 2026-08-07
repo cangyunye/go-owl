@@ -246,6 +246,7 @@ func TestChat_WithKey_RoutesThroughAgentQueryNodes(t *testing.T) {
 		Reply string `json:"reply"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp.Reply, "| ID | Name | Address | User | Status | Groups | Labels |", "reply should be a markdown table")
 	assert.Contains(t, resp.Reply, "web-01", "reply should list the seeded node web-01")
 	assert.Contains(t, resp.Reply, "db-01")
 	assert.NotContains(t, resp.Reply, "我不确定您要做什么")
@@ -289,6 +290,7 @@ func TestChat_DeepSeek_Integration(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.NotEmpty(t, resp.Reply)
+	assert.Contains(t, resp.Reply, "| ID |", "reply should be a markdown table")
 	assert.Contains(t, resp.Reply, "web-01", "reply should list the seeded node web-01")
 	assert.NotContains(t, resp.Reply, "ansible")
 }

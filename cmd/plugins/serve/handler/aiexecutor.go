@@ -121,45 +121,14 @@ func aggregateStatus(success, total int) string {
 }
 
 func (e *WebExecutor) QueryNodes(ctx context.Context, params ai2.QueryNodesParams) (*ai2.QueryNodesResult, error) {
-	query := "SELECT id, name, address, port, user, status, groups, labels, COALESCE(proxy_jump, ''), COALESCE(created_at, ''), COALESCE(updated_at, '') FROM nodes WHERE 1=1"
-	args := []interface{}{}
-
-	if params.Group != "" {
-		query += " AND groups LIKE ?"
-		args = append(args, "%\""+params.Group+"\"%")
-	}
-	if params.Status != "" {
-		query += " AND status = ?"
-		args = append(args, params.Status)
-	}
-	if params.Search != "" {
-		query += " AND (name LIKE ? OR address LIKE ?)"
-		args = append(args, "%"+params.Search+"%", "%"+params.Search+"%")
-	}
-
-	rows, err := e.db.QueryContext(ctx, query, args...)
+	rows, err := e.queryNodeRows(ctx, params.Group, params.Status, params.Search)
 	if err != nil {
-		return nil, fmt.Errorf("query nodes: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
-
-	var sb strings.Builder
-	count := 0
-	for rows.Next() {
-		count++
-		var id, name, address, user, status, groupsJSON, labelsJSON, proxyJump, createdAt, updatedAt string
-		var port int
-		if err := rows.Scan(&id, &name, &address, &port, &user, &status, &groupsJSON, &labelsJSON, &proxyJump, &createdAt, &updatedAt); err != nil {
-			continue
-		}
-		sb.WriteString(fmt.Sprintf("ID: %s | Name: %s | Address: %s:%d | User: %s | Status: %s\n", id, name, address, port, user, status))
+	if len(rows) == 0 {
+		return &ai2.QueryNodesResult{Text: "No matching nodes found"}, nil
 	}
-
-	if count == 0 {
-		sb.WriteString("No matching nodes found")
-	}
-
-	return &ai2.QueryNodesResult{Text: sb.String()}, nil
+	return &ai2.QueryNodesResult{Text: renderNodeRowsMarkdown(rows)}, nil
 }
 
 func (e *WebExecutor) ExecuteCommand(ctx context.Context, params ai2.ExecCommandParams) (*ai2.ExecResult, error) {
@@ -404,17 +373,10 @@ func (e *WebExecutor) ListPlaybooks(ctx context.Context) (*ai2.ListPlaybooksResu
 		return nil, fmt.Errorf("list playbooks: %w", err)
 	}
 
-	var sb strings.Builder
 	if len(pbs) == 0 {
-		sb.WriteString("No playbooks found")
-	} else {
-		for _, pb := range pbs {
-			sb.WriteString(fmt.Sprintf("ID: %s | Name: %s | Category: %s | Tasks: %d\n", pb.ID, pb.Name, pb.Category, pb.TasksCount))
-		}
-		sb.WriteString(fmt.Sprintf("\nTotal: %d playbooks", len(pbs)))
+		return &ai2.ListPlaybooksResult{Text: "No playbooks found"}, nil
 	}
-
-	return &ai2.ListPlaybooksResult{Text: sb.String()}, nil
+	return &ai2.ListPlaybooksResult{Text: renderPlaybooksMarkdown(pbs) + fmt.Sprintf("\n\nTotal: %d playbooks", len(pbs))}, nil
 }
 
 func (e *WebExecutor) PlaybookInfo(ctx context.Context, params ai2.PlaybookInfoParams) (*ai2.PlaybookInfoResult, error) {
@@ -425,7 +387,7 @@ func (e *WebExecutor) PlaybookInfo(ctx context.Context, params ai2.PlaybookInfoP
 
 	for _, pb := range pbs {
 		if pb.Name == params.Name || pb.ID == params.Name {
-			return &ai2.PlaybookInfoResult{Text: fmt.Sprintf("ID: %s\nName: %s\nDescription: %s\nCategory: %s\nFilePath: %s\nTasks: %d\nTaskNames: %v", pb.ID, pb.Name, pb.Description, pb.Category, pb.FilePath, pb.TasksCount, pb.TaskNames)}, nil
+			return &ai2.PlaybookInfoResult{Text: renderPlaybookInfoMarkdown(pb)}, nil
 		}
 	}
 
@@ -538,47 +500,14 @@ func (e *WebExecutor) NodeCheck(ctx context.Context, params ai2.NodeCheckParams)
 }
 
 func (e *WebExecutor) QueryDatabase(ctx context.Context, params ai2.QueryDatabaseParams) (*ai2.QueryDatabaseResult, error) {
-	query := "SELECT id, name, address, port, user, status, groups FROM nodes WHERE 1=1"
-	args := []interface{}{}
-
-	if params.Group != "" {
-		query += " AND groups LIKE ?"
-		args = append(args, "%\""+params.Group+"\"%")
-	}
-	if params.Status != "" {
-		query += " AND status = ?"
-		args = append(args, params.Status)
-	}
-	if params.Search != "" {
-		query += " AND (name LIKE ? OR address LIKE ?)"
-		args = append(args, "%"+params.Search+"%", "%"+params.Search+"%")
-	}
-
-	rows, err := e.db.QueryContext(ctx, query, args...)
+	rows, err := e.queryNodeRows(ctx, params.Group, params.Status, params.Search)
 	if err != nil {
-		return nil, fmt.Errorf("query database: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
-
-	var sb strings.Builder
-	count := 0
-	for rows.Next() {
-		count++
-		var id, name, address, user, status, groupsJSON string
-		var port int
-		if err := rows.Scan(&id, &name, &address, &port, &user, &status, &groupsJSON); err != nil {
-			continue
-		}
-		sb.WriteString(fmt.Sprintf("%s | %s | %s:%d | %s | %s\n", id, name, address, port, user, status))
+	if len(rows) == 0 {
+		return &ai2.QueryDatabaseResult{Text: "No results"}, nil
 	}
-
-	if count == 0 {
-		sb.WriteString("No results")
-	} else {
-		sb.WriteString(fmt.Sprintf("\nTotal: %d rows", count))
-	}
-
-	return &ai2.QueryDatabaseResult{Text: sb.String()}, nil
+	return &ai2.QueryDatabaseResult{Text: renderNodeRowsMarkdown(rows) + fmt.Sprintf("\n\nTotal: %d rows", len(rows))}, nil
 }
 
 func (e *WebExecutor) RunPlaybook(ctx context.Context, params ai2.RunPlaybookParams) (*ai2.RunPlaybookResult, error) {

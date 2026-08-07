@@ -222,6 +222,96 @@ func TestWebExecutor_ExecuteScript_NoTargetParams_NoFanout(t *testing.T) {
 	assert.Equal(t, 0, total)
 }
 
+func aiRenderTestExecutor(t *testing.T) *WebExecutor {
+	t.Helper()
+	db := nodeCheckTestDB(t)
+	_, err := db.Exec(`INSERT INTO nodes (id, name, address, port, user, status, groups, labels) VALUES (?,?,?,?,?,?,?,?)`,
+		"pipe", "a|b", "10.9.9.9", 22, "root", "online", `["edge"]`, `{"env":"prod","tier":"x|y"}`)
+	require.NoError(t, err)
+
+	ts := store.NewTaskStore(db)
+	require.NoError(t, ts.Init(t.Context()))
+	trs := store.NewTransferRecordStore(db)
+	require.NoError(t, trs.Init(t.Context()))
+	prs := store.NewPlaybookRunStore(db)
+	require.NoError(t, prs.Init(t.Context()))
+	ns := store.NewNodeStore(db)
+	pbs := store.NewPlaybookStore(db)
+	require.NoError(t, pbs.Init(t.Context()))
+	audit := store.NewAIAuditStore(db)
+	require.NoError(t, audit.Init(t.Context()))
+
+	e := NewWebExecutor(db, ts, trs, prs, ns, pbs, audit, NewKeyManager(), false)
+	e.userRole = "admin"
+	return e
+}
+
+func TestWebExecutor_QueryNodes_ReturnsMarkdownTable(t *testing.T) {
+	e := aiRenderTestExecutor(t)
+
+	res, err := e.QueryNodes(t.Context(), ai2.QueryNodesParams{})
+	require.NoError(t, err)
+	assert.Contains(t, res.Text, "| ID | Name | Address | User | Status | Groups | Labels |")
+	assert.Contains(t, res.Text, "|----|")
+	assert.Contains(t, res.Text, "web-01")
+	assert.Contains(t, res.Text, "online")
+	assert.Contains(t, res.Text, "edge")
+}
+
+func TestWebExecutor_QueryNodes_MarkdownEscapesPipes(t *testing.T) {
+	e := aiRenderTestExecutor(t)
+
+	res, err := e.QueryNodes(t.Context(), ai2.QueryNodesParams{})
+	require.NoError(t, err)
+	assert.Contains(t, res.Text, `a\|b`)
+	assert.Contains(t, res.Text, `tier=x\|y`)
+	assert.NotContains(t, res.Text, "| a|b |")
+}
+
+func TestWebExecutor_QueryNodes_NoMatch(t *testing.T) {
+	e := aiRenderTestExecutor(t)
+
+	res, err := e.QueryNodes(t.Context(), ai2.QueryNodesParams{Status: "unknown"})
+	require.NoError(t, err)
+	assert.Equal(t, "No matching nodes found", res.Text)
+}
+
+func TestWebExecutor_QueryDatabase_ReturnsMarkdownTable(t *testing.T) {
+	e := aiRenderTestExecutor(t)
+
+	res, err := e.QueryDatabase(t.Context(), ai2.QueryDatabaseParams{})
+	require.NoError(t, err)
+	assert.Contains(t, res.Text, "| ID |")
+	assert.Contains(t, res.Text, "web-01")
+	assert.Contains(t, res.Text, "Total: 5 rows")
+}
+
+func TestWebExecutor_ListPlaybooks_ReturnsMarkdownTable(t *testing.T) {
+	e := aiRenderTestExecutor(t)
+	require.NoError(t, e.playbookStore.Upsert(t.Context(), &model.Playbook{ID: "pb1", Name: "deploy-app", Category: "deploy", TasksCount: 3, FileExists: true}))
+	require.NoError(t, e.playbookStore.Upsert(t.Context(), &model.Playbook{ID: "pb2", Name: "health-check", Category: "ops", TasksCount: 2, FileExists: true}))
+
+	res, err := e.ListPlaybooks(t.Context())
+	require.NoError(t, err)
+	assert.Contains(t, res.Text, "| ID | Name | Category | Tasks |")
+	assert.Contains(t, res.Text, "deploy-app")
+	assert.Contains(t, res.Text, "Total: 2 playbooks")
+}
+
+func TestWebExecutor_PlaybookInfo_ReturnsMarkdownTable(t *testing.T) {
+	e := aiRenderTestExecutor(t)
+	require.NoError(t, e.playbookStore.Upsert(t.Context(), &model.Playbook{ID: "pb1", Name: "deploy-app", Description: "Deploy the app", Category: "deploy", FilePath: "/tmp/pb.yaml", TasksCount: 3, TaskNames: []string{"build", "deploy"}, FileExists: true}))
+
+	res, err := e.PlaybookInfo(t.Context(), ai2.PlaybookInfoParams{Name: "deploy-app"})
+	require.NoError(t, err)
+	assert.Contains(t, res.Text, "| Field | Value |")
+	assert.Contains(t, res.Text, "Deploy the app")
+
+	nf, err := e.PlaybookInfo(t.Context(), ai2.PlaybookInfoParams{Name: "nope"})
+	require.NoError(t, err)
+	assert.Contains(t, nf.Text, "Playbook not found")
+}
+
 func readKey(t *testing.T) string {
 	t.Helper()
 	home, _ := os.UserHomeDir()
