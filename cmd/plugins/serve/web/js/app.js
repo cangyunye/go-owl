@@ -98,15 +98,20 @@ function renderShell() {
 <div class="app-shell">
   <nav class="nav-rail" aria-label="主导航">
     <div class="logo" aria-label="OWL Console 首页"><span>O</span></div>
+    <button class="nav-toggle" id="navToggle" title="展开导航" aria-label="展开导航">
+      <svg width="16" height="16" aria-hidden="true"><use href="#icon-chevron-right"/></svg>
+    </button>
     ${NAV_ITEMS.map(item => `
       <button class="nav-item" data-view="${item.id}" title="${item.label}" aria-label="${item.label}">
         <svg aria-hidden="true"><use href="#icon-${item.icon}"/></svg>
+        <span class="nav-label">${item.label}</span>
       </button>
     `).join('')}
     <div class="nav-spacer"></div>
     ${NAV_BOTTOM.map(item => `
       <button class="nav-item" data-view="${item.id}" title="${item.label}" aria-label="${item.label}">
         <svg aria-hidden="true"><use href="#icon-${item.icon}"/></svg>
+        <span class="nav-label">${item.label}</span>
       </button>
     `).join('')}
     <div class="nav-avatar" title="个人设置">${esc(initials)}</div>
@@ -185,6 +190,20 @@ function renderShell() {
     btn.setAttribute('aria-label', btn.title);
     btn.classList.toggle('collapsed', collapsed);
   });
+
+  // Nav expand/collapse toggle
+  const navRail = document.querySelector('.nav-rail');
+  const navToggle = document.getElementById('navToggle');
+  const setNavExpanded = (expanded) => {
+    navRail.classList.toggle('expanded', expanded);
+    navToggle.title = expanded ? '收起导航' : '展开导航';
+    navToggle.setAttribute('aria-label', navToggle.title);
+    navToggle.classList.toggle('expanded', expanded);
+    if (expanded) localStorage.setItem('owl-nav-expanded', '1');
+    else localStorage.removeItem('owl-nav-expanded');
+  };
+  navToggle.addEventListener('click', () => setNavExpanded(!navRail.classList.contains('expanded')));
+  if (localStorage.getItem('owl-nav-expanded') === '1') setNavExpanded(true);
 
   // Keyboard shortcuts: alt+1..7 for nav items
   document.addEventListener('keydown', (e) => {
