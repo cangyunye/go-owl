@@ -1,6 +1,5 @@
 import { api } from './api.js';
 import { renderLogin } from './pages/login.js';
-import { renderDashboard } from './pages/dashboard.js';
 import { renderExec } from './pages/exec.js';
 import { renderFiles } from './pages/files.js';
 import { renderAI } from './pages/ai.js';
@@ -17,19 +16,18 @@ let shellRendered = false;
 let currentViewId = null;
 
 const VIEW_TITLES = {
-  dashboard: '仪表盘', nodes: '节点管理', exec: '命令执行',
+  nodes: '节点管理', exec: '命令执行',
   playbooks: '剧本管理', files: '文件传输', ai: 'AI 助手',
   history: '任务历史', settings: '系统设置', users: '用户管理'
 };
 
 const PANEL_TITLES = {
-  dashboard: '概览', nodes: '节点分组', exec: '节点选择',
+  nodes: '节点分组', exec: '节点选择',
   playbooks: '剧本分类', files: '节点选择', ai: '对话上下文',
   history: '过滤条件', settings: '系统配置', users: '用户角色'
 };
 
 const NAV_ITEMS = [
-  { id: 'dashboard', icon: 'dashboard', label: '仪表盘' },
   { id: 'nodes', icon: 'nodes', label: '节点管理' },
   { id: 'exec', icon: 'terminal', label: '命令执行' },
   { id: 'playbooks', icon: 'scroll', label: '剧本管理' },
@@ -118,7 +116,7 @@ function renderShell() {
   </nav>
   <aside class="panel" id="sidePanel">
     <div class="panel-header" id="panelTitle">
-      <span>概览</span>
+      <span>节点分组</span>
     </div>
     <ul class="panel-list" id="panelList"></ul>
   </aside>
@@ -127,11 +125,11 @@ function renderShell() {
   </button>
   <main class="main-area">
     <header class="topbar">
-      <div class="view-title" id="viewTitle">仪表盘</div>
+      <div class="view-title" id="viewTitle">节点管理</div>
       <div class="breadcrumb" id="breadcrumb">
         <span>运维中心</span>
         <svg width="12" height="12" aria-hidden="true" style="color:var(--muted)"><use href="#icon-chevron-right"/></svg>
-        <span id="breadcrumbCurrent">仪表盘</span>
+        <span id="breadcrumbCurrent">节点管理</span>
       </div>
       <div class="topbar-spacer"></div>
       <div class="topbar-stats" id="topbarStats">
@@ -205,9 +203,9 @@ function renderShell() {
   navToggle.addEventListener('click', () => setNavExpanded(!navRail.classList.contains('expanded')));
   if (localStorage.getItem('owl-nav-expanded') === '1') setNavExpanded(true);
 
-  // Keyboard shortcuts: alt+1..7 for nav items
+  // Keyboard shortcuts: alt+1..6 for nav items
   document.addEventListener('keydown', (e) => {
-    if (e.altKey && !e.ctrlKey && !e.metaKey && e.key >= '1' && e.key <= '7') {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.key >= '1' && e.key <= '6') {
       const idx = parseInt(e.key) - 1;
       if (idx < NAV_ITEMS.length) {
         e.preventDefault();
@@ -283,7 +281,7 @@ function switchView(viewId, pushState) {
   }
 
   // Route to the view
-  const path = viewId === 'dashboard' ? '/' : '/' + viewId;
+  const path = '/' + viewId;
   if (pushState !== false) {
     history.pushState(null, '', path);
   }
@@ -292,9 +290,6 @@ function switchView(viewId, pushState) {
   if (!user) return;
 
   switch (viewId) {
-    case 'dashboard':
-      renderDashboard(render, navigate, user, api, shell);
-      break;
     case 'nodes':
       renderNodes(render, navigate, user, api, shell);
       break;
@@ -320,7 +315,7 @@ function switchView(viewId, pushState) {
       renderUsers(render, navigate, user, api);
       break;
     default:
-      renderDashboard(render, navigate, user, api);
+      renderNodes(render, navigate, user, api, shell);
   }
 
   updatePanelContent(viewId);
@@ -331,7 +326,7 @@ function updatePanelContent(viewId) {
   if (!list) return;
   const P = PANEL_TITLES[viewId] || '导航';
   shell.setPanelTitle(P);
-  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes' || viewId === 'exec' || viewId === 'playbooks' || viewId === 'files') {
+  if (viewId === 'history' || viewId === 'nodes' || viewId === 'exec' || viewId === 'playbooks' || viewId === 'files') {
     return;
   }
   list.innerHTML = '<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载中…</li>';
@@ -344,7 +339,7 @@ function renderPlaceholderView(viewId, title) {
 <div class="view" style="display:flex;flex-direction:column;flex:1;gap:20px;align-items:center;justify-content:center;padding:60px 24px">
   <div class="view-empty">
     <div class="empty-icon" style="opacity:0.2;font-size:48px">
-      <svg width="64" height="64" aria-hidden="true"><use href="#icon-${viewId === 'exec' ? 'terminal' : viewId === 'files' ? 'upload' : viewId === 'ai' ? 'brain' : viewId === 'history' ? 'clock' : 'dashboard'}"/></svg>
+      <svg width="64" height="64" aria-hidden="true"><use href="#icon-${viewId === 'exec' ? 'terminal' : viewId === 'files' ? 'upload' : viewId === 'ai' ? 'brain' : viewId === 'history' ? 'clock' : 'nodes'}"/></svg>
     </div>
     <div class="empty-title">${esc(title)}</div>
     <div class="empty-desc">此视图将在后续阶段实现。<br>基础 shell 架构（导航栏、面板、顶部栏、主题切换）已就绪。</div>
@@ -413,7 +408,7 @@ function router() {
   const termMatch = path.match(/^\/terminal\/(.+)/);
 
   if (path === '/') {
-    switchView('dashboard', false);
+    switchView('nodes', false);
   } else if (path === '/nodes') {
     switchView('nodes', false);
   } else if (termMatch) {
@@ -449,8 +444,8 @@ function router() {
   } else if (path === '/users') {
     switchView('users', false);
   } else {
-    history.replaceState(null, '', '/');
-    switchView('dashboard', false);
+    history.replaceState(null, '', '/nodes');
+    switchView('nodes', false);
   }
 }
 
