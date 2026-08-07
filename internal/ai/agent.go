@@ -73,6 +73,96 @@ type Agent struct {
 	systemPrompt   string
 	mu             sync.RWMutex
 	debug          bool
+
+	// confirmGate 在执行工具前由 Process/ProcessWithContext 调用。
+	// 返回 Confirm=true 时工具不执行，Question 作为响应返回给用户。
+	confirmGate func(ToolCall) ConfirmationDecision
+	// sessionMemory 由 Session 注入的会话记忆（对话+操作记录），
+	// 随路由消息发给 LLM 作为参考，不作为新请求。
+	sessionMemory string
+}
+
+// ConfirmationDecision 确认门判定结果。
+type ConfirmationDecision struct {
+	Confirm  bool   // true=拦截该工具调用
+	Question string // 拦截时返回给用户的确认问题文案
+	Summary  string // 操作摘要（用于展示与记录）
+}
+
+// confirmRequiredTools 需要用户确认的写操作工具集合。
+var confirmRequiredTools = map[string]bool{
+	"node_add":          true,
+	"node_remove":       true,
+	"node_update":       true,
+	"node_groups":       true,
+	"node_labels":       true,
+	"node_import":       true,
+	"node_export":       true,
+	"execute_command":   true,
+	"execute_script":    true,
+	"run_playbook":      true,
+	"transfer_file":     true,
+	"file_download":     true,
+	"async_cancel":      true,
+	"settings_set":      true,
+	"history_clean":     true,
+	"playbook_generate": true,
+}
+
+// SetConfirmGate 注册确认门回调。nil 可清除。
+func (a *Agent) SetConfirmGate(gate func(ToolCall) ConfirmationDecision) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.confirmGate = gate
+}
+
+// SetSessionMemory 注入会话记忆文本（对话+操作记录），随路由消息发送。
+func (a *Agent) SetSessionMemory(memory string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.sessionMemory = memory
+}
+
+// ExecuteToolCall 执行工具调用（供确认门重放使用，不再经过确认门）。
+func (a *Agent) ExecuteToolCall(ctx context.Context, call ToolCall) (string, error) {
+	return a.executeToolCall(ctx, call)
+}
+
+// RejectWriteOpsGate 非交互模式（单次查询）使用的确认门：
+// 写操作一律拒绝并提示进入交互模式。
+func RejectWriteOpsGate() func(ToolCall) ConfirmationDecision {
+	return func(call ToolCall) ConfirmationDecision {
+		if confirmRequiredTools[call.Name] {
+			return ConfirmationDecision{
+				Confirm:  true,
+				Summary:  SummarizeToolCall(call),
+				Question: fmt.Sprintf("该操作（%s）需要交互确认，请进入交互模式执行（不带参数运行 owl ai）。", call.Name),
+			}
+		}
+		return ConfirmationDecision{Confirm: false}
+	}
+}
+
+// SummarizeToolCall 生成工具调用的人类可读摘要。
+func SummarizeToolCall(call ToolCall) string {
+	var sb strings.Builder
+	sb.WriteString(call.Name)
+	if len(call.Arguments) > 0 {
+		keys := []string{"nodes", "command", "name", "group", "id", "node",
+			"source_file", "dest_dir", "script", "requirement", "file", "key", "value", "type"}
+		var parts []string
+		for _, k := range keys {
+			if v, ok := call.Arguments[k]; ok {
+				parts = append(parts, fmt.Sprintf("%s=%v", k, v))
+			}
+		}
+		if len(parts) > 0 {
+			sb.WriteString("(")
+			sb.WriteString(strings.Join(parts, ", "))
+			sb.WriteString(")")
+		}
+	}
+	return sb.String()
 }
 
 type ChatModel interface {
@@ -178,10 +268,20 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 
 	nodeInfo := a.getNodeInfo()
 
+	a.mu.RLock()
+	sessionMemory := a.sessionMemory
+	a.mu.RUnlock()
+
 	routerMessages := []Message{
 		{Role: "system", Content: aiPrompts.RouterPrompt},
-		{Role: "user", Content: userInput},
 	}
+	if sessionMemory != "" {
+		routerMessages = append(routerMessages, Message{
+			Role:    "system",
+			Content: "以下是此前会话的对话与操作记录，仅作参考背景，不要把它当作新的用户请求：\n" + sessionMemory,
+		})
+	}
+	routerMessages = append(routerMessages, Message{Role: "user", Content: userInput})
 
 	// 调试：打印路由消息
 	debugPrint(a.debug, "路由消息数量: %d", len(routerMessages))
@@ -358,17 +458,23 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 						lastToolName = toolCalls[0].Name
 						messages = append(messages, Message{Role: "assistant", Content: toolCallJSON})
 
-						for _, call := range toolCalls {
-							if onProgress != nil {
-								onProgress("execute", call.Name)
-							}
-							result, err := a.executeToolCall(ctx, call)
-							if err != nil {
-								result = fmt.Sprintf("Tool execution failed: %v", err)
-							}
-							lastToolResult = result
-							return result, nil
+					for _, call := range toolCalls {
+						if onProgress != nil {
+							onProgress("execute", call.Name)
 						}
+						if ok, question := a.confirmToolCall(call); !ok {
+							if onProgress != nil {
+								onProgress("result", "等待确认")
+							}
+							return question, nil
+						}
+						result, err := a.executeToolCall(ctx, call)
+						if err != nil {
+							result = fmt.Sprintf("Tool execution failed: %v", err)
+						}
+						lastToolResult = result
+						return result, nil
+					}
 					}
 				}
 			}
@@ -388,6 +494,12 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		for _, call := range toolCalls {
 			if onProgress != nil {
 				onProgress("execute", call.Name)
+			}
+			if ok, question := a.confirmToolCall(call); !ok {
+				if onProgress != nil {
+					onProgress("result", "等待确认")
+				}
+				return question, nil
 			}
 			result, err := a.executeToolCall(ctx, call)
 			if err != nil {
@@ -478,6 +590,12 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 		for _, call := range toolCalls {
 			if onProgress != nil {
 				onProgress("execute", call.Name)
+			}
+			if ok, question := a.confirmToolCall(call); !ok {
+				if onProgress != nil {
+					onProgress("result", "等待确认")
+				}
+				return msgs, question, nil
 			}
 			result, err := a.executeToolCall(ctx, call)
 			if err != nil {
@@ -645,6 +763,26 @@ func (a *Agent) parseToolCalls(response string) []ToolCall {
 		})
 	}
 	return calls
+}
+
+// confirmToolCall 执行前过确认门。返回 (true,"") 表示放行；
+// 返回 (false, question) 表示已拦截，question 为返回给用户的文案。
+// 未注册确认门时，写操作默认拒绝（安全兜底），只读操作放行。
+func (a *Agent) confirmToolCall(call ToolCall) (bool, string) {
+	a.mu.RLock()
+	gate := a.confirmGate
+	a.mu.RUnlock()
+	if gate == nil {
+		if confirmRequiredTools[call.Name] {
+			return false, fmt.Sprintf("该操作（%s）需要交互确认，当前上下文未启用确认机制，已拒绝执行。", call.Name)
+		}
+		return true, ""
+	}
+	d := gate(call)
+	if d.Confirm {
+		return false, d.Question
+	}
+	return true, ""
 }
 
 func (a *Agent) executeToolCall(ctx context.Context, call ToolCall) (string, error) {
@@ -890,18 +1028,30 @@ func (a *Agent) stringsToJSON(strs []string) string {
 	return string(data)
 }
 
+// PendingContext 待确认操作（确认门）。由确认门在拦截时写入，
+// 用户肯定后按 ToolCall 确定性重放，不依赖 LLM 从对话历史推断。
 type PendingContext struct {
-	State        string
-	Action       string
-	LastToolName string
-	LastParams   map[string]interface{}
-	Question     string
+	State     string
+	Summary   string
+	Question  string
+	ToolCall  ToolCall
+	UserInput string
+}
+
+// OperationSummary 会话内已完成操作的记录，供"刚才那个操作"类追问。
+type OperationSummary struct {
+	Tool    string
+	Summary string
+	Result  string
+	Time    time.Time
 }
 
 type Session struct {
 	agent          *Agent
 	messages       []Message
 	history        []string
+	operations     []OperationSummary
+	dialogue       []Message
 	createdAt      time.Time
 	lastActive     time.Time
 	OnProgress     ProgressCallback
@@ -909,88 +1059,182 @@ type Session struct {
 }
 
 func NewSession(agent *Agent) *Session {
-	return &Session{
+	s := &Session{
 		agent:     agent,
 		messages:  make([]Message, 0),
 		history:   make([]string, 0),
 		createdAt: time.Now(),
 	}
+	s.SetDefaultConfirmGate()
+	return s
 }
 
 var affirmativeReplies = map[string]bool{
 	"是": true, "是的": true, "对": true, "对的": true,
 	"好": true, "好的": true, "可以": true, "行": true,
 	"yes": true, "ok": true, "okay": true, "y": true,
-	"嗯": true, "确认": true,
+	"嗯": true, "确认": true, "确定": true,
 }
 
-var questionKeywords = []string{"是否", "要不要", "需要我", "要我", "要不要我"}
+var negativeReplies = map[string]bool{
+	"不": true, "不是": true, "否": true, "不要": true,
+	"算了": true, "取消": true, "停下": true, "停止": true,
+	"no": true, "n": true, "cancel": true, "stop": true,
+	"不用": true, "不需要": true, "不了": true,
+}
 
 func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	s.lastActive = time.Now()
 	s.history = append(s.history, fmt.Sprintf("User: %s", userInput))
 
-	// 如果 messages 为空（首次交互），使用 Process 方法（会调用路由器）
+	// 有待确认操作时，先处理确认/取消，其余输入一律提示，保证单 pending 队列。
+	if s.pendingContext != nil && s.pendingContext.State == "awaiting_confirmation" {
+		lowerInput := strings.TrimSpace(strings.ToLower(userInput))
+		if affirmativeReplies[lowerInput] {
+			pending := s.pendingContext
+			s.pendingContext = nil
+			result, err := s.agent.ExecuteToolCall(ctx, pending.ToolCall)
+			if err != nil {
+				return "", err
+			}
+			s.recordOperation(pending.ToolCall, pending.Summary, result)
+			s.messages = append(s.messages,
+				Message{Role: "assistant", Content: fmt.Sprintf("```json\n%s\n```", s.toolCallJSON(pending.ToolCall))},
+				Message{Role: "user", Content: fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)},
+			)
+			msg := fmt.Sprintf("已执行：%s\n%s", pending.Summary, result)
+			s.appendDialogue(userInput, msg)
+			s.history = append(s.history, fmt.Sprintf("Assistant: %s", msg))
+			return msg, nil
+		}
+		if negativeReplies[lowerInput] {
+			s.pendingContext = nil
+			s.appendDialogue(userInput, "已取消该操作")
+			s.history = append(s.history, "Assistant: 已取消该操作")
+			return "已取消该操作", nil
+		}
+		return fmt.Sprintf("有未确认的操作：%s。请回复「是」确认，或「否」取消。", s.pendingContext.Summary), nil
+	}
+
+	// 首次交互（无上下文），使用 Process（带路由）
 	if len(s.messages) == 0 {
 		response, err := s.agent.Process(ctx, userInput, s.OnProgress)
 		if err != nil {
 			return "", err
 		}
-
-		s.maybeSetPendingContext(response)
+		s.appendDialogue(userInput, response)
 		s.history = append(s.history, fmt.Sprintf("Assistant: %s", response))
 		return response, nil
 	}
 
-	// 多轮对话，继续使用 ProcessWithContext
-	if s.pendingContext != nil && s.pendingContext.State == "awaiting_confirmation" {
-		lowerInput := strings.TrimSpace(strings.ToLower(userInput))
-		if affirmativeReplies[lowerInput] {
-			pendingMsg := fmt.Sprintf(
-				"[系统提示] 用户刚才回复了「是」，确认了你的问题：「%s」。请继续执行之前的操作。",
-				s.pendingContext.Question,
-			)
-
-			s.messages = append(s.messages, Message{Role: "system", Content: pendingMsg})
-			s.messages = append(s.messages, Message{Role: "user", Content: fmt.Sprintf("好的，请继续：%s", s.pendingContext.Action)})
-		}
-		s.pendingContext = nil
-	} else {
-		s.messages = append(s.messages, Message{Role: "user", Content: userInput})
+	// 多轮对话，继续使用 ProcessWithContext；注入会话记忆作为背景。
+	s.messages = append(s.messages, Message{Role: "user", Content: userInput})
+	msgs := s.messages
+	if memory := s.buildMemory(); memory != "" {
+		msgs = append([]Message{{Role: "system", Content: memory}}, msgs...)
 	}
-
-	var response string
-	var err error
-	var updatedMessages []Message
-	updatedMessages, response, err = s.agent.ProcessWithContext(ctx, s.messages, s.OnProgress)
+	updatedMessages, response, err := s.agent.ProcessWithContext(ctx, msgs, s.OnProgress)
 	if err == nil {
-		s.messages = updatedMessages
+		if len(msgs) > len(s.messages) {
+			s.messages = updatedMessages[1:]
+		} else {
+			s.messages = updatedMessages
+		}
 	}
 
 	if err != nil {
 		return "", err
 	}
 
-	s.maybeSetPendingContext(response)
-
+	s.appendDialogue(userInput, response)
 	s.history = append(s.history, fmt.Sprintf("Assistant: %s", response))
 	return response, nil
 }
 
-func (s *Session) maybeSetPendingContext(response string) {
-	trimmed := strings.TrimSpace(response)
-	if strings.HasSuffix(trimmed, "？") || strings.HasSuffix(trimmed, "?") {
-		for _, kw := range questionKeywords {
-			if strings.Contains(trimmed, kw) {
-				s.pendingContext = &PendingContext{
-					State:    "awaiting_confirmation",
-					Action:   "继续之前的查询",
-					Question: trimmed,
-				}
-				return
-			}
-		}
+func (s *Session) toolCallJSON(call ToolCall) string {
+	argsJSON, _ := json.Marshal(call.Arguments)
+	return fmt.Sprintf(`{"tool_calls":[{"name":%q,"arguments":%s}]}`, call.Name, argsJSON)
+}
+
+// recordOperation 记录一次已执行的操作（确认后重放或直接执行的工具调用）。
+func (s *Session) recordOperation(call ToolCall, summary, result string) {
+	s.operations = append(s.operations, OperationSummary{
+		Tool:    call.Name,
+		Summary: summary,
+		Result:  truncateStr(result, 300),
+		Time:    time.Now(),
+	})
+	if len(s.operations) > 10 {
+		s.operations = s.operations[len(s.operations)-10:]
 	}
+}
+
+func (s *Session) operationMemory() string {
+	if len(s.operations) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("[会话操作记录]（最近操作：）\n")
+	for i, op := range s.operations {
+		sb.WriteString(fmt.Sprintf("%d. [%s] %s: %s → %s\n", i+1, op.Time.Format("15:04:05"), op.Tool, op.Summary, truncateStr(op.Result, 120)))
+	}
+	return sb.String()
+}
+
+func (s *Session) dialogueMemory() string {
+	if len(s.dialogue) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("[最近对话]\n")
+	for _, m := range s.dialogue {
+		role := "助手"
+		if m.Role == "user" {
+			role = "用户"
+		}
+		sb.WriteString(fmt.Sprintf("%s: %s\n", role, truncateStr(m.Content, 300)))
+	}
+	return sb.String()
+}
+
+func (s *Session) buildMemory() string {
+	mem := s.operationMemory()
+	if d := s.dialogueMemory(); d != "" {
+		if mem != "" {
+			mem += "\n"
+		}
+		mem += d
+	}
+	return mem
+}
+
+func (s *Session) appendDialogue(userInput, response string) {
+	s.dialogue = append(s.dialogue,
+		Message{Role: "user", Content: truncateStr(userInput, 300)},
+		Message{Role: "assistant", Content: truncateStr(response, 300)},
+	)
+	if len(s.dialogue) > 12 {
+		s.dialogue = s.dialogue[len(s.dialogue)-12:]
+	}
+}
+
+// SetDefaultConfirmGate 注册本会话的默认确认门（写操作拦截、保存 pending）。
+// 每次调用 Send 前由 CLI 或调用方执行，保证最近注册的是本会话的门。
+func (s *Session) SetDefaultConfirmGate() {
+	s.agent.SetConfirmGate(func(call ToolCall) ConfirmationDecision {
+		if !confirmRequiredTools[call.Name] {
+			return ConfirmationDecision{Confirm: false}
+		}
+		summary := SummarizeToolCall(call)
+		question := fmt.Sprintf("即将执行：%s\n是否继续？（是/否）", summary)
+		s.pendingContext = &PendingContext{
+			State:    "awaiting_confirmation",
+			Summary:  summary,
+			Question: question,
+			ToolCall: call,
+		}
+		return ConfirmationDecision{Confirm: true, Summary: summary, Question: question}
+	})
 }
 
 func (s *Session) GetHistory() []string {

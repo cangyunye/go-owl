@@ -273,42 +273,32 @@ func TestAffirmativeReplies(t *testing.T) {
 	}
 }
 
-func TestMaybeSetPendingContext(t *testing.T) {
-	agent := &Agent{}
+func TestSessionDefaultConfirmGate(t *testing.T) {
+	agent := newTestAgentForRoute([]string{
+		"exec",
+		"```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"nodes\":[\"node1\"]}}]}\n```",
+	})
 	session := NewSession(agent)
 
-	t.Run("Sets pending on question", func(t *testing.T) {
-		session.maybeSetPendingContext("是否需要我列出全部节点详情？")
-		if session.pendingContext == nil {
-			t.Error("expected pendingContext to be set")
-		}
-		if session.pendingContext.State != "awaiting_confirmation" {
-			t.Errorf("expected 'awaiting_confirmation', got '%s'", session.pendingContext.State)
-		}
-		session.pendingContext = nil
-	})
+	call := ToolCall{Name: "execute_command", Arguments: map[string]interface{}{"command": "uptime"}}
+	d := agent.confirmGate(call)
+	if !d.Confirm {
+		t.Fatal("expected write operation to require confirmation")
+	}
+	if session.pendingContext == nil {
+		t.Fatal("expected pendingContext to be set by gate")
+	}
+	if session.pendingContext.ToolCall.Name != "execute_command" {
+		t.Errorf("expected pending tool execute_command, got %s", session.pendingContext.ToolCall.Name)
+	}
+	if !strings.Contains(d.Question, "是否继续") {
+		t.Errorf("expected confirm question, got %q", d.Question)
+	}
 
-	t.Run("Does not set on statement", func(t *testing.T) {
-		session.maybeSetPendingContext("查询到 1 个节点")
-		if session.pendingContext != nil {
-			t.Error("expected pendingContext to be nil for statement")
-		}
-	})
-
-	t.Run("Sets on question mark with keyword", func(t *testing.T) {
-		session.maybeSetPendingContext("需要我帮你查询吗？")
-		if session.pendingContext == nil {
-			t.Error("expected pendingContext to be set")
-		}
-		session.pendingContext = nil
-	})
-
-	t.Run("Does not set on general question", func(t *testing.T) {
-		session.maybeSetPendingContext("当前负载多少？")
-		if session.pendingContext != nil {
-			t.Error("expected pendingContext to be nil for general question without keyword")
-		}
-	})
+	readCall := ToolCall{Name: "query_nodes", Arguments: map[string]interface{}{}}
+	if d := agent.confirmGate(readCall); d.Confirm {
+		t.Error("expected read-only operation to pass through")
+	}
 }
 
 func TestExtractFilePath(t *testing.T) {

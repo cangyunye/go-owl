@@ -285,6 +285,9 @@ func runAI(cmd *cobra.Command, args []string) {
 			progressLog(sessionID, aiVerbose, step, detail)
 		}
 
+		// 单次（非交互）模式：写操作无法交互确认，直接拒绝并提示。
+		agent.SetConfirmGate(ai.RejectWriteOpsGate())
+
 		response, err := agent.Process(ctx, query, onProgress)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.chat.failed", time.Now().Format("15:04:05"), err))
@@ -326,6 +329,7 @@ func runAI(cmd *cobra.Command, args []string) {
 	currentSession.OnProgress = func(step string, detail string) {
 		progressLog(sessionID, aiVerbose, step, detail)
 	}
+	currentSession.SetDefaultConfirmGate()
 
 	scanner := bufio.NewScanner(os.Stdin)
 
