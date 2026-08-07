@@ -87,6 +87,9 @@ func (t *NodeRemoveTool) Name() string        { return "node_remove" }
 func (t *NodeRemoveTool) Description() string { return "Remove one or more nodes by name or id." }
 func (t *NodeRemoveTool) Parameters() string  { return nodeRemoveParamsSchema }
 func (t *NodeRemoveTool) Validate(p map[string]interface{}) error {
+	if id, ok := p["id"].(string); ok && id != "" {
+		return nil
+	}
 	nodes, ok := p["nodes"].([]interface{})
 	if !ok || len(nodes) == 0 {
 		return fmt.Errorf("nodes is required (non-empty array)")
@@ -105,6 +108,11 @@ const nodeRemoveParamsSchema = `{
 func (t *NodeRemoveTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	if t.executor != nil {
 		p := NodeRemoveParams{Nodes: strSliceOf(params["nodes"])}
+		if len(p.Nodes) == 0 {
+			if id := strOf(params["id"]); id != "" {
+				p.Nodes = []string{id}
+			}
+		}
 		result, err := t.executor.RemoveNode(ctx, p)
 		if err == nil {
 			return result.Text, nil
@@ -301,9 +309,12 @@ func (t *NodeGroupsTool) Parameters() string  { return nodeGroupsParamsSchema }
 func (t *NodeGroupsTool) Validate(p map[string]interface{}) error {
 	action := strings.ToLower(strOf(p["action"]))
 	switch action {
-	case "add", "remove":
-		if strOf(p["node"]) == "" || strOf(p["group"]) == "" {
-			return fmt.Errorf("node and group are required for add/remove")
+	case "add", "remove", "delete":
+		if strOf(p["node"]) == "" && len(strSliceOf(p["nodes"])) == 0 {
+			return fmt.Errorf("node is required for add/remove")
+		}
+		if strOf(p["group"]) == "" {
+			return fmt.Errorf("group is required for add/remove")
 		}
 	case "list", "show":
 	default:
@@ -325,9 +336,14 @@ const nodeGroupsParamsSchema = `{
 func (t *NodeGroupsTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	if t.executor != nil {
 		p := NodeGroupsParams{
-			Action: strOf(params["action"]),
+			Action: normalizeGroupsAction(strOf(params["action"])),
 			Node:   strOf(params["node"]),
 			Group:  strOf(params["group"]),
+		}
+		if p.Node == "" {
+			if nodes := strSliceOf(params["nodes"]); len(nodes) > 0 {
+				p.Node = nodes[0]
+			}
 		}
 		result, err := t.executor.NodeGroups(ctx, p)
 		if err == nil {
@@ -353,7 +369,7 @@ func (t *NodeLabelsTool) Parameters() string  { return nodeLabelsParamsSchema }
 func (t *NodeLabelsTool) Validate(p map[string]interface{}) error {
 	action := strings.ToLower(strOf(p["action"]))
 	switch action {
-	case "set":
+	case "set", "add":
 		if strOf(p["node"]) == "" {
 			return fmt.Errorf("node is required for set")
 		}
@@ -364,7 +380,7 @@ func (t *NodeLabelsTool) Validate(p map[string]interface{}) error {
 		if strOf(p["node"]) == "" || strOf(p["key"]) == "" {
 			return fmt.Errorf("node and key are required for remove")
 		}
-	case "show":
+	case "show", "list":
 		if strOf(p["node"]) == "" {
 			return fmt.Errorf("node is required for show")
 		}
@@ -388,7 +404,7 @@ const nodeLabelsParamsSchema = `{
 func (t *NodeLabelsTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	if t.executor != nil {
 		p := NodeLabelsParams{
-			Action: strOf(params["action"]),
+			Action: normalizeLabelsAction(strOf(params["action"])),
 			Node:   strOf(params["node"]),
 			Key:    strOf(params["key"]),
 		}
@@ -401,6 +417,26 @@ func (t *NodeLabelsTool) Execute(ctx context.Context, params map[string]interfac
 		}
 	}
 	return "", fmt.Errorf("node_labels failed")
+}
+
+func normalizeLabelsAction(action string) string {
+	switch strings.ToLower(action) {
+	case "add":
+		return "set"
+	case "list":
+		return "show"
+	default:
+		return action
+	}
+}
+
+func normalizeGroupsAction(action string) string {
+	switch strings.ToLower(action) {
+	case "delete":
+		return "remove"
+	default:
+		return action
+	}
 }
 
 // ---------- node import / export ----------

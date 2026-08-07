@@ -31,7 +31,7 @@ func TestNodeToolsValidate(t *testing.T) {
 		{"node_labels set ok", NewNodeLabelsTool(nil), map[string]interface{}{"action": "set", "node": "web-01", "labels": map[string]interface{}{"env": "prod"}}, false},
 		{"node_labels set missing labels", NewNodeLabelsTool(nil), map[string]interface{}{"action": "set", "node": "web-01"}, true},
 		{"node_labels remove ok", NewNodeLabelsTool(nil), map[string]interface{}{"action": "remove", "node": "web-01", "key": "env"}, false},
-		{"node_labels bad action", NewNodeLabelsTool(nil), map[string]interface{}{"action": "list"}, true},
+		{"node_labels bad action", NewNodeLabelsTool(nil), map[string]interface{}{"action": "explode"}, true},
 		{"node_import ok", NewNodeImportTool(nil), map[string]interface{}{"file": "/tmp/nodes.yaml"}, false},
 		{"node_import missing file", NewNodeImportTool(nil), map[string]interface{}{}, true},
 		{"node_export ok", NewNodeExportTool(nil), map[string]interface{}{"format": "json"}, false},

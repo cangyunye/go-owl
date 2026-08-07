@@ -184,6 +184,7 @@ func (f ChatModelFunc) Generate(ctx context.Context, messages []Message) (string
 
 var groupPrompts = map[string]string{
 	"node_list":         aiPrompts.NodeListSystemPrompt,
+	"query_nodes":       aiPrompts.NodeListSystemPrompt,
 	"node_add":          aiPrompts.NodeAddSystemPrompt,
 	"node_update":       aiPrompts.NodeUpdateSystemPrompt,
 	"node_remove":       aiPrompts.NodeRemoveSystemPrompt,
@@ -198,8 +199,30 @@ var groupPrompts = map[string]string{
 	"file":              aiPrompts.FileSystemPrompt,
 	"playbook_list":     aiPrompts.PlaybookListSystemPrompt,
 	"playbook_run":      aiPrompts.PlaybookRunSystemPrompt,
-	"playbook_info":     aiPrompts.PlaybookInfoSystemPrompt,
 	"playbook_validate": aiPrompts.PlaybookValidateSystemPrompt,
+	// 以下类别使用通用工具目录提示词
+	"node_export":          aiPrompts.GenericToolSystemPrompt,
+	"file_download":        aiPrompts.GenericToolSystemPrompt,
+	"playbook_generate":    aiPrompts.GenericToolSystemPrompt,
+	"playbook_template_list": aiPrompts.GenericToolSystemPrompt,
+	"playbook_template_info": aiPrompts.GenericToolSystemPrompt,
+	"playbook_template_export": aiPrompts.GenericToolSystemPrompt,
+	"playbook_scaffold":    aiPrompts.GenericToolSystemPrompt,
+	"playbook_state_list":  aiPrompts.GenericToolSystemPrompt,
+	"playbook_state_show":  aiPrompts.GenericToolSystemPrompt,
+	"async_list":           aiPrompts.GenericToolSystemPrompt,
+	"async_status":         aiPrompts.GenericToolSystemPrompt,
+	"async_cancel":         aiPrompts.GenericToolSystemPrompt,
+	"settings_show":        aiPrompts.GenericToolSystemPrompt,
+	"settings_set":         aiPrompts.GenericToolSystemPrompt,
+	"history_list":         aiPrompts.GenericToolSystemPrompt,
+	"history_clean":        aiPrompts.GenericToolSystemPrompt,
+}
+
+// unsupportedRouteLabels 路由命中的豁免命令：AI 明确不支持。
+var unsupportedRouteLabels = map[string]bool{
+	"session": true, "serve": true, "tui": true,
+	"metrics": true, "node_sample": true, "sample": true,
 }
 
 var toolHints = map[string]string{
@@ -355,8 +378,11 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		routeLabel = "node_list"
 	}
 
-	if routeLabel == "node_groups" {
-		routeLabel = "node_list"
+	if unsupportedRouteLabels[routeLabel] {
+		if onProgress != nil {
+			onProgress("result", "不支持")
+		}
+		return "该功能不支持 AI 操作", nil
 	}
 
 	if onProgress != nil {
@@ -372,7 +398,8 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 			}
 		}
 		if groupPrompt == "" {
-			return "我不确定您要做什么", nil
+			// 未定制提示词的类别一律使用通用工具目录，不再直接拒绝
+			groupPrompt = aiPrompts.GenericToolSystemPrompt
 		}
 	}
 
@@ -504,8 +531,8 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 				}
 			}
 
-			fullResponse.WriteString(response)
-			break
+			debugPrint(a.debug, "无有效工具调用，返回不确定（LLM 自由文本不透出）")
+			return "我不确定您要做什么", nil
 		}
 
 		if onProgress != nil && len(toolCalls) > 0 {
@@ -592,17 +619,17 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 		toolCalls := a.parseToolCalls(response)
 		if len(toolCalls) == 0 {
 			if turn >= 1 {
+				// 多轮：返回 LLM 对工具结果的总结（此前版本误返回空的 fullResponse）
 				if onProgress != nil {
 					onProgress("result", "完成")
 				}
-				return msgs, fullResponse.String(), nil
+				if strings.TrimSpace(response) == "" {
+					response = "完成"
+				}
+				return msgs, response, nil
 			}
-			if len(response) > 100 && !strings.Contains(response, "tool_calls") {
-				return msgs, "我不确定您要做什么", nil
-			}
-			fullResponse.WriteString(response)
-			msgs = append(msgs, Message{Role: "assistant", Content: response})
-			break
+			debugPrint(a.debug, "无有效工具调用，返回不确定（LLM 自由文本不透出）")
+			return msgs, "我不确定您要做什么", nil
 		}
 
 		if onProgress != nil && len(toolCalls) > 0 {
