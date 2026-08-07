@@ -78,6 +78,7 @@ type QueryOptions struct {
 	NodeID    string
 	OpType    string
 	Status    string
+	Command   string
 	StartTime time.Time
 	EndTime   time.Time
 	Limit     int
@@ -311,6 +312,10 @@ func (s *HistoryStore) Query(ctx context.Context, opts *QueryOptions) ([]*Record
 	if opts.NodeID != "" {
 		where += " AND targets LIKE ?"
 		args = append(args, "%"+opts.NodeID+"%")
+	}
+	if opts.Command != "" {
+		where += " AND command LIKE ?"
+		args = append(args, "%"+opts.Command+"%")
 	}
 	if !opts.StartTime.IsZero() {
 		where += " AND created_at >= ?"

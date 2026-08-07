@@ -89,6 +89,15 @@ func TestHistoryList_AndFilters(t *testing.T) {
 	}
 	json.Unmarshal(w3.Body.Bytes(), &resp3)
 	assert.Equal(t, 1, resp3.Meta.Total)
+
+	w4 := historyGET(t, r, "/api/v1/history?command=uptime", adminToken())
+	var resp4 struct {
+		Data []store.Record `json:"data"`
+		Meta struct{ Total int `json:"total"` } `json:"meta"`
+	}
+	json.Unmarshal(w4.Body.Bytes(), &resp4)
+	assert.Equal(t, 1, resp4.Meta.Total)
+	assert.Equal(t, "a", resp4.Data[0].Operation.TaskID)
 }
 
 func TestHistoryGet_Detail(t *testing.T) {

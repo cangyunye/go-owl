@@ -1921,8 +1921,11 @@ tr:hover td { background: var(--surface-2); }
 .history-filters {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
+.history-filters select { width: 118px; }
+.history-filters input.input { width: auto; }
 .history-list { list-style: none; }
 .history-item {
   display: flex;

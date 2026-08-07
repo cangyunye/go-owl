@@ -52,6 +52,7 @@ func (h *HistoryHandler) parseOptions(c *gin.Context) *store.QueryOptions {
 		NodeID: c.Query("node_id"),
 		OpType: c.Query("op_type"),
 		Status: c.Query("status"),
+		Command: c.Query("command"),
 	}
 	if v := c.Query("last"); v != "" {
 		if d, err := parseHistoryDuration(v); err == nil && d > 0 {

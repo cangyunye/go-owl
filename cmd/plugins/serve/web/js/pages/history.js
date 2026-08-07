@@ -2,7 +2,7 @@ export function renderHistory(render, navigate, user, api, shell) {
   const isAdmin = user && user.role === 'admin';
   const pageSize = 50;
   const state = {
-    opType: '', status: '', nodeId: '', last: '', page: 1, total: 0, records: [], stats: null, wsCleanup: null,
+    opType: '', status: '', nodeId: '', command: '', last: '', page: 1, total: 0, records: [], stats: null, wsCleanup: null,
   };
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -14,7 +14,7 @@ export function renderHistory(render, navigate, user, api, shell) {
 
   function buildParams() {
     return {
-      op_type: state.opType, status: state.status, node_id: state.nodeId, last: state.last,
+      op_type: state.opType, status: state.status, node_id: state.nodeId, command: state.command, last: state.last,
       limit: pageSize, offset: (state.page - 1) * pageSize,
     };
   }
@@ -137,7 +137,7 @@ export function renderHistory(render, navigate, user, api, shell) {
   }
 
   render(`
-    <div class="history-filters" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <div class="history-filters">
       <select class="select" id="status-filter">
         <option value="">全部状态</option>
         <option value="completed">成功</option>
@@ -152,7 +152,8 @@ export function renderHistory(render, navigate, user, api, shell) {
         <option value="7d">最近 7 天</option>
         <option value="30d">最近 30 天</option>
       </select>
-      <input class="input" id="node-filter" placeholder="按节点过滤" style="max-width:160px" />
+      <input class="input" id="node-filter" placeholder="按节点过滤" style="max-width:140px" />
+      <input class="input" id="cmd-filter" placeholder="搜索命令" style="flex:1;min-width:160px;max-width:280px" />
       <div class="spacer" style="flex:1"></div>
       <button class="btn btn-ghost btn-sm" id="export-json">导出 JSON</button>
       <button class="btn btn-ghost btn-sm" id="export-yaml">导出 YAML</button>
@@ -177,6 +178,11 @@ export function renderHistory(render, navigate, user, api, shell) {
     document.getElementById('node-filter').addEventListener('input', (e) => {
       clearTimeout(nodeTimer);
       nodeTimer = setTimeout(() => { state.nodeId = e.target.value.trim(); state.page = 1; load(); }, 300);
+    });
+    let cmdTimer = null;
+    document.getElementById('cmd-filter').addEventListener('input', (e) => {
+      clearTimeout(cmdTimer);
+      cmdTimer = setTimeout(() => { state.command = e.target.value.trim(); state.page = 1; load(); }, 300);
     });
     document.getElementById('prev-btn').addEventListener('click', () => { if (state.page > 1) { state.page--; load(); } });
     document.getElementById('next-btn').addEventListener('click', () => { const tp = Math.ceil(state.total / pageSize); if (state.page < tp) { state.page++; load(); } });

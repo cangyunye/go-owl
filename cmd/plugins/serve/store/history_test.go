@@ -105,6 +105,33 @@ func TestHistoryStore_QueryPaginationAndStatusFilter(t *testing.T) {
 	assert.Len(t, page, 2)
 }
 
+func TestHistoryStore_QueryCommandFilter(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "c1", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed"}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "c2", OpType: "command", Command: "systemctl status nginx", Targets: []string{"n1"}, Status: "completed"}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "c3", OpType: "script", Command: "deploy.sh", Targets: []string{"n2"}, Status: "failed"}))
+
+	byCmd, total, err := s.Query(ctx, &QueryOptions{Command: "systemctl"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, byCmd, 1)
+	assert.Equal(t, "c2", byCmd[0].Operation.TaskID)
+
+	partial, total, err := s.Query(ctx, &QueryOptions{Command: "syst"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	assert.Equal(t, "c2", partial[0].Operation.TaskID)
+
+	none, total, err := s.Query(ctx, &QueryOptions{Command: "no-such-cmd"})
+	require.NoError(t, err)
+	assert.Equal(t, 0, total)
+	assert.Len(t, none, 0)
+}
+
 func TestHistoryStore_Cleanup(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
