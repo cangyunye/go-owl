@@ -512,14 +512,18 @@ export function renderSettings(render, navigate, user, api) {
 
           const modelInput = document.querySelector('.ai-model-select[data-provider="' + provider + '"]');
           if (res.models && res.models.length > 0 && modelInput) {
+            const optionHtml = '<option value="">— 选择模型 —</option>'
+              + res.models.map(m => '<option value="' + esc(m.id) + '">'
+                + esc(m.id) + (m.owned_by ? ' (' + esc(m.owned_by) + ')' : '')
+                + '</option>').join('');
             if (modelInput.tagName === 'SELECT') {
-              modelInput.innerHTML = '<option value="">— 选择模型 —</option>'
-                + res.models.map(m => '<option value="' + esc(m.id) + '">'
-                  + esc(m.id) + (m.owned_by ? ' (' + esc(m.owned_by) + ')' : '')
-                  + '</option>').join('');
+              modelInput.innerHTML = optionHtml;
             } else {
-              showAiToast('获取到 ' + res.models.length + ' 个模型（请手动输入）', 'success');
-              return;
+              const select = document.createElement('select');
+              select.className = modelInput.className;
+              select.setAttribute('data-provider', provider);
+              select.innerHTML = optionHtml;
+              modelInput.replaceWith(select);
             }
             showAiToast('获取到 ' + res.models.length + ' 个模型', 'success');
           } else {
