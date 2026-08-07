@@ -101,6 +101,13 @@ type Executor interface {
 	PlaybookScaffold(ctx context.Context, params PlaybookScaffoldParams) (*PlaybookScaffoldResult, error)
 	PlaybookStateList(ctx context.Context, params PlaybookStateListParams) (*PlaybookStateListResult, error)
 	PlaybookStateShow(ctx context.Context, params PlaybookStateShowParams) (*PlaybookStateShowResult, error)
+	AsyncList(ctx context.Context) (*AsyncListResult, error)
+	AsyncStatus(ctx context.Context, params AsyncStatusParams) (*AsyncStatusResult, error)
+	AsyncCancel(ctx context.Context, params AsyncStatusParams) (*AsyncCancelResult, error)
+	SettingsShow(ctx context.Context) (*SettingsShowResult, error)
+	SettingsSet(ctx context.Context, params SettingsSetParams) (*SettingsSetResult, error)
+	HistoryList(ctx context.Context, params HistoryListParams) (*HistoryListResult, error)
+	HistoryClean(ctx context.Context, params HistoryCleanParams) (*HistoryCleanResult, error)
 }
 
 type NodeResult struct{ Text string }
@@ -147,6 +154,33 @@ type (
 	PlaybookScaffoldResult          struct{ Text string }
 	PlaybookStateListResult         struct{ Text string }
 	PlaybookStateShowResult         struct{ Text string }
+
+	AsyncStatusParams struct {
+		TaskID string `json:"task_id"`
+	}
+
+	SettingsSetParams struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+
+	HistoryListParams struct {
+		NodeID string `json:"node_id"`
+		OpType string `json:"op_type"`
+		Limit  int    `json:"limit"`
+	}
+
+	HistoryCleanParams struct {
+		Days int `json:"days"`
+	}
+
+	AsyncListResult   struct{ Text string }
+	AsyncStatusResult struct{ Text string }
+	AsyncCancelResult struct{ Text string }
+	SettingsShowResult struct{ Text string }
+	SettingsSetResult  struct{ Text string }
+	HistoryListResult  struct{ Text string }
+	HistoryCleanResult struct{ Text string }
 )
 
 type PlaybookInfoParams struct {

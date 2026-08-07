@@ -70,6 +70,9 @@ func (e *CLIExecutor) ExecuteCommand(ctx context.Context, p ExecCommandParams) (
 	if p.Mode == "serial" {
 		args = append(args, "--serial")
 	}
+	if p.Mode == "async" {
+		args = append(args, "--async")
+	}
 	if p.Timeout > 0 && p.Timeout != 30 {
 		args = append(args, "--timeout", fmt.Sprintf("%d", p.Timeout))
 	}
@@ -560,6 +563,76 @@ func (e *CLIExecutor) PlaybookStateShow(ctx context.Context, p PlaybookStateShow
 		return nil, err
 	}
 	return &PlaybookStateShowResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) AsyncList(ctx context.Context) (*AsyncListResult, error) {
+	result, err := runOwlCommand(ctx, []string{"async", "list", "--no-color"})
+	if err != nil {
+		return nil, err
+	}
+	return &AsyncListResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) AsyncStatus(ctx context.Context, p AsyncStatusParams) (*AsyncStatusResult, error) {
+	result, err := runOwlCommand(ctx, []string{"async", "status", p.TaskID, "--no-color"})
+	if err != nil {
+		return nil, err
+	}
+	return &AsyncStatusResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) AsyncCancel(ctx context.Context, p AsyncStatusParams) (*AsyncCancelResult, error) {
+	result, err := runOwlCommand(ctx, []string{"async", "cancel", p.TaskID, "--no-color"})
+	if err != nil {
+		return nil, err
+	}
+	return &AsyncCancelResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) SettingsShow(ctx context.Context) (*SettingsShowResult, error) {
+	result, err := runOwlCommand(ctx, []string{"settings", "show", "--no-color"})
+	if err != nil {
+		return nil, err
+	}
+	return &SettingsShowResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) SettingsSet(ctx context.Context, p SettingsSetParams) (*SettingsSetResult, error) {
+	result, err := runOwlCommand(ctx, []string{"settings", "set", p.Key, p.Value, "--no-color"})
+	if err != nil {
+		return nil, err
+	}
+	return &SettingsSetResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) HistoryList(ctx context.Context, p HistoryListParams) (*HistoryListResult, error) {
+	args := []string{"history", "--no-color"}
+	if p.NodeID != "" {
+		args = append(args, "--node-id", p.NodeID)
+	}
+	if p.OpType != "" {
+		args = append(args, "--op-type", p.OpType)
+	}
+	if p.Limit > 0 && p.Limit != 50 {
+		args = append(args, "--limit", fmt.Sprintf("%d", p.Limit))
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &HistoryListResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) HistoryClean(ctx context.Context, p HistoryCleanParams) (*HistoryCleanResult, error) {
+	args := []string{"history", "clean", "--no-color"}
+	if p.Days > 0 && p.Days != 30 {
+		args = append(args, "--days", fmt.Sprintf("%d", p.Days))
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &HistoryCleanResult{Text: result}, nil
 }
 
 // getOwlPath finds the owl executable path

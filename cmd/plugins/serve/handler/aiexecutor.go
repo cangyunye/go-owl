@@ -736,3 +736,33 @@ func maxInt(a, b int) int {
 	}
 	return b
 }
+
+// ---------- async / settings / history（web 端由管理页面与任务中心承担） ----------
+
+func (e *WebExecutor) AsyncList(ctx context.Context) (*ai2.AsyncListResult, error) {
+	return nil, fmt.Errorf("web 端 AI 暂不支持查询异步任务，请在任务中心操作")
+}
+
+func (e *WebExecutor) AsyncStatus(ctx context.Context, params ai2.AsyncStatusParams) (*ai2.AsyncStatusResult, error) {
+	return nil, fmt.Errorf("web 端 AI 暂不支持查询异步任务状态，请在任务中心操作")
+}
+
+func (e *WebExecutor) AsyncCancel(ctx context.Context, params ai2.AsyncStatusParams) (*ai2.AsyncCancelResult, error) {
+	return nil, fmt.Errorf("web 端 AI 不支持取消异步任务，请在任务中心操作")
+}
+
+func (e *WebExecutor) SettingsShow(ctx context.Context) (*ai2.SettingsShowResult, error) {
+	return nil, fmt.Errorf("web 端 AI 暂不支持查看设置，请在设置页面操作")
+}
+
+func (e *WebExecutor) SettingsSet(ctx context.Context, params ai2.SettingsSetParams) (*ai2.SettingsSetResult, error) {
+	return nil, fmt.Errorf("web 端 AI 不支持修改设置，请在设置页面操作")
+}
+
+func (e *WebExecutor) HistoryList(ctx context.Context, params ai2.HistoryListParams) (*ai2.HistoryListResult, error) {
+	return nil, fmt.Errorf("web 端 AI 暂不支持查询执行历史，请在管理页面操作")
+}
+
+func (e *WebExecutor) HistoryClean(ctx context.Context, params ai2.HistoryCleanParams) (*ai2.HistoryCleanResult, error) {
+	return nil, fmt.Errorf("web 端 AI 不支持清理历史，请在管理页面操作")
+}
