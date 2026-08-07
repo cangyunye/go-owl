@@ -69,8 +69,42 @@ export function renderHistory(render, navigate, user, api, shell) {
     }
     const totalPages = Math.max(1, Math.ceil(state.total / pageSize));
     document.getElementById('page-info').textContent = `共 ${state.total} 条记录 · 第 ${state.page}/${totalPages} 页`;
-    document.getElementById('prev-btn').disabled = state.page <= 1;
-    document.getElementById('next-btn').disabled = state.page >= totalPages;
+    renderPagination();
+  }
+
+  function renderPagination() {
+    const container = document.getElementById('history-pagination');
+    if (!container) return;
+    const totalPages = Math.max(1, Math.ceil(state.total / pageSize));
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    let html = '';
+    html += `<button class="page-btn" data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}>◀</button>`;
+
+    const range = 2;
+    const start = Math.max(1, state.page - range);
+    const end = Math.min(totalPages, state.page + range);
+
+    if (start > 1) {
+      html += `<button class="page-btn" data-page="1">1</button>`;
+      if (start > 2) html += `<span class="page-ellipsis">⋯</span>`;
+    }
+    for (let i = start; i <= end; i++) {
+      html += `<button class="page-btn ${i === state.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+    }
+    if (end < totalPages) {
+      if (end < totalPages - 1) html += `<span class="page-ellipsis">⋯</span>`;
+      html += `<button class="page-btn" data-page="${totalPages}">${totalPages}</button>`;
+    }
+    html += `<button class="page-btn" data-page="${state.page + 1}" ${state.page >= totalPages ? 'disabled' : ''}>▶</button>`;
+
+    container.innerHTML = html;
+    container.querySelectorAll('.page-btn:not(:disabled)').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = parseInt(btn.dataset.page);
+        if (p && p !== state.page) { state.page = p; load(); }
+      });
+    });
   }
 
   async function load() {
@@ -165,10 +199,7 @@ export function renderHistory(render, navigate, user, api, shell) {
         <div class="view-loading">加载中…</div>
       </ul>
     </div>
-    <div style="display:flex;justify-content:center;gap:6px;padding:4px 0">
-      <button class="btn btn-ghost btn-sm" id="prev-btn" disabled>‹</button>
-      <button class="btn btn-ghost btn-sm" id="next-btn">›</button>
-    </div>
+    <div class="pagination" id="history-pagination" style="margin-top:10px"></div>
   `, () => {
     load();
 
@@ -184,8 +215,6 @@ export function renderHistory(render, navigate, user, api, shell) {
       clearTimeout(cmdTimer);
       cmdTimer = setTimeout(() => { state.command = e.target.value.trim(); state.page = 1; load(); }, 300);
     });
-    document.getElementById('prev-btn').addEventListener('click', () => { if (state.page > 1) { state.page--; load(); } });
-    document.getElementById('next-btn').addEventListener('click', () => { const tp = Math.ceil(state.total / pageSize); if (state.page < tp) { state.page++; load(); } });
     document.getElementById('export-json').addEventListener('click', () => api.historyExport(buildParams(), 'json').catch(() => alert('导出失败')));
     document.getElementById('export-yaml').addEventListener('click', () => api.historyExport(buildParams(), 'yaml').catch(() => alert('导出失败')));
     if (isAdmin) {

@@ -1,0 +1,5 @@
+pager html: <button class="page-btn" data-page="0" disabled="">◀</button><button class="page-btn active" data-page="1">1</button><button class="page-btn " data-page="2">2</button><button class="page-btn" data-page="2">▶</button>
+page-btn count: 4 | texts: ['◀', '1', '2', '▶']
+after next: 共 77 条记录 · 第 2/2 页 (active=2)
+after page1: 共 77 条记录 · 第 1/2 页
+JS errors: none
