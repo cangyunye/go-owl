@@ -219,7 +219,14 @@ func NewAgent(executor Executor, config *Config, nodeMgr node.Manager, nodeStore
 	registry.Register(NewQueryDatabaseTool(executor, nodeMgr))
 	registry.Register(NewListPlaybooksTool(executor))
 	registry.Register(NewRunPlaybookTool(executor, nodeMgr))
-	registry.Register(NewPlaybookInfoTool(executor))
+	registry.Register(NewFileDownloadTool(executor))
+	registry.Register(NewPlaybookTemplateListTool(executor))
+	registry.Register(NewPlaybookTemplateInfoTool(executor))
+	registry.Register(NewPlaybookTemplateExportTool(executor))
+	registry.Register(NewPlaybookScaffoldTool(executor))
+	registry.Register(NewPlaybookStateListTool(executor))
+	registry.Register(NewPlaybookStateShowTool(executor))
+	registry.Register(NewPlaybookGenerateTool(nodeMgr))
 	registry.Register(NewValidatePlaybookTool(executor))
 	registry.Register(NewNodeCheckTool(executor, nodeMgr))
 	registry.Register(NewNodeAddTool(executor, nodeStore))
@@ -451,14 +458,16 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 					toolCallJSON = a.buildToolCall("execute_script", params)
 				case IntentGeneratePlaybook:
 					toolCallJSON = a.buildToolCall("generate_playbook", params)
-				case IntentTransferFile:
-					toolCallJSON = a.buildToolCall("transfer_file", params)
-				default:
-					return "我不确定您要做什么", nil
-				}
+			case IntentTransferFile:
+				toolCallJSON = a.buildToolCall("transfer_file", params)
+			case IntentFileDownload:
+				toolCallJSON = a.buildToolCall("file_download", params)
+			default:
+				return "我不确定您要做什么", nil
+			}
 
-				if toolCallJSON != "" {
-					debugPrint(a.debug, "使用本地提取的工具调用")
+			if toolCallJSON != "" {
+				debugPrint(a.debug, "使用本地提取的工具调用")
 					toolCalls := a.parseToolCalls(toolCallJSON)
 					if len(toolCalls) > 0 {
 						if onProgress != nil {
@@ -862,6 +871,8 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 		toolCallJSON = a.buildToolCall("generate_playbook", params)
 	case IntentTransferFile:
 		toolCallJSON = a.buildToolCall("transfer_file", params)
+	case IntentFileDownload:
+		toolCallJSON = a.buildToolCall("file_download", params)
 	}
 
 	return toolCallJSON, nil

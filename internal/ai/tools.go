@@ -465,6 +465,103 @@ func (e *CLIExecutor) NodeExport(ctx context.Context, p NodeExportParams) (*Node
 	return &NodeResult{Text: result}, nil
 }
 
+func (e *CLIExecutor) FileDownload(ctx context.Context, p FileDownloadParams) (*FileDownloadResult, error) {
+	args := []string{"file", "download", p.RemoteFile, "--no-color"}
+	if len(p.Nodes) > 0 {
+		args = append(args, "--nodes", strings.Join(p.Nodes, ","))
+	}
+	if p.Group != "" {
+		args = append(args, "--groups", p.Group)
+	}
+	if p.Label != "" {
+		args = append(args, "--label", p.Label)
+	}
+	if p.Dest != "" && p.Dest != "." {
+		args = append(args, "--dest", p.Dest)
+	}
+	if p.Subdir {
+		args = append(args, "--subdir")
+	}
+	if !p.Resume {
+		args = append(args, "--resume=false")
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &FileDownloadResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) PlaybookTemplateList(ctx context.Context) (*PlaybookTemplateListResult, error) {
+	result, err := runOwlCommand(ctx, []string{"playbook", "template", "list", "--no-color"})
+	if err != nil {
+		return nil, err
+	}
+	return &PlaybookTemplateListResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) PlaybookTemplateInfo(ctx context.Context, p PlaybookTemplateInfoParams) (*PlaybookTemplateInfoResult, error) {
+	result, err := runOwlCommand(ctx, []string{"playbook", "template", "info", p.Name})
+	if err != nil {
+		return nil, err
+	}
+	return &PlaybookTemplateInfoResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) PlaybookTemplateExport(ctx context.Context, p PlaybookTemplateExportParams) (*PlaybookTemplateExportResult, error) {
+	args := []string{"playbook", "template", "export", p.Name}
+	if p.To != "" {
+		args = append(args, "--to", p.To)
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &PlaybookTemplateExportResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) PlaybookScaffold(ctx context.Context, p PlaybookScaffoldParams) (*PlaybookScaffoldResult, error) {
+	args := []string{"playbook", "scaffold", "--no-color"}
+	if p.Type != "" && p.Type != "basic" {
+		args = append(args, "--type", p.Type)
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &PlaybookScaffoldResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) PlaybookStateList(ctx context.Context, p PlaybookStateListParams) (*PlaybookStateListResult, error) {
+	args := []string{"playbook", "state", "list", "--no-color"}
+	if p.Playbook != "" {
+		args = append(args, "--playbook", p.Playbook)
+	}
+	if p.Status != "" {
+		args = append(args, "--status", p.Status)
+	}
+	if p.Limit > 0 && p.Limit != 20 {
+		args = append(args, "--limit", fmt.Sprintf("%d", p.Limit))
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &PlaybookStateListResult{Text: result}, nil
+}
+
+func (e *CLIExecutor) PlaybookStateShow(ctx context.Context, p PlaybookStateShowParams) (*PlaybookStateShowResult, error) {
+	args := []string{"playbook", "state", "show", p.RunID, "--no-color"}
+	if p.Node != "" {
+		args = append(args, "--node", p.Node)
+	}
+	result, err := runOwlCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return &PlaybookStateShowResult{Text: result}, nil
+}
+
 // getOwlPath finds the owl executable path
 func getOwlPath() string {
 	// First check if we're in the project directory
@@ -1402,17 +1499,7 @@ func (t *GeneratePlaybookTool) Execute(ctx context.Context, params map[string]in
 		return "", fmt.Errorf("missing requirement description")
 	}
 
-	if t.executor != nil {
-		p := GeneratePlaybookParams{
-			Requirement: requirement,
-		}
-		p.Vars, _ = params["vars"].(map[string]interface{})
-		result, err := t.executor.GeneratePlaybook(ctx, p)
-		if err == nil {
-			return result.Text, nil
-		}
-	}
-
+	// 本地生成（CLI 无 playbook generate 子命令，避免调用不存在的 owl 命令）
 	nodes := t.nodeMgr.List()
 	var hosts []string
 	for _, n := range nodes {
@@ -2263,93 +2350,6 @@ func (t *RunPlaybookTool) Execute(ctx context.Context, params map[string]interfa
 
 	for _, n := range nodes {
 		sb.WriteString(fmt.Sprintf("[%s] %s:%d | Status: %s\n", n.Name, n.Address, n.Port, n.Status))
-	}
-
-	return sb.String(), nil
-}
-
-type PlaybookInfoTool struct {
-	executor Executor
-}
-
-func NewPlaybookInfoTool(executor Executor) *PlaybookInfoTool {
-	return &PlaybookInfoTool{executor: executor}
-}
-
-func (t *PlaybookInfoTool) Name() string {
-	return "playbook_info"
-}
-
-func (t *PlaybookInfoTool) Description() string {
-	return "Get detailed information about a playbook."
-}
-
-func (t *PlaybookInfoTool) Parameters() string {
-	return `{
-		"type": "object",
-		"properties": {
-			"name": {
-				"type": "string",
-				"description": "Playbook name"
-			}
-		},
-		"required": ["name"]
-	}`
-}
-
-func (t *PlaybookInfoTool) Validate(params map[string]interface{}) error {
-	if name, ok := params["name"].(string); !ok || name == "" {
-		return fmt.Errorf("playbook name is required")
-	}
-	return nil
-}
-
-func (t *PlaybookInfoTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
-	name, _ := params["name"].(string)
-
-	if t.executor != nil {
-		result, err := t.executor.PlaybookInfo(ctx, PlaybookInfoParams{Name: name})
-		if err == nil {
-			return result.Text, nil
-		}
-	}
-
-	library := defaultPlaybookDir()
-	playbookPath := filepath.Join(library, name)
-	if !strings.HasSuffix(playbookPath, ".yaml") && !strings.HasSuffix(playbookPath, ".yml") {
-		if _, err := os.Stat(playbookPath + ".yaml"); err == nil {
-			playbookPath += ".yaml"
-		} else if _, err := os.Stat(playbookPath + ".yml"); err == nil {
-			playbookPath += ".yml"
-		}
-	}
-
-	content, err := os.ReadFile(playbookPath)
-	if err != nil {
-		return "", fmt.Errorf("playbook not found: %s", name)
-	}
-
-	var result struct {
-		Name  string                 `yaml:"name"`
-		Hosts []string               `yaml:"hosts"`
-		Vars  map[string]interface{} `yaml:"vars"`
-	}
-	if err := yaml.Unmarshal(content, &result); err != nil {
-		return "", fmt.Errorf("failed to parse playbook: %w", err)
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Playbook: %s\n", name))
-	sb.WriteString(strings.Repeat("-", 60))
-	sb.WriteString("\n")
-	if len(result.Hosts) > 0 {
-		sb.WriteString(fmt.Sprintf("Hosts: %s\n", strings.Join(result.Hosts, ", ")))
-	}
-	if len(result.Vars) > 0 {
-		sb.WriteString("\nVariables:\n")
-		for k, v := range result.Vars {
-			sb.WriteString(fmt.Sprintf("  %s: %v\n", k, v))
-		}
 	}
 
 	return sb.String(), nil

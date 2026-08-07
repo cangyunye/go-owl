@@ -563,3 +563,176 @@ func (e *WebExecutor) RunPlaybook(ctx context.Context, params ai2.RunPlaybookPar
 	}
 	return &ai2.RunPlaybookResult{Text: sb.String()}, nil
 }
+
+// ---------- node management: web 端 AI 只读，写操作在管理页面完成 ----------
+
+func (e *WebExecutor) AddNode(ctx context.Context, params ai2.NodeAddParams) (*ai2.NodeResult, error) {
+	return nil, fmt.Errorf("web 端 AI 不支持新增节点，请在节点管理页面操作")
+}
+
+func (e *WebExecutor) RemoveNode(ctx context.Context, params ai2.NodeRemoveParams) (*ai2.NodeResult, error) {
+	return nil, fmt.Errorf("web 端 AI 不支持删除节点，请在节点管理页面操作")
+}
+
+func (e *WebExecutor) UpdateNode(ctx context.Context, params ai2.NodeUpdateParams) (*ai2.NodeResult, error) {
+	return nil, fmt.Errorf("web 端 AI 不支持修改节点，请在节点管理页面操作")
+}
+
+func (e *WebExecutor) NodeStatus(ctx context.Context, params ai2.NodeStatusParams) (*ai2.NodeResult, error) {
+	rows, err := e.queryNodeRows(ctx, "", "", "")
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return &ai2.NodeResult{Text: "未找到节点"}, nil
+	}
+	var sb strings.Builder
+	online := 0
+	for _, r := range rows {
+		status := r.Status
+		if status == "" {
+			status = "unknown"
+		}
+		if status == "online" {
+			online++
+		}
+		sb.WriteString(fmt.Sprintf("%s\t%s:%d\t%s\n", r.Name, r.Address, r.Port, status))
+	}
+	return &ai2.NodeResult{Text: fmt.Sprintf("共 %d 个节点（%d 在线）：\n%s", len(rows), online, sb.String())}, nil
+}
+
+func (e *WebExecutor) NodePing(ctx context.Context, params ai2.NodePingParams) (*ai2.NodeResult, error) {
+	return nil, fmt.Errorf("web 端 AI 暂不支持 ping，请使用 CLI 或节点检查功能")
+}
+
+func (e *WebExecutor) NodeGroups(ctx context.Context, params ai2.NodeGroupsParams) (*ai2.NodeResult, error) {
+	if params.Action == "list" || params.Action == "show" {
+		rows, err := e.queryNodeRows(ctx, "", "", "")
+		if err != nil {
+			return nil, err
+		}
+		groups := map[string]int{}
+		for _, r := range rows {
+			for _, g := range r.Groups {
+				groups[g]++
+			}
+		}
+		var sb strings.Builder
+		for g, c := range groups {
+			sb.WriteString(fmt.Sprintf("%s: %d 节点\n", g, c))
+		}
+		return &ai2.NodeResult{Text: sb.String()}, nil
+	}
+	return nil, fmt.Errorf("web 端 AI 不支持修改分组，请在节点管理页面操作")
+}
+
+func (e *WebExecutor) NodeLabels(ctx context.Context, params ai2.NodeLabelsParams) (*ai2.NodeResult, error) {
+	if params.Action == "show" {
+		rows, err := e.queryNodeRows(ctx, "", "", "")
+		if err != nil {
+			return nil, err
+		}
+		var sb strings.Builder
+		for _, r := range rows {
+			if params.Node != "" && r.Name != params.Node && r.ID != params.Node {
+				continue
+			}
+			sb.WriteString(fmt.Sprintf("%s: %v\n", r.Name, r.Labels))
+		}
+		return &ai2.NodeResult{Text: sb.String()}, nil
+	}
+	return nil, fmt.Errorf("web 端 AI 不支持修改标签，请在节点管理页面操作")
+}
+
+func (e *WebExecutor) NodeImport(ctx context.Context, params ai2.NodeImportParams) (*ai2.NodeResult, error) {
+	return nil, fmt.Errorf("web 端 AI 不支持导入节点，请在节点管理页面操作")
+}
+
+func (e *WebExecutor) NodeExport(ctx context.Context, params ai2.NodeExportParams) (*ai2.NodeResult, error) {
+	return nil, fmt.Errorf("web 端 AI 不支持导出节点，请使用 CLI 命令 owl node export")
+}
+
+// ---------- file / playbook tools（web 端以存储与页面为准，部分操作引导至页面） ----------
+
+func (e *WebExecutor) FileDownload(ctx context.Context, params ai2.FileDownloadParams) (*ai2.FileDownloadResult, error) {
+	return nil, fmt.Errorf("web 端 AI 不支持文件下载到服务器，请使用 CLI 命令 owl file download")
+}
+
+func (e *WebExecutor) PlaybookTemplateList(ctx context.Context) (*ai2.PlaybookTemplateListResult, error) {
+	rows, err := e.db.QueryContext(ctx, "SELECT name FROM playbooks ORDER BY name")
+	if err != nil {
+		return nil, fmt.Errorf("list templates: %w", err)
+	}
+	defer rows.Close()
+	var sb strings.Builder
+	for rows.Next() {
+		var name string
+		rows.Scan(&name)
+		sb.WriteString(name + "\n")
+	}
+	return &ai2.PlaybookTemplateListResult{Text: sb.String()}, nil
+}
+
+func (e *WebExecutor) PlaybookTemplateInfo(ctx context.Context, params ai2.PlaybookTemplateInfoParams) (*ai2.PlaybookTemplateInfoResult, error) {
+	rows, err := e.db.QueryContext(ctx, "SELECT name, description FROM playbooks WHERE name = ?", params.Name)
+	if err != nil {
+		return nil, fmt.Errorf("query template: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return &ai2.PlaybookTemplateInfoResult{Text: fmt.Sprintf("模板不存在: %s", params.Name)}, nil
+	}
+	var name, desc string
+	rows.Scan(&name, &desc)
+	return &ai2.PlaybookTemplateInfoResult{Text: fmt.Sprintf("模板: %s\n描述: %s", name, desc)}, nil
+}
+
+func (e *WebExecutor) PlaybookTemplateExport(ctx context.Context, params ai2.PlaybookTemplateExportParams) (*ai2.PlaybookTemplateExportResult, error) {
+	return nil, fmt.Errorf("web 端 AI 不支持导出模板文件，请使用 CLI 命令 owl playbook template export")
+}
+
+func (e *WebExecutor) PlaybookScaffold(ctx context.Context, params ai2.PlaybookScaffoldParams) (*ai2.PlaybookScaffoldResult, error) {
+	return nil, fmt.Errorf("web 端 AI 暂不支持模板骨架生成，请使用 CLI 命令 owl playbook scaffold")
+}
+
+func (e *WebExecutor) PlaybookStateList(ctx context.Context, params ai2.PlaybookStateListParams) (*ai2.PlaybookStateListResult, error) {
+	rows, err := e.db.QueryContext(ctx, "SELECT id, playbook_name, status, created_at FROM playbook_runs ORDER BY created_at DESC LIMIT ?", maxInt(params.Limit, 20))
+	if err != nil {
+		return nil, fmt.Errorf("list runs: %w", err)
+	}
+	defer rows.Close()
+	var sb strings.Builder
+	for rows.Next() {
+		var id, name, status, createdAt string
+		rows.Scan(&id, &name, &status, &createdAt)
+		sb.WriteString(fmt.Sprintf("%s\t%s\t%s\t%s\n", id, name, status, createdAt))
+	}
+	return &ai2.PlaybookStateListResult{Text: sb.String()}, nil
+}
+
+func (e *WebExecutor) PlaybookStateShow(ctx context.Context, params ai2.PlaybookStateShowParams) (*ai2.PlaybookStateShowResult, error) {
+	run, err := e.playbookRunStore.Get(ctx, params.RunID)
+	if err != nil {
+		return &ai2.PlaybookStateShowResult{Text: fmt.Sprintf("运行记录不存在: %s", params.RunID)}, nil
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("运行: %s 状态: %s\n", run.ID, run.Status))
+	for _, step := range run.Results {
+		mark := "✓"
+		if step.ExitCode != 0 {
+			mark = "✗"
+		}
+		sb.WriteString(fmt.Sprintf("%s [%s] %s (exit=%d)\n", mark, step.NodeID, step.TaskName, step.ExitCode))
+	}
+	return &ai2.PlaybookStateShowResult{Text: sb.String()}, nil
+}
+
+func maxInt(a, b int) int {
+	if a <= 0 {
+		return b
+	}
+	if a > b {
+		return a
+	}
+	return b
+}

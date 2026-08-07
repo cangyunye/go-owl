@@ -94,9 +94,60 @@ type Executor interface {
 	NodeLabels(ctx context.Context, params NodeLabelsParams) (*NodeResult, error)
 	NodeImport(ctx context.Context, params NodeImportParams) (*NodeResult, error)
 	NodeExport(ctx context.Context, params NodeExportParams) (*NodeResult, error)
+	FileDownload(ctx context.Context, params FileDownloadParams) (*FileDownloadResult, error)
+	PlaybookTemplateList(ctx context.Context) (*PlaybookTemplateListResult, error)
+	PlaybookTemplateInfo(ctx context.Context, params PlaybookTemplateInfoParams) (*PlaybookTemplateInfoResult, error)
+	PlaybookTemplateExport(ctx context.Context, params PlaybookTemplateExportParams) (*PlaybookTemplateExportResult, error)
+	PlaybookScaffold(ctx context.Context, params PlaybookScaffoldParams) (*PlaybookScaffoldResult, error)
+	PlaybookStateList(ctx context.Context, params PlaybookStateListParams) (*PlaybookStateListResult, error)
+	PlaybookStateShow(ctx context.Context, params PlaybookStateShowParams) (*PlaybookStateShowResult, error)
 }
 
 type NodeResult struct{ Text string }
+
+type (
+	FileDownloadParams struct {
+		RemoteFile string   `json:"remote_file"`
+		Nodes      []string `json:"nodes"`
+		Group      string   `json:"group"`
+		Label      string   `json:"label"`
+		Dest       string   `json:"dest"`
+		Subdir     bool     `json:"subdir"`
+		Resume     bool     `json:"resume"`
+	}
+
+	PlaybookTemplateInfoParams struct {
+		Name string `json:"name"`
+	}
+
+	PlaybookTemplateExportParams struct {
+		Name string `json:"name"`
+		To   string `json:"to"`
+	}
+
+	PlaybookScaffoldParams struct {
+		Type string `json:"type"`
+	}
+
+	PlaybookStateListParams struct {
+		Playbook string `json:"playbook"`
+		Status   string `json:"status"`
+		Limit    int    `json:"limit"`
+	}
+
+	PlaybookStateShowParams struct {
+		RunID string `json:"run_id"`
+		Node  string `json:"node"`
+	}
+
+	FileDownloadResult              struct{ Text string }
+	PlaybookTemplateListResult      struct{ Text string }
+	PlaybookTemplateInfoResult      struct{ Text string }
+	PlaybookTemplateExportResult    struct{ Text string }
+	PlaybookScaffoldResult          struct{ Text string }
+	PlaybookStateListResult         struct{ Text string }
+	PlaybookStateShowResult         struct{ Text string }
+)
 
 type PlaybookInfoParams struct {
 	Name string `json:"name"`
