@@ -1581,20 +1581,21 @@ tr:hover td { background: var(--surface-2); }
    COMPONENTS — Exec full-page layout (new design)
    ================================================================ */
 .exec-layout {
-  display: grid;
-  grid-template-columns: 1fr 240px;
+  display: flex;
+  align-items: stretch;
   gap: 14px;
   flex: 1;
   min-width: 0;
 }
-.exec-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.exec-sidebar { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.exec-main { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.exec-sidebar { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
 .cmd-editor {
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
+  flex-shrink: 0;
 }
 .cmd-editor .editor-header {
   display: flex;
@@ -1629,6 +1630,10 @@ tr:hover td { background: var(--surface-2); }
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.7;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .output-terminal .term-header {
   display: flex;
@@ -1648,8 +1653,8 @@ tr:hover td { background: var(--surface-2); }
 .output-terminal .term-header .term-title { font-size: 11px; color: var(--muted); margin-left: 8px; }
 .output-terminal .term-body {
   padding: 14px;
+  flex: 1;
   min-height: 180px;
-  max-height: 320px;
   overflow-y: auto;
 }
 .output-terminal .term-body .line { white-space: pre-wrap; word-break: break-all; }
@@ -1662,6 +1667,8 @@ tr:hover td { background: var(--surface-2); }
   animation: blink 1s step-end infinite;
   color: var(--fg);
 }
+
+#exec-log-downloads { flex-shrink: 0; }
 
 .node-selector {
   display: flex;
@@ -2338,7 +2345,8 @@ tr:hover td { background: var(--surface-2); }
   .panel { display: none; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .chart-row { grid-template-columns: 1fr; }
-  .exec-layout { grid-template-columns: 1fr; }
+  .exec-layout { flex-direction: column; }
+  .exec-layout .exec-sidebar { width: auto; }
   .playbook-grid { grid-template-columns: 1fr; }
   .quick-grid { grid-template-columns: repeat(2, 1fr); }
 }
