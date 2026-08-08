@@ -23,6 +23,7 @@ func TestAICmdExists(t *testing.T) {
 
 	testutil.AssertCommandExists(t, configCmd, "init")
 	testutil.AssertCommandExists(t, configCmd, "show")
+	testutil.AssertCommandExists(t, configCmd, "setup")
 }
 
 func TestAIFlags(t *testing.T) {
@@ -76,6 +77,7 @@ func TestAIConfigSubcommands(t *testing.T) {
 
 	testutil.AssertCommandExists(t, configCmd, "init")
 	testutil.AssertCommandExists(t, configCmd, "show")
+	testutil.AssertCommandExists(t, configCmd, "setup")
 }
 
 func TestAIConfigInitCmd(t *testing.T) {
@@ -83,6 +85,14 @@ func TestAIConfigInitCmd(t *testing.T) {
 
 	if cmd.Use != "init" {
 		t.Errorf("expected Use 'init', got '%s'", cmd.Use)
+	}
+}
+
+func TestAIConfigSetupCmd(t *testing.T) {
+	cmd := ai.NewConfigSetupCmd()
+
+	if cmd.Use != "setup" {
+		t.Errorf("expected Use 'setup', got '%s'", cmd.Use)
 	}
 }
 
