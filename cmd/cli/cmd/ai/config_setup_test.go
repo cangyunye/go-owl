@@ -31,8 +31,8 @@ func TestConfigSetup_SelectByNumber(t *testing.T) {
 	if cfg.AI.Provider != "qwen" {
 		t.Errorf("expected provider 'qwen', got '%s'", cfg.AI.Provider)
 	}
-	if cfg.AI.Model != "qwen-turbo" {
-		t.Errorf("expected default model 'qwen-turbo', got '%s'", cfg.AI.Model)
+	if cfg.AI.Model != "qwen-max" {
+		t.Errorf("expected default model 'qwen-max', got '%s'", cfg.AI.Model)
 	}
 	if cfg.AI.APIKey != "sk-test-123" {
 		t.Errorf("expected api key 'sk-test-123', got '%s'", cfg.AI.APIKey)
@@ -52,8 +52,8 @@ func TestConfigSetup_SelectByName(t *testing.T) {
 	if cfg.AI.Provider != "deepseek" {
 		t.Errorf("expected provider 'deepseek', got '%s'", cfg.AI.Provider)
 	}
-	if cfg.AI.Model != "deepseek-chat" {
-		t.Errorf("expected default model 'deepseek-chat', got '%s'", cfg.AI.Model)
+	if cfg.AI.Model != "deepseek-v4-flash" {
+		t.Errorf("expected default model 'deepseek-v4-flash', got '%s'", cfg.AI.Model)
 	}
 	if cfg.AI.BaseURL != "https://api.deepseek.com" {
 		t.Errorf("expected default deepseek base url, got '%s'", cfg.AI.BaseURL)

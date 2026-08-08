@@ -19,15 +19,15 @@ import (
 var providerList = []string{"openai", "anthropic", "qwen", "dashscope", "deepseek"}
 
 // providerDefaults 返回供应商对应的默认 model 与 base URL，
-// 与 internal/ai.CreateLLMClient 的默认值保持一致。
+// 对齐前端 settings.js（owl-serve）的正式默认模型。
 func providerDefaults(provider string) (model, baseURL string) {
 	switch provider {
 	case "anthropic":
-		return "claude-3-opus-20240229", "https://api.anthropic.com/v1"
+		return "claude-sonnet-4-20250514", "https://api.anthropic.com/v1"
 	case "qwen", "dashscope":
-		return "qwen-turbo", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+		return "qwen-max", "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	case "deepseek":
-		return "deepseek-chat", "https://api.deepseek.com"
+		return "deepseek-v4-flash", "https://api.deepseek.com"
 	default:
 		return "gpt-4o", "https://api.openai.com/v1"
 	}
