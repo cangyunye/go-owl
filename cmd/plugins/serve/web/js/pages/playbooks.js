@@ -473,7 +473,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         const checked = runSel.nodes.has(n.id);
         const namePart = n.name && n.name !== n.id ? ` <span style="color:var(--muted)">(${esc(n.name)})</span>` : '';
         return `<label style="display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;font-size:12px">
-          <input type="checkbox" data-node="${esc(n.id)}" ${checked ? 'checked' : ''}>
+          <input type="checkbox" data-node="${esc(n.id)}" ${checked ? 'checked' : ''} style="width:13px;height:13px;flex:0 0 auto;cursor:pointer;accent-color:var(--accent)">
           <span>${esc(n.id)}</span>${namePart}
           <span style="margin-left:auto;color:var(--muted)">${esc(n.address || '')}</span>
         </label>`;
@@ -515,7 +515,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     }
     grid.innerHTML = groups.map(g => `
       <label style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:var(--radius);padding:3px 8px;cursor:pointer;font-size:12px">
-        <input type="checkbox" data-group="${esc(g)}">
+        <input type="checkbox" data-group="${esc(g)}" style="width:13px;height:13px;flex:0 0 auto;cursor:pointer;accent-color:var(--accent)">
         <span>${esc(g)}</span>
         <span style="color:var(--muted)">(${runGroupCounts[g] || 0})</span>
       </label>`).join('');
@@ -534,7 +534,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     }
     grid.innerHTML = tags.map(t => `
       <label style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:var(--radius);padding:3px 8px;cursor:pointer;font-size:12px">
-        <input type="checkbox" data-tag="${esc(t)}">
+        <input type="checkbox" data-tag="${esc(t)}" style="width:13px;height:13px;flex:0 0 auto;cursor:pointer;accent-color:var(--accent)">
         <span>${esc(t)}</span>
       </label>`).join('');
     grid.querySelectorAll('input[data-tag]').forEach(inp => {
