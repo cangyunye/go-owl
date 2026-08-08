@@ -311,7 +311,12 @@ func (s *Server) setupRoutes() {
 		sub, _ := fs.Sub(webFS, "web")
 		staticFS = sub
 	}
-	s.Router.StaticFS("/static", http.FS(staticFS))
+	static := s.Router.Group("/static")
+	static.Use(func(c *gin.Context) {
+		c.Header("Cache-Control", "no-cache")
+		c.Next()
+	})
+	static.StaticFS("/", http.FS(staticFS))
 
 	// SPA catch-all: serve index.html for non-API routes
 	indexBytes, _ := fs.ReadFile(staticFS, "index.html")

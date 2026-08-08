@@ -118,6 +118,264 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     });
   }
 
+  // Create playbook wizard state (top-level so renderTable can reference showEditModal)
+  let cpState = {
+    step: 1,
+    totalSteps: 5,
+    vars: [],
+    tasks: [],
+  };
+  let cpTaskCounter = 0;
+
+  function resetCpModal() {
+    cpState = { step: 1, totalSteps: 5, vars: [], tasks: [] };
+    cpTaskCounter = 0;
+    document.getElementById('cp-name').value = '';
+    document.getElementById('cp-desc').value = '';
+    document.getElementById('cp-version').value = '1.0';
+    document.getElementById('cp-mode').value = '';
+    document.getElementById('cp-groups').value = '';
+    document.getElementById('cp-tags').value = '';
+    document.getElementById('cp-skip-tags').value = '';
+    document.getElementById('cp-vars-list').innerHTML = '';
+    document.getElementById('cp-skip-vars').checked = false;
+    document.getElementById('cp-tasks-list').innerHTML = '<p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
+    document.getElementById('cp-error').textContent = '';
+    showCpStep(1);
+  }
+
+  async function showEditModal(id) {
+    let data;
+    try {
+      data = await api.playbookEdit(id);
+    } catch (e) { alert('加载剧本失败: ' + e.message); console.error(e); return; }
+
+    try {
+      document.getElementById('cp-title').textContent = '✏️ 编辑剧本: ' + (data.name || id);
+      resetCpModal();
+      document.getElementById('cp-name').value = data.name || '';
+      document.getElementById('cp-desc').value = data.description || '';
+      document.getElementById('cp-version').value = data.version || '1.0';
+      document.getElementById('cp-mode').value = data.execution_mode || '';
+      document.getElementById('cp-groups').value = (data.default_groups || []).join(',');
+      document.getElementById('cp-tags').value = (data.default_tags || []).join(',');
+      document.getElementById('cp-skip-tags').value = (data.default_skip_tags || []).join(',');
+      document.getElementById('cp-skip-vars').checked = !data.vars || Object.keys(data.vars).length === 0;
+
+      cpState.vars = Object.entries(data.vars || {}).map(([k, v]) => ({ key: k, value: String(v) }));
+      cpState.tasks = (data.tasks || []).map(t => ({ name: t.name, action: t.action, args: t.args || {} }));
+      cpState.preTasks = data.pre_tasks || [];
+      cpState.postTasks = data.post_tasks || [];
+      cpTaskCounter = cpState.tasks.length;
+      renderCpVars();
+      renderCpTasks();
+
+      document.getElementById('cp-title').textContent = '✏️ 编辑剧本: ' + (data.name || '');
+      document.getElementById('create-playbook-modal').classList.add('open');
+    } catch (e) {
+      alert('打开编辑窗口失败: ' + e.message);
+      console.error(e);
+    }
+  }
+
+  function renderCpVars() {
+    const list = document.getElementById('cp-vars-list');
+    list.innerHTML = '';
+    cpState.vars.forEach((v, idx) => {
+      const row = document.createElement('div');
+      row.className = 'form-row';
+      row.style.cssText = 'display:flex;gap:8px;align-items:end';
+      const keyInp = document.createElement('input');
+      keyInp.className = 'cp-var-key';
+      keyInp.placeholder = '变量名';
+      keyInp.style.width = '100%';
+      keyInp.value = v.key;
+      keyInp.addEventListener('input', () => { cpState.vars[idx].key = keyInp.value; });
+      const valInp = document.createElement('input');
+      valInp.className = 'cp-var-value';
+      valInp.placeholder = '值';
+      valInp.style.width = '100%';
+      valInp.value = v.value;
+      valInp.addEventListener('input', () => { cpState.vars[idx].value = valInp.value; });
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '删除';
+      delBtn.style.cssText = 'background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:4px 8px;font-size:12px';
+      delBtn.addEventListener('click', () => {
+        const removeIdx = Array.from(list.children).indexOf(row);
+        cpState.vars.splice(removeIdx, 1);
+        row.remove();
+      });
+      const keyWrap = document.createElement('div');
+      keyWrap.style.flex = '1';
+      keyWrap.appendChild(keyInp);
+      const valWrap = document.createElement('div');
+      valWrap.style.flex = '1';
+      valWrap.appendChild(valInp);
+      row.append(keyWrap, valWrap, delBtn);
+      list.appendChild(row);
+    });
+  }
+
+  function showCpStep(n) {
+    cpState.step = n;
+    document.querySelectorAll('.create-pb-page').forEach(el => el.style.display = 'none');
+    document.querySelector(`.create-pb-page[data-page="${n}"]`).style.display = 'block';
+    document.querySelectorAll('.step-dot').forEach(el => el.classList.toggle('active', parseInt(el.dataset.step) <= n));
+    document.getElementById('cp-prev-btn').style.display = n > 1 ? '' : 'none';
+    document.getElementById('cp-next-btn').style.display = n < cpState.totalSteps ? '' : 'none';
+    document.getElementById('cp-save-btn').style.display = n === cpState.totalSteps ? '' : 'none';
+    if (n === cpState.totalSteps) buildCpSummary();
+    document.getElementById('cp-error').textContent = '';
+  }
+
+  function getActionArgs(action) {
+    const templates = {
+      command: { cmd: '<命令内容>' },
+      script: { script: '<脚本路径>', dest: '/tmp/', args: '' },
+      upload: { src: '<本地路径>', dest: '<远程路径>', overwrite: true },
+      download: { src: '<远程路径>', dest: '<本地路径>', subdir: true },
+      include: { playbook: '<剧本路径>' },
+    };
+    return JSON.parse(JSON.stringify(templates[action] || {}));
+  }
+
+  function renderCpTasks() {
+    const list = document.getElementById('cp-tasks-list');
+    list.innerHTML = '';
+    if (cpState.tasks.length === 0) {
+      list.innerHTML = '<p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
+      return;
+    }
+    const actions = ['command', 'script', 'upload', 'download', 'include'];
+    cpState.tasks.forEach((t, i) => {
+      const card = document.createElement('div');
+      card.style.cssText = 'border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;padding:8px';
+
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px';
+      const nameInput = document.createElement('input');
+      nameInput.className = 'cp-task-name';
+      nameInput.placeholder = '任务名称';
+      nameInput.style.flex = '1';
+      nameInput.value = t.name;
+      nameInput.addEventListener('input', () => { cpState.tasks[i].name = nameInput.value; });
+      const actionSel = document.createElement('select');
+      actionSel.style.width = '130px';
+      for (const a of actions) {
+        const opt = document.createElement('option');
+        opt.value = a;
+        opt.textContent = a;
+        if (t.action === a) opt.selected = true;
+        actionSel.appendChild(opt);
+      }
+      actionSel.addEventListener('change', () => { cpState.tasks[i].action = actionSel.value; });
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '删除';
+      removeBtn.style.cssText = 'background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:11px;white-space:nowrap';
+      removeBtn.addEventListener('click', () => { cpState.tasks.splice(i, 1); renderCpTasks(); });
+      head.append(nameInput, actionSel, removeBtn);
+
+      const argsBox = document.createElement('div');
+      argsBox.className = 'cp-task-args';
+      argsBox.style.cssText = 'display:flex;flex-direction:column;gap:4px';
+      renderArgRowsInto(argsBox, i, t.args);
+
+      const addArgBtn = document.createElement('button');
+      addArgBtn.textContent = '+ 添加参数';
+      addArgBtn.style.cssText = 'background:none;border:1px dashed var(--border);color:var(--muted);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:11px;margin-top:6px';
+      addArgBtn.addEventListener('click', () => { cpState.tasks[i].args[''] = ''; renderCpTasks(); });
+
+      card.append(head, argsBox, addArgBtn);
+      list.appendChild(card);
+    });
+  }
+
+  function renderArgRowsInto(box, idx, args) {
+    for (const [k, v] of Object.entries(args)) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:6px;align-items:center';
+      const keyInp = document.createElement('input');
+      keyInp.className = 'cp-arg-key';
+      keyInp.placeholder = '参数名';
+      keyInp.style.width = '140px';
+      keyInp.value = k;
+      keyInp.addEventListener('change', () => {
+        if (keyInp.value === k) return;
+        const task = cpState.tasks[idx];
+        renameArg(task.args, k, keyInp.value);
+        renderCpTasks();
+      });
+      const valInp = document.createElement('input');
+      valInp.className = 'cp-arg-value';
+      valInp.placeholder = '值';
+      valInp.style.flex = '1';
+      valInp.value = typeof v === 'string' ? v : JSON.stringify(v);
+      valInp.addEventListener('input', () => { cpState.tasks[idx].args[k] = valInp.value; });
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '×';
+      delBtn.title = '删除参数';
+      delBtn.style.cssText = 'background:none;border:none;color:var(--danger);cursor:pointer;font-size:13px';
+      delBtn.addEventListener('click', () => { delete cpState.tasks[idx].args[k]; renderCpTasks(); });
+      row.append(keyInp, valInp, delBtn);
+      box.appendChild(row);
+    }
+  }
+
+  function renameArg(args, oldKey, newKey) {
+    if (oldKey === newKey) return;
+    if (newKey === '') { delete args[oldKey]; return; }
+    if (oldKey in args) { args[newKey] = args[oldKey]; delete args[oldKey]; }
+  }
+
+  // 字符串值推断为 bool/number（保留类型语义，如 overwrite: true）
+  function coerceArgValues(args) {
+    const out = {};
+    for (const [k, v] of Object.entries(args)) {
+      let val = v;
+      if (typeof val === 'string') {
+        const t = val.trim();
+        if (t === 'true') val = true;
+        else if (t === 'false') val = false;
+        else if (t !== '' && !isNaN(Number(t))) val = Number(t);
+      }
+      if (k.trim() !== '') out[k.trim()] = val;
+    }
+    return out;
+  }
+
+  function buildCpSummary() {
+    const name = document.getElementById('cp-name').value.trim();
+    const desc = document.getElementById('cp-desc').value.trim();
+    const version = document.getElementById('cp-version').value.trim() || '1.0';
+    const mode = document.getElementById('cp-mode').value || 'fail_continue';
+
+    const html = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><strong>名称:</strong> ${esc(name)}</div>
+        <div><strong>版本:</strong> ${esc(version)}</div>
+        <div><strong>描述:</strong> ${esc(desc || '-')}</div>
+        <div><strong>执行模式:</strong> ${mode}</div>
+      </div>
+    `;
+    document.getElementById('cp-summary').innerHTML = html;
+
+    // Build preview YAML (for visual only — the actual YAML is generated server-side)
+    const lines = [`name: ${name}`];
+    if (desc) lines.push(`description: ${desc}`);
+    lines.push(`version: "${version}"`, 'hosts: []');
+    if (mode) lines.push(`execution_mode: ${mode}`);
+    lines.push('pre_tasks: []', 'tasks:');
+    for (const t of cpState.tasks) {
+      lines.push(`  - name: ${t.name}`, `    action: ${t.action}`, '    args:');
+      for (const [k, v] of Object.entries(t.args)) {
+        const val = typeof v === 'string' ? v : JSON.stringify(v);
+        lines.push(`      ${k}: ${val}`);
+      }
+    }
+    lines.push('post_tasks: []');
+    document.getElementById('cp-preview').textContent = lines.join('\n');
+  }
+
   async function loadRunStagingFiles() {
     const listEl = document.getElementById('run-staging-files');
     const dirEl = document.getElementById('run-staging-dir');
@@ -570,84 +828,6 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       showRunModal(id);
     });
 
-    // Create playbook wizard state
-    let cpState = {
-      step: 1,
-      totalSteps: 5,
-      vars: [],
-      tasks: [],
-    };
-    let cpTaskCounter = 0;
-
-    function resetCpModal() {
-      cpState = { step: 1, totalSteps: 5, vars: [], tasks: [] };
-      cpTaskCounter = 0;
-      document.getElementById('cp-name').value = '';
-      document.getElementById('cp-desc').value = '';
-      document.getElementById('cp-version').value = '1.0';
-      document.getElementById('cp-mode').value = '';
-      document.getElementById('cp-groups').value = '';
-      document.getElementById('cp-tags').value = '';
-      document.getElementById('cp-skip-tags').value = '';
-      document.getElementById('cp-vars-list').innerHTML = '';
-      document.getElementById('cp-skip-vars').checked = false;
-      document.getElementById('cp-tasks-list').innerHTML = '<p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
-      document.getElementById('cp-error').textContent = '';
-      showCpStep(1);
-    }
-
-    function renderCpVars() {
-      const list = document.getElementById('cp-vars-list');
-      list.innerHTML = '';
-      cpState.vars.forEach((v, idx) => {
-        const row = document.createElement('div');
-        row.className = 'form-row';
-        row.style.cssText = 'display:flex;gap:8px;align-items:end';
-        row.innerHTML = `
-          <div style="flex:1"><input class="cp-var-key" data-idx="${idx}" placeholder="变量名" value="${esc(v.key)}" style="width:100%"></div>
-          <div style="flex:1"><input class="cp-var-value" data-idx="${idx}" placeholder="值" value="${esc(v.value)}" style="width:100%"></div>
-          <button class="cp-var-remove" data-idx="${idx}" style="background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:4px 8px;font-size:12px">删除</button>
-        `;
-        list.appendChild(row);
-        row.querySelector('.cp-var-key').addEventListener('input', (e) => { cpState.vars[idx].key = e.target.value; });
-        row.querySelector('.cp-var-value').addEventListener('input', (e) => { cpState.vars[idx].value = e.target.value; });
-        row.querySelector('.cp-var-remove').addEventListener('click', (e) => {
-          const removeIdx = Array.from(list.children).indexOf(e.currentTarget.parentElement);
-          cpState.vars.splice(removeIdx, 1);
-          e.currentTarget.parentElement.remove();
-        });
-      });
-    }
-
-    async function showEditModal(id) {
-      let data;
-      try {
-        data = await api.playbookEdit(id);
-      } catch (e) { alert('加载剧本失败: ' + e.message); return; }
-
-      document.getElementById('cp-title').textContent = '✏️ 编辑剧本: ' + (data.name || id);
-      resetCpModal();
-      document.getElementById('cp-name').value = data.name || '';
-      document.getElementById('cp-desc').value = data.description || '';
-      document.getElementById('cp-version').value = data.version || '1.0';
-      document.getElementById('cp-mode').value = data.execution_mode || '';
-      document.getElementById('cp-groups').value = (data.default_groups || []).join(',');
-      document.getElementById('cp-tags').value = (data.default_tags || []).join(',');
-      document.getElementById('cp-skip-tags').value = (data.default_skip_tags || []).join(',');
-      document.getElementById('cp-skip-vars').checked = !data.vars || Object.keys(data.vars).length === 0;
-
-      cpState.vars = Object.entries(data.vars || {}).map(([k, v]) => ({ key: k, value: String(v) }));
-      cpState.tasks = (data.tasks || []).map(t => ({ name: t.name, action: t.action, args: t.args || {} }));
-      cpState.preTasks = data.pre_tasks || [];
-      cpState.postTasks = data.post_tasks || [];
-      cpTaskCounter = cpState.tasks.length;
-      renderCpVars();
-      renderCpTasks();
-
-      document.getElementById('cp-title').textContent = '✏️ 编辑剧本: ' + (data.name || '');
-      document.getElementById('create-playbook-modal').classList.add('open');
-    }
-
     document.getElementById('add-playbook-btn').addEventListener('click', () => {
       resetCpModal();
       document.getElementById('cp-title').textContent = '📝 创建剧本';
@@ -660,18 +840,6 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     document.getElementById('create-playbook-modal').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) document.getElementById('create-playbook-modal').classList.remove('open');
     });
-
-    function showCpStep(n) {
-      cpState.step = n;
-      document.querySelectorAll('.create-pb-page').forEach(el => el.style.display = 'none');
-      document.querySelector(`.create-pb-page[data-page="${n}"]`).style.display = 'block';
-      document.querySelectorAll('.step-dot').forEach(el => el.classList.toggle('active', parseInt(el.dataset.step) <= n));
-      document.getElementById('cp-prev-btn').style.display = n > 1 ? '' : 'none';
-      document.getElementById('cp-next-btn').style.display = n < cpState.totalSteps ? '' : 'none';
-      document.getElementById('cp-save-btn').style.display = n === cpState.totalSteps ? '' : 'none';
-      if (n === cpState.totalSteps) buildCpSummary();
-      document.getElementById('cp-error').textContent = '';
-    }
 
     document.getElementById('cp-prev-btn').addEventListener('click', () => {
       if (cpState.step > 1) showCpStep(cpState.step - 1);
@@ -702,146 +870,6 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       cpState.tasks.push(task);
       renderCpTasks();
     });
-
-    function getActionArgs(action) {
-      const templates = {
-        command: { cmd: '<命令内容>' },
-        script: { script: '<脚本路径>', dest: '/tmp/', args: '' },
-        upload: { src: '<本地路径>', dest: '<远程路径>', overwrite: true },
-        download: { src: '<远程路径>', dest: '<本地路径>', subdir: true },
-        include: { playbook: '<剧本路径>' },
-      };
-      return JSON.parse(JSON.stringify(templates[action] || {}));
-    }
-
-    function renderCpTasks() {
-      const list = document.getElementById('cp-tasks-list');
-      if (cpState.tasks.length === 0) {
-        list.innerHTML = '<p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
-        return;
-      }
-      const actions = ['command', 'script', 'upload', 'download', 'include'];
-      list.innerHTML = cpState.tasks.map((t, i) => `
-        <div class="cp-task-card" data-idx="${i}" style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;padding:8px">
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-            <input class="cp-task-name" data-idx="${i}" value="${esc(t.name)}" placeholder="任务名称" style="flex:1">
-            <select class="cp-task-action" data-idx="${i}" style="width:130px">
-              ${actions.map(a => `<option value="${a}" ${t.action === a ? 'selected' : ''}>${a}</option>`).join('')}
-            </select>
-            <button class="cp-task-remove" data-idx="${i}" style="background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:11px;white-space:nowrap">删除</button>
-          </div>
-          <div class="cp-task-args" data-idx="${i}" style="display:flex;flex-direction:column;gap:4px">
-            ${renderArgRows(i, t.args)}
-          </div>
-          <button class="cp-arg-add" data-idx="${i}" style="background:none;border:1px dashed var(--border);color:var(--muted);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:11px;margin-top:6px">+ 添加参数</button>
-        </div>`).join('');
-
-      document.querySelectorAll('.cp-task-name').forEach(inp => {
-        inp.addEventListener('input', () => { cpState.tasks[parseInt(inp.dataset.idx)].name = inp.value; });
-      });
-      document.querySelectorAll('.cp-task-action').forEach(sel => {
-        sel.addEventListener('change', () => { cpState.tasks[parseInt(sel.dataset.idx)].action = sel.value; });
-      });
-      document.querySelectorAll('.cp-task-remove').forEach(btn => {
-        btn.addEventListener('click', () => {
-          cpState.tasks.splice(parseInt(btn.dataset.idx), 1);
-          renderCpTasks();
-        });
-      });
-      document.querySelectorAll('.cp-arg-add').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const task = cpState.tasks[parseInt(btn.dataset.idx)];
-          task.args[''] = '';
-          renderCpTasks();
-        });
-      });
-      document.querySelectorAll('.cp-arg-key').forEach(inp => {
-        inp.addEventListener('change', () => {
-          const task = cpState.tasks[parseInt(inp.dataset.idx)];
-          if (inp.value !== inp.dataset.key) {
-            renameArg(task.args, inp.dataset.key, inp.value);
-            renderCpTasks();
-          }
-        });
-      });
-      document.querySelectorAll('.cp-arg-value').forEach(inp => {
-        inp.addEventListener('input', () => {
-          cpState.tasks[parseInt(inp.dataset.idx)].args[inp.dataset.key] = inp.value;
-        });
-      });
-      document.querySelectorAll('.cp-arg-remove').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const task = cpState.tasks[parseInt(btn.dataset.idx)];
-          delete task.args[btn.dataset.key];
-          renderCpTasks();
-        });
-      });
-    }
-
-    function renderArgRows(idx, args) {
-      return Object.entries(args).map(([k, v]) => `
-        <div style="display:flex;gap:6px;align-items:center">
-          <input class="cp-arg-key" data-idx="${idx}" data-key="${esc(k)}" value="${esc(k)}" placeholder="参数名" style="width:140px">
-          <input class="cp-arg-value" data-idx="${idx}" data-key="${esc(k)}" value="${esc(typeof v === 'string' ? v : JSON.stringify(v))}" placeholder="值" style="flex:1">
-          <button class="cp-arg-remove" data-idx="${idx}" data-key="${esc(k)}" title="删除参数" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:13px">&times;</button>
-        </div>`).join('');
-    }
-
-    function renameArg(args, oldKey, newKey) {
-      if (oldKey === newKey) return;
-      if (newKey === '') { delete args[oldKey]; return; }
-      if (oldKey in args) { args[newKey] = args[oldKey]; delete args[oldKey]; }
-    }
-
-    // 字符串值推断为 bool/number（保留类型语义，如 overwrite: true）
-    function coerceArgValues(args) {
-      const out = {};
-      for (const [k, v] of Object.entries(args)) {
-        let val = v;
-        if (typeof val === 'string') {
-          const t = val.trim();
-          if (t === 'true') val = true;
-          else if (t === 'false') val = false;
-          else if (t !== '' && !isNaN(Number(t))) val = Number(t);
-        }
-        if (k.trim() !== '') out[k.trim()] = val;
-      }
-      return out;
-    }
-
-    function buildCpSummary() {
-      const name = document.getElementById('cp-name').value.trim();
-      const desc = document.getElementById('cp-desc').value.trim();
-      const version = document.getElementById('cp-version').value.trim() || '1.0';
-      const mode = document.getElementById('cp-mode').value || 'fail_continue';
-
-      const html = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><strong>名称:</strong> ${esc(name)}</div>
-          <div><strong>版本:</strong> ${esc(version)}</div>
-          <div><strong>描述:</strong> ${esc(desc || '-')}</div>
-          <div><strong>执行模式:</strong> ${mode}</div>
-        </div>
-      `;
-      document.getElementById('cp-summary').innerHTML = html;
-
-      // Build preview YAML (for visual only — the actual YAML is generated server-side)
-      let preview = `name: ${name}\n`;
-      if (desc) preview += `description: ${desc}\n`;
-      preview += `version: "${version}"\nhosts: []\n`;
-      if (mode) preview += `execution_mode: ${mode}\n`;
-      preview += `pre_tasks: []\n`;
-      preview += `tasks:\n`;
-      for (const t of cpState.tasks) {
-        preview += `  - name: ${t.name}\n    action: ${t.action}\n    args:\n`;
-        for (const [k, v] of Object.entries(t.args)) {
-          const val = typeof v === 'string' ? v : JSON.stringify(v);
-          preview += `      ${k}: ${val}\n`;
-        }
-      }
-      preview += `post_tasks: []\n`;
-      document.getElementById('cp-preview').textContent = preview;
-    }
 
     // Save
     document.getElementById('cp-save-btn').addEventListener('click', async () => {
