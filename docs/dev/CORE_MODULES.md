@@ -51,8 +51,9 @@ func (t *QueryNodesTool) Execute(ctx context.Context, args map[string]interface{
 | Provider | 基础 URL | 默认模型 |
 |----------|----------|----------|
 | openai | https://api.openai.com/v1 | gpt-4o |
-| anthropic | https://api.anthropic.com | claude-3.5-sonnet |
-| dashscope | https://dashscope.aliyuncs.com | qwen-turbo |
+| anthropic | https://api.anthropic.com | claude-sonnet-4-20250514 |
+| qwen / dashscope | https://dashscope.aliyuncs.com/compatible-mode/v1 | qwen-max |
+| deepseek | https://api.deepseek.com | deepseek-v4-flash |
 
 ### 1.6 路由系统
 

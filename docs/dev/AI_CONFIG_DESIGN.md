@@ -30,8 +30,9 @@ ai:
 | Provider | Base URL | 默认模型 | 说明 |
 |----------|----------|----------|------|
 | openai | https://api.openai.com/v1 | gpt-4o | OpenAI GPT 系列 |
-| anthropic | https://api.anthropic.com | claude-3.5-sonnet | Anthropic Claude 系列 |
-| dashscope | https://dashscope.aliyuncs.com | qwen-turbo | 阿里云通义千问 |
+| anthropic | https://api.anthropic.com/v1 | claude-sonnet-4-20250514 | Anthropic Claude 系列 |
+| qwen / dashscope | https://dashscope.aliyuncs.com/compatible-mode/v1 | qwen-max | 阿里云通义千问 |
+| deepseek | https://api.deepseek.com | deepseek-v4-flash | DeepSeek 系列 |
 
 ---
 
@@ -787,6 +788,9 @@ owl ai config
 
 # 查看当前配置
 owl ai config show
+
+# 交互式设置供应商（追加保存）
+owl ai config setup
 ```
 
 ### 10.3 配置生成流程
@@ -797,15 +801,16 @@ owl ai config show
 2. 如果不存在，创建默认配置文件到 `~/.owl/config.yaml`
 3. 提示用户设置 API Key
 
-**流程 2: 交互式配置 (owl ai config)**
+**流程 2: 交互式配置 (owl ai config setup)**
 
-1. 检查现有配置
+1. 加载现有配置（如果存在）
 2. 依次询问用户配置项：
-   - Provider 选择
-   - Model 选择
-   - API Key 输入
-   - Base URL 配置 (可选)
-3. 保存配置文件
+   - Provider 选择（openai / anthropic / qwen / dashscope / deepseek）
+   - Model 选择（切换供应商时使用该供应商正式默认模型）
+   - API Key 输入（直接回车保留现有）
+   - Base URL 配置（直接回车使用默认值）
+   - Timeout 配置（直接回车保留现有）
+3. 追加保存配置文件（仅更新 AI 字段，保留 prompts/safety 等）
 
 ### 10.4 代码实现设计
 
@@ -969,6 +974,8 @@ $ owl ai config init
 
 ```bash
 $ owl ai config show
+配置路径: ~/.owl/config.yaml
+
 当前配置:
 
   Provider:    openai

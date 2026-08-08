@@ -12,7 +12,8 @@ owl ai - AI 智能助手
 ├── owl ai models      - 列出可用模型
 └── owl ai config      - AI 配置管理
     ├── owl ai config init    - 初始化配置文件
-    └── owl ai config show    - 显示当前配置
+    ├── owl ai config show    - 显示当前配置（含配置路径）
+    └── owl ai config setup   - 交互式设置 AI 供应商
 ```
 
 ---
@@ -32,6 +33,58 @@ owl ai --session <session-id>
 owl ai "查询节点" --verbose  # 显示详细调试信息
 echo "查询所有在线节点" | owl ai
 ```
+
+### 交互模式：/ 斜杠命令补全
+
+在 `owl ai` 交互模式下，输入以 `/` 开头会弹出关键命令补全菜单（设计对齐网页端 AI 助手的 SlashMenu），减少重复输入、提升操作效率：
+
+```
+您> /                    ← 输入 / 弹出全部命令
+您> /exec                ← 继续输入按前缀过滤
+您> 在 {nodes} 上执行命令 {command}   ← Enter/Tab 确认后展开为提示词模板
+```
+
+**按键操作**
+
+| 按键 | 行为 |
+|------|------|
+| `/` | 弹出命令补全菜单（显示全部命令） |
+| 继续输入 | 按命令名前缀实时过滤 |
+| `↑` / `↓` | 菜单打开时选择候选命令；菜单关闭时导航会话历史 |
+| `Enter` / `Tab` | 确认当前选中命令 |
+| `Esc` | 取消 slash 输入并清空当前行 |
+
+**命令目录**
+
+| 命令 | 类型 | 说明 |
+|------|------|------|
+| `/exec` | 任务 | 展开为「在 {nodes} 上执行命令 {command}」模板 |
+| `/check` | 任务 | 展开为节点连通性检查模板 |
+| `/diagnose` | 任务 | 展开为故障诊断模板 |
+| `/query` | 任务 | 展开为节点查询模板 |
+| `/playbook` | 任务 | 展开为剧本生成模板 |
+| `/transfer` | 任务 | 展开为文件传输模板 |
+| `/script` | 任务 | 展开为脚本执行模板 |
+| `/help` | 动作 | 显示帮助信息 |
+| `/new` | 动作 | 开启全新会话（清空上下文） |
+| `/clear` | 动作 | 清空当前会话上下文 |
+| `/quit` | 动作 | 退出交互模式 |
+
+**模板占位符**：选中任务类命令后，模板会填入输入行且光标自动选中第一个 `{arg}` 占位符，直接输入即替换（如 `/exec` 后输入节点名会替换 `{nodes}`）；剩余 `{arg}` 由用户手动补齐后回车发送。
+
+**行编辑快捷键**（菜单关闭时同样可用）：
+
+| 按键 | 行为 |
+|------|------|
+| `←` / `→` | 光标左移 / 右移 |
+| `Home` / `End`（或 `Ctrl+A` / `Ctrl+E`） | 光标到行首 / 行尾 |
+| `Backspace` / `Delete` | 删除光标前 / 光标处字符 |
+| `Ctrl+W` | 删除光标前一个词 |
+| `Ctrl+U` | 删除光标前全部内容 |
+| `Ctrl+K` | 删除光标到行尾 |
+| `Ctrl+C` / `Ctrl+D` | 退出交互模式 |
+
+> 注：slash 补全仅在交互式终端（TTY）下生效；管道/重定向输入（如 `echo "查询节点" \| owl ai`）走逐行读取，不适用补全菜单。
 
 ### 参数说明
 
@@ -252,7 +305,7 @@ safety:
 
 ### 4.2 owl ai config show
 
-显示当前的 AI 配置信息，API Key 会被隐藏保护。
+显示当前的 AI 配置信息（含配置文件路径），API Key 会被隐藏保护。
 
 #### 使用方法
 
@@ -264,6 +317,8 @@ owl ai config show
 
 ```
 $ owl ai config show
+配置路径: ~/.owl/config.yaml
+
 当前配置:
 
   Provider:    openai
@@ -272,6 +327,55 @@ $ owl ai config show
   Base URL:    https://api.openai.com/v1
   Timeout:     120s
 ```
+
+### 4.3 owl ai config setup
+
+以向导方式交互式设置 AI 供应商（Provider / Model / API Key / Base URL / Timeout），
+并**追加保存**到配置文件：仅更新 AI 字段，已有的 `prompts`、`safety` 等配置保持不变。
+
+#### 使用方法
+
+```bash
+owl ai config setup
+```
+
+#### 功能说明
+- 列出支持的供应商：`openai` / `anthropic` / `qwen` / `dashscope` / `deepseek`
+- 支持输入编号或供应商名称选择，非法输入会提示重试
+- 切换供应商时，Model 与 Base URL 默认值自动使用该供应商的正式默认模型
+- 所有输入项直接回车均保留现有值（无配置文件时使用默认值）
+- 配置文件不存在时自动基于默认配置创建
+
+#### 示例输出
+
+```
+$ owl ai config setup
+owl AI 供应商配置向导
+══════════════════════════════════════
+
+请选择供应商：
+  > 1. openai
+    2. anthropic
+    3. qwen
+    4. dashscope
+    5. deepseek
+输入编号或名称 (默认 openai, 直接回车保留): 3
+模型 (默认 qwen-max, 直接回车使用):
+API Key (直接回车保留现有): sk-xxx
+Base URL (默认 https://dashscope.aliyuncs.com/compatible-mode/v1, 直接回车使用):
+超时秒数 (默认 120, 直接回车使用):
+
+✓ 供应商配置已追加保存到: ~/.owl/config.yaml
+```
+
+#### 各供应商正式默认模型
+
+| 供应商 | 默认 Model | 默认 Base URL |
+|--------|-----------|---------------|
+| openai | gpt-4o | https://api.openai.com/v1 |
+| anthropic | claude-sonnet-4-20250514 | https://api.anthropic.com/v1 |
+| qwen / dashscope | qwen-max | https://dashscope.aliyuncs.com/compatible-mode/v1 |
+| deepseek | deepseek-v4-flash | https://api.deepseek.com |
 
 ---
 
@@ -291,25 +395,28 @@ $ owl ai config show
 
 | 模型 | 说明 |
 |------|------|
-| claude-3-5-sonnet-latest | Claude 3.5 Sonnet，推荐 |
-| claude-3-opus-latest | Claude 3 Opus |
-| claude-3-sonnet-latest | Claude 3 Sonnet |
-| claude-3-haiku-latest | Claude 3 Haiku |
+| claude-sonnet-4-20250514 | Claude Sonnet 4，默认模型 |
+| claude-4-20250514 | Claude 4 |
+| claude-opus-4-20250514 | Claude Opus 4 |
+| claude-3-5-haiku-20241022 | Claude 3.5 Haiku |
+| claude-3-opus-20240229 | Claude 3 Opus |
 
 ### 阿里云 DashScope (Qwen)
 
 | 模型 | 说明 |
 |------|------|
+| qwen-max | 通义千问 Max，默认模型 |
 | qwen-plus | 通义千问 Plus |
-| qwen-max | 通义千问 Max |
 | qwen-turbo | 通义千问 Turbo |
+| qwen-long | 通义千问 Long |
+| qwq-32b | QwQ 32B |
 
 ### DeepSeek
 
 | 模型 | 说明 |
 |------|------|
-| deepseek-chat | DeepSeek Chat |
-| deepseek-coder | DeepSeek Coder |
+| deepseek-v4-flash | DeepSeek V4 Flash，默认模型 |
+| deepseek-v4-pro | DeepSeek V4 Pro |
 
 ---
 
@@ -383,7 +490,18 @@ $ owl ai config init
 $ owl ai config show
 
 # 预期结果
-# 显示当前配置，API Key 被隐藏
+# 显示当前配置（含配置路径），API Key 被隐藏
+```
+
+### TC-AI-007: 交互式设置供应商
+
+```bash
+# 步骤
+$ owl ai config setup
+
+# 预期结果
+# 向导式选择供应商，输入 Model / API Key / Base URL / Timeout
+# 配置追加保存到 ~/.owl/config.yaml，保留已有 prompts/safety 字段
 ```
 
 ---
@@ -415,7 +533,10 @@ A: 使用 `--timeout` 参数增加超时时间，默认 120 秒。
 A: 使用 `owl ai config init` 命令快速生成默认配置文件到 `~/.owl/config.yaml`。
 
 ### Q: 如何查看当前配置？
-A: 使用 `owl ai config show` 查看当前配置，API Key 会被隐藏保护。
+A: 使用 `owl ai config show` 查看当前配置（含配置文件路径），API Key 会被隐藏保护。
+
+### Q: 如何交互式设置 AI 供应商？
+A: 使用 `owl ai config setup` 命令，向导式选择供应商并输入 Model / API Key / Base URL / Timeout，配置会追加保存（保留已有 prompts/safety 等字段）。
 
 ### Q: 配置文件在哪里？
-A: 配置文件位于 `~/.owl/config.yaml`。
+A: 配置文件位于 `~/.owl/config.yaml`，可通过 `owl ai config show` 查看确切路径。
