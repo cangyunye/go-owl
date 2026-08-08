@@ -720,19 +720,93 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         list.innerHTML = '<p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
         return;
       }
-      list.innerHTML = cpState.tasks.map((t, i) =>
-        `<div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
-          <span style="font-weight:500;font-size:13px;flex:1">${esc(t.name)}</span>
-          <span class="tag">${esc(t.action)}</span>
-          <button class="cp-task-remove" data-idx="${i}" style="background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:11px">删除</button>
-        </div>`
-      ).join('');
+      const actions = ['command', 'script', 'upload', 'download', 'include'];
+      list.innerHTML = cpState.tasks.map((t, i) => `
+        <div class="cp-task-card" data-idx="${i}" style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;padding:8px">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+            <input class="cp-task-name" data-idx="${i}" value="${esc(t.name)}" placeholder="任务名称" style="flex:1">
+            <select class="cp-task-action" data-idx="${i}" style="width:130px">
+              ${actions.map(a => `<option value="${a}" ${t.action === a ? 'selected' : ''}>${a}</option>`).join('')}
+            </select>
+            <button class="cp-task-remove" data-idx="${i}" style="background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:11px;white-space:nowrap">删除</button>
+          </div>
+          <div class="cp-task-args" data-idx="${i}" style="display:flex;flex-direction:column;gap:4px">
+            ${renderArgRows(i, t.args)}
+          </div>
+          <button class="cp-arg-add" data-idx="${i}" style="background:none;border:1px dashed var(--border);color:var(--muted);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:11px;margin-top:6px">+ 添加参数</button>
+        </div>`).join('');
+
+      document.querySelectorAll('.cp-task-name').forEach(inp => {
+        inp.addEventListener('input', () => { cpState.tasks[parseInt(inp.dataset.idx)].name = inp.value; });
+      });
+      document.querySelectorAll('.cp-task-action').forEach(sel => {
+        sel.addEventListener('change', () => { cpState.tasks[parseInt(sel.dataset.idx)].action = sel.value; });
+      });
       document.querySelectorAll('.cp-task-remove').forEach(btn => {
         btn.addEventListener('click', () => {
           cpState.tasks.splice(parseInt(btn.dataset.idx), 1);
           renderCpTasks();
         });
       });
+      document.querySelectorAll('.cp-arg-add').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const task = cpState.tasks[parseInt(btn.dataset.idx)];
+          task.args[''] = '';
+          renderCpTasks();
+        });
+      });
+      document.querySelectorAll('.cp-arg-key').forEach(inp => {
+        inp.addEventListener('change', () => {
+          const task = cpState.tasks[parseInt(inp.dataset.idx)];
+          if (inp.value !== inp.dataset.key) {
+            renameArg(task.args, inp.dataset.key, inp.value);
+            renderCpTasks();
+          }
+        });
+      });
+      document.querySelectorAll('.cp-arg-value').forEach(inp => {
+        inp.addEventListener('input', () => {
+          cpState.tasks[parseInt(inp.dataset.idx)].args[inp.dataset.key] = inp.value;
+        });
+      });
+      document.querySelectorAll('.cp-arg-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const task = cpState.tasks[parseInt(btn.dataset.idx)];
+          delete task.args[btn.dataset.key];
+          renderCpTasks();
+        });
+      });
+    }
+
+    function renderArgRows(idx, args) {
+      return Object.entries(args).map(([k, v]) => `
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="cp-arg-key" data-idx="${idx}" data-key="${esc(k)}" value="${esc(k)}" placeholder="参数名" style="width:140px">
+          <input class="cp-arg-value" data-idx="${idx}" data-key="${esc(k)}" value="${esc(typeof v === 'string' ? v : JSON.stringify(v))}" placeholder="值" style="flex:1">
+          <button class="cp-arg-remove" data-idx="${idx}" data-key="${esc(k)}" title="删除参数" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:13px">&times;</button>
+        </div>`).join('');
+    }
+
+    function renameArg(args, oldKey, newKey) {
+      if (oldKey === newKey) return;
+      if (newKey === '') { delete args[oldKey]; return; }
+      if (oldKey in args) { args[newKey] = args[oldKey]; delete args[oldKey]; }
+    }
+
+    // 字符串值推断为 bool/number（保留类型语义，如 overwrite: true）
+    function coerceArgValues(args) {
+      const out = {};
+      for (const [k, v] of Object.entries(args)) {
+        let val = v;
+        if (typeof val === 'string') {
+          const t = val.trim();
+          if (t === 'true') val = true;
+          else if (t === 'false') val = false;
+          else if (t !== '' && !isNaN(Number(t))) val = Number(t);
+        }
+        if (k.trim() !== '') out[k.trim()] = val;
+      }
+      return out;
     }
 
     function buildCpSummary() {
@@ -792,7 +866,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         default_groups: document.getElementById('cp-groups').value.trim() ? document.getElementById('cp-groups').value.split(',').map(s => s.trim()).filter(Boolean) : undefined,
         default_tags: document.getElementById('cp-tags').value.trim() ? document.getElementById('cp-tags').value.split(',').map(s => s.trim()).filter(Boolean) : undefined,
         default_skip_tags: document.getElementById('cp-skip-tags').value.trim() ? document.getElementById('cp-skip-tags').value.split(',').map(s => s.trim()).filter(Boolean) : undefined,
-        tasks: cpState.tasks,
+        tasks: cpState.tasks.map(t => ({ name: t.name, action: t.action, args: coerceArgValues(t.args) })),
         pre_tasks: cpState.preTasks,
         post_tasks: cpState.postTasks,
       };
