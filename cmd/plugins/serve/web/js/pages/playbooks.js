@@ -490,6 +490,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     document.querySelectorAll('.view-run-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.id;
+        history.replaceState(null, '', '/playbooks?run=' + encodeURIComponent(id));
         api.playbookRun(id).then(run => showRunDetail(run)).catch(() => {});
       });
     });
@@ -915,5 +916,14 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     });
 
     loadAll();
+    loadRuns();
+
+    const runId = new URLSearchParams(location.search).get('run');
+    if (runId) {
+      api.playbookRun(runId).then(run => {
+        document.getElementById('run-detail').dataset.runId = runId;
+        showRunDetail(run);
+      }).catch(() => {});
+    }
   });
 }
