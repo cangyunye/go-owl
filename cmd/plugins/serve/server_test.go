@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,32 @@ import (
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 )
+
+func TestServerInit_SyncsManualPlaybooksOnStartup(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	globalDir := filepath.Join(home, ".owl", "playbooks")
+	require.NoError(t, os.MkdirAll(globalDir, 0755))
+
+	name := fmt.Sprintf("sync-test-%d.yaml", time.Now().UnixNano())
+	pbFile := filepath.Join(globalDir, name)
+	require.NoError(t, os.WriteFile(pbFile, []byte("name: sync-test\ntasks: []\n"), 0644))
+	t.Cleanup(func() { os.Remove(pbFile) })
+
+	dir := t.TempDir()
+	cfg := &Config{
+		DBPath:     filepath.Join(dir, "owl.db"),
+		ListenAddr: "127.0.0.1:0",
+	}
+	srv := NewServer(cfg)
+	_, err = srv.Init()
+	require.NoError(t, err)
+
+	var count int
+	require.NoError(t, srv.DB.QueryRow(`SELECT COUNT(*) FROM playbooks WHERE name = 'sync-test'`).Scan(&count))
+	srv.DB.Close()
+	assert.Equal(t, 1, count, "manually placed playbook must be synced into DB on startup")
+}
 
 func TestServerInit_CreatesAdminOnFirstRun(t *testing.T) {
 	dir := t.TempDir()
