@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"net/http/httptest"
 	"testing"
 
@@ -179,6 +180,111 @@ func TestSettingsSet_InvalidBody(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
+	assert.Equal(t, 400, w.Code)
+}
+
+func TestSettingsSet_StagingDirValid(t *testing.T) {
+	_, h := settingsTestSetup(t)
+	gin.SetMode(gin.TestMode)
+	router := settingsRBACRouter(t, h)
+
+	as := service.NewAuthService("test-secret-32byte-long-string!!")
+	token, _ := as.GenerateToken("admin", "admin")
+
+	body := map[string]string{"value": filepath.Join(t.TempDir(), "staging")}
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/api/v1/settings/staging_dir", &buf)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+}
+
+func TestSettingsSet_StagingDirRelativePath(t *testing.T) {
+	_, h := settingsTestSetup(t)
+	gin.SetMode(gin.TestMode)
+	router := settingsRBACRouter(t, h)
+
+	as := service.NewAuthService("test-secret-32byte-long-string!!")
+	token, _ := as.GenerateToken("admin", "admin")
+
+	body := map[string]string{"value": "relative/staging"}
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/api/v1/settings/staging_dir", &buf)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 400, w.Code)
+}
+
+func TestSettingsSet_StagingMinFreeValid(t *testing.T) {
+	_, h := settingsTestSetup(t)
+	gin.SetMode(gin.TestMode)
+	router := settingsRBACRouter(t, h)
+
+	as := service.NewAuthService("test-secret-32byte-long-string!!")
+	token, _ := as.GenerateToken("admin", "admin")
+
+	body := map[string]string{"value": "20"}
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/api/v1/settings/staging_min_free", &buf)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+}
+
+func TestSettingsSet_StagingMinFreeNegative(t *testing.T) {
+	_, h := settingsTestSetup(t)
+	gin.SetMode(gin.TestMode)
+	router := settingsRBACRouter(t, h)
+
+	as := service.NewAuthService("test-secret-32byte-long-string!!")
+	token, _ := as.GenerateToken("admin", "admin")
+
+	body := map[string]string{"value": "-5"}
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/api/v1/settings/staging_min_free", &buf)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 400, w.Code)
+}
+
+func TestSettingsSet_StagingMinFreeNotNumber(t *testing.T) {
+	_, h := settingsTestSetup(t)
+	gin.SetMode(gin.TestMode)
+	router := settingsRBACRouter(t, h)
+
+	as := service.NewAuthService("test-secret-32byte-long-string!!")
+	token, _ := as.GenerateToken("admin", "admin")
+
+	body := map[string]string{"value": "ten"}
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/api/v1/settings/staging_min_free", &buf)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
 	assert.Equal(t, 400, w.Code)
 }
 

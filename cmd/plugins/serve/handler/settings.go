@@ -3,6 +3,8 @@ package handler
 import (
 	"database/sql"
 	"net/http"
+	"path/filepath"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -64,6 +66,20 @@ func (h *SettingsHandler) Set(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil || req.Value == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "value is required"})
 		return
+	}
+
+	switch key {
+	case "staging_dir":
+		if !filepath.IsAbs(req.Value) {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "staging_dir must be an absolute path"})
+			return
+		}
+	case "staging_min_free":
+		n, err := strconv.ParseUint(req.Value, 10, 64)
+		if err != nil || n == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "staging_min_free must be a positive integer"})
+			return
+		}
 	}
 
 	_, err := h.db.Exec(
