@@ -20,7 +20,8 @@
 SHELL       := /bin/sh
 GO          ?= go
 BUILD_DIR   := build
-VERSION     ?= 0.16.0
+# 自动跟随最近 git tag（如 v1.0.0 → 1.0.0）；无 git/无 tag 时回退 0.16.0；可用 make VERSION=x 覆盖
+VERSION     ?= $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null || echo 0.16.0); echo $${v#v})
 
 CLI_MAIN    := ./cmd/cli
 SERVE_MAIN  := ./cmd/owl-serve
