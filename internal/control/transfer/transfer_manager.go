@@ -142,7 +142,13 @@ func (tm *TransferManager) smartUpload(ctx context.Context, nodeID, localPath, r
 	// 密码认证时跳过 rsync（rsync CLI 不支持密码传递）
 	if opts.Resume && rsyncOK && connInfo != nil && connInfo.Password == "" {
 		fmt.Printf("[%s] rsync 可用，将使用断点续传\n", nodeID)
-		return tm.rsyncUpload(ctx, nodeID, localPath, remotePath, opts, connInfo, startTime)
+		result := tm.rsyncUpload(ctx, nodeID, localPath, remotePath, opts, connInfo, startTime)
+		if result.Error == nil {
+			return result
+		}
+		// rsync 失败（如本机无 rsync 可执行文件）时降级 scp，保证文件仍能送达
+		fmt.Printf("[%s] rsync 失败（%v），降级为 scp\n", nodeID, result.Error)
+		return tm.scpFallback(ctx, nodeID, localPath, remotePath, opts, startTime)
 	}
 
 	if rsyncOK && connInfo != nil && connInfo.Password != "" {
