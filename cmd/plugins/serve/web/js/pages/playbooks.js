@@ -95,6 +95,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
           <td>${esc((pb.task_names || []).join(', '))}</td>
           <td class="action-cell">
             <button class="run-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} style="background:none;border:1px solid var(--primary);color:var(--primary);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px">Run</button>
+            <button class="edit-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="二次编辑剧本" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px;margin-left:4px">编辑</button>
             <button class="download-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="下载 playbook 文件" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px;margin-left:4px">下载</button>
           </td>
         </tr>`
@@ -102,6 +103,9 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     }
     document.querySelectorAll('.run-playbook-btn').forEach(btn => {
       btn.addEventListener('click', (e) => { e.stopPropagation(); showRunModal(btn.dataset.id); });
+    });
+    document.querySelectorAll('.edit-playbook-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => { e.stopPropagation(); showEditModal(btn.dataset.id); });
     });
     document.querySelectorAll('.download-playbook-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
@@ -382,7 +386,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     <div class="modal-overlay" id="create-playbook-modal">
       <div class="modal modal-lg">
         <div class="modal-header">
-          <h3>📝 创建剧本</h3>
+          <h3 id="cp-title">📝 创建剧本</h3>
           <button class="btn btn-ghost btn-sm" id="create-pb-close-btn" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">&times;</button>
         </div>
         <div class="modal-body" id="create-pb-body" style="max-height:70vh;overflow-y:auto">
@@ -575,7 +579,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     };
     let cpTaskCounter = 0;
 
-    document.getElementById('add-playbook-btn').addEventListener('click', () => {
+    function resetCpModal() {
       cpState = { step: 1, totalSteps: 5, vars: [], tasks: [] };
       cpTaskCounter = 0;
       document.getElementById('cp-name').value = '';
@@ -590,6 +594,63 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       document.getElementById('cp-tasks-list').innerHTML = '<p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
       document.getElementById('cp-error').textContent = '';
       showCpStep(1);
+    }
+
+    function renderCpVars() {
+      const list = document.getElementById('cp-vars-list');
+      list.innerHTML = '';
+      cpState.vars.forEach((v, idx) => {
+        const row = document.createElement('div');
+        row.className = 'form-row';
+        row.style.cssText = 'display:flex;gap:8px;align-items:end';
+        row.innerHTML = `
+          <div style="flex:1"><input class="cp-var-key" data-idx="${idx}" placeholder="变量名" value="${esc(v.key)}" style="width:100%"></div>
+          <div style="flex:1"><input class="cp-var-value" data-idx="${idx}" placeholder="值" value="${esc(v.value)}" style="width:100%"></div>
+          <button class="cp-var-remove" data-idx="${idx}" style="background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:4px 8px;font-size:12px">删除</button>
+        `;
+        list.appendChild(row);
+        row.querySelector('.cp-var-key').addEventListener('input', (e) => { cpState.vars[idx].key = e.target.value; });
+        row.querySelector('.cp-var-value').addEventListener('input', (e) => { cpState.vars[idx].value = e.target.value; });
+        row.querySelector('.cp-var-remove').addEventListener('click', (e) => {
+          const removeIdx = Array.from(list.children).indexOf(e.currentTarget.parentElement);
+          cpState.vars.splice(removeIdx, 1);
+          e.currentTarget.parentElement.remove();
+        });
+      });
+    }
+
+    async function showEditModal(id) {
+      let data;
+      try {
+        data = await api.playbookEdit(id);
+      } catch (e) { alert('加载剧本失败: ' + e.message); return; }
+
+      document.getElementById('cp-title').textContent = '✏️ 编辑剧本: ' + (data.name || id);
+      resetCpModal();
+      document.getElementById('cp-name').value = data.name || '';
+      document.getElementById('cp-desc').value = data.description || '';
+      document.getElementById('cp-version').value = data.version || '1.0';
+      document.getElementById('cp-mode').value = data.execution_mode || '';
+      document.getElementById('cp-groups').value = (data.default_groups || []).join(',');
+      document.getElementById('cp-tags').value = (data.default_tags || []).join(',');
+      document.getElementById('cp-skip-tags').value = (data.default_skip_tags || []).join(',');
+      document.getElementById('cp-skip-vars').checked = !data.vars || Object.keys(data.vars).length === 0;
+
+      cpState.vars = Object.entries(data.vars || {}).map(([k, v]) => ({ key: k, value: String(v) }));
+      cpState.tasks = (data.tasks || []).map(t => ({ name: t.name, action: t.action, args: t.args || {} }));
+      cpState.preTasks = data.pre_tasks || [];
+      cpState.postTasks = data.post_tasks || [];
+      cpTaskCounter = cpState.tasks.length;
+      renderCpVars();
+      renderCpTasks();
+
+      document.getElementById('cp-title').textContent = '✏️ 编辑剧本: ' + (data.name || '');
+      document.getElementById('create-playbook-modal').classList.add('open');
+    }
+
+    document.getElementById('add-playbook-btn').addEventListener('click', () => {
+      resetCpModal();
+      document.getElementById('cp-title').textContent = '📝 创建剧本';
       document.getElementById('create-playbook-modal').classList.add('open');
     });
 
@@ -629,24 +690,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
     // Variables
     document.getElementById('cp-add-var').addEventListener('click', () => {
-      const idx = cpState.vars.length;
       cpState.vars.push({ key: '', value: '' });
-      const row = document.createElement('div');
-      row.className = 'form-row';
-      row.style.cssText = 'display:flex;gap:8px;align-items:end';
-      row.innerHTML = `
-        <div style="flex:1"><input class="cp-var-key" data-idx="${idx}" placeholder="变量名" style="width:100%"></div>
-        <div style="flex:1"><input class="cp-var-value" data-idx="${idx}" placeholder="值" style="width:100%"></div>
-        <button class="cp-var-remove" data-idx="${idx}" style="background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:4px 8px;font-size:12px">删除</button>
-      `;
-      document.getElementById('cp-vars-list').appendChild(row);
-      row.querySelector('.cp-var-key').addEventListener('input', (e) => { cpState.vars[idx].key = e.target.value; });
-      row.querySelector('.cp-var-value').addEventListener('input', (e) => { cpState.vars[idx].value = e.target.value; });
-      row.querySelector('.cp-var-remove').addEventListener('click', (e) => {
-        const removeIdx = Array.from(document.getElementById('cp-vars-list').children).indexOf(e.currentTarget.parentElement);
-        cpState.vars.splice(removeIdx, 1);
-        e.currentTarget.parentElement.remove();
-      });
+      renderCpVars();
     });
 
     // Tasks
@@ -748,6 +793,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         default_tags: document.getElementById('cp-tags').value.trim() ? document.getElementById('cp-tags').value.split(',').map(s => s.trim()).filter(Boolean) : undefined,
         default_skip_tags: document.getElementById('cp-skip-tags').value.trim() ? document.getElementById('cp-skip-tags').value.split(',').map(s => s.trim()).filter(Boolean) : undefined,
         tasks: cpState.tasks,
+        pre_tasks: cpState.preTasks,
+        post_tasks: cpState.postTasks,
       };
 
       try {

@@ -145,6 +145,7 @@ func playbookUploadRouter(t *testing.T) (*gin.Engine, *PlaybookHandler, *sql.DB)
 	auth.Use(ah.AuthMiddleware())
 	op := auth.Group("", ah.RBACMiddleware(model.RoleOperator))
 	op.POST("/playbooks/upload", h.Upload)
+	op.GET("/playbooks/:id/edit", h.Edit)
 	op.GET("/playbooks/:id/download", h.Download)
 	op.GET("/playbooks", h.List)
 
@@ -256,6 +257,177 @@ func TestPlaybookDownload_Basic(t *testing.T) {
 	assert.Contains(t, string(rec.Body.Bytes()), "name: demo")
 
 	_ = h
+}
+
+func TestPlaybookEdit_Basic(t *testing.T) {
+	router, h, db := playbookUploadRouter(t)
+	token := testTokenOp(t)
+
+	library := func() string {
+		var p string
+		require.NoError(t, db.QueryRow(`SELECT value FROM settings WHERE key = 'playbook_library_path'`).Scan(&p))
+		return p
+	}()
+	pbYAML := `name: edit-me
+description: 可编辑剧本
+version: "2.1"
+hosts: []
+execution_mode: fail_continue
+default:
+  groups: ["web"]
+  tags: ["deploy"]
+vars:
+  port: "8080"
+pre_tasks:
+  - name: 备份
+    action: command
+    args:
+      cmd: "cp -r /etc/a /etc/a.bak || true"
+tasks:
+  - name: 安装
+    action: command
+    args:
+      cmd: "apt-get install -y nginx"
+  - name: 上传配置
+    action: upload
+    args:
+      src: "{{PLAYBOOK_DIR}}/nginx.conf"
+      dest: /etc/nginx/nginx.conf
+post_tasks:
+  - name: 清理
+    action: command
+    args:
+      cmd: "rm -rf /tmp/x"
+`
+	require.NoError(t, os.WriteFile(filepath.Join(library, "edit-me.yaml"), []byte(pbYAML), 0644))
+	_, _, err := h.playbooks.SyncFromDir(t.Context(), library)
+	require.NoError(t, err)
+
+	rec := multipartUploadTo(t, router, token, "/api/v1/playbooks/upload", "edit-me.yaml", pbYAML)
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var up struct {
+		Data model.Playbook `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &up))
+
+	req, _ := http.NewRequest("GET", "/api/v1/playbooks/"+up.Data.ID+"/edit", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var edit createTemplateRequest
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &edit))
+	assert.Equal(t, "edit-me", edit.Name)
+	assert.Equal(t, "2.1", edit.Version)
+	assert.Equal(t, "fail_continue", edit.ExecutionMode)
+	assert.Equal(t, []string{"web"}, edit.DefaultGroups)
+	assert.Equal(t, []string{"deploy"}, edit.DefaultTags)
+	assert.Equal(t, map[string]interface{}{"port": "8080"}, edit.Vars)
+	require.Len(t, edit.PreTasks, 1)
+	assert.Equal(t, "备份", edit.PreTasks[0].Name)
+	assert.Equal(t, "command", edit.PreTasks[0].Action)
+	require.Len(t, edit.Tasks, 2)
+	assert.Equal(t, "上传配置", edit.Tasks[1].Name)
+	assert.Equal(t, "upload", edit.Tasks[1].Action)
+	assert.Equal(t, "{{PLAYBOOK_DIR}}/nginx.conf", edit.Tasks[1].Args["src"])
+	require.Len(t, edit.PostTasks, 1)
+	assert.Equal(t, "清理", edit.PostTasks[0].Name)
+}
+
+func TestPlaybookEdit_InvalidButFixablePlaybook(t *testing.T) {
+	router, h, db := playbookUploadRouter(t)
+	token := testTokenOp(t)
+
+	var library string
+	require.NoError(t, db.QueryRow(`SELECT value FROM settings WHERE key = 'playbook_library_path'`).Scan(&library))
+
+	// pipeline + post_tasks 是执行时不合规的组合，但编辑接口必须能打开让用户修复
+	pbYAML := `name: broken
+execution_mode: pipeline
+tasks:
+  - name: main
+    action: command
+    args:
+      cmd: "echo hi"
+post_tasks:
+  - name: cleanup
+    action: command
+    args:
+      cmd: "rm -rf /tmp/x"
+`
+	require.NoError(t, os.WriteFile(filepath.Join(library, "broken.yaml"), []byte(pbYAML), 0644))
+	_, _, err := h.playbooks.SyncFromDir(t.Context(), library)
+	require.NoError(t, err)
+
+	rec := multipartUploadTo(t, router, token, "/api/v1/playbooks/upload", "broken.yaml", pbYAML)
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var up struct {
+		Data model.Playbook `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &up))
+
+	req, _ := http.NewRequest("GET", "/api/v1/playbooks/"+up.Data.ID+"/edit", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code, "edit must open invalid playbooks so users can fix them")
+
+	var edit createTemplateRequest
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &edit))
+	assert.Equal(t, "pipeline", edit.ExecutionMode)
+	require.Len(t, edit.PostTasks, 1)
+	assert.Equal(t, "cleanup", edit.PostTasks[0].Name)
+}
+
+func TestPlaybookEdit_NotFound(t *testing.T) {
+	router, _, _ := playbookUploadRouter(t)
+	token := testTokenOp(t)
+
+	req, _ := http.NewRequest("GET", "/api/v1/playbooks/ghost/edit", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestPlaybookCreate_WithPrePostTasks(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`)
+	require.NoError(t, err)
+	library := t.TempDir()
+	_, err = db.Exec(`INSERT INTO settings (key, value) VALUES ('playbook_library_path', ?)`, library)
+	require.NoError(t, err)
+
+	ps := store.NewPlaybookStore(db)
+	require.NoError(t, ps.Init(t.Context()))
+	rs := store.NewPlaybookRunStore(db)
+	require.NoError(t, rs.Init(t.Context()))
+	ns := store.NewNodeStore(db)
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(t.Context()))
+	h := NewPlaybookHandler(db, ps, rs, ns, nil)
+	h.History = hs
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body := `{"name":"with-pre","tasks":[{"name":"main","action":"command","args":{"cmd":"echo hi"}}],
+	  "pre_tasks":[{"name":"pre1","action":"command","args":{"cmd":"echo pre"}}],
+	  "post_tasks":[{"name":"post1","action":"command","args":{"cmd":"echo post"}}]}`
+	c.Request = httptest.NewRequest("POST", "/api/v1/playbook/template", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h.Create(c)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	data, err := os.ReadFile(filepath.Join(library, "with-pre.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "pre1")
+	assert.Contains(t, string(data), "echo pre")
+	assert.Contains(t, string(data), "post1")
+	assert.Contains(t, string(data), "echo post")
 }
 
 func TestPlaybookDownload_NotFound(t *testing.T) {

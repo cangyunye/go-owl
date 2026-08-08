@@ -276,6 +276,7 @@ func (s *Server) setupRoutes() {
 			operator.GET("/playbooks/:id", s.playbookHandler.Get)
 			operator.GET("/playbooks/:id/file", s.playbookHandler.GetFile)
 			operator.GET("/playbooks/:id/download", s.playbookHandler.Download)
+			operator.GET("/playbooks/:id/edit", s.playbookHandler.Edit)
 			operator.POST("/playbooks/:id/run", s.playbookHandler.Run)
 			operator.GET("/playbook/runs", s.playbookHandler.RunList)
 			operator.GET("/playbook/runs/:id", s.playbookHandler.RunGet)

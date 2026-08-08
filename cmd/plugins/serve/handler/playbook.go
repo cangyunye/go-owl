@@ -49,6 +49,8 @@ type createTemplateRequest struct {
 	DefaultTags     []string               `json:"default_tags,omitempty"`
 	DefaultSkipTags []string               `json:"default_skip_tags,omitempty"`
 	Tasks           []createTemplateTask   `json:"tasks"`
+	PreTasks        []createTemplateTask   `json:"pre_tasks,omitempty"`
+	PostTasks       []createTemplateTask   `json:"post_tasks,omitempty"`
 }
 
 type createTemplateTask struct {
@@ -89,6 +91,15 @@ func (h *PlaybookHandler) Create(c *gin.Context) {
 		}
 	}
 
+	preTasks := make([]pb.TemplateTask, len(req.PreTasks))
+	for i, t := range req.PreTasks {
+		preTasks[i] = pb.TemplateTask{Name: t.Name, Action: t.Action, Args: t.Args}
+	}
+	postTasks := make([]pb.TemplateTask, len(req.PostTasks))
+	for i, t := range req.PostTasks {
+		postTasks[i] = pb.TemplateTask{Name: t.Name, Action: t.Action, Args: t.Args}
+	}
+
 	tpl := &pb.TemplatePlaybook{
 		Name:          req.Name,
 		Description:   req.Description,
@@ -97,9 +108,9 @@ func (h *PlaybookHandler) Create(c *gin.Context) {
 		ExecutionMode: req.ExecutionMode,
 		Default:       defaultCfg,
 		Vars:          req.Vars,
-		PreTasks:      []pb.TemplateTask{},
+		PreTasks:      preTasks,
 		Tasks:         tasks,
-		PostTasks:     []pb.TemplateTask{},
+		PostTasks:     postTasks,
 	}
 
 	yamlData, err := pb.RenderTemplateYAML(tpl)
@@ -218,6 +229,68 @@ func (h *PlaybookHandler) Download(c *gin.Context) {
 		return
 	}
 	c.FileAttachment(pb.FilePath, filepath.Base(pb.FilePath))
+}
+
+// Edit 返回 playbook 的结构化编辑数据，供前端 wizard 二次编辑
+func (h *PlaybookHandler) Edit(c *gin.Context) {
+	id := c.Param("id")
+	pb, err := h.playbooks.Get(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "playbook not found"})
+		return
+	}
+	if !pb.FileExists {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "playbook file missing"})
+		return
+	}
+
+	parser := pbexec.NewParser()
+	parsed, err := parser.ParseFromFile(pb.FilePath)
+	if err != nil {
+		// 宽松解析：playbook 可能因业务校验（如 pipeline 含 post_tasks）无法执行，
+		// 但编辑接口必须能打开，让用户修复
+		data, rerr := os.ReadFile(pb.FilePath)
+		if rerr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "read playbook failed: " + rerr.Error()})
+			return
+		}
+		var raw pbexec.Playbook
+		if yerr := yaml.Unmarshal(data, &raw); yerr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "parse playbook failed: " + err.Error()})
+			return
+		}
+		h.renderEditResponse(c, &raw)
+		return
+	}
+	h.renderEditResponse(c, parsed.Raw)
+}
+
+func (h *PlaybookHandler) renderEditResponse(c *gin.Context, raw *pbexec.Playbook) {
+	resp := createTemplateRequest{
+		Name:          raw.Name,
+		Description:   raw.Description,
+		Version:       raw.Version,
+		ExecutionMode: raw.ExecutionMode,
+		Vars:          raw.Vars,
+		Tasks:         toTemplateTasks(raw.Tasks),
+		PreTasks:      toTemplateTasks(raw.PreTasks),
+		PostTasks:     toTemplateTasks(raw.PostTasks),
+	}
+	if raw.Default != nil {
+		resp.DefaultGroups = raw.Default.Groups
+		resp.DefaultTags = raw.Default.Tags
+		resp.DefaultSkipTags = raw.Default.SkipTags
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+func toTemplateTasks(tasks []pbexec.PlaybookTask) []createTemplateTask {
+	out := make([]createTemplateTask, 0, len(tasks))
+	for _, t := range tasks {
+		out = append(out, createTemplateTask{Name: t.Name, Action: t.Action, Args: t.Args})
+	}
+	return out
 }
 
 func (h *PlaybookHandler) Refresh(c *gin.Context) {

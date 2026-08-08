@@ -211,6 +211,9 @@ export const api = {
   playbookFile: (id) =>
     request('GET', `/playbooks/${encodeURIComponent(id)}/file`),
 
+  playbookEdit: (id) =>
+    request('GET', `/playbooks/${encodeURIComponent(id)}/edit`),
+
   playbookDownload: async (id) => {
     const t = token();
     const res = await fetch(`${API_BASE}/playbooks/${encodeURIComponent(id)}/download`, {
