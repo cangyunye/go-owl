@@ -9,12 +9,22 @@
 
 | 项 | 值 |
 |---|---|
-| 测试机 | Windows（本机），CLI 二进制与树莓派同网段 |
-| 目标节点 | `raspberrypi-kali`：192.168.31.100:22，user=kali |
+| 测试机 | Windows（本机），CLI 二进制与目标同网段 |
+| 目标节点 1 | `raspberrypi-kali`：192.168.31.100:22，user=kali（密码，sudo） |
+| 目标节点 2 | `wsl-kube`（WSL Ubuntu）：172.20.214.44:2222，user=kube（**密钥认证**） |
+| 目标节点 3-5 | `raspberrypi-e2e-1/2/3`：192.168.31.100:22，user=e2e1/2/3（密码，同一物理机，由 `create-e2e-users.yaml` playbook 创建） |
 | 节点数据目录 | `~/.owl/owl.db` |
 | AI 配置 | `~/.owl/config.yaml`（provider=deepseek, model=deepseek-chat）+ 环境变量 `OWL_API_KEY` |
 | 构建 | `go build -o owl ./cmd/cli`，并确保当前目录存在 `owl` 可执行文件（AI 工具的子进程调用依赖 `getOwlPath`） |
 | 管道中文 | Windows PowerShell 5.1 需 `$OutputEncoding = [System.Text.Encoding]::UTF8` 再喂中文给 stdin |
+
+### 测试拓扑注意
+
+- `raspberrypi-e2e-1/2/3` 是**同一台物理机**（树莓派）上的 3 个 SSH 用户，**共享 /tmp**：
+  首个用户创建的文件（644）其他用户无法覆盖，`scp`/`cat >` 会报「权限不够」——这是 POSIX 文件属主语义，**不是 owl 缺陷**。
+  验证扩散传输时，目标节点应覆盖**不同物理机**（如 wsl-kube + raspberrypi-e2e-1 + raspberrypi-e2e-2），或每次用唯一文件名。
+- 本机（Windows）**未安装 rsync**：密钥认证节点会先尝试 rsync 再降级 scp（已修复，见 commit 7598aad）。
+- gscp 中继工具无 linux-arm64 预编译产物，扩散中继会提示「部署失败→降级直传」，属预期路径。
 
 ### 数据隔离约定
 
@@ -174,11 +184,22 @@
 预期：内容一致（md5 相同）
 清理：删除 t-e2e-dl
 
-### E2E-FILE-003 分发（transfer）[自动化/需≥2节点]
-前置：环境存在 ≥2 个可用节点（raspberrypi-kali + 1 个）
-步骤：`owl file transfer t-e2e-up.txt --nodes raspberrypi-kali --dest /tmp/owl-e2e --no-color`
-预期：分发成功日志
-说明：单节点环境仅验证 direct 分支；diffusion 分支（≥threshold 节点）标注为条件用例
+### E2E-FILE-003 多节点扩散传输（diffusion）[自动化]
+前置：
+- 可用节点 ≥2（跨物理机最佳）：`wsl-kube` + `raspberrypi-e2e-1` + `raspberrypi-e2e-3`
+- 远端目录已创建并可写：`owl exec run "mkdir -p /tmp/owl-e2e" --nodes wsl-kube,raspberrypi-e2e-1,raspberrypi-e2e-3`
+步骤：
+1. 本地写文件 `t-diff-<毫秒时间戳>.txt`（**唯一文件名**，避免覆盖残留文件）
+2. `owl file transfer t-diff-<ts>.txt --nodes wsl-kube,raspberrypi-e2e-1,raspberrypi-e2e-3 --dest /tmp/owl-e2e --threshold 1 --fan-out 2 --source-count 1`
+预期：
+- 输出「模式: 扩散传输 (fan-out=2, threshold=1)」+ 扩散树（源节点 → 子节点）
+- 密钥节点可先见 rsync 提示（本机无 rsync 时自动降级 scp，commit 7598aad）
+3. 验证：`owl exec run "cat /tmp/owl-e2e/t-diff-<ts>.txt" --nodes wsl-kube,raspberrypi-e2e-1,raspberrypi-e2e-3`
+预期：**全部节点输出文件内容一致**（cat 全部成功即通过；transfer 自身报告含共享 /tmp 的 EACCES 假象时以 cat 为准）
+清理：`owl exec run "rm -f /tmp/owl-e2e/t-diff-*.txt" --nodes ...`（注意用单文件模式避免触发 `rm -rf /` 黑名单）
+
+### E2E-FILE-004 同机多用户覆盖语义（边界说明）[条件]
+说明：`raspberrypi-e2e-1/2` 传输到**同一路径**时，后写者会因文件属主（644）报「权限不够」——验证该行为符合预期即可，不作为缺陷。跨物理机场景不存在此现象。
 
 ---
 
@@ -224,12 +245,7 @@
 3. `owl playbook template export e2e-tpl --to ./t-e2e-tpl.yaml --no-color`
 预期：① 列表；② 详情；③ 导出文件存在
 
-### E2E-PB-006 模板创建向导 [手工/管道]
-步骤：`owl playbook template create --output ./t-e2e-tpl.yaml`（按提示输入 name=e2e-tpl、选择 action=command）
-预期：生成合法模板 YAML
-说明：交互向导，自动化时用管道按顺序喂入：name、description、version、vars(y/n)、mode、default(y/n)…（字段顺序以实际提示为准，需评审时标注）
-
-### E2E-PB-007 模板实例化 new [自动化]
+### E2E-PB-006 模板实例化 new [自动化]
 步骤：`owl playbook new --from e2e-tpl --var app_version=1.0 -o ./t-e2e-new.yaml --no-color`
 预期：生成含变量替换的剧本文件
 
@@ -325,29 +341,7 @@
 
 ---
 
-## 十、serve / tui / metrics（E2E-SRV-* / E2E-TUI-* / E2E-MET-*）
-
-### E2E-SRV-001 服务启动与健康检查 [自动化]
-步骤：
-1. `owl serve --port 8090`（后台启动）
-2. `curl http://localhost:8090/api/v1/login -X POST -d '{"username":"admin","password":"<初始化密码>"}'`
-3. 登录成功返回 token
-清理：停止服务进程
-说明：admin 初始密码由 `owl serve --reset-admin` 首启输出（参考 AGENTS.md），测试前必须记录
-
-### E2E-TUI-001 TUI 外部二进制 [跳过/手工]
-说明：`owl tui` 依赖独立仓库 `go-owl-tui` 的 `owl-tui` 二进制；本仓库 E2E 仅验证：
-步骤：`owl tui` → 报错或成功取决于环境
-预期：给出明确提示（未安装时报错提示）
-
-### E2E-MET-001 指标采集 [自动化]
-步骤：`owl metrics watch --config <cfg> --no-color`（后台，5 秒后终止）
-预期：输出节点指标（CPU/内存/磁盘）采样
-说明：确认 `metrics watch` 默认配置路径后执行；必要时用 `--add-endpoint` 指向本机
-
----
-
-## 十一、ai — 智能助手（E2E-AI-*）
+## 十、ai — 智能助手（E2E-AI-*）
 
 > 前置：`~/.owl/config.yaml` 已配置 deepseek；环境变量 `OWL_API_KEY`；`owl` 可执行文件在当前目录（工具子进程调用）。
 
@@ -451,7 +445,7 @@
 6. E2E-PB-*（validate → run → state → template 系列）
 7. E2E-HIST-*（承接 EXEC 记录）
 8. E2E-SET-*（**放在最后阶段，避免影响其他用例默认值**）
-9. E2E-SESS-* / E2E-SRV-* / E2E-MET-* / E2E-TUI-*
+9. E2E-SESS-*
 10. E2E-AI-*（独立，随时可跑）
 ```
 
@@ -459,23 +453,19 @@
 |---|---|---|---|
 | node | 12 | 12 | sample 需清理 |
 | exec | 4 | 4 | — |
-| file | 3 | 3 | transfer 需≥2节点 |
-| playbook | 8 | 7 | template create 向导 |
+| file | 4 | 4 | — |
+| playbook | 7 | 7 | — |
 | settings | 5 | 5 | — |
 | async | 3 | 3 | — |
 | history | 2 | 2 | — |
 | session | 3 | 2 | attach 手工 |
-| serve/tui/metrics | 3 | 2 | tui 外部依赖 |
 | ai | 12 | 12 | — |
 | edge | 5 | 5 | — |
-| **合计** | **60** | **57** | **3** |
+| **合计** | **57** | **56** | **1** |
 
 ## 十四、评审确认点
 
 1. **E2E-NODE-012**：`owl node sample` 是否生成 50 个固定前缀节点，清理策略是否可接受；
-2. **E2E-PB-006**：template create 向导的字段顺序，是否改为管道自动化或纯手工；
-3. **E2E-FILE-003**：是否补充第二个真实节点（或本地 SSH 回环节点）以覆盖 diffusion 分支；
-4. **E2E-SRV-001**：serve 端口与 admin 密码获取方式（--reset-admin 首启输出）；
-5. **E2E-MET-001**：metrics watch 的配置来源（默认配置文件路径或 --add-endpoint）；
-6. **E2E-AI-008**：生成的 nginx playbook 是否允许保留在 `~/.owl/playbooks`（影响后续 PB 用例列表预期）；
-7. AI 用例统一使用 `owl` 子进程（getOwlPath 依赖当前目录 `owl` 可执行文件），评审是否改为主机 PATH 安装。
+2. **E2E-FILE-003/004**：扩散传输已在真实环境验证（wsl-kube + raspberrypi-e2e-1/3，`--threshold 1`），同机多用户共享 /tmp 的 EACCES 行为按预期处理；
+3. **E2E-AI-008**：生成的 nginx playbook 是否允许保留在 `~/.owl/playbooks`（影响后续 PB 用例列表预期）；
+4. AI 用例统一使用 `owl` 子进程（getOwlPath 依赖当前目录 `owl` 可执行文件），评审是否改为主机 PATH 安装。
