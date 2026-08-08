@@ -3,6 +3,7 @@ package ai
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/ai/input"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/control/playbook"
@@ -331,33 +333,49 @@ func runAI(cmd *cobra.Command, args []string) {
 	}
 	currentSession.SetDefaultConfirmGate()
 
-	scanner := bufio.NewScanner(os.Stdin)
-
-	fmt.Print(i18n.T("ai.chat.prompt"))
-	for scanner.Scan() {
-		input := strings.TrimSpace(scanner.Text())
-
-		if input == "" {
-			fmt.Print(i18n.T("ai.chat.prompt"))
-			continue
+	// 斜杠命令目录: 对齐网页端 AI 助手的 SlashMenu 设计。
+	// task 类选中后展开为提示词模板(占位符直接输入替换);
+	// action 类直接执行动作。
+	quitRequested := false
+	resetSession := func() {
+		currentSession = session.CreateSession(sessionID, agent)
+		currentSession.OnProgress = func(step string, detail string) {
+			progressLog(sessionID, aiVerbose, step, detail)
 		}
+		currentSession.SetDefaultConfirmGate()
+		fmt.Println(i18n.T("ai.chat.new_session"))
+	}
+	slashCommands := []input.SlashCommand{
+		{Name: "exec", Category: "task", Icon: "▶️", Label: i18n.T("ai.slash.exec_label"), Desc: i18n.T("ai.slash.exec_desc"), Template: i18n.T("ai.slash.exec_template"), Args: []string{"nodes", "command"}},
+		{Name: "check", Category: "task", Icon: "🩺", Label: i18n.T("ai.slash.check_label"), Desc: i18n.T("ai.slash.check_desc"), Template: i18n.T("ai.slash.check_template"), Args: []string{"nodes"}},
+		{Name: "diagnose", Category: "task", Icon: "🔍", Label: i18n.T("ai.slash.diagnose_label"), Desc: i18n.T("ai.slash.diagnose_desc"), Template: i18n.T("ai.slash.diagnose_template"), Args: []string{"target"}},
+		{Name: "query", Category: "task", Icon: "📊", Label: i18n.T("ai.slash.query_label"), Desc: i18n.T("ai.slash.query_desc"), Template: i18n.T("ai.slash.query_template"), Args: []string{"condition"}},
+		{Name: "playbook", Category: "task", Icon: "🛠️", Label: i18n.T("ai.slash.playbook_label"), Desc: i18n.T("ai.slash.playbook_desc"), Template: i18n.T("ai.slash.playbook_template"), Args: []string{"requirement"}},
+		{Name: "transfer", Category: "task", Icon: "📤", Label: i18n.T("ai.slash.transfer_label"), Desc: i18n.T("ai.slash.transfer_desc"), Template: i18n.T("ai.slash.transfer_template"), Args: []string{"source_file", "nodes", "dest_dir"}},
+		{Name: "script", Category: "task", Icon: "🧩", Label: i18n.T("ai.slash.script_label"), Desc: i18n.T("ai.slash.script_desc"), Template: i18n.T("ai.slash.script_template"), Args: []string{"nodes", "script"}},
 
+		{Name: "help", Category: "action", Icon: "ℹ️", Label: i18n.T("ai.slash.help_label"), Desc: i18n.T("ai.slash.help_desc"), Action: func() { printHelp() }},
+		{Name: "new", Category: "action", Icon: "➕", Label: i18n.T("ai.slash.new_label"), Desc: i18n.T("ai.slash.new_desc"), Action: func() { resetSession() }},
+		{Name: "clear", Category: "action", Icon: "🗑️", Label: i18n.T("ai.slash.clear_label"), Desc: i18n.T("ai.slash.clear_desc"), Action: func() { resetSession() }},
+		{Name: "quit", Category: "action", Icon: "👋", Label: i18n.T("ai.slash.quit_label"), Desc: i18n.T("ai.slash.quit_desc"), Action: func() { quitRequested = true }},
+	}
+
+	// 单行输入处理: 返回 true 表示退出交互。
+	handleLine := func(input string) bool {
 		if strings.EqualFold(input, "quit") || strings.EqualFold(input, "exit") {
 			fmt.Println(i18n.T("ai.chat.bye"))
-			break
+			return true
 		}
 
 		if strings.EqualFold(input, "help") {
 			printHelp()
-			fmt.Print(i18n.T("ai.chat.prompt"))
-			continue
+			return false
 		}
 
 		if strings.HasPrefix(input, "!") {
 			cmdStr := strings.TrimPrefix(input, "!")
 			handleDirectCommand(cmdStr)
-			fmt.Print(i18n.T("ai.chat.prompt"))
-			continue
+			return false
 		}
 
 		internalhistory.RecordAiChatGlobal(&internalhistory.AiChat{
@@ -380,11 +398,67 @@ func runAI(cmd *cobra.Command, args []string) {
 			fmt.Printf("%s", i18n.T("ai.chat.context_count", i18n.F(msgCount)))
 		}
 		fmt.Println()
-		fmt.Print(i18n.T("ai.chat.prompt"))
+		return false
 	}
 
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.chat.err_read_input", err))
+	term := input.NewTerminal(os.Stdin, os.Stdout)
+	if term.IsTerminal() {
+		// 交互模式: raw mode + 行编辑器(/ 触发命令补全)
+		if err := term.MakeRaw(); err != nil {
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.chat.err_raw_mode", err))
+			os.Exit(1)
+		}
+		defer term.Restore()
+
+		ed := input.NewEditor(term, term, input.EditorOptions{
+			Prompt:    i18n.T("ai.chat.prompt"),
+			Commands:  slashCommands,
+			TaskTag:   i18n.T("ai.slash.tag_task"),
+			ActionTag: i18n.T("ai.slash.tag_action"),
+			OnAction: func(c input.SlashCommand) {
+				if c.Action != nil {
+					c.Action()
+				}
+			},
+		})
+
+		for {
+			line, err := ed.ReadLine()
+			if err != nil {
+				if errors.Is(err, input.ErrInterrupt) {
+					fmt.Println(i18n.T("ai.chat.bye"))
+				} else {
+					fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.chat.err_read_input", err))
+				}
+				break
+			}
+			if quitRequested {
+				fmt.Println(i18n.T("ai.chat.bye"))
+				break
+			}
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if handleLine(line) {
+				break
+			}
+		}
+	} else {
+		// 非交互(管道/重定向)输入: 回退逐行读取
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			if handleLine(line) {
+				break
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.chat.err_read_input", err))
+		}
 	}
 }
 
@@ -508,6 +582,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println(i18n.T("ai.help.title_commands"))
 	fmt.Println()
+	fmt.Println(i18n.T("ai.help.cmd_slash"))
 	fmt.Println(i18n.T("ai.help.cmd_help"))
 	fmt.Println(i18n.T("ai.help.cmd_quit"))
 	fmt.Println(i18n.T("ai.help.cmd_direct"))
