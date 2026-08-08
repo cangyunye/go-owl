@@ -1,0 +1,488 @@
+# go-owl Taskfile —— Makefile 的跨平台替代（由 Makefile 转换而来）
+#
+# 前置要求:
+#   - Task v3.47+（使用了 `if:` 条件字段；`for: {var: ...}` 循环需 v3.32+）
+#     https://taskfile.dev/installation
+#   - go 在 PATH 中（可 GO= 覆盖，如 GO=/usr/local/go/bin/go）
+#
+# 跨平台说明:
+#   - 所有命令由 Task 内嵌的 Go sh/bash 解释器解析（mvdan/sh），Windows 上同样
+#     使用 Bash 语法；mkdir/rm/cp/chmod 等文件命令在 Windows 由 Task 内置的
+#     core utils 提供，无需安装 Git Bash。
+#   - 仅需要外部工具: go、git（tui/gscp 克隆、COMMIT_ID 获取）。
+#   - test-bash 系列脚本面向类 Unix 测试节点，请在有节点的环境下运行。
+#
+# 常用:
+#   task                      # 等价 make build（编译当前平台 owl CLI）
+#   task build WITH=serve,metrics,tui,gscp   # 追加组件
+#   task build PLATFORMS="linux/amd64 windows/amd64"
+#   task build-all            # 全平台 × 全组件
+#   task install              # 安装到 ~/.local/bin
+#   task --list               # 查看全部任务（等价 make help）
+
+version: '3'
+
+vars:
+  GO: '{{default "go" .GO}}'
+  BUILD_DIR: build
+  VERSION: '{{default "0.16.0" .VERSION}}'
+
+  CLI_MAIN: ./cmd/cli
+  SERVE_MAIN: ./cmd/owl-serve
+  PKG: github.com/cangyunye/go-owl/cmd/cli/cmd
+
+  COMMIT_ID:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo unknown
+  BUILD_TIME: '{{now | date "2006-01-02 15:04:05"}}'
+  # 与原 Makefile 的 LDFLAGS 完全一致（-s -w + 三个 -X 注入）
+  LDFLAGS: '-ldflags "-s -w -X ''{{.PKG}}.version={{.VERSION}}'' -X ''{{.PKG}}.commitID={{.COMMIT_ID}}'' -X ''{{.PKG}}.buildTime={{.BUILD_TIME}}''"'
+
+  HOST_PLATFORM: '{{OS}}/{{ARCH}}'
+  ALL_PLATFORMS: 'linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64'
+  WITH: ''
+
+  # 外部源码: gscp（自动克隆）/ tui（优先本地兄弟目录）
+  GSCP_REPO: https://github.com/cangyunye/gscp.git
+  GSCP_REF: main
+  GSCP_SRC: '{{.BUILD_DIR}}/.gscp-src'
+  TUI_SRC: ../go-owl-tui
+  TUI_REPO: https://github.com/cangyunye/go-owl-tui.git
+  TUI_CLONE: '{{.BUILD_DIR}}/.tui-src'
+  # metrics 为可选插件：不写入 go.mod，仅在显式启用时经 metrics.work 引入兄弟目录源码
+  METRICS_SRC: ../go-owl-metrics
+  METRICS_WORK: '{{.ROOT_DIR | toSlash}}/metrics.work'
+
+tasks:
+  default:
+    desc: 默认：编译当前平台 owl CLI（等价 make build）
+    cmds:
+      - task: build
+
+  # ---------------------------------------------------------------- 构建
+
+  build:
+    desc: 编译 owl CLI（纯核心）；WITH=serve,metrics,tui,gscp 追加组件
+    vars:
+      PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
+    cmds:
+      - task: _build-owl
+        vars:
+          PLATFORMS: '{{.PLATFORMS}}'
+          WITH: '{{.WITH}}'
+      - task: _build-serve
+        vars:
+          PLATFORMS: '{{.PLATFORMS}}'
+        if: '{{has "serve" (splitList "," .WITH)}}'
+      - task: _build-tui
+        vars:
+          PLATFORMS: '{{.PLATFORMS}}'
+        if: '{{has "tui" (splitList "," .WITH)}}'
+      - task: _build-gscp
+        vars:
+          PLATFORMS: '{{.PLATFORMS}}'
+        if: '{{has "gscp" (splitList "," .WITH)}}'
+
+  build-all:
+    desc: 全部平台 × 全部组件
+    cmds:
+      - task: build
+        vars:
+          PLATFORMS: '{{.ALL_PLATFORMS}}'
+          WITH: serve,metrics,tui,gscp
+
+  build-serve:
+    desc: 编译 Web 控制台 owl-serve（纯 Go，可交叉编译）
+    cmds:
+      - task: _build-serve
+
+  build-metrics:
+    desc: 编译带 metrics 功能的 owl CLI（可选插件，需兄弟目录 ../go-owl-metrics）
+    cmds:
+      - task: _build-owl-metrics
+
+  build-tui:
+    desc: 编译 owl-tui（默认源码 ../go-owl-tui，可 TUI_SRC= 覆盖；缺失时克隆 TUI_REPO）
+    cmds:
+      - task: _build-tui
+
+  build-gscp:
+    desc: 克隆并跨平台编译 gscp
+    cmds:
+      - task: _build-gscp
+
+  build-local-gscp:
+    desc: '用本地源码编 gscp: task build-local-gscp GSCP_LOCAL=../gscp'
+    vars:
+      PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
+    cmds:
+      - |
+        set -e
+        src="{{default "" .GSCP_LOCAL}}"
+        if [ -z "$src" ] || [ ! -d "$src" ]; then
+          echo '用法: task build-local-gscp GSCP_LOCAL=../gscp（路径需存在）'
+          exit 1
+        fi
+        for p in {{.PLATFORMS}}; do
+          os=${p%/*}; arch=${p#*/}; ext=
+          if [ "$os" = "windows" ]; then ext=.exe; fi
+          out={{.ROOT_DIR}}/{{.BUILD_DIR}}/$os-$arch
+          mkdir -p "$out"
+          echo "==> gscp $os/$arch"
+          (cd "$src" && GOWORK=off CGO_ENABLED=0 GOOS=$os GOARCH=$arch {{.GO}} build -ldflags '-w -s' -o "$out/gscp$ext" .)
+        done
+
+  # ---------------------------------------------------------------- 安装
+
+  install:
+    desc: 安装当前平台产物（owl 及已追加组件）到 ~/.local/bin
+    cmds:
+      - task: build
+        vars:
+          PLATFORMS: '{{OS}}/{{ARCH}}'
+      - |
+        set -e
+        mkdir -p ~/.local/bin
+        for b in owl owl-serve owl-tui; do
+          f={{.ROOT_DIR}}/{{.BUILD_DIR}}/{{OS}}-{{ARCH}}/$b{{if eq OS "windows"}}.exe{{end}}
+          if [ -f "$f" ]; then
+            cp "$f" ~/.local/bin/
+            echo "installed $b"
+          fi
+        done
+
+  install-gscp:
+    desc: 安装 gscp（linux/darwin）到 ~/.owl/gscp/，中继传输自动发现
+    cmds:
+      - task: build-gscp
+        vars:
+          PLATFORMS: 'linux/amd64 linux/arm64 darwin/amd64 darwin/arm64'
+      - |
+        set -e
+        for p in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+          os=${p%/*}; arch=${p#*/}; plat=$os-$arch
+          if [ -f {{.ROOT_DIR}}/{{.BUILD_DIR}}/$plat/gscp ]; then
+            mkdir -p ~/.owl/gscp/$plat
+            cp {{.ROOT_DIR}}/{{.BUILD_DIR}}/$plat/gscp ~/.owl/gscp/$plat/gscp
+            echo "installed gscp ($plat)"
+          fi
+        done
+
+  # ---------------------------------------------------------------- 清理
+
+  clean:
+    desc: 清理构建产物
+    cmds:
+      - rm -rf {{.BUILD_DIR}} coverage.out coverage.html
+      - rm -f owl owl.exe cli cli.exe owl-serve owl-serve.exe owl-tui owl-tui.exe owl-duckdb owl-sqlite3
+
+  # ---------------------------------------------------------------- 测试
+  # 注：原 tests/Makefile 中 `cd .. && go test ./integration/...` 的包路径
+  # 已修正为 `./tests/integration/...`（integration 目录位于 tests/ 下）。
+
+  test:
+    desc: 运行全部测试（单元 + 集成 + bash 脚本）
+    cmds:
+      - task: test-unit
+      - task: test-integration
+      - task: test-bash
+
+  test-unit:
+    desc: 运行单元测试
+    cmds:
+      - |
+        echo "========================================="
+        echo "运行单元测试"
+        echo "========================================="
+        echo "运行 CLI 命令结构性测试 (cmd/cli/cmd/)"
+        {{.GO}} test ./cmd/cli/cmd/...
+        echo ""
+        echo "运行 internal 层逻辑测试"
+        {{.GO}} test ./internal/...
+
+  test-integration:
+    desc: 运行集成测试（需 OWL_TEST_ENABLED=true）
+    cmds:
+      - |
+        echo "========================================="
+        echo "运行集成测试"
+        echo "========================================="
+        if [ "${OWL_TEST_ENABLED:-false}" != "true" ]; then
+          echo "警告: 跳过集成测试（需要设置 OWL_TEST_ENABLED=true）"
+          echo "示例: OWL_TEST_ENABLED=true task test-integration"
+        else
+          echo "检查测试节点..."
+          owl exec run "echo ok" --nodes "${OWL_TEST_NODES:-self-test-1}" || { echo "错误: 测试节点不可用"; exit 1; }
+          echo "运行集成测试..."
+          {{.GO}} test -v ./tests/integration/...
+        fi
+
+  test-quick:
+    desc: 快速测试（跳过耗时项）
+    cmds:
+      - '{{.GO}} test ./cmd/cli/cmd/... ./internal/...'
+
+  test-coverage:
+    desc: 测试并生成覆盖率报告 coverage.html
+    cmds:
+      - '{{.GO}} test -coverprofile=coverage.out ./...'
+      - '{{.GO}} tool cover -html=coverage.out -o coverage.html'
+
+  test-bash:
+    desc: 运行 Bash 脚本测试（需要类 Unix 测试节点）
+    cmds:
+      - task: test-bash-version
+      - task: test-bash-node
+      - task: test-bash-exec
+      - task: test-bash-file
+      - task: test-bash-playbook
+      - task: test-bash-history
+      - task: test-bash-settings
+      - task: test-bash-ai
+
+  test-bash-version:
+    dir: tests
+    cmds:
+      - chmod +x ./scripts/*.sh
+      - |
+        echo ""
+        echo "========================================="
+        echo "bash 测试: version"
+        echo "========================================="
+        ./scripts/test-version.sh
+
+  test-bash-node:
+    dir: tests
+    cmds:
+      - chmod +x ./scripts/*.sh
+      - |
+        echo ""
+        echo "========================================="
+        echo "bash 测试: node"
+        echo "========================================="
+        OWL_TEST_NODES="${OWL_TEST_NODES:-self-test-1}" ./scripts/test-node.sh
+
+  test-bash-exec:
+    dir: tests
+    cmds:
+      - chmod +x ./scripts/*.sh
+      - |
+        echo ""
+        echo "========================================="
+        echo "bash 测试: exec"
+        echo "========================================="
+        OWL_TEST_NODES="${OWL_TEST_NODES:-self-test-1}" ./scripts/test-exec.sh
+
+  test-bash-file:
+    dir: tests
+    cmds:
+      - chmod +x ./scripts/*.sh
+      - |
+        echo ""
+        echo "========================================="
+        echo "bash 测试: file"
+        echo "========================================="
+        OWL_TEST_NODES="${OWL_TEST_NODES:-self-test-1}" ./scripts/test-file.sh
+
+  test-bash-playbook:
+    dir: tests
+    cmds:
+      - chmod +x ./scripts/*.sh
+      - |
+        echo ""
+        echo "========================================="
+        echo "bash 测试: playbook"
+        echo "========================================="
+        OWL_TEST_NODES="${OWL_TEST_NODES:-self-test-1}" ./scripts/test-playbook.sh
+
+  test-bash-history:
+    dir: tests
+    cmds:
+      - chmod +x ./scripts/*.sh
+      - |
+        echo ""
+        echo "========================================="
+        echo "bash 测试: history 和 settings"
+        echo "========================================="
+        ./scripts/test-history.sh
+
+  test-bash-settings:
+    dir: tests
+    cmds:
+      - chmod +x ./scripts/*.sh
+      - |
+        echo ""
+        echo "========================================="
+        echo "bash 测试: settings"
+        echo "========================================="
+        ./scripts/test-settings.sh
+
+  test-bash-ai:
+    dir: tests
+    cmds:
+      - chmod +x ./scripts/*.sh
+      - |
+        echo ""
+        echo "========================================="
+        echo "bash 测试: ai"
+        echo "========================================="
+        OWL_TEST_NODES="${OWL_TEST_NODES:-self-test-1}" ./scripts/test-ai.sh
+
+  test-clean:
+    desc: 清理测试环境
+    cmds:
+      - |
+        owl exec run "rm -rf /tmp/owl-test" --nodes "${OWL_TEST_NODES:-self-test-1}" 2>/dev/null || true
+        echo "清理完成"
+
+  test-help:
+    desc: 测试帮助信息
+    cmds:
+      - owl --help
+      - owl exec --help
+      - owl node --help
+      - owl history --help
+      - owl settings --help
+
+  # ---------------------------------------------------------------- 工具
+
+  fmt:
+    desc: 格式化代码
+    cmds:
+      - '{{.GO}} fmt ./...'
+
+  lint:
+    desc: golangci-lint 检查（未安装则跳过）
+    cmds:
+      - |
+        if command -v golangci-lint >/dev/null 2>&1; then
+          golangci-lint run ./...
+        else
+          echo 'golangci-lint 未安装，跳过'
+        fi
+
+  vet:
+    desc: go vet 静态检查
+    cmds:
+      - '{{.GO}} vet ./...'
+
+  help:
+    desc: 显示本帮助（等价 task --list-all）
+    cmds:
+      - '{{.TASK_EXE}} --list-all'
+
+  # ------------------------------------------------------- 内部任务
+
+  # 通用跨平台编译：对 PLATFORMS 中每个 "os/arch" 执行一次 go build。
+  # 等价原 Makefile 的 cross_build 宏。
+  # 注意：任务级 vars 会覆盖调用方传入的 vars，因此这里用 `{{default "" .BIN}}`
+  # 引用外部传入值（有则用之，无则空），而不是写死默认值。
+  _cross-build:
+    internal: true
+    vars:
+      BIN: '{{default "" .BIN}}'
+      MAIN: '{{default "" .MAIN}}'
+      LDFLAGS: '{{default "" .LDFLAGS}}'
+      GOWORK: '{{default "" .GOWORK}}'
+      PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
+    cmds:
+      - for:
+          var: PLATFORMS
+        cmd: |-
+          {{- $parts := splitList "/" .ITEM -}}
+          {{- $os := index $parts 0 -}}
+          {{- $arch := index $parts 1 -}}
+          mkdir -p {{.BUILD_DIR}}/{{$os}}-{{$arch}}
+          CGO_ENABLED=0 {{if .GOWORK}}GOWORK={{.GOWORK}} {{end}}GOOS={{$os}} GOARCH={{$arch}} {{.GO}} build {{.LDFLAGS}} -o {{.BUILD_DIR}}/{{$os}}-{{$arch}}/{{.BIN}}{{if eq $os "windows"}}.exe{{end}} {{.MAIN}}
+
+  # owl CLI 编译：WITH 含 metrics 时走 metrics.work + tags，否则纯核心
+  _build-owl:
+    internal: true
+    vars:
+      PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
+    cmds:
+      - task: _cross-build
+        vars:
+          BIN: owl
+          MAIN: '{{.CLI_MAIN}}'
+          LDFLAGS: '{{.LDFLAGS}}'
+          PLATFORMS: '{{.PLATFORMS}}'
+        if: '{{not (has "metrics" (splitList "," .WITH))}}'
+      - task: _build-owl-metrics
+        vars:
+          PLATFORMS: '{{.PLATFORMS}}'
+        if: '{{has "metrics" (splitList "," .WITH)}}'
+
+  _build-owl-metrics:
+    internal: true
+    vars:
+      PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
+    preconditions:
+      - sh: test -d '{{.METRICS_SRC}}'
+        msg: 'metrics 需要兄弟目录 {{.METRICS_SRC}}（可选插件，默认不编译）'
+    cmds:
+      - task: _cross-build
+        vars:
+          BIN: owl
+          MAIN: '{{.CLI_MAIN}}'
+          LDFLAGS: '-tags metrics {{.LDFLAGS}}'
+          GOWORK: '{{.METRICS_WORK}}'
+          PLATFORMS: '{{.PLATFORMS}}'
+
+  _build-serve:
+    internal: true
+    vars:
+      PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
+    cmds:
+      - task: _cross-build
+        vars:
+          BIN: owl-serve
+          MAIN: '{{.SERVE_MAIN}}'
+          PLATFORMS: '{{.PLATFORMS}}'
+
+  # owl-tui：默认源码 ../go-owl-tui，可 TUI_SRC= 覆盖；缺失时克隆 TUI_REPO
+  _build-tui:
+    internal: true
+    vars:
+      PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
+    cmds:
+      - |
+        set -e
+        src="{{.TUI_SRC}}"
+        if [ ! -d "$src" ]; then
+          echo '==> clone owl-tui: {{.TUI_REPO}}'
+          rm -rf {{.TUI_CLONE}}
+          git clone --depth 1 {{.TUI_REPO}} {{.TUI_CLONE}}
+          src="{{.TUI_CLONE}}"
+        fi
+        for p in {{.PLATFORMS}}; do
+          os=${p%/*}; arch=${p#*/}; ext=
+          if [ "$os" = "windows" ]; then ext=.exe; fi
+          out={{.ROOT_DIR}}/{{.BUILD_DIR}}/$os-$arch
+          mkdir -p "$out"
+          echo "==> owl-tui $os/$arch"
+          (cd "$src" && GOWORK=off CGO_ENABLED=0 GOOS=$os GOARCH=$arch {{.GO}} build -o "$out/owl-tui$ext" .)
+        done
+
+  # gscp：克隆（或复用已有 clone）并跨平台编译
+  _build-gscp:
+    internal: true
+    vars:
+      PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
+    cmds:
+      - |
+        set -e
+        if [ ! -d '{{.GSCP_SRC}}/.git' ]; then
+          git clone --depth 1 '{{.GSCP_REPO}}' '{{.GSCP_SRC}}'
+        fi
+        cd '{{.GSCP_SRC}}'
+        git fetch -q origin '{{.GSCP_REF}}'
+        git checkout -q FETCH_HEAD
+        cd {{.ROOT_DIR}}
+        for p in {{.PLATFORMS}}; do
+          os=${p%/*}; arch=${p#*/}; ext=
+          if [ "$os" = "windows" ]; then ext=.exe; fi
+          out={{.ROOT_DIR}}/{{.BUILD_DIR}}/$os-$arch
+          mkdir -p "$out"
+          echo "==> gscp $os/$arch"
+          (cd '{{.GSCP_SRC}}' && GOWORK=off CGO_ENABLED=0 GOOS=$os GOARCH=$arch {{.GO}} build -ldflags '-w -s' -o "$out/gscp$ext" .)
+        done
