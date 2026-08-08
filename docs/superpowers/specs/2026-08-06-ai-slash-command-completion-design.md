@@ -93,3 +93,41 @@ E2E(Playwright,20 用例)覆盖:
 - 模板内多占位符用 Tab 跳转依次填充
 - 命令目录支持用户自定义(设置页维护)
 - 模糊匹配(如 `/dgn` 命中 `/diagnose`)
+
+---
+
+## CLI 端实现(2026-08-08)
+
+范围扩展:CLI `owl ai` 交互模式的斜杠命令补全,交互设计对齐上述 Web 端 SlashMenu。
+
+### 技术方案
+
+| 决策点 | 结论 | 理由 |
+|---|---|---|
+| 输入实现 | 手写轻量行编辑器(新包 `cmd/cli/cmd/ai/input`) | 零第三方依赖(仅用已有 `golang.org/x/term`),避免引入 readline 库膨胀二进制;可精确复刻 Web 端交互(实时菜单 + Enter 确认,而非 Tab 循环补全) |
+| 按键事件 | `keys.go`:字节流 → `Key`(UTF-8/ANSI CSI/控制键) | 支持中文多字节与方向键/Home/End/Delete 转义序列 |
+| 菜单逻辑 | `slash.go`:`SlashCommand` 目录 + `SlashMenu` 状态机(前缀过滤、↑↓ 循环、占位符定位) | 纯逻辑无 IO,可独立单测 |
+| 行编辑器 | `editor.go`:`Editor.ReadLine()` 状态机 | 菜单打开时 ↑↓ 选命令,关闭时 ↑↓ 走会话历史 |
+| 终端适配 | `term.go`:`Terminal` 封装 x/term raw mode | Windows/Unix 均支持 |
+
+### CLI 命令目录(映射 Web 端并适配)
+
+- 任务类(7,展开模板):`/exec` `/check` `/diagnose` `/query` `/playbook` `/transfer` `/script` —— 与 Web 端模板一致
+- 动作类(4,直接执行):`/help` → 打印帮助;`/new` → 重建会话(`SessionManager.CreateSession` 覆盖);`/clear` → 重建会话清上下文;`/quit` → 退出交互
+- Web 端导航类(`/nodes` 等跳页)在 CLI 无对应页面,已剔除
+
+### 关键交互细节
+
+- 展开模板后光标**选中**第一个 `{arg}` 占位符(选区替换):直接输入即替换占位符,与 Web 端 `setSelectionRange` 行为一致
+- `Esc` 取消 slash 输入并清空当前行;无匹配前缀时菜单自动关闭,输入继续走普通对话
+- 提交/动作输出前补 `\r\n`,避免 raw mode 下 AI 响应粘在输入行
+
+### 跨平台与边界处理
+
+- **转义序列跨读**:SSH/慢速终端可能把 `ESC` 与 `[A` 分开发送 —— 单独 `ESC` 在底层支持 `SetReadDeadline`(Unix TTY)时等待 50ms 确认;Windows console 无 deadline,立即返回 `ESC`(其转义序列通常整段到达)
+- `parseCSI` 对不完整序列返回"等待更多字节",不丢弃;未知 CSI 整体丢弃;`ESC` 后跟普通字符时 `ESC` 独立返回、字符保留
+- 非交互输入(管道/重定向)回退 `bufio.Scanner` 逐行读取,slash 菜单仅 TTY 生效;原有 `quit`/`exit`/`help`/`!` 前缀保持兼容
+
+### 测试
+
+`input` 包 47 个单测:按键解析(UTF-8 拆分、CSI 拆分/不完整/未知、单独 Esc 超时与回退)、SlashMenu 状态机(过滤/循环/占位符)、行编辑器(中文输入、光标编辑、模板展开与占位符替换、action 回调、Esc 取消、Tab 确认、历史导航、中断、渲染行定位与清理);E2E 管道模式验证通过。
