@@ -192,7 +192,7 @@ owl node add --name web1 --address 192.168.1.10 --port 22 --user root
 添加节点时支持:
 - 指定用户名 (`--user`)
 - 指定 SSH 端口 (`--port`)
-- 添加分组标签 (`--group`, `--label`)
+- 添加分组标签 (`--groups`, `--label`)
 
 ### 节点列表
 

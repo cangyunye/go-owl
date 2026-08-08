@@ -7,13 +7,10 @@
 ```bash
 # 编译项目
 cd go-owl
-make build-duckdb
-
-# 或使用 SQLite3 版本
-# make build-sqlite3
+make build
 
 # 确认二进制文件
-ls -la owl-duckdb
+ls -la build/*/owl
 ```
 
 ## 测试节点信息
@@ -127,7 +124,7 @@ Total: 4 nodes
 #### 按分组筛选
 
 ```bash
-owl node list --group web
+owl node list --groups web
 
 # 预期输出
 ID       | Name            | Address          | Port | User      | Status
@@ -562,7 +559,7 @@ Filesystem      Size  Used Avail Use% /dev/sda1       200G   80G  120G  40% /
 ### 3.3 按分组执行
 
 ```bash
-owl exec run --group web -- systemctl status nginx
+owl exec run --groups web -- systemctl status nginx
 
 # 预期输出
 [node1] 执行: systemctl status nginx
@@ -738,7 +735,7 @@ owl settings set output.format json
 ### 6.3 设置默认目标
 
 ```bash
-owl settings target --group web
+owl settings target --groups web
 
 # 预期输出
 Default Target Settings:

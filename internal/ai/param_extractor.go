@@ -66,9 +66,52 @@ func (e *ParamExtractor) ExtractParams(intent IntentType, input string) map[stri
 		e.extractPlaybookParams(input, params)
 	case IntentTransferFile:
 		e.extractTransferParams(input, params)
+	case IntentFileDownload:
+		e.extractFileDownloadParams(input, params)
 	}
 
 	return params
+}
+
+// extractFileDownloadParams 提取下载参数：远端文件路径 + 目标节点。
+func (e *ParamExtractor) extractFileDownloadParams(input string, params map[string]interface{}) {
+	lowerInput := strings.ToLower(input)
+
+	// 远端文件路径：/xxx 开头的路径或带扩展名的文件名
+	file := e.findFilePath(input)
+	if file != "" {
+		params["remote_file"] = file
+	}
+
+	// 目标节点：优先 nodeNames 匹配
+	for _, n := range e.nodeNames {
+		if strings.Contains(input, n) {
+			params["nodes"] = []interface{}{n}
+			break
+		}
+	}
+	if _, ok := params["nodes"]; !ok {
+		if strings.Contains(input, "所有") || strings.Contains(lowerInput, "all") {
+			params["nodes"] = []interface{}{"ALL_NODES"}
+		}
+	}
+}
+
+// findFilePath 从输入中提取路径（/ 开头或 .tar/.gz/.zip/.tgz/.log/.txt/.conf 等扩展名）。
+func (e *ParamExtractor) findFilePath(input string) string {
+	words := strings.Fields(input)
+	for _, w := range words {
+		w = strings.Trim(w, "\"'(),。，：:")
+		if strings.HasPrefix(w, "/") ||
+			strings.HasSuffix(w, ".tar") || strings.HasSuffix(w, ".gz") ||
+			strings.HasSuffix(w, ".zip") || strings.HasSuffix(w, ".tgz") ||
+			strings.HasSuffix(w, ".log") || strings.HasSuffix(w, ".txt") ||
+			strings.HasSuffix(w, ".conf") || strings.HasSuffix(w, ".yaml") ||
+			strings.HasSuffix(w, ".yml") {
+			return w
+		}
+	}
+	return ""
 }
 
 func (e *ParamExtractor) extractQueryNodesParams(input string, params map[string]interface{}) {

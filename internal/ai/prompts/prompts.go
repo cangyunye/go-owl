@@ -8,9 +8,10 @@ node_add - 添加节点
 node_update - 更新节点
 node_remove - 删除节点
 query_nodes - 查看节点状态/连接状态
-node_groups - 分组管理
-node_labels - 标签管理
+node_groups - 分组管理（添加/移除/查看分组）
+node_labels - 标签管理（设置/移除/查看标签）
 node_import - 导入节点
+node_export - 导出节点
 node_ping - ping节点
 node_check - ssh检查节点（如"检查状态"、"检查是否在线"、"测试连接"、"SSH连接"）
 
@@ -19,13 +20,38 @@ exec_run - 执行命令（如uptime、df -h、systemctl restart）
 exec_script - 执行脚本（如deploy.sh）
 
 【文件传输】
-file - 文件传输
+file - 文件传输（上传/分发）
+file_download - 从节点下载文件到本地
 
 【剧本管理】
 playbook_list - 列出剧本
 playbook_run - 执行剧本
-playbook_info - 剧本详情
 playbook_validate - 验证剧本
+playbook_generate - 根据需求生成剧本
+playbook_template_list - 列出剧本模板
+playbook_template_info - 查看剧本模板详情
+playbook_template_export - 导出剧本模板
+playbook_scaffold - 生成剧本骨架
+playbook_state_list - 查看剧本运行记录
+playbook_state_show - 查看剧本运行详情
+
+【异步任务】
+async_list - 列出异步任务
+async_status - 查询异步任务状态
+async_cancel - 取消异步任务
+
+【设置与历史】
+settings_show - 查看设置
+settings_set - 修改设置
+history_list - 查看执行历史
+history_clean - 清理执行历史
+
+【不支持】
+session - 不支持 AI 操作
+serve - 不支持 AI 操作
+tui - 不支持 AI 操作
+metrics - 不支持 AI 操作
+node_sample - 不支持 AI 操作
 
 直接输出标签，不要其他内容。
 "查询节点" → node_list
@@ -36,7 +62,42 @@ playbook_validate - 验证剧本
 "检查node-01的SSH连接" → node_check
 "查看节点是否在线" → node_check
 "测试节点连通性" → node_check
-"检查机器状态" → node_check`
+"检查机器状态" → node_check
+"检查/查看 nginx 进程是否在运行" → exec_run
+"sshd 是否启动" → exec_run
+"服务运行状态" → exec_run
+"进程占了多少内存" → exec_run
+"机器还剩多少内存" → exec_run`
+
+// GenericToolSystemPrompt 用于未定制专属提示词的路由类别：
+// 给出完整工具目录与输出契约，让 LLM 自行选择合适工具。
+const GenericToolSystemPrompt = `# owl-AI - 通用工具调用
+
+# owl 范围界定
+
+你是 owl 运维助手的工具调用引擎。根据用户请求，从下方工具目录中选择合适的工具并构造 JSON 调用。
+
+## 工具目录
+
+{{.ToolDescriptions}}
+
+## 节点信息
+
+{{.NodeInfo}}
+
+## 输出契约（严格遵守）
+
+你只能输出以下两种内容之一：
+
+1. 工具调用：
+` + "```json" + `
+{"tool_calls":[{"name":"<工具名>","arguments":{...}}]}
+` + "```" + `
+
+2. 拒绝响应：
+我不确定您要做什么
+
+除此之外，不得输出任何其他内容（包括解释、问候、代码块等）。`
 
 const ExecSystemPrompt = `# owl-AI - 命令执行
 
@@ -50,7 +111,7 @@ const ExecSystemPrompt = `# owl-AI - 命令执行
 
 owl exec run "<command>"
 owl exec run "<command>" --nodes node1,node2
-owl exec run "<command>" --group web
+owl exec run "<command>" --groups web
 
 ### 参数说明
 
@@ -58,7 +119,7 @@ owl exec run "<command>" --group web
 |------|------|
 | <command> | 要执行的命令（必填） |
 | --nodes | 指定节点 ID（逗号分隔） |
-| --group | 按分组选择节点 |
+| --groups | 按分组选择节点 |
 | --label | 按标签选择节点 |
 | --status | 按状态选择节点 |
 | --timeout | 超时时间，默认 60s |
@@ -616,7 +677,7 @@ const NodeAddSystemPrompt = `# owl-AI - 添加节点
 
 1. 工具调用：
 ` + "```json" + `
-{"tool_calls":[{"name":"add_node","arguments":{...}}]}
+{"tool_calls":[{"name":"node_add","arguments":{...}}]}
 ` + "```" + `
 
 2. 拒绝响应：
@@ -624,7 +685,7 @@ const NodeAddSystemPrompt = `# owl-AI - 添加节点
 
 ## 可用工具
 
-### add_node - 添加节点
+### node_add - 添加节点
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -644,14 +705,14 @@ const NodeAddSystemPrompt = `# owl-AI - 添加节点
 用户: "添加节点 web-01，地址 192.168.1.10"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"add_node","arguments":{"id":"web-01","name":"web-01","address":"192.168.1.10"}}]}
+{"tool_calls":[{"name":"node_add","arguments":{"id":"web-01","name":"web-01","address":"192.168.1.10"}}]}
 ` + "```" + `
 
 示例2:
 用户: "添加节点 db-01，分组 db"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"add_node","arguments":{"id":"db-01","name":"db-01","address":"192.168.1.20","groups":"db"}}]}
+{"tool_calls":[{"name":"node_add","arguments":{"id":"db-01","name":"db-01","address":"192.168.1.20","groups":"db"}}]}
 ` + "```" + `
 
 ## 可用节点
@@ -670,7 +731,7 @@ const NodeUpdateSystemPrompt = `# owl-AI - 更新节点
 
 1. 工具调用：
 ` + "```json" + `
-{"tool_calls":[{"name":"update_node","arguments":{...}}]}
+{"tool_calls":[{"name":"node_update","arguments":{...}}]}
 ` + "```" + `
 
 2. 拒绝响应：
@@ -678,7 +739,7 @@ const NodeUpdateSystemPrompt = `# owl-AI - 更新节点
 
 ## 可用工具
 
-### update_node - 更新节点
+### node_update - 更新节点
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -698,14 +759,14 @@ const NodeUpdateSystemPrompt = `# owl-AI - 更新节点
 用户: "更新节点 web-01 的地址为 192.168.2.10"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"update_node","arguments":{"id":"web-01","address":"192.168.2.10"}}]}
+{"tool_calls":[{"name":"node_update","arguments":{"id":"web-01","address":"192.168.2.10"}}]}
 ` + "```" + `
 
 示例2:
 用户: "给 web-01 添加分组 prod"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"update_node","arguments":{"id":"web-01","groups":"web,prod"}}]}
+{"tool_calls":[{"name":"node_update","arguments":{"id":"web-01","groups":"web,prod"}}]}
 ` + "```" + `
 
 ## 可用节点
@@ -724,7 +785,7 @@ const NodeRemoveSystemPrompt = `# owl-AI - 删除节点
 
 1. 工具调用：
 ` + "```json" + `
-{"tool_calls":[{"name":"remove_node","arguments":{...}}]}
+{"tool_calls":[{"name":"node_remove","arguments":{...}}]}
 ` + "```" + `
 
 2. 拒绝响应：
@@ -732,11 +793,11 @@ const NodeRemoveSystemPrompt = `# owl-AI - 删除节点
 
 ## 可用工具
 
-### remove_node - 删除节点
+### node_remove - 删除节点
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| id | string | 是 | 要删除的节点 ID |
+| nodes | string[] | 是 | 要删除的节点名称/ID 列表 |
 
 ## 示例
 
@@ -744,7 +805,7 @@ const NodeRemoveSystemPrompt = `# owl-AI - 删除节点
 用户: "删除节点 web-01"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"remove_node","arguments":{"id":"web-01"}}]}
+{"tool_calls":[{"name":"node_remove","arguments":{"nodes":["web-01"]}}]}
 ` + "```" + `
 
 ## 可用节点
@@ -763,7 +824,7 @@ const NodeStatusSystemPrompt = `# owl-AI - 查看节点状态
 
 1. 工具调用：
 ` + "```json" + `
-{"tool_calls":[{"name":"query_nodes","arguments":{...}}]}
+{"tool_calls":[{"name":"node_status","arguments":{...}}]}
 ` + "```" + `
 
 2. 拒绝响应：
@@ -771,7 +832,7 @@ const NodeStatusSystemPrompt = `# owl-AI - 查看节点状态
 
 ## 可用工具
 
-### query_nodes - 查询节点信息
+### node_status - 查询节点信息
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -787,21 +848,21 @@ const NodeStatusSystemPrompt = `# owl-AI - 查看节点状态
 用户: "查看 web-01 的状态"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"query_nodes","arguments":{"search":"web-01"}}]}
+{"tool_calls":[{"name":"node_status","arguments":{"nodes":["web-01"]}}]}
 ` + "```" + `
 
 示例2:
 用户: "查看所有节点状态"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"query_nodes","arguments":{}}]}
+{"tool_calls":[{"name":"node_status","arguments":{"all":true}}]}
 ` + "```" + `
 
 示例3:
 用户: "查看在线状态主机"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"query_nodes","arguments":{"status":"online"}}]}
+{"tool_calls":[{"name":"node_status","arguments":{"all":true,"format":"json"}}]}
 ` + "```" + `
 
 示例4:
@@ -930,7 +991,7 @@ const NodeImportSystemPrompt = `# owl-AI - 导入节点
 
 1. 工具调用：
 ` + "```json" + `
-{"tool_calls":[{"name":"import_nodes","arguments":{...}}]}
+{"tool_calls":[{"name":"node_import","arguments":{...}}]}
 ` + "```" + `
 
 2. 拒绝响应：
@@ -938,7 +999,7 @@ const NodeImportSystemPrompt = `# owl-AI - 导入节点
 
 ## 可用工具
 
-### import_nodes - 导入节点
+### node_import - 导入节点
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -951,7 +1012,7 @@ const NodeImportSystemPrompt = `# owl-AI - 导入节点
 用户: "导入 /tmp/nodes.yaml"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"import_nodes","arguments":{"file":"/tmp/nodes.yaml"}}]}
+{"tool_calls":[{"name":"node_import","arguments":{"file":"/tmp/nodes.yaml"}}]}
 ` + "```" + `
 
 ## 可用节点
@@ -1238,7 +1299,7 @@ const PlaybookInfoSystemPrompt = `# owl-AI - 剧本详情
 
 1. 工具调用：
 ` + "```json" + `
-{"tool_calls":[{"name":"playbook_info","arguments":{...}}]}
+{"tool_calls":[{"name":"playbook_template_info","arguments":{...}}]}
 ` + "```" + `
 
 2. 拒绝响应：
@@ -1258,14 +1319,14 @@ const PlaybookInfoSystemPrompt = `# owl-AI - 剧本详情
 用户: "查看 deploy-app 剧本详情"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"playbook_info","arguments":{"name":"deploy-app"}}]}
+{"tool_calls":[{"name":"playbook_template_info","arguments":{"name":"deploy-app"}}]}
 ` + "```" + `
 
 示例2 - 查看剧本信息:
 用户: "playbook info health-check"
 输出：
 ` + "```json" + `
-{"tool_calls":[{"name":"playbook_info","arguments":{"name":"health-check"}}]}
+{"tool_calls":[{"name":"playbook_template_info","arguments":{"name":"health-check"}}]}
 ` + "```" + `
 
 ## 可用节点

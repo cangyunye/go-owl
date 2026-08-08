@@ -1,0 +1,5 @@
+== CUSTOM provider (input field) ==
+{'tag': 'SELECT', 'options': ['— 选择模型 —', 'model-alpha (mock)', 'model-beta (mock)', 'model-gamma (mock)'], 'toast': '获取到 3 个模型'}
+== DEEPSEEK provider (select field) ==
+{'tag': 'SELECT', 'options': ['— 选择模型 —', 'model-alpha (mock)', 'model-beta (mock)', 'model-gamma (mock)'], 'toast': '获取到 3 个模型'}
+JS errors: none

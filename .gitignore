@@ -6,3 +6,10 @@ review.md
 build/*
 .DS_Store
 *.DS_Store
+.claude/
+.opencode/
+.trae/
+admin.txt
+frontend-design/
+owl-serve
+

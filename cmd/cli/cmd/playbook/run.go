@@ -16,6 +16,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/control/command"
 	pbexec "github.com/cangyunye/go-owl/internal/control/playbook"
 	"github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
@@ -25,7 +26,7 @@ import (
 // playbookRunFlags
 var (
 	pbRunNodes                   string
-	pbRunGroup                   string
+	pbRunGroup                   []string
 	pbRunLabel                   []string
 	pbRunTags                    string
 	pbRunSkipTags                string
@@ -149,42 +150,43 @@ func (m *adapterNodeManager) SearchByAddress(pattern string) []*model.Node {
 func NewPlaybookRunCmd() *cobra.Command {
 	runCmd := &cobra.Command{
 		Use:   "run <playbook-file>",
-		Short: "执行剧本",
-		Long: `执行 Ansible 风格的 YAML 剧本。
-
-示例：
-  owl playbook run site.yml
-  owl playbook run site.yml --tags nginx,mysql
-  owl playbook run site.yml --extra-vars "version=1.2.3"
-  owl playbook run site.yml --check`,
-		Args: cobra.ExactArgs(1),
-		Run:  runPlaybookRun,
+		Short: i18n.T("playbook.run.short"),
+		Long:  i18n.T("playbook.run.long"),
+		Args:  cobra.ExactArgs(1),
+		Run:   runPlaybookRun,
 	}
 
 	runCmd.Flags().StringVarP(&pbRunNodes, "nodes", "N", "",
-		"指定节点 ID (逗号分隔)")
-	runCmd.Flags().StringVarP(&pbRunGroup, "group", "g", "",
-		"按分组选择节点")
+		i18n.T("playbook.run.flag_nodes"))
+	runCmd.Flags().StringSliceVarP(&pbRunGroup, "groups", "g", nil,
+		i18n.T("playbook.run.flag_groups"))
+	runCmd.Flags().StringSliceVar(&pbRunGroup, "group", nil,
+		i18n.T("playbook.run.flag_group_deprecated"))
+	runCmd.Flags().MarkHidden("group")
 	runCmd.Flags().StringSliceVarP(&pbRunLabel, "label", "l", nil,
-		"按标签选择节点")
+		i18n.T("playbook.run.flag_label"))
 	runCmd.Flags().StringVar(&pbRunTags, "tags", "",
-		"执行指定标签的任务")
+		i18n.T("playbook.run.flag_tags"))
 	runCmd.Flags().StringVar(&pbRunSkipTags, "skip-tags", "",
-		"跳过指定标签的任务")
+		i18n.T("playbook.run.flag_skip_tags"))
 	runCmd.Flags().StringArrayVar(&pbRunExtraVars, "extra-vars", nil,
-		"额外变量 (格式: key=value)")
+		i18n.T("playbook.run.flag_extra_vars"))
 	runCmd.Flags().BoolVar(&pbRunCheck, "check", false,
-		"检查模式（不实际执行）")
+		i18n.T("playbook.run.flag_check"))
+	runCmd.Flags().BoolVar(&pbRunCheck, "dry-run", false,
+		i18n.T("playbook.run.flag_dry_run"))
+	runCmd.Flags().BoolVar(&pbRunResume, "resume", false,
+		i18n.T("playbook.run.flag_resume"))
 	runCmd.Flags().DurationVar(&pbRunDefaultConnectTimeout, "default-connect-timeout", 10*time.Second,
-		"全局默认 SSH 连接超时时间")
+		i18n.T("playbook.run.flag_connect_timeout"))
 	runCmd.Flags().DurationVar(&pbRunDefaultCommandTimeout, "default-command-timeout", 5*time.Minute,
-		"全局默认命令执行超时时间")
+		i18n.T("playbook.run.flag_command_timeout"))
 	runCmd.Flags().IntVar(&pbRunDefaultRetry, "default-retry", 0,
-		"全局默认最大重试次数")
+		i18n.T("playbook.run.flag_retry"))
 	runCmd.Flags().DurationVar(&pbRunDefaultRetryInterval, "default-retry-interval", 1*time.Second,
-		"全局默认初始重试间隔")
+		i18n.T("playbook.run.flag_retry_interval"))
 	runCmd.Flags().DurationVar(&pbRunDefaultRetryMaxInterval, "default-retry-max-interval", 30*time.Second,
-		"全局默认最大重试间隔")
+		i18n.T("playbook.run.flag_retry_max_interval"))
 
 	return runCmd
 }
@@ -196,7 +198,7 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 	defer logger.Sync()
 	_, err := history.NewDB(history.DefaultConfig())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 无法初始化历史记录数据库: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.run.warn_history_db", err))
 	}
 
 	nodeLogWriter := logfile.NewNodeLogWriter("")
@@ -229,7 +231,7 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 
 	targetNodes := selectPlaybookRunTargetNodes(nodeResolver, playbookHosts)
 	if len(targetNodes) == 0 {
-		fmt.Println("未找到目标节点")
+		fmt.Println(i18n.T("playbook.run.no_target"))
 		return
 	}
 
@@ -248,6 +250,9 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 	}
 	if pbRunCheck {
 		fmt.Println("Mode: CHECK (no changes will be made)")
+	}
+	if pbRunResume {
+		fmt.Println("Mode: RESUME (continue from last failure)")
 	}
 
 	if pbRunDefaultConnectTimeout > 0 || pbRunDefaultCommandTimeout > 0 {
@@ -276,7 +281,7 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		parser := pbexec.NewParser()
 		parsedPlaybook, err = parser.ParseFromFile(playbookFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "错误: 解析剧本文件失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.run.err_parse", err))
 			os.Exit(1)
 		}
 	}
@@ -323,7 +328,7 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 	}
 
 	if len(resolvedNodes) == 0 {
-		fmt.Println("未找到可用的目标节点")
+		fmt.Println(i18n.T("playbook.run.no_resolved"))
 		os.Exit(1)
 	}
 
@@ -359,6 +364,7 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 			InitialInterval: pbRunDefaultRetryInterval,
 			MaxInterval:     pbRunDefaultRetryMaxInterval,
 		},
+		CheckMode: pbRunCheck,
 	}
 	pbExecutor := pbexec.NewExecutorWithOptions(nodeMgr, cmdExec, nil, nodeResolver, playbookOpts)
 	if bds, ok := pbExecutor.(interface{ SetPlaybookBaseDir(string) }); ok {
@@ -390,20 +396,37 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		CreatedAt: startTime,
 	})
 
+	var runID string
+	if !pbRunCheck {
+		runID = taskID
+		totalSteps := len(parsedPlaybook.PreTasks) + len(parsedPlaybook.Tasks) + len(parsedPlaybook.PostTasks)
+		pbContent, _ := os.ReadFile(playbookFile)
+		pbHash := history.ComputePlaybookHash(string(pbContent), targetNodeIDs)
+		history.CreatePlaybookRun(&history.PlaybookRun{
+			ID:           runID,
+			PlaybookName: filepath.Base(playbookFile),
+			PlaybookHash: pbHash,
+			Nodes:        targetNodeIDs,
+			Status:       "running",
+			StartedAt:    startTime,
+			TotalSteps:   totalSteps,
+		})
+	}
+
 	// 执行 Playbook
 	// 断点续跑
-	if pbRunResume {
+	if pbRunResume && !pbRunCheck {
 		lastFailed, err := history.FindLastFailedByPlaybookPath(playbookFile)
 		if err == nil && lastFailed != nil {
-			fmt.Printf("发现上次失败记录(task_id=%s)，从 %s[%d] 开始续跑\n",
-				lastFailed.TaskID, lastFailed.CurrentTaskPhase, lastFailed.CurrentTaskIndex)
+			fmt.Printf("%s", i18n.T("playbook.run.resume_found",
+				lastFailed.TaskID, lastFailed.CurrentTaskPhase, i18n.F(lastFailed.CurrentTaskIndex)))
 			if r, ok := pbExecutor.(interface{ SetResumeFrom(string, int) }); ok {
 				r.SetResumeFrom(lastFailed.CurrentTaskPhase, lastFailed.CurrentTaskIndex)
 			}
 		} else if err != nil {
-			fmt.Printf("警告: 查找断点失败: %v\n", err)
+			fmt.Printf("%s", i18n.T("playbook.run.warn_resume_fail", err))
 		} else {
-			fmt.Println("未找到上次失败的执行记录，从头开始执行")
+			fmt.Println(i18n.T("playbook.run.resume_none"))
 		}
 	}
 
@@ -414,53 +437,60 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		})
 	}
 
-	fmt.Println("\n执行剧本...")
+	fmt.Println(i18n.T("playbook.run.executing"))
 	execution, err := pbExecutor.Execute(parsedPlaybook, targetModelNodes, extraVars)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "\n错误: 剧本执行失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.run.err_execution", err))
 	}
 
 	// 记录每个任务结果
-	for taskName, results := range execution.Results {
-		for _, result := range results {
-			errorMsg := ""
-			if result.Error != nil {
-				errorMsg = result.Error.Error()
+	if !pbRunCheck {
+		for taskName, results := range execution.Results {
+			for _, result := range results {
+				errorMsg := ""
+				if result.Error != nil {
+					errorMsg = result.Error.Error()
+				}
+				history.RecordCommandExecution(&history.CommandExecution{
+				TaskID:     taskID,
+				NodeID:     result.NodeID,
+				Command:    taskName,
+				ExitCode:   result.ExitCode,
+				Stdout:     truncateStr(result.Output, 4096),
+				Stderr:     errorMsg,
+				DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
+				Success:    result.ExitCode == 0,
+				CreatedAt:  time.Now(),
+			})
+			nodeLogWriter.AppendEntry(result.NodeID, taskName, result.Action, result.ExitCode, result.Output, errorMsg, result.EndTime.Sub(result.StartTime))
 			}
-			history.RecordCommandExecution(&history.CommandExecution{
-			TaskID:     taskID,
-			NodeID:     result.NodeID,
-			Command:    taskName,
-			ExitCode:   result.ExitCode,
-			Stdout:     truncateStr(result.Output, 4096),
-			Stderr:     errorMsg,
-			DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
-			Success:    result.ExitCode == 0,
-			CreatedAt:  time.Now(),
-		})
-		nodeLogWriter.AppendEntry(result.NodeID, taskName, result.Action, result.ExitCode, result.Output, errorMsg, result.EndTime.Sub(result.StartTime))
 		}
+
+		recordStepStates(runID, parsedPlaybook, execution)
 	}
 
 	// 更新操作最终状态
-	finalStatus := "completed"
 	failed := execution.FailureCount()
 	success := execution.SuccessCount()
-	if failed > 0 {
-		if success == 0 {
-			finalStatus = "failed"
-		} else {
-			finalStatus = "partial_failure"
+	if !pbRunCheck {
+		finalStatus := "completed"
+		if failed > 0 {
+			if success == 0 {
+				finalStatus = "failed"
+			} else {
+				finalStatus = "partial_failure"
+			}
 		}
+		history.RecordOperation(&history.Operation{
+			TaskID:    taskID,
+			OpType:    "playbook",
+			Command:   string(meta),
+			Targets:   targetNodeIDs,
+			Status:    finalStatus,
+			CreatedAt: startTime,
+		})
+		history.FinishPlaybookRun(runID, finalStatus, success, failed)
 	}
-	history.RecordOperation(&history.Operation{
-		TaskID:    taskID,
-		OpType:    "playbook",
-		Command:   string(meta),
-		Targets:   targetNodeIDs,
-		Status:    finalStatus,
-		CreatedAt: startTime,
-	})
 
 	// 显示执行结果
 	fmt.Println()
@@ -476,16 +506,16 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 				}
 			}
 			if result.Error != nil {
-				fmt.Printf("❌ [%s] %s 失败: %v\n", nodeName, taskName, result.Error)
+				fmt.Printf("%s", i18n.T("playbook.run.fail", nodeName, taskName, result.Error))
 			} else if result.ExitCode == 0 {
-				fmt.Printf("✅ [%s] %s 成功\n", nodeName, taskName)
+				fmt.Printf("%s", i18n.T("playbook.run.ok", nodeName, taskName))
 				if result.Output != "" {
 					for _, line := range splitLines(truncateStr(result.Output, 1024)) {
 						fmt.Printf("   %s\n", line)
 					}
 				}
 			} else {
-				fmt.Printf("⚠️  [%s] %s 退出码 %d\n", nodeName, taskName, result.ExitCode)
+				fmt.Printf("%s", i18n.T("playbook.run.err_exit", nodeName, taskName, i18n.F(result.ExitCode)))
 				if result.Output != "" {
 					for _, line := range splitLines(truncateStr(result.Output, 1024)) {
 						fmt.Printf("   %s\n", line)
@@ -495,13 +525,15 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	fmt.Printf("\n总结: %d 成功, %d 失败\n", success, failed)
-	if execution.Status == pbexec.ExecutionStatusFailed {
-		fmt.Printf("状态: 失败 (%s)\n", execution.Error)
+	fmt.Printf("%s", i18n.T("playbook.run.summary", i18n.F(success), i18n.F(failed)))
+	if pbRunCheck {
+		fmt.Println(i18n.T("playbook.run.status_check"))
+	} else if execution.Status == pbexec.ExecutionStatusFailed {
+		fmt.Printf("%s", i18n.T("playbook.run.status_failed", execution.Error))
 	} else if execution.Status == pbexec.ExecutionStatusCompleted {
-		fmt.Println("状态: 完成")
+		fmt.Println(i18n.T("playbook.run.status_completed"))
 	} else {
-		fmt.Printf("状态: %s\n", execution.Status)
+		fmt.Printf("%s", i18n.T("playbook.run.status", execution.Status))
 	}
 
 	if failed > 0 {
@@ -522,27 +554,17 @@ func selectPlaybookRunTargetNodes(resolver *node.NodeResolver, playbookHosts []s
 				nodes = append(nodes, rn)
 			}
 		}
-	} else if pbRunGroup != "" {
-		// 支持逗号分隔的多个分组，节点去重
-		groups := parseNodeIDsList(pbRunGroup)
-		seen := make(map[string]bool)
-		for _, group := range groups {
-			groupNodes, err := resolver.ListNodes(&node.ListOptions{Group: group})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "警告: 按分组 '%s' 查询节点失败: %v\n", group, err)
-				continue
-			}
-			for _, rn := range groupNodes {
-				if !seen[rn.ID] {
-					seen[rn.ID] = true
-					nodes = append(nodes, rn)
-				}
-			}
+	} else if len(pbRunGroup) > 0 {
+		resolvedNodes, err := node.ListNodesByGroups(resolver, pbRunGroup)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.run.warn_group", err))
+		} else {
+			nodes = resolvedNodes
 		}
 	} else if len(pbRunLabel) > 0 {
 		nodes, err = resolver.ListNodes(&node.ListOptions{Label: pbRunLabel[0]})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 按标签查询节点失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.run.warn_label", err))
 		}
 	} else if len(playbookHosts) > 0 {
 		// 使用剧本中的 hosts 配置
@@ -556,21 +578,14 @@ func selectPlaybookRunTargetNodes(resolver *node.NodeResolver, playbookHosts []s
 		// 如果没有任何配置，则使用所有节点
 		nodes, err = resolver.ListNodes(nil)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 获取节点列表失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.run.warn_list", err))
 		}
 	}
 
 	for _, rn := range nodes {
 		// 如果同时指定了多个筛选条件，在 Go 层做二次过滤
-		if pbRunGroup != "" {
-			found := false
-			for _, g := range rn.Groups {
-				if g == pbRunGroup {
-					found = true
-					break
-				}
-			}
-			if !found {
+		if len(pbRunGroup) > 0 {
+			if !node.ContainsAny(rn.Groups, pbRunGroup) {
 				continue
 			}
 		}
@@ -672,12 +687,12 @@ func parsePlaybookRunExtraVars(vars []string) map[string]interface{} {
 // ApplyDefaultConfig 将 YAML default 块中的默认值应用到 CLI 参数上。
 // CLI 参数非空时优先使用 CLI 参数（完全替换），否则使用 YAML default。
 // 返回合并后的 group, tags, skip_tags 值（逗号分隔字符串形式）。
-func ApplyDefaultConfig(cliGroup, cliTags, cliSkipTags string,
-	defaultGroups, defaultTags, defaultSkipTags []string) (string, string, string) {
+func ApplyDefaultConfig(cliGroups []string, cliTags, cliSkipTags string,
+	defaultGroups, defaultTags, defaultSkipTags []string) ([]string, string, string) {
 
-	group := cliGroup
-	if group == "" && len(defaultGroups) > 0 {
-		group = strings.Join(defaultGroups, ",")
+	groups := cliGroups
+	if len(groups) == 0 && len(defaultGroups) > 0 {
+		groups = defaultGroups
 	}
 
 	tags := cliTags
@@ -690,11 +705,11 @@ func ApplyDefaultConfig(cliGroup, cliTags, cliSkipTags string,
 		skipTags = strings.Join(defaultSkipTags, ",")
 	}
 
-	return group, tags, skipTags
+	return groups, tags, skipTags
 }
 
 func runSamplePlaybook(nodes []*model.Node) {
-	fmt.Println("\n执行示例剧本...")
+	fmt.Println(i18n.T("playbook.run.sample_start"))
 
 	steps := []string{
 		"[Gathering Facts]",
@@ -718,7 +733,7 @@ func runSamplePlaybook(nodes []*model.Node) {
 		}
 	}
 
-	fmt.Printf("\n总结: %d 成功, %d 失败\n", success, failed)
+	fmt.Printf("%s", i18n.T("playbook.run.summary", i18n.F(success), i18n.F(failed)))
 	if failed > 0 {
 		os.Exit(1)
 	}
@@ -746,4 +761,51 @@ func splitLines(s string) []string {
 		lines = append(lines, s[start:])
 	}
 	return lines
+}
+
+func recordStepStates(runID string, pb *pbexec.ParsedPlaybook, exec *pbexec.PlaybookExecution) {
+	if runID == "" {
+		return
+	}
+
+	allTasks := make([]*pbexec.ParsedTask, 0, len(pb.PreTasks)+len(pb.Tasks)+len(pb.PostTasks))
+	allTasks = append(allTasks, pb.PreTasks...)
+	allTasks = append(allTasks, pb.Tasks...)
+	allTasks = append(allTasks, pb.PostTasks...)
+
+	for stepIndex, t := range allTasks {
+		results, ok := exec.Results[t.Name]
+		if !ok {
+			continue
+		}
+		for _, result := range results {
+			status := "completed"
+			errMsg := ""
+			if result.Error != nil {
+				status = "failed"
+				errMsg = result.Error.Error()
+			} else if result.ExitCode != 0 {
+				status = "failed"
+				errMsg = fmt.Sprintf("exit code %d", result.ExitCode)
+			}
+
+			startedAt := result.StartTime
+			finishedAt := result.EndTime
+			history.UpsertStepState(&history.PlaybookStepState{
+				RunID:      runID,
+				NodeID:     result.NodeID,
+				StepIndex:  stepIndex,
+				StepName:   t.Name,
+				Action:     t.Action,
+				Status:     status,
+				StartedAt:  &startedAt,
+				FinishedAt: &finishedAt,
+				DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
+				ExitCode:   result.ExitCode,
+				Stdout:     truncateStr(result.Output, 4096),
+				Stderr:     errMsg,
+				Error:      errMsg,
+			})
+		}
+	}
 }

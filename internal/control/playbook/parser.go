@@ -14,6 +14,7 @@ import (
 type Playbook struct {
 	Name          string                 `yaml:"name"`
 	Description   string                 `yaml:"description,omitempty"`
+	Version       string                 `yaml:"version,omitempty"`
 	Hosts         []string               `yaml:"hosts"`
 	Vars          map[string]interface{} `yaml:"vars"`
 	ExecutionMode string                 `yaml:"execution_mode"`

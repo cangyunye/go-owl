@@ -23,7 +23,7 @@ owl exec - 批量命令执行
 ```bash
 owl exec run "<command>"
 owl exec run "<command>" --nodes node1,node2
-owl exec run "<command>" --group web
+owl exec run "<command>" --groups web
 ```
 
 ### 参数说明
@@ -32,7 +32,7 @@ owl exec run "<command>" --group web
 |------|------|
 | `<command>` | 要执行的命令（必填） |
 | `--nodes` | 指定节点 ID（逗号分隔） |
-| `--group` | 按分组选择节点 |
+| `--groups` | 按分组选择节点 |
 | `--label` | 按标签选择节点 |
 | `--status` | 按状态选择节点 |
 | `--timeout` | 超时时间，默认 60s |
@@ -50,7 +50,7 @@ owl exec run "uptime"
 owl exec run "df -h" --nodes web-01,web-02
 
 # 按分组执行
-owl exec run "systemctl status nginx" --group web
+owl exec run "systemctl status nginx" --groups web
 
 # 按标签执行
 owl exec run "free -h" --label env=prod
@@ -134,7 +134,7 @@ owl exec script ./config.sh --nodes web-01 --args "--env prod"
 |------|------|
 | `<script-file>` | 本地脚本文件路径（未来支持 URL 脚本） |
 | `--nodes` | 指定节点 ID（逗号分隔） |
-| `--group` | 按分组选择节点 |
+| `--groups` | 按分组选择节点 |
 | `--label` | 按标签选择节点 |
 | `--dest` | 远程存放目录（默认 /tmp） |
 | `--args` | 传递给脚本的参数 |
@@ -223,7 +223,7 @@ $ owl exec run "hostname" --nodes test-01,test-02 --parallel
 ```bash
 # 步骤
 $ owl node groups add test-group --nodes test-01,test-02
-$ owl exec run "whoami" --group test-group
+$ owl exec run "whoami" --groups test-group
 
 # 预期结果
 # ✅ [test-01] 成功

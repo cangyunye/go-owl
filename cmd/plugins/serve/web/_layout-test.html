@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="default">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exec Layout Test</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<style>
+  body { background: var(--bg); }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <main class="main-area">
+    <header class="topbar">
+      <div class="view-title" id="viewTitle">命令执行</div>
+      <div class="topbar-spacer"></div>
+    </header>
+    <div class="view-container" id="viewContainer">
+      <div class="exec-layout">
+        <div class="exec-main">
+          <div class="cmd-editor">
+            <div class="editor-header">
+              <div class="btn-group" style="display:flex;gap:4px">
+                <button class="btn btn-sm mode-btn active" id="tab-command">命令</button>
+                <button class="btn btn-sm mode-btn" id="tab-script">脚本</button>
+              </div>
+            </div>
+            <textarea id="cmd-input" placeholder="# 输入要执行的命令" spellcheck="false">uptime
+df -h
+free -m</textarea>
+          </div>
+
+          <div class="output-terminal">
+            <div class="term-header">
+              <div class="dot-group">
+                <span class="td td-red"></span>
+                <span class="td td-yellow"></span>
+                <span class="td td-green"></span>
+              </div>
+              <span class="term-title">输出</span>
+              <span style="flex:1"></span>
+              <button class="btn btn-ghost btn-sm">历史记录</button>
+              <button class="btn btn-ghost btn-sm" id="clear-term-btn">清屏</button>
+            </div>
+            <div class="term-body" id="term-body">
+              <div class="line" style="color:var(--muted)">选择节点并点击「执行」查看输出</div>
+              <div class="line cursor-blink"></div>
+            </div>
+          </div>
+
+          <div id="exec-log-downloads" style="display:none;margin-top:12px"></div>
+        </div>
+
+        <div class="exec-sidebar">
+          <div class="card">
+            <div class="card-header"><h3>筛选条件</h3></div>
+            <div class="card-body">
+              <div class="filter-row"><label>分组（点击切换多选）</label></div>
+              <div class="filter-row"><label>标签</label></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>执行模式</h3></div>
+            <div class="card-body">
+              <div class="btn-group" style="display:flex;gap:4px;margin-bottom:8px">
+                <button class="btn btn-sm mode-btn active">并行</button>
+                <button class="btn btn-sm mode-btn">串行</button>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>输出选项</h3></div>
+            <div class="card-body"><div class="filter-row"><label>格式</label></div></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>超时设置</h3></div>
+            <div class="card-body"><div class="filter-row"><label>连接超时</label></div></div>
+          </div>
+          <div class="card">
+            <div class="adv-toggle">重试设置</div>
+          </div>
+          <button class="btn btn-primary" id="exec-btn" style="width:100%;justify-content:center;padding:10px">执行命令</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

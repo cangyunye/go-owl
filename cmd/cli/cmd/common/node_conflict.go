@@ -3,6 +3,7 @@ package common
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	internalhistory "github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/cangyunye/go-owl/internal/logger"
 	"golang.org/x/term"
 )
@@ -241,7 +243,7 @@ func resolveNodeConflicts(db *sql.DB, dbNodes, jsonNodes []*NodeInfo) error {
 	}
 
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return fmt.Errorf("检测到节点数据冲突: 共 %d 个冲突", len(conflicts))
+		return errors.New(i18n.T("common.conflict.err_detected", i18n.F(len(conflicts))))
 	}
 
 	dbByID := make(map[string]*NodeInfo)
@@ -255,10 +257,10 @@ func resolveNodeConflicts(db *sql.DB, dbNodes, jsonNodes []*NodeInfo) error {
 
 	conflictNodeIDs := collectConflictNodeIDs(conflicts)
 
-	fmt.Println("⚠️  检测到节点数据冲突！")
-	fmt.Printf("\n数据库节点:    %d 个\n", len(dbNodes))
-	fmt.Printf("nodes.json:    %d 个\n", len(jsonNodes))
-	fmt.Printf("冲突节点数:    %d 个\n\n", len(conflictNodeIDs))
+	fmt.Println(i18n.T("common.conflict.banner"))
+	fmt.Printf("%s", i18n.T("common.conflict.db_count", i18n.F(len(dbNodes))))
+	fmt.Printf("%s", i18n.T("common.conflict.json_count", i18n.F(len(jsonNodes))))
+	fmt.Printf("%s", i18n.T("common.conflict.conflict_count", i18n.F(len(conflictNodeIDs))))
 
 	var syncToDB []string
 	var syncToJSON []string
@@ -266,28 +268,27 @@ func resolveNodeConflicts(db *sql.DB, dbNodes, jsonNodes []*NodeInfo) error {
 	for i, nodeID := range conflictNodeIDs {
 		remaining := len(conflictNodeIDs) - i
 		printNodeConflictInfo(nodeID, dbByID, jsonByID, conflicts)
-		fmt.Print("\n请选择处理方式:\n")
-		fmt.Print("  [1] 用 nodes.json 覆盖数据库\n")
-		fmt.Print("  [2] 用数据库覆盖 nodes.json\n")
-		fmt.Print("  [3] 跳过此节点\n")
+		fmt.Print(i18n.T("common.conflict.choose_title"))
+		fmt.Print(i18n.T("common.conflict.opt_json_over_db"))
+		fmt.Print(i18n.T("common.conflict.opt_db_over_json"))
+		fmt.Print(i18n.T("common.conflict.opt_skip"))
 		if remaining > 1 {
-			fmt.Print("  [4] 批量处理剩余节点\n")
+			fmt.Print(i18n.T("common.conflict.opt_batch"))
 		}
-		fmt.Print("  输入选择 (1/2/3" + func() string {
-			if remaining > 1 {
-				return "/4"
-			}
-			return ""
-		}() + "): ")
+		opts := "1/2/3"
+		if remaining > 1 {
+			opts = "1/2/3/4"
+		}
+		fmt.Print(i18n.T("common.conflict.choice_prompt", opts))
 		var choice string
 		fmt.Scanln(&choice)
 
 		if remaining > 1 && choice == "4" {
-			fmt.Println("\n批量处理剩余节点:")
-			fmt.Print("  [1] 剩余的都不变\n")
-			fmt.Print("  [2] 剩余的都用 nodes.json 覆盖数据库\n")
-			fmt.Print("  [3] 剩余的都用数据库覆盖 nodes.json\n")
-			fmt.Print("  输入选择 (1/2/3): ")
+			fmt.Println(i18n.T("common.conflict.batch_title"))
+			fmt.Print(i18n.T("common.conflict.batch_opt_keep"))
+			fmt.Print(i18n.T("common.conflict.batch_opt_json"))
+			fmt.Print(i18n.T("common.conflict.batch_opt_db"))
+			fmt.Print(i18n.T("common.conflict.batch_prompt"))
 			var batchChoice string
 			fmt.Scanln(&batchChoice)
 			switch batchChoice {
@@ -295,14 +296,14 @@ func resolveNodeConflicts(db *sql.DB, dbNodes, jsonNodes []*NodeInfo) error {
 				for _, rid := range conflictNodeIDs[i:] {
 					syncToDB = append(syncToDB, rid)
 				}
-				fmt.Printf("  ✓ 已标记剩余 %d 个节点: 将用 nodes.json 覆盖数据库\n", remaining)
+				fmt.Printf("%s", i18n.T("common.conflict.batch_marked_json", i18n.F(remaining)))
 			case "3":
 				for _, rid := range conflictNodeIDs[i:] {
 					syncToJSON = append(syncToJSON, rid)
 				}
-				fmt.Printf("  ✓ 已标记剩余 %d 个节点: 将用数据库覆盖 nodes.json\n", remaining)
+				fmt.Printf("%s", i18n.T("common.conflict.batch_marked_db", i18n.F(remaining)))
 			default:
-				fmt.Printf("  - 剩余 %d 个节点保持不变\n", remaining)
+				fmt.Printf("%s", i18n.T("common.conflict.batch_keep", i18n.F(remaining)))
 			}
 			break
 		}
@@ -310,12 +311,12 @@ func resolveNodeConflicts(db *sql.DB, dbNodes, jsonNodes []*NodeInfo) error {
 		switch choice {
 		case "1":
 			syncToDB = append(syncToDB, nodeID)
-			fmt.Println("  ✓ 已标记: 将用 nodes.json 覆盖数据库")
+			fmt.Println(i18n.T("common.conflict.marked_json"))
 		case "2":
 			syncToJSON = append(syncToJSON, nodeID)
-			fmt.Println("  ✓ 已标记: 将用数据库覆盖 nodes.json")
+			fmt.Println(i18n.T("common.conflict.marked_db"))
 		default:
-			fmt.Println("  - 已跳过")
+			fmt.Println(i18n.T("common.conflict.skipped"))
 		}
 		fmt.Println()
 	}
@@ -324,22 +325,22 @@ func resolveNodeConflicts(db *sql.DB, dbNodes, jsonNodes []*NodeInfo) error {
 		for _, nodeID := range syncToDB {
 			if jsonNode, ok := jsonByID[nodeID]; ok {
 				if err := syncSingleNodeToDB(db, jsonNode); err != nil {
-					logger.Warn("同步节点到数据库失败", logger.WithField("node_id", nodeID), logger.WithError(err))
+					logger.Warn("failed to sync node to database", logger.WithField("node_id", nodeID), logger.WithError(err))
 				}
 			}
 		}
-		logger.Info("已将 nodes.json 中的节点同步到数据库", logger.WithField("count", len(syncToDB)))
+		logger.Info("Synced nodes from nodes.json to database", logger.WithField("count", len(syncToDB)))
 	}
 
 	if len(syncToJSON) > 0 {
 		if err := syncNodesFromDBToJSON(db, syncToJSON); err != nil {
-			logger.Warn("同步节点到 nodes.json 失败", logger.WithError(err))
+			logger.Warn("failed to sync nodes to nodes.json", logger.WithError(err))
 		}
-		logger.Info("已将数据库中的节点同步到 nodes.json", logger.WithField("count", len(syncToJSON)))
+		logger.Info("Synced nodes from database to nodes.json", logger.WithField("count", len(syncToJSON)))
 	}
 
 	fmt.Println()
-	fmt.Println("冲突处理完成，继续执行。")
+	fmt.Println(i18n.T("common.conflict.done"))
 	return nil
 }
 
@@ -363,26 +364,26 @@ func printNodeConflictInfo(nodeID string, dbByID, jsonByID map[string]*NodeInfo,
 	dbNode := dbByID[nodeID]
 	jsonNode := jsonByID[nodeID]
 
-	fmt.Printf("--- 节点 %s ---\n", nodeID)
+	fmt.Printf("%s", i18n.T("common.conflict.node_header", nodeID))
 
 	if dbNode != nil && jsonNode != nil {
 		diffs := compareNodeFields(dbNode, jsonNode)
 		if len(diffs) > 0 {
-			fmt.Printf("  字段不一致: %s\n", strings.Join(diffs, ", "))
+			fmt.Printf("%s", i18n.T("common.conflict.fields_differ", strings.Join(diffs, ", ")))
 		}
-		fmt.Printf("  数据库版本:   name=%s, address=%s, port=%d, user=%s\n",
-			dbNode.Name, dbNode.Address, dbNode.Port, dbNode.User)
-		fmt.Printf("  JSON 版本:    name=%s, address=%s, port=%d, user=%s\n",
-			jsonNode.Name, jsonNode.Address, jsonNode.Port, jsonNode.User)
+		fmt.Printf("%s", i18n.T("common.conflict.db_version",
+			dbNode.Name, dbNode.Address, i18n.F(dbNode.Port), dbNode.User))
+		fmt.Printf("%s", i18n.T("common.conflict.json_version",
+			jsonNode.Name, jsonNode.Address, i18n.F(jsonNode.Port), jsonNode.User))
 	} else if dbNode != nil {
-		fmt.Printf("  名称: %s, 地址: %s:%d, 用户: %s\n", dbNode.Name, dbNode.Address, dbNode.Port, dbNode.User)
-		fmt.Println("  (仅存在于数据库中)")
+		fmt.Printf("%s", i18n.T("common.conflict.node_brief", dbNode.Name, dbNode.Address, i18n.F(dbNode.Port), dbNode.User))
+		fmt.Println(i18n.T("common.conflict.only_db"))
 	} else if jsonNode != nil {
-		fmt.Printf("  名称: %s, 地址: %s:%d, 用户: %s\n", jsonNode.Name, jsonNode.Address, jsonNode.Port, jsonNode.User)
-		fmt.Println("  (仅存在于 nodes.json 中)")
+		fmt.Printf("%s", i18n.T("common.conflict.node_brief", jsonNode.Name, jsonNode.Address, i18n.F(jsonNode.Port), jsonNode.User))
+		fmt.Println(i18n.T("common.conflict.only_json"))
 	}
 
-	fmt.Println("  相关冲突:")
+	fmt.Println(i18n.T("common.conflict.related"))
 	for _, c := range allConflicts {
 		matches := (c.DBNode != nil && c.DBNode.ID == nodeID) || (c.JSONNode != nil && c.JSONNode.ID == nodeID)
 		if matches {
@@ -439,10 +440,10 @@ func writeNodesJSON(jsonPath string, nodes []*NodeInfo) error {
 func PrintConflictReport(conflicts []NodeConflict, dbCount, jsonCount int) {
 	conflictNodeIDs := collectConflictNodeIDs(conflicts)
 
-	fmt.Println("⚠️  检测到节点数据冲突！")
-	fmt.Printf("\n数据库节点:    %d 个, 涉及 %d 个冲突节点\n", dbCount, len(conflictNodeIDs))
-	fmt.Printf("nodes.json:    %d 个\n", jsonCount)
-	fmt.Println("\n冲突详情:")
+	fmt.Println(i18n.T("common.conflict.banner"))
+	fmt.Printf("%s", i18n.T("common.conflict.report_count", i18n.F(dbCount), i18n.F(len(conflictNodeIDs))))
+	fmt.Printf("%s", i18n.T("common.conflict.json_count", i18n.F(jsonCount)))
+	fmt.Println(i18n.T("common.conflict.report_details"))
 	for _, c := range conflicts {
 		fmt.Printf("  [%s] %s\n", c.Type, c.Description)
 	}
@@ -458,8 +459,8 @@ func CheckNodeConflictsBeforeExec() {
 		return
 	}
 	if err := EnsureNodesConsistent(sqlDB); err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
-		fmt.Fprintf(os.Stderr, "使用 --sync-nodes 自动用 nodes.json 覆盖数据库，或交互式运行以逐个解决冲突。\n")
+		fmt.Fprintln(os.Stderr, i18n.T("common.conflict.err_generic", err))
+		fmt.Fprintln(os.Stderr, i18n.T("common.conflict.err_hint"))
 		os.Exit(1)
 	}
 }

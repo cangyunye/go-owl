@@ -8,12 +8,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/internal/common/model"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 var (
 	listFormat  string
-	listGroup   string
+	listGroup   []string
 	listLabel   []string
 	listStatus  string
 	listNoColor bool
@@ -24,50 +26,39 @@ var (
 func NewListCmd() *cobra.Command {
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "列出所有节点",
-		Long: `列出所有已注册的节点，支持按分组、标签、状态过滤。
-
-可用字段：
-  id, name, address, port, user, status, groups, labels, last_check
-
-示例：
-  owl node list                           # 列出所有节点
-  owl node list --group web               # 列出 web 分组的节点
-  owl node list --label env=prod          # 列出 env=prod 的节点
-  owl node list --status online           # 列出在线节点
-  owl node list -o json                   # JSON 格式输出
-  owl node list --header id,address       # 只显示 id 和 address 列
-  owl node list --header id,name,labels:60  # 只显示3列，labels列宽度60
-  owl node list --header *                # 显示默认8个字段
-  owl node list --header *,id              # 默认字段 + id放最后
-  owl node list --header labels:60,*        # labels先显示，然后其他默认字段`,
-		Run: runList,
+		Short: i18n.T("node.list.short"),
+		Long:  i18n.T("node.list.long"),
+		Run:   runList,
 	}
 
 	listCmd.Flags().StringVarP(&listFormat, "format", "o", "table",
-		"输出格式: table, json, yaml")
-	listCmd.Flags().StringVarP(&listGroup, "group", "g", "",
-		"按分组过滤")
+		i18n.T("node.list.flag_format"))
+	listCmd.Flags().StringSliceVarP(&listGroup, "groups", "g", nil, i18n.T("node.list.flag_groups"))
+	listCmd.Flags().StringSliceVar(&listGroup, "group", nil, i18n.T("node.list.flag_group_deprecated"))
+	listCmd.Flags().MarkHidden("group")
 	listCmd.Flags().StringSliceVarP(&listLabel, "label", "l", nil,
-		"按标签过滤 (格式: key=value)")
+		i18n.T("node.list.flag_label"))
 	listCmd.Flags().StringVarP(&listStatus, "status", "S", "",
-		"按状态过滤: online, offline, unknown")
+		i18n.T("node.list.flag_status"))
 	listCmd.Flags().BoolVarP(&listNoColor, "no-color", "C", false,
-		"禁用颜色输出")
+		i18n.T("node.list.flag_no_color"))
 	listCmd.Flags().StringVar(&listHeader, "header", "",
-		"自定义显示字段和宽度 (格式: id,address,labels:60,*,id)")
+		i18n.T("node.list.flag_header"))
 
 	return listCmd
 }
 
 func runList(cmd *cobra.Command, args []string) {
+	// 从 owl settings 加载未显式指定的 flag 默认值
+	applyListSettingsFallback(cmd)
+
 	store := common.GetNodeStore()
 	formatter := common.NewOutputFormatter(listFormat, !listNoColor)
 
 	// 获取所有节点
 	allNodes, err := store.List()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error listing nodes: %v\n", err)
+		fmt.Fprintln(os.Stderr, i18n.T("node.list.err_list", err))
 		os.Exit(1)
 	}
 
@@ -82,7 +73,7 @@ func runList(cmd *cobra.Command, args []string) {
 	if listHeader != "" {
 		fields = common.ParseHeaderFields(listHeader)
 		if len(fields) == 0 {
-			fmt.Fprintf(os.Stderr, "Invalid header format: %s\n", listHeader)
+			fmt.Fprintln(os.Stderr, i18n.T("node.list.err_header", listHeader))
 			os.Exit(1)
 		}
 	}
@@ -100,8 +91,8 @@ func filterNodes(nodes []*common.NodeInfo) []*common.NodeInfo {
 
 	for _, n := range nodes {
 		// 按分组过滤
-		if listGroup != "" {
-			if !containsGroup(n.Groups, listGroup) {
+		if len(listGroup) > 0 {
+			if !containsAnyGroup(n.Groups, listGroup) {
 				continue
 			}
 		}
@@ -138,10 +129,15 @@ func filterNodes(nodes []*common.NodeInfo) []*common.NodeInfo {
 	return filtered
 }
 
-func containsGroup(groups []string, group string) bool {
+func containsAnyGroup(groups []string, targets []string) bool {
+	if len(targets) == 0 {
+		return true
+	}
 	for _, g := range groups {
-		if g == group {
-			return true
+		for _, t := range targets {
+			if g == t {
+				return true
+			}
 		}
 	}
 	return false
@@ -176,5 +172,31 @@ func toModelNode(n *common.NodeInfo) *model.Node {
 		Groups:      n.Groups,
 		Labels:      n.Labels,
 		LastCheckAt: n.LastCheckAt,
+	}
+}
+
+// applyListSettingsFallback 从 owl settings 加载未显式指定的 node list flag 默认值
+func applyListSettingsFallback(cmd *cobra.Command) {
+	s := settings.GetCurrentSettings()
+
+	// --groups: 如果用户未指定，使用 settings 中的 default.group 或 target.groups
+	if !cmd.Flags().Changed("groups") {
+		group := s.Default.Group
+		if group == "" {
+			group = s.Target.Groups
+		}
+		if group != "" {
+			listGroup = strings.Split(group, ",")
+		}
+	}
+
+	// --format: 如果用户未指定，使用 settings 中的 output.format
+	if !cmd.Flags().Changed("format") && s.Output.Format != "" {
+		listFormat = s.Output.Format
+	}
+
+	// --no-color: 如果用户未指定，从 settings output.color 取反
+	if !cmd.Flags().Changed("no-color") {
+		listNoColor = !s.Output.Color
 	}
 }

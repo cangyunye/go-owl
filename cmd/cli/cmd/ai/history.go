@@ -9,6 +9,7 @@ import (
 
 	common "github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	internalhistory "github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 var (
@@ -20,32 +21,32 @@ var (
 func NewHistoryCmd() *cobra.Command {
 	historyCmd := &cobra.Command{
 		Use:   "history",
-		Short: "AI 对话历史记录管理",
-		Long:  `查询和管理 owl ai 的对话历史记录`,
+		Short: i18n.T("ai.history.short"),
+		Long:  i18n.T("ai.history.long"),
 	}
 
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "列出最近的 AI 对话会话",
+		Short: i18n.T("ai.history.list.short"),
 		Run:   runAIHistoryList,
 	}
-	listCmd.Flags().IntVar(&aiHistoryLimit, "limit", 20, "显示的最大记录数")
-	listCmd.Flags().StringVar(&aiHistorySession, "session", "", "按会话 ID 过滤")
+	listCmd.Flags().IntVar(&aiHistoryLimit, "limit", 20, i18n.T("ai.history.list.flag_limit"))
+	listCmd.Flags().StringVar(&aiHistorySession, "session", "", i18n.T("ai.history.list.flag_session"))
 
 	showCmd := &cobra.Command{
 		Use:   "show <session-id>",
-		Short: "显示指定会话的完整对话链",
-		Long:  `显示指定会话的完整对话链。使用 "owl ai history list" 查看可用的会话 ID。`,
+		Short: i18n.T("ai.history.show.short"),
+		Long:  i18n.T("ai.history.show.long"),
 		Args:  cobra.ExactArgs(1),
 		Run:   runAIHistoryShow,
 	}
 
 	cleanCmd := &cobra.Command{
 		Use:   "clean",
-		Short: "清理过期的 AI 聊天记录",
+		Short: i18n.T("ai.history.clean.short"),
 		Run:   runAIHistoryClean,
 	}
-	cleanCmd.Flags().IntVar(&aiHistoryDays, "days", 30, "保留最近 N 天的记录")
+	cleanCmd.Flags().IntVar(&aiHistoryDays, "days", 30, i18n.T("ai.history.clean.flag_days"))
 
 	historyCmd.AddCommand(listCmd, showCmd, cleanCmd)
 	return historyCmd
@@ -54,18 +55,18 @@ func NewHistoryCmd() *cobra.Command {
 func runAIHistoryList(cmd *cobra.Command, args []string) {
 	sessions, err := internalhistory.QueryAiChatSessionsGlobal(aiHistorySession, aiHistoryLimit)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "查询失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.history.err_query", err))
 		return
 	}
 
 	if len(sessions) == 0 {
-		fmt.Println("暂无 AI 对话历史记录")
+		fmt.Println(i18n.T("ai.history.empty"))
 		return
 	}
 
 	fmt.Printf("%s %s %s %s %s %s\n",
-		common.PadRight("会话ID", 10), common.PadRight("时间", 22), common.PadRight("用户输入", 30),
-		common.PadRight("工具", 18), common.PadRight("步骤数", 8), common.PadRight("耗时", 8))
+		common.PadRight(i18n.T("ai.history.col_session"), 10), common.PadRight(i18n.T("ai.history.col_time"), 22), common.PadRight(i18n.T("ai.history.col_input"), 30),
+		common.PadRight(i18n.T("ai.history.col_tool"), 18), common.PadRight(i18n.T("ai.history.col_steps"), 8), common.PadRight(i18n.T("ai.history.col_duration"), 8))
 	fmt.Println(strings.Repeat("-", 101))
 
 	for _, s := range sessions {
@@ -96,16 +97,16 @@ func runAIHistoryShow(cmd *cobra.Command, args []string) {
 	sessionID := args[0]
 	steps, err := internalhistory.QueryAiChatStepsGlobal(sessionID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "查询失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.history.err_query", err))
 		return
 	}
 
 	if len(steps) == 0 {
-		fmt.Printf("未找到会话 %s 的记录\n", sessionID)
+		fmt.Printf("%s", i18n.T("ai.history.show.not_found", sessionID))
 		return
 	}
 
-	fmt.Printf("会话: %s\n", sessionID)
+	fmt.Printf("%s", i18n.T("ai.history.show.session", sessionID))
 	fmt.Println("──────────────────────────────────────────")
 	for _, s := range steps {
 		roleIcon := map[string]string{
@@ -120,18 +121,18 @@ func runAIHistoryShow(cmd *cobra.Command, args []string) {
 
 		fmt.Printf("[%s] %s [%s] %s\n", s.CreatedAt, roleIcon, s.Step, s.Role)
 		if s.Output != "" {
-			fmt.Printf("  输出: %s\n", truncateStr(s.Output, 200))
+			fmt.Printf("%s", i18n.T("ai.history.show.output", truncateStr(s.Output, 200)))
 		}
 		if s.ToolCalls != "" {
-			fmt.Printf("  工具调用: %s\n", truncateStr(s.ToolCalls, 200))
+			fmt.Printf("%s", i18n.T("ai.history.show.tool_calls", truncateStr(s.ToolCalls, 200)))
 		}
 		if s.ToolResults != "" {
-			fmt.Printf("  结果: %s\n", truncateStr(s.ToolResults, 200))
+			fmt.Printf("%s", i18n.T("ai.history.show.result", truncateStr(s.ToolResults, 200)))
 		}
 		if s.Error != "" {
-			fmt.Printf("  ❌ 错误: %s\n", s.Error)
+			fmt.Printf("%s", i18n.T("ai.history.show.error", s.Error))
 		}
-		fmt.Printf("  耗时: %dms\n", s.DurationMs)
+		fmt.Printf("%s", i18n.T("ai.history.show.duration", i18n.F(s.DurationMs)))
 		fmt.Println("──────────────────────────────────────────")
 	}
 }
@@ -139,10 +140,10 @@ func runAIHistoryShow(cmd *cobra.Command, args []string) {
 func runAIHistoryClean(cmd *cobra.Command, args []string) {
 	count, err := internalhistory.CleanAiChatGlobal(aiHistoryDays)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "清理失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.history.err_clean", err))
 		return
 	}
-	fmt.Printf("已清理 %d 条超过 %d 天的 AI 聊天记录\n", count, aiHistoryDays)
+	fmt.Printf("%s", i18n.T("ai.history.clean.done", i18n.F(count), i18n.F(aiHistoryDays)))
 }
 
 func truncateStr(s string, maxLen int) string {

@@ -37,8 +37,8 @@ test_node_list_all() {
 test_node_list_by_group() {
     log_info "测试: TC-NODE-002 按分组筛选"
     local output
-    if output=$(owl node list --group default 2>&1); then
-        log_pass "TC-NODE-002 按分组筛选 (--group default)"
+    if output=$(owl node list --groups default 2>&1); then
+        log_pass "TC-NODE-002 按分组筛选 (--groups default)"
     else
         log_info "TC-NODE-002 按分组筛选 (group可能不存在, 但不影响验证)"
         log_pass "TC-NODE-002 按分组筛选命令执行完成"

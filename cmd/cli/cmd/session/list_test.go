@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/internal/history"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func TestPrintSessionList_Empty(t *testing.T) {
@@ -159,15 +159,16 @@ type testDB struct {
 	conn *sql.DB
 }
 
-func (d *testDB) Connection() *sql.DB     { return d.conn }
-func (d *testDB) InitSchema() error        { return nil }
-func (d *testDB) Close() error             { return d.conn.Close() }
-func (d *testDB) Cleanup(int) error        { return nil }
+func (d *testDB) Connection() *sql.DB       { return d.conn }
+func (d *testDB) InitSchema() error         { return nil }
+func (d *testDB) Close() error              { return d.conn.Close() }
+func (d *testDB) Cleanup(int) error         { return nil }
+func (d *testDB) EnsureOperationColumns() error { return nil }
 
 func setupTestDB(t *testing.T) func() {
 	t.Helper()
 
-	conn, err := sql.Open("sqlite3", ":memory:")
+	conn, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}

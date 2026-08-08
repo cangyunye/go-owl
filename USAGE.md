@@ -125,11 +125,11 @@ owl ai "在所有节点上执行 uptime"
 ```
 
 ### 配置 LLM 提供商
-在 `~/.owl/config.yml` 中配置：
+在 `~/.owl/config.yaml` 中配置：
 ```yaml
 ai:
   provider: qwen  # openai / anthropic / qwen / deepseek
-  model: qwen-turbo
+  model: qwen-max
   api-key: your-api-key
 ```
 

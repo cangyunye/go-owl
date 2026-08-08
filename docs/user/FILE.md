@@ -32,7 +32,7 @@ owl file upload app.tar.gz --dest /opt/app/
 |------|------|
 | `<local-file>` | 本地文件路径（必填） |
 | `--nodes` | 目标节点 ID（逗号分隔） |
-| `--group` | 按分组选择节点 |
+| `--groups` | 按分组选择节点 |
 | `--label` | 按标签选择节点 |
 | `--dest` | 远程目标目录，默认 /tmp |
 | `--mode` | 文件权限，默认 0644 |
@@ -58,7 +58,7 @@ owl file upload app.tar.gz --nodes web-01
 owl file upload config.yaml --nodes web-01,web-02,web-03
 
 # 按分组上传
-owl file upload deploy.sh --group web --dest /opt/scripts/
+owl file upload deploy.sh --groups web --dest /opt/scripts/
 
 # 指定目标目录
 owl file upload app.tar.gz --nodes web-01 --dest /opt/app/
@@ -107,7 +107,7 @@ owl file download <remote-file> --node node1 --dest ./downloads/
 | `<remote-file>` | 远程文件路径（必填） |
 | `--node` | 源节点 ID（单个） |
 | `--nodes` | 源节点 ID（逗号分隔，仅第一个生效） |
-| `--group` | 按分组选择（仅第一个生效） |
+| `--groups` | 按分组选择（仅第一个生效） |
 | `--label` | 按标签选择（仅第一个生效） |
 | `--dest` | 本地目标目录，默认 . |
 | `--name-format` | 多节点下载文件名格式，默认 `{name}.{node}` |
@@ -170,7 +170,7 @@ owl file download /var/log/app.log --node web-01 --dest ./logs/
 owl file download /tmp/data.json --node web-01
 
 # 按分组下载
-owl file download /var/log/nginx/access.log --group web --dest ./logs/
+owl file download /var/log/nginx/access.log --groups web --dest ./logs/
 
 # 多节点下载，使用子目录
 owl file download /var/log/app.log \
@@ -213,7 +213,7 @@ owl file transfer app.tar.gz --nodes n1,n2,n3,n4,n5 --source-count 2 --fan-out 3
 | `<file>` | 本地文件路径（必填） |
 | `--nodes` | 目标节点 ID（逗号分隔） |
 | `--all-nodes` | 选择所有注册节点 |
-| `--group` | 按分组选择节点 |
+| `--groups` | 按分组选择节点 |
 | `--label` | 按标签选择节点 |
 | `--dest` | 目标目录，默认 `/tmp` |
 | `--source-count` | 源节点数量（前 N 个节点作为源），默认 2 |
@@ -238,6 +238,39 @@ owl file transfer app.tar.gz --nodes n1,n2,n3,n4,n5 --source-count 2 --fan-out 3
   打印成功/失败/超时统计
 ```
 
+### 中继二进制（gscp）获取
+
+扩散传输的第三步需要源节点执行 `owl-relay.sh` 接力，依赖 gscp 二进制（替代 `scp + sshpass`，实现非交互式密码 SCP）。控制节点在部署阶段会自动**寻找** gscp 并上传到源节点 `/tmp/gscp`，查找顺序：
+
+1. `OWL_GSCP_DIR` 环境变量指向的目录：`<dir>/gscp` 或 `<dir>/<平台>/gscp`
+2. `~/.owl/gscp/<平台>/gscp`（`make install-gscp` 的安装位置）
+3. 可执行文件同目录：`gscp-<平台>` / `<平台>/gscp` / `../<平台>/gscp`
+4. 当前目录 `build/<平台>/gscp`
+
+平台目录为 `<goos>-<goarch>` 连字符格式（如 `linux-amd64`、`linux-arm64`、`darwin-amd64`、`darwin-arm64`），仅支持 linux/darwin × amd64/arm64。
+
+**方式一：go-owl 仓库一键构建安装（推荐）**
+
+```bash
+make install-gscp
+```
+
+自动克隆 gscp 源码并安装到 `~/.owl/gscp/<平台>/gscp`，无需任何环境变量。
+
+**方式二：gscp 仓库构建 + 环境变量**
+
+```bash
+# 在 gscp 仓库内执行（产物为连字符命名的平台目录，与 go-owl 约定一致）
+make owl                # 输出到 dist/owl/<平台>/gscp
+make install-owl        # 或直接安装到 ~/.owl/gscp/<平台>/gscp
+
+# 然后设置环境变量指向产物目录
+export OWL_GSCP_DIR=/path/to/gscp/dist/owl        # Linux/macOS
+setx OWL_GSCP_DIR "F:\path\to\gscp\dist\owl"      # Windows（新开终端生效）
+```
+
+找不到 gscp 时，中继部署失败会回退为控制节点直传（见「常见问题」），文件仍能送达，只是不再走节点间扩散。
+
 ### 示例
 
 ```bash
@@ -250,7 +283,7 @@ owl file transfer app.tar.gz \
 owl file transfer data.zip --all-nodes --dest /data/ --fan-out 3
 
 # 按分组扩散
-owl file transfer db.tar.gz --group database --source-count 1
+owl file transfer db.tar.gz --groups database --source-count 1
 
 # 少量节点自动走直接传输
 owl file transfer app.tar.gz --nodes node1,node2 --dest /opt/app/
@@ -344,7 +377,7 @@ $ owl file upload /tmp/test.txt --nodes test-01,test-02
 ```bash
 # 步骤
 $ owl node groups add test-group --nodes test-01,test-02
-$ owl file upload /tmp/test.txt --group test-group
+$ owl file upload /tmp/test.txt --groups test-group
 
 # 预期结果
 # ✅ [test-01] 成功
@@ -438,6 +471,9 @@ A: rsync 的 `--rsh=ssh` 参数只接受 SSH 密钥文件（`-i` 参数），没
 
 ### Q: 出现 "中继传输失败" 的警告，但最终统计显示成功？
 A: 这是 v2 之前的已知问题。当 `owl-relay.sh` 部分成功（exit=1）时，CSV 结果中既有成功的也有失败的目标，但旧版 `ExecuteRelay()` 在退出码非零时直接丢弃全部结果，并将所有目标降级直传（包括已成功的）。从 v2 开始，`ExecuteRelay()` 先解析 CSV 结果，仅对中继失败的目标降级，成功目标保留中继结果。
+
+### Q: 扩散传输日志提示「部署失败→降级直传」，如何启用节点间中继？
+A: 说明控制节点未找到 gscp 中继二进制。按上文「中继二进制（gscp）获取」执行 `make install-gscp`，或设置 `OWL_GSCP_DIR` 指向 gscp 产物目录后重试。不处理也能送达文件（自动回退控制节点直传），只是不再走节点间扩散。
 
 ### Q: 中继失败后降级为直接传输，最终用的是 relay 还是 scp？
 A: 看每个节点的结果行：

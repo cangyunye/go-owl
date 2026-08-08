@@ -59,7 +59,7 @@ owl node check --all --update
 owl exec run "uptime" --nodes web-01
 
 # 在分组执行
-owl exec run "df -h" --group web
+owl exec run "df -h" --groups web
 
 # 多个节点并行执行
 owl exec run "systemctl status nginx" --nodes web-01,web-02,web-03

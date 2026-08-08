@@ -27,6 +27,7 @@
 | [user/AI.md](user/AI.md) | AI 助手 |
 | [user/HISTORY.md](user/HISTORY.md) | 执行历史记录 |
 | [user/SETTINGS.md](user/SETTINGS.md) | 系统设置 |
+| [serve-user.md](serve-user.md) | owl-serve 用户文档（Web 控制台） |
 
 ---
 
@@ -43,6 +44,7 @@
 | [dev/SSH_CONFIG.md](dev/SSH_CONFIG.md) | SSH 配置解析设计 |
 | [dev/AI_CONFIG_DESIGN.md](dev/AI_CONFIG_DESIGN.md) | AI 配置方案 |
 | [dev/TEST_IMPLEMENTATION_REPORT.md](dev/TEST_IMPLEMENTATION_REPORT.md) | 测试用例报告 |
+| [serve-dev.md](serve-dev.md) | owl-serve 开发文档（架构/API/测试） |
 
 ### 已完成的修复记录
 
@@ -112,11 +114,13 @@ docs/
 │   ├── 03_ASYNC_EXECUTION.md
 │   ├── PLAYBOOK_ACTION_OPTIONS.md
 │   └── PLAYBOOK_TEMPLATE_SYSTEM.md
-└── reference/          ← 参考文档
-    ├── README.md
-    ├── SSH_USAGE.md
-    ├── DATABASE.md
-    └── API_NODE_SOURCE.md
+├── reference/          ← 参考文档
+│   ├── README.md
+│   ├── SSH_USAGE.md
+│   ├── DATABASE.md
+│   └── API_NODE_SOURCE.md
+├── serve-dev.md        ← owl-serve 开发文档
+└── serve-user.md       ← owl-serve 用户文档
 ```
 
 ---

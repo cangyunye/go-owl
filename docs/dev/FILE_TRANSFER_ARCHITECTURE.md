@@ -760,7 +760,26 @@ rsync 的 `--rsh=ssh` 机制只接受 SSH 密钥文件（`-i` 参数），没有
 | 密钥认证 + rsync 不可用 | SCP | 首批发: 控制节点直传；后续: 源节点中继 |
 | 密码认证 | SCP（rsync CLI 不支持密码） | 首批发: 控制节点直传；后续: 源节点 relay（sshpass scp） |
 
-### 6.5 调用链
+### 6.9 gscp 中继二进制部署与寻址
+
+源节点中继实际调用 `gscp`（替代 `scp + sshpass`）。控制节点在 `RelayExecutor.DeployRelay()`（`internal/control/transfer/relay_executor.go`）中完成部署：
+
+1. `detectRemoteArch()` 通过 `uname -sm` 探测远程 `goos/goarch`
+2. `resolveGscpBinary()` 按以下顺序寻找本地 gscp 二进制（平台目录为 `<goos>-<goarch>` 连字符格式，如 `linux-amd64`）：
+   - `OWL_GSCP_DIR` 环境变量：`<dir>/gscp` 或 `<dir>/<平台>/gscp`
+   - `~/.owl/gscp/<平台>/gscp`（`make install-gscp` 安装位置）
+   - 可执行文件同目录：`gscp-<平台>` / `<平台>/gscp` / `../<平台>/gscp`
+   - 相对当前目录：`build/<平台>/gscp`
+3. 上传到远程 `/tmp/gscp` → `chmod +x` → `gscp --help` 验证
+
+支持范围仅 linux/darwin × amd64/arm64。gscp 仓库提供两个适配目标，产物命名与上述约定一致：
+
+- `make owl`：输出 `dist/owl/<平台>/gscp`，配合 `OWL_GSCP_DIR=<gscp>/dist/owl` 使用
+- `make install-owl`：直接安装到 `~/.owl/gscp/<平台>/gscp`，自动发现
+
+未找到 gscp 时 `DeployRelay` 报错，调用方回退为控制节点直传（见 6.7 降级链路消息）。
+
+### 6.10 调用链
 
 ```
 runTransfer()

@@ -20,7 +20,7 @@
 ### 实现详情
 
 - ✅ `owl node add` - 支持 --name, --address, --port, --user, --password, --ssh-key, --groups, --labels
-- ✅ `owl node list` - 支持 --group, --label, --status, --format
+- ✅ `owl node list` - 支持 --groups, --label, --status, --format
 - ✅ `owl node update` - 支持所有更新参数
 - ✅ `owl node remove` - 支持多节点删除
 - ✅ `owl node groups` - add/remove/delete/list 子命令
@@ -35,7 +35,7 @@
 |---------|---------|---------|---------|------|
 | TC-FILE-001 | 单节点上传 | `owl file upload /tmp/test.txt --nodes test-01 --dest /tmp/` | ✅ 已实现 | ✅ |
 | TC-FILE-002 | 多节点并行上传 | `owl file upload /tmp/test.txt --nodes test-01,test-02` | ✅ 已实现 | ✅ |
-| TC-FILE-003 | 分组上传 | `owl file upload /tmp/test.txt --group test-group` | ✅ 已实现 | ✅ |
+| TC-FILE-003 | 分组上传 | `owl file upload /tmp/test.txt --groups test-group` | ✅ 已实现 | ✅ |
 | TC-FILE-004 | 单节点下载 | `owl file download /etc/hostname --node test-01 --dest /tmp/` | ✅ 已实现 | ✅ |
 | TC-FILE-005 | 上传覆盖已存在文件 | `owl file upload /tmp/test.txt --nodes test-01 --overwrite` | ❌ 需补充 | ⚠️ |
 | TC-FILE-006 | 上传不覆盖已存在文件 | `owl file upload /tmp/test.txt --nodes test-01 --no-overwrite` | ❌ 需补充 | ⚠️ |
@@ -45,8 +45,8 @@
 
 ### 实现详情
 
-- ✅ `owl file upload` - 支持 --nodes, --group, --label, --dest, --parallel
-- ✅ `owl file download` - 支持 --node, --nodes, --group, --label, --dest
+- ✅ `owl file upload` - 支持 --nodes, --groups, --label, --dest, --parallel
+- ✅ `owl file download` - 支持 --node, --nodes, --groups, --label, --dest
 - ❌ `--overwrite` / `--no-overwrite` 参数未实现
 - ❌ `--subdir` 参数未实现
 - ❌ `--name-format` 参数未实现
@@ -70,7 +70,7 @@
 |---------|---------|---------|---------|------|
 | TC-EXEC-001 | 单节点命令执行 | `owl exec run "echo hello" --nodes test-01` | ✅ 已实现 | ✅ |
 | TC-EXEC-002 | 多节点并行执行 | `owl exec run "hostname" --nodes test-01,test-02 --parallel` | ✅ 已实现 | ✅ |
-| TC-EXEC-003 | 分组执行 | `owl exec run "whoami" --group test-group` | ✅ 已实现 | ✅ |
+| TC-EXEC-003 | 分组执行 | `owl exec run "whoami" --groups test-group` | ✅ 已实现 | ✅ |
 | TC-EXEC-004 | 命令超时 | `owl exec run "sleep 10" --nodes test-01 --timeout 2s` | ✅ 已实现 | ✅ |
 | TC-EXEC-005 | JSON 输出格式 | `owl exec run "uptime" --nodes test-01 --output json` | ✅ 已实现 | ✅ |
 | TC-EXEC-006 | 错误处理 | `owl exec run "ls /nonexistent" --nodes test-01` | ✅ 已实现 | ✅ |
@@ -78,7 +78,7 @@
 
 ### 实现详情
 
-- ✅ `owl exec run` - 支持 --nodes, --group, --label, --status, --timeout, --parallel, --async, --output
+- ✅ `owl exec run` - 支持 --nodes, --groups, --label, --status, --timeout, --parallel, --async, --output
 - ✅ 输出格式 - simple, detail, json
 - ✅ 超时处理
 - ✅ 异步执行

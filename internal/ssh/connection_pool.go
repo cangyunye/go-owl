@@ -59,6 +59,7 @@ func (p *ConnectionPool) Get(nodeInfo *node.ResolvedNode) (NodeExecutor, error) 
 		nodeInfo.User,
 		nodeInfo.SSHKey,
 		nodeInfo.SSHPassword,
+		nodeInfo.ProxyJump,
 	)
 	if err != nil {
 		return nil, err

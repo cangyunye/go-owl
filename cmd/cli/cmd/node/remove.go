@@ -7,20 +7,17 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // NewRemoveCmd 创建删除节点命令
 func NewRemoveCmd() *cobra.Command {
 	removeCmd := &cobra.Command{
 		Use:   "remove <node-id> [node-id...]",
-		Short: "删除节点",
-		Long: `从管理列表中删除一个或多个节点。
-
-示例：
-  owl node remove node1
-  owl node remove node1 node2 node3  # 批量删除`,
-		Args: cobra.MinimumNArgs(1),
-		Run:  runRemove,
+		Short: i18n.T("node.remove.short"),
+		Long:  i18n.T("node.remove.long"),
+		Args:  cobra.MinimumNArgs(1),
+		Run:   runRemove,
 	}
 
 	return removeCmd
@@ -33,10 +30,10 @@ func runRemove(cmd *cobra.Command, args []string) {
 
 	for _, nodeID := range args {
 		if err := store.Remove(nodeID); err != nil {
-			fmt.Printf("Failed to remove node '%s': %v\n", nodeID, err)
+			fmt.Printf("%s\n", i18n.T("node.remove.failed", nodeID, err))
 			failed++
 		} else {
-			fmt.Printf("Node '%s' removed successfully\n", nodeID)
+			fmt.Printf("%s\n", i18n.T("node.remove.ok", nodeID))
 			success++
 		}
 	}
@@ -46,7 +43,7 @@ func runRemove(cmd *cobra.Command, args []string) {
 		store.Save()
 	}
 
-	fmt.Printf("\nRemoved: %d nodes, Failed: %d\n", success, failed)
+	fmt.Printf("%s\n", i18n.T("node.remove.summary", i18n.F(success), i18n.F(failed)))
 	if failed > 0 {
 		os.Exit(1)
 	}

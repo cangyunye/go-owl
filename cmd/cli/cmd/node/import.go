@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 type importOptions struct {
@@ -31,14 +32,8 @@ func NewImportCmd() *cobra.Command {
 
 	importCmd := &cobra.Command{
 		Use:   "import",
-		Short: "从文件导入节点",
-		Long: `从 YAML 或 JSON 文件导入节点配置。
-
-示例：
-  owl node import -f nodes.yaml
-  owl node import -f nodes.json --overwrite
-  owl node import -f nodes.yaml --skip-existing
-  owl node import --template > nodes.yaml`,
+		Short: i18n.T("node.import.short"),
+		Long:  i18n.T("node.import.long"),
 		Run: func(cmd *cobra.Command, args []string) {
 			if opts.template {
 				generateTemplate(opts.outputFormat)
@@ -46,7 +41,7 @@ func NewImportCmd() *cobra.Command {
 			}
 
 			if opts.filePath == "" {
-				fmt.Fprintln(os.Stderr, "Error: 请指定文件路径 -f")
+				fmt.Fprintln(os.Stderr, i18n.T("node.import.err_no_file"))
 				os.Exit(1)
 			}
 
@@ -55,17 +50,17 @@ func NewImportCmd() *cobra.Command {
 	}
 
 	importCmd.Flags().StringVarP(&opts.filePath, "file", "f", "",
-		"导入文件路径 (YAML/JSON)")
+		i18n.T("node.import.flag_file"))
 	importCmd.Flags().BoolVarP(&opts.overwrite, "overwrite", "O", false,
-		"覆盖已存在的节点")
+		i18n.T("node.import.flag_overwrite"))
 	importCmd.Flags().BoolVar(&opts.skipExisting, "skip-existing", false,
-		"跳过已存在的节点")
+		i18n.T("node.import.flag_skip_existing"))
 	importCmd.Flags().BoolVar(&opts.dryRun, "dry-run", false,
-		"预览导入结果，不实际导入")
+		i18n.T("node.import.flag_dry_run"))
 	importCmd.Flags().BoolVar(&opts.template, "template", false,
-		"生成模板文件")
+		i18n.T("node.import.flag_template"))
 	importCmd.Flags().StringVarP(&opts.outputFormat, "format", "o", "yaml",
-		"输出格式 (yaml/json)")
+		i18n.T("node.import.flag_format"))
 
 	return importCmd
 }
@@ -75,31 +70,23 @@ func NewExportCmd() *cobra.Command {
 
 	exportCmd := &cobra.Command{
 		Use:   "export",
-		Short: "导出节点到文件",
-		Long: `将节点配置导出到 YAML 或 JSON 文件，支持按节点、标签、分组筛选。
-
-示例：
-  owl node export -f nodes.yaml
-  owl node export -f nodes.json
-  owl node export --nodes node1,node2 > filtered.yaml
-  owl node export --groups web,production
-  owl node export --labels env=prod
-  owl node export > nodes.yaml`,
+		Short: i18n.T("node.export.short"),
+		Long:  i18n.T("node.export.long"),
 		Run: func(cmd *cobra.Command, args []string) {
 			exportNodes(opts)
 		},
 	}
 
 	exportCmd.Flags().StringVarP(&opts.filePath, "file", "f", "",
-		"导出文件路径")
+		i18n.T("node.export.flag_file"))
 	exportCmd.Flags().StringVarP(&opts.outputFormat, "format", "o", "yaml",
-		"输出格式 (yaml/json)")
+		i18n.T("node.export.flag_format"))
 	exportCmd.Flags().StringSliceVar(&opts.filterNodes, "nodes", nil,
-		"按节点 ID 筛选 (逗号分隔)")
+		i18n.T("node.export.flag_nodes"))
 	exportCmd.Flags().StringSliceVar(&opts.filterGroups, "groups", nil,
-		"按分组筛选 (逗号分隔)")
+		i18n.T("node.export.flag_groups"))
 	exportCmd.Flags().StringSliceVar(&opts.filterLabels, "labels", nil,
-		"按标签筛选 (格式: key=value)")
+		i18n.T("node.export.flag_labels"))
 
 	return exportCmd
 }
@@ -112,7 +99,7 @@ type nodeFile struct {
 func importNodes(opts *importOptions) {
 	data, err := os.ReadFile(opts.filePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: 读取文件失败: %v\n", err)
+		fmt.Fprintln(os.Stderr, i18n.T("node.import.err_read", err))
 		os.Exit(1)
 	}
 
@@ -121,12 +108,12 @@ func importNodes(opts *importOptions) {
 
 	if ext == ".json" {
 		if err := json.Unmarshal(data, &nf); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: 解析 JSON 失败: %v\n", err)
+			fmt.Fprintln(os.Stderr, i18n.T("node.import.err_json", err))
 			os.Exit(1)
 		}
 	} else {
 		if err := yaml.Unmarshal(data, &nf); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: 解析 YAML 失败: %v\n", err)
+			fmt.Fprintln(os.Stderr, i18n.T("node.import.err_yaml", err))
 			os.Exit(1)
 		}
 	}
@@ -139,19 +126,19 @@ func importNodes(opts *importOptions) {
 
 	for _, node := range nf.Nodes {
 		if node.ID == "" {
-			fmt.Printf("跳过: 节点 ID 为空\n")
+			fmt.Println(i18n.T("node.import.skip_id"))
 			failed++
 			continue
 		}
 
 		if node.Name == "" {
-			fmt.Printf("跳过 %s: 节点名称为空\n", node.ID)
+			fmt.Printf("%s\n", i18n.T("node.import.skip_name", node.ID))
 			failed++
 			continue
 		}
 
 		if node.Address == "" {
-			fmt.Printf("跳过 %s: 节点地址为空\n", node.ID)
+			fmt.Printf("%s\n", i18n.T("node.import.skip_address", node.ID))
 			failed++
 			continue
 		}
@@ -160,7 +147,7 @@ func importNodes(opts *importOptions) {
 		nodeExists := err == nil
 
 		if nodeExists && !opts.overwrite && !opts.skipExisting {
-			fmt.Printf("跳过 %s: 节点已存在 (使用 --overwrite 覆盖或 --skip-existing 跳过)\n", node.ID)
+			fmt.Printf("%s\n", i18n.T("node.import.skip_exists", node.ID))
 			skipped++
 			continue
 		}
@@ -171,7 +158,7 @@ func importNodes(opts *importOptions) {
 		}
 
 		if opts.dryRun {
-			fmt.Printf("[预览] %s -> %s (%s:%d)\n", node.ID, node.Name, node.Address, node.Port)
+			fmt.Printf("%s\n", i18n.T("node.import.preview", node.ID, node.Name, node.Address, i18n.F(node.Port)))
 			success++
 			continue
 		}
@@ -182,18 +169,18 @@ func importNodes(opts *importOptions) {
 
 		if nodeExists {
 			if err := store.Update(node); err != nil {
-				fmt.Printf("更新失败 %s: %v\n", node.ID, err)
+				fmt.Printf("%s\n", i18n.T("node.import.err_update", node.ID, err))
 				failed++
 			} else {
-				fmt.Printf("✓ 更新节点 %s\n", node.ID)
+				fmt.Printf("%s\n", i18n.T("node.import.ok_update", node.ID))
 				success++
 			}
 		} else {
 			if err := store.Add(node); err != nil {
-				fmt.Printf("添加失败 %s: %v\n", node.ID, err)
+				fmt.Printf("%s\n", i18n.T("node.import.err_add", node.ID, err))
 				failed++
 			} else {
-				fmt.Printf("✓ 添加节点 %s\n", node.ID)
+				fmt.Printf("%s\n", i18n.T("node.import.ok_add", node.ID))
 				success++
 			}
 		}
@@ -203,7 +190,7 @@ func importNodes(opts *importOptions) {
 		store.Save()
 	}
 
-	fmt.Printf("\n结果: 添加/更新 %d, 跳过 %d, 失败 %d\n", success, skipped, failed)
+	fmt.Printf("%s\n", i18n.T("node.import.result", i18n.F(success), i18n.F(skipped), i18n.F(failed)))
 	if failed > 0 {
 		os.Exit(1)
 	}
@@ -213,14 +200,14 @@ func exportNodes(opts *importOptions) {
 	store := common.GetNodeStore()
 	allNodes, err := store.List()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: 获取节点列表失败: %v\n", err)
+		fmt.Fprintln(os.Stderr, i18n.T("node.import.err_list", err))
 		os.Exit(1)
 	}
 
 	nodes := exportFilterNodes(allNodes, opts)
 
 	if len(nodes) == 0 {
-		fmt.Println("没有符合条件的节点")
+		fmt.Println(i18n.T("node.import.no_match"))
 		return
 	}
 
@@ -239,16 +226,16 @@ func exportNodes(opts *importOptions) {
 	}
 
 	if err2 != nil {
-		fmt.Fprintf(os.Stderr, "Error: 序列化失败: %v\n", err2)
+		fmt.Fprintln(os.Stderr, i18n.T("node.import.err_serialize", err2))
 		os.Exit(1)
 	}
 
 	if opts.filePath != "" {
 		if err := os.WriteFile(opts.filePath, data, 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: 写入文件失败: %v\n", err)
+			fmt.Fprintln(os.Stderr, i18n.T("node.import.err_write", err))
 			os.Exit(1)
 		}
-		fmt.Printf("已导出 %d 个节点到 %s\n", len(nodes), opts.filePath)
+		fmt.Printf("%s\n", i18n.T("node.import.ok_exported", i18n.F(len(nodes)), opts.filePath))
 	} else {
 		fmt.Println(string(data))
 	}
@@ -373,7 +360,7 @@ func generateTemplate(format string) {
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: 生成模板失败: %v\n", err)
+		fmt.Fprintln(os.Stderr, i18n.T("node.import.err_template", err))
 		os.Exit(1)
 	}
 

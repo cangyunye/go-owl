@@ -24,8 +24,8 @@ func TestExecRunFlags(t *testing.T) {
 	testutil.AssertFlagExists(t, cmd, "nodes")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
-	testutil.AssertFlagExists(t, cmd, "group")
-	testutil.AssertFlagDefault(t, cmd, "group", "")
+	testutil.AssertFlagExists(t, cmd, "groups")
+	testutil.AssertFlagDefault(t, cmd, "groups", "[]")
 
 	testutil.AssertFlagExists(t, cmd, "label")
 	testutil.AssertFlagShorthand(t, cmd, "label", "l")
@@ -104,9 +104,9 @@ func TestExecScriptFlags(t *testing.T) {
 	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
-	testutil.AssertFlagExists(t, cmd, "group")
-	testutil.AssertFlagShorthand(t, cmd, "group", "g")
-	testutil.AssertFlagDefault(t, cmd, "group", "")
+	testutil.AssertFlagExists(t, cmd, "groups")
+	testutil.AssertFlagShorthand(t, cmd, "groups", "g")
+	testutil.AssertFlagDefault(t, cmd, "groups", "[]")
 
 	testutil.AssertFlagExists(t, cmd, "label")
 	testutil.AssertFlagShorthand(t, cmd, "label", "l")

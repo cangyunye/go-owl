@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func makeNode(id, name, address string, port int, user string, groups []string, labels map[string]string) *NodeInfo {

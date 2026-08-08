@@ -7,9 +7,10 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 var _ DBInterface = (*SQLite3)(nil)
@@ -34,7 +35,7 @@ func NewDB(config *Config) (DBInterface, error) {
 
 	ensureDBDir(dbPath)
 
-	conn, err := sql.Open("sqlite3", dbPath)
+	conn, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +78,7 @@ func (s *SQLite3) InitSchema() error {
 			playbook_path TEXT DEFAULT '',
 			current_task_index INTEGER DEFAULT 0,
 			current_task_phase TEXT DEFAULT '',
+			forced INTEGER DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_operations_task_id ON operations (task_id);`,
@@ -193,6 +195,42 @@ func (s *SQLite3) InitSchema() error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_aichat_session ON aichat(session_id, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_aichat_created ON aichat(created_at);`,
+
+		`CREATE TABLE IF NOT EXISTS playbook_run_states (
+			id TEXT PRIMARY KEY,
+			playbook_name TEXT NOT NULL,
+			playbook_hash TEXT NOT NULL,
+			nodes TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'running',
+			started_at DATETIME NOT NULL,
+			finished_at DATETIME,
+			total_steps INTEGER NOT NULL,
+			completed_steps INTEGER DEFAULT 0,
+			failed_steps INTEGER DEFAULT 0
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_run_states_status ON playbook_run_states(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_run_states_name ON playbook_run_states(playbook_name);`,
+
+		`CREATE TABLE IF NOT EXISTS playbook_step_states (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id TEXT NOT NULL,
+			node_id TEXT NOT NULL,
+			step_index INTEGER NOT NULL,
+			step_name TEXT NOT NULL,
+			action TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			started_at DATETIME,
+			finished_at DATETIME,
+			duration_ms INTEGER,
+			exit_code INTEGER,
+			stdout TEXT,
+			stderr TEXT,
+			error TEXT,
+			retry_count INTEGER DEFAULT 0,
+			UNIQUE(run_id, node_id, step_index)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_step_states_run ON playbook_step_states(run_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_step_states_node ON playbook_step_states(run_id, node_id);`,
 	}
 
 	for _, schema := range schemas {
@@ -202,6 +240,63 @@ func (s *SQLite3) InitSchema() error {
 		}
 	}
 
+	// 迁移：兼容旧表缺少的列
+	_, _ = s.conn.Exec("ALTER TABLE nodes ADD COLUMN last_check_at DATETIME")
+
+	return s.EnsureOperationColumns()
+}
+
+// operationColumnSpecs 存量 operations 表可能缺失的列。
+// 早期 schema 仅含 id/task_id/op_type/command/targets/status/created_at，
+// 后续新增 execution_mode 等列；CREATE TABLE IF NOT EXISTS 对存量表不生效，
+// 必须逐列 ALTER 补齐。与 cmd/plugins/serve/store/history.go 定义保持一致。
+var operationColumnSpecs = []struct {
+	name string
+	ddl  string
+}{
+	{"execution_mode", `ALTER TABLE operations ADD COLUMN execution_mode TEXT DEFAULT ''`},
+	{"playbook_path", `ALTER TABLE operations ADD COLUMN playbook_path TEXT DEFAULT ''`},
+	{"current_task_index", `ALTER TABLE operations ADD COLUMN current_task_index INTEGER DEFAULT 0`},
+	{"current_task_phase", `ALTER TABLE operations ADD COLUMN current_task_phase TEXT DEFAULT ''`},
+	{"forced", `ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`},
+}
+
+// EnsureOperationColumns 为存量库补齐 operations 缺失的列（幂等）。
+// CLI 与 serve 可能并发迁移同一旧库，后到者的 ALTER 会收到
+// "duplicate column name: xxx"，视为成功（与 playbook_run.go 的容错模式一致）。
+func (s *SQLite3) EnsureOperationColumns() error {
+	cols := map[string]bool{}
+	rows, err := s.conn.Query(`PRAGMA table_info(operations)`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		cols[name] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, spec := range operationColumnSpecs {
+		if cols[spec.name] {
+			continue
+		}
+		if _, err := s.conn.Exec(spec.ddl); err != nil {
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return err
+		}
+	}
 	return nil
 }
 

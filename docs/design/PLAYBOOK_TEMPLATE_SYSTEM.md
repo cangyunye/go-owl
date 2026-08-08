@@ -974,7 +974,7 @@ owl playbook run <playbook> [options]
 | 选项 | 说明 |
 |------|------|
 | `--nodes <节点列表>` | 目标节点（逗号分隔），必填 |
-| `--group <分组名>` | 按分组筛选节点 |
+| `--groups <分组名>` | 按分组筛选节点 |
 | `--label key=value` / `-l` | 按标签筛选节点（可多次指定） |
 | `--vars key=value` / `--extra-vars` | 传递变量（`{{ }}` 模板变量替换值） |
 | `--tags <标签>` | 只执行匹配标签的步骤 |

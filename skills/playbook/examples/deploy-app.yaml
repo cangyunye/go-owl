@@ -1,0 +1,58 @@
+name: deploy-app
+description: 应用部署流程示例（含上传、脚本执行、服务重启、健康检查）
+version: "1.0"
+hosts: []
+execution_mode: pipeline
+default:
+  groups: ["web"]
+  tags: ["deploy"]
+vars:
+  version: "1.0.0"
+  app_name: "myapp"
+
+pre_tasks:
+  - name: 备份现有配置
+    action: command
+    args:
+      cmd: "cp -r /etc/{{app_name}} /etc/{{app_name}}.bak.{{version}} || true"
+
+tasks:
+  - name: 上传应用包
+    action: upload
+    args:
+      src: "{{PLAYBOOK_DIR}}/dist/app-{{version}}.tar.gz"
+      dest: /tmp/
+      overwrite: true
+      resume: true
+
+  - name: 上传部署脚本
+    action: upload
+    args:
+      src: "{{PLAYBOOK_DIR}}/scripts/deploy.sh"
+      dest: /tmp/
+      overwrite: true
+
+  - name: 停止服务
+    action: command
+    args:
+      cmd: "systemctl stop {{app_name}} || true"
+
+  - name: 执行部署脚本
+    action: script
+    args:
+      script: "{{PLAYBOOK_DIR}}/scripts/deploy.sh"
+      dest: /tmp/
+      args: "--version {{version}}"
+
+  - name: 解压并启动服务
+    action: command
+    args:
+      cmd: |
+        cd /opt/{{app_name}}
+        tar -xzf /tmp/app-{{version}}.tar.gz
+        systemctl restart {{app_name}}
+
+  - name: 健康检查
+    action: command
+    args:
+      cmd: "curl -fsS http://localhost:8080/health && systemctl is-active {{app_name}}"

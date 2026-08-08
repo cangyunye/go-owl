@@ -17,6 +17,7 @@ type Operation struct {
 	PlaybookPath    string     // Playbook 文件路径（用于断点续跑）
 	CurrentTaskIndex int       // 断点续跑：当前任务索引
 	CurrentTaskPhase string   // 断点续跑：pre_tasks / tasks / post_tasks
+	Forced          bool      // 黑名单放行留痕：danger_confirmed 覆盖时为 true
 	CreatedAt       time.Time
 }
 
@@ -75,10 +76,17 @@ func (db *DB) RecordOperation(op *Operation) error {
 	targetsJSON, _ := json.Marshal(op.Targets)
 
 	_, err := db.impl.Connection().Exec(`
-		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, op.CreatedAt)
+		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, boolToInt(op.Forced), op.CreatedAt)
 	return err
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // RecordCommandExecution 记录命令执行
@@ -312,9 +320,9 @@ func RecordOperation(op *Operation) error {
 	}
 	targetsJSON, _ := json.Marshal(op.Targets)
 	_, err := GetGlobalDB().Connection().Exec(`
-		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, op.CreatedAt)
+		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, boolToInt(op.Forced), op.CreatedAt)
 	return err
 }
 

@@ -14,10 +14,12 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/metrics"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/node"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/playbook"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/serve"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/session"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui"
 	internalhistory "github.com/cangyunye/go-owl/internal/history"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/cangyunye/go-owl/internal/logger"
 
 	"github.com/spf13/cobra"
@@ -47,15 +49,8 @@ func Execute() error {
 func NewRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "owl",
-		Short: "owl - 智能分布式运维工具",
-		Long: `owl 是一个智能 Linux 分布式运维工具，支持：
-
-	- 节点管理：节点注册、分组、标签管理
-	- 批量命令执行：支持按节点、分组、标签选择目标
-	- 脚本传输执行：批量传输并执行 Shell 脚本
-	- 剧本执行：Ansible-like YAML 剧本流程执行
-	- 文件传输：支持自扩散传输（P2P 模式）
-	- AI 助手：通过自然语言执行运维操作`,
+		Short: i18n.T("root.short"),
+		Long:  i18n.T("root.long_help"),
 
 		Version: version,
 	}
@@ -70,6 +65,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(history.NewHistoryCmd())
 	rootCmd.AddCommand(session.NewCmd())
 	rootCmd.AddCommand(async.NewAsyncCmd())
+	rootCmd.AddCommand(serve.NewServeCmd())
 	rootCmd.AddCommand(tui.NewTuiCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 
@@ -85,9 +81,9 @@ commit: %s
 // exitWithError 退出并显示错误
 func exitWithError(msg string, err error) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s: %v\n", msg, err)
+		fmt.Fprintf(os.Stderr, "%s\n", i18n.T("root.error_prefix", fmt.Sprintf("%s: %v", msg, err)))
 	} else {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
+		fmt.Fprintf(os.Stderr, "%s\n", i18n.T("root.error_prefix", msg))
 	}
 	os.Exit(1)
 }

@@ -8,7 +8,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func writeTestNodesJSONCmd(t *testing.T, dir string, nodes []*common.NodeInfo) string {
@@ -51,10 +51,13 @@ func TestRootCmdHasSubcommands(t *testing.T) {
 		names[c.Name()] = true
 	}
 
-	expected := []string{"node", "exec", "file", "playbook", "settings", "ai", "history", "session", "async", "tui"}
+	expected := []string{"node", "exec", "file", "playbook", "settings", "ai", "history", "session", "async", "serve", "tui", "metrics"}
 	for _, name := range expected {
 		if !names[name] {
 			t.Errorf("expected subcommand %q in root command", name)
 		}
+	}
+	if len(names) != len(expected) {
+		t.Errorf("expected %d subcommands, got %d", len(expected), len(names))
 	}
 }

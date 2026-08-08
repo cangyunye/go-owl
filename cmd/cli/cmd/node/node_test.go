@@ -58,8 +58,8 @@ func TestNodeListFlags(t *testing.T) {
 	testutil.AssertFlagShorthand(t, cmd, "format", "o")
 	testutil.AssertFlagDefault(t, cmd, "format", "table")
 
-	testutil.AssertFlagExists(t, cmd, "group")
-	testutil.AssertFlagShorthand(t, cmd, "group", "g")
+	testutil.AssertFlagExists(t, cmd, "groups")
+	testutil.AssertFlagShorthand(t, cmd, "groups", "g")
 	testutil.AssertFlagExists(t, cmd, "label")
 	testutil.AssertFlagExists(t, cmd, "status")
 	testutil.AssertFlagShorthand(t, cmd, "status", "S")
@@ -229,6 +229,16 @@ func TestNodeCheckFlags(t *testing.T) {
 	testutil.AssertFlagExists(t, cmd, "workers")
 	testutil.AssertFlagShorthand(t, cmd, "workers", "w")
 	testutil.AssertFlagDefault(t, cmd, "workers", "5")
+
+	testutil.AssertFlagExists(t, cmd, "groups")
+	testutil.AssertFlagShorthand(t, cmd, "groups", "g")
+
+	testutil.AssertFlagExists(t, cmd, "label")
+	testutil.AssertFlagShorthand(t, cmd, "label", "l")
+
+	testutil.AssertFlagExists(t, cmd, "failed")
+	testutil.AssertFlagShorthand(t, cmd, "failed", "f")
+	testutil.AssertFlagDefault(t, cmd, "failed", "false")
 }
 
 func TestNodeSampleCmd(t *testing.T) {

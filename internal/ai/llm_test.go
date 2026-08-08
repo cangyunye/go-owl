@@ -211,8 +211,8 @@ func TestCreateLLMClient_Qwen_DefaultValues(t *testing.T) {
 	if !ok {
 		t.Fatal("expected OpenAIClient type")
 	}
-	if openAIClient.model != "qwen-turbo" {
-		t.Errorf("expected default model 'qwen-turbo', got '%s'", openAIClient.model)
+	if openAIClient.model != "qwen-max" {
+		t.Errorf("expected default model 'qwen-max', got '%s'", openAIClient.model)
 	}
 	if openAIClient.baseURL != "https://dashscope.aliyuncs.com/compatible-mode/v1" {
 		t.Errorf("expected default base URL for qwen, got '%s'", openAIClient.baseURL)
@@ -241,8 +241,8 @@ func TestCreateLLMClient_DeepSeek_DefaultValues(t *testing.T) {
 	if !ok {
 		t.Fatal("expected OpenAIClient type")
 	}
-	if openAIClient.model != "deepseek-chat" {
-		t.Errorf("expected default model 'deepseek-chat', got '%s'", openAIClient.model)
+	if openAIClient.model != "deepseek-v4-flash" {
+		t.Errorf("expected default model 'deepseek-v4-flash', got '%s'", openAIClient.model)
 	}
 	if openAIClient.baseURL != "https://api.deepseek.com" {
 		t.Errorf("expected default base URL for deepseek, got '%s'", openAIClient.baseURL)
@@ -270,8 +270,8 @@ func TestCreateLLMClient_Anthropic_DefaultModel(t *testing.T) {
 	if !ok {
 		t.Fatal("expected AnthropicClient type")
 	}
-	if anthropicClient.model != "claude-3-opus-20240229" {
-		t.Errorf("expected default model 'claude-3-opus-20240229', got '%s'", anthropicClient.model)
+	if anthropicClient.model != "claude-sonnet-4-20250514" {
+		t.Errorf("expected default model 'claude-sonnet-4-20250514', got '%s'", anthropicClient.model)
 	}
 }
 
@@ -324,8 +324,8 @@ func TestCreateLLMClient_DashScope_DefaultValues(t *testing.T) {
 	if !ok {
 		t.Fatal("expected OpenAIClient type")
 	}
-	if openAIClient.model != "qwen-turbo" {
-		t.Errorf("expected default model 'qwen-turbo', got '%s'", openAIClient.model)
+	if openAIClient.model != "qwen-max" {
+		t.Errorf("expected default model 'qwen-max', got '%s'", openAIClient.model)
 	}
 	if openAIClient.baseURL != "https://dashscope.aliyuncs.com/compatible-mode/v1" {
 		t.Errorf("expected default base URL for dashscope, got '%s'", openAIClient.baseURL)

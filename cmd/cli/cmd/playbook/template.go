@@ -8,105 +8,37 @@ import (
 	"strconv"
 	"strings"
 
+	playbook "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
+
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 var playbookTemplateOutput string
 
-type ActionTemplate struct {
-	Name        string
-	Description string
-	Template    map[string]interface{}
-}
-
-func GetActionTemplates() []ActionTemplate {
-	return actionTemplates
-}
-
-var actionTemplates = []ActionTemplate{
-	{
-		Name:        "command",
-		Description: "执行 Shell 命令",
-		Template: map[string]interface{}{
-			"cmd": "<命令内容>",
-		},
-	},
-	{
-		Name:        "script",
-		Description: "执行脚本文件",
-		Template: map[string]interface{}{
-			"script": "<脚本路径>",
-			"dest":   "/tmp/",
-			"args":   "",
-		},
-	},
-	{
-		Name:        "upload",
-		Description: "上传文件到节点",
-		Template: map[string]interface{}{
-			"src":       "<本地路径>",
-			"dest":      "<远程路径>",
-			"overwrite": true,
-		},
-	},
-	{
-		Name:        "download",
-		Description: "从节点下载文件",
-		Template: map[string]interface{}{
-			"src":    "<远程路径>",
-			"dest":   "<本地路径>",
-			"subdir": true,
-		},
-	},
-	{
-		Name:        "include",
-		Description: "包含其他剧本",
-		Template: map[string]interface{}{
-			"playbook": "<剧本路径>",
-		},
-	},
-}
-
-type TemplateDefaultConfig struct {
-	Groups   []string `yaml:"groups,omitempty"`
-	Tags     []string `yaml:"tags,omitempty"`
-	SkipTags []string `yaml:"skip_tags,omitempty"`
-}
-
-type TemplatePlaybook struct {
-	Name          string                 `yaml:"name"`
-	Description   string                 `yaml:"description,omitempty"`
-	Version       string                 `yaml:"version,omitempty"`
-	Hosts         []string               `yaml:"hosts"`
-	ExecutionMode string                 `yaml:"execution_mode,omitempty"`
-	Default       *TemplateDefaultConfig `yaml:"default,omitempty"`
-	Vars          map[string]interface{} `yaml:"vars,omitempty"`
-	PreTasks      []TemplateTask         `yaml:"pre_tasks"`
-	Tasks         []TemplateTask         `yaml:"tasks"`
-	PostTasks     []TemplateTask         `yaml:"post_tasks"`
-}
-
-type TemplateTask struct {
-	Name   string                 `yaml:"name"`
-	Action string                 `yaml:"action"`
-	Args   map[string]interface{} `yaml:"args"`
-}
-
 func NewPlaybookTemplateCmd() *cobra.Command {
-	templateCmd := &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "template",
-		Short: "交互式创建剧本模板",
-		Long: `通过会话式问答创建剧本模板。
+		Short: i18n.T("playbook.template.cmd.short"),
+		Long:  i18n.T("playbook.template.cmd.long"),
+	}
+	cmd.AddCommand(NewPlaybookTemplateCreateCmd())
+	cmd.AddCommand(NewPlaybookTemplateListCmd())
+	cmd.AddCommand(NewPlaybookTemplateInfoCmd())
+	cmd.AddCommand(NewPlaybookTemplateExportCmd())
+	return cmd
+}
 
-示例：
-  owl playbook template
-  owl playbook template --output ./my-playbook.yaml`,
-		Run: runPlaybookTemplate,
+func NewPlaybookTemplateCreateCmd() *cobra.Command {
+	templateCmd := &cobra.Command{
+		Use:   "create",
+		Short: i18n.T("playbook.template.create.short"),
+		Long:  i18n.T("playbook.template.create.long"),
+		Run:   runPlaybookTemplate,
 	}
 
 	templateCmd.Flags().StringVarP(&playbookTemplateOutput, "output", "o", "",
-		"输出文件路径（默认: ./playbooks/<name>.yaml）")
+		i18n.T("playbook.template.create.flag_output"))
 
 	return templateCmd
 }
@@ -114,8 +46,8 @@ func NewPlaybookTemplateCmd() *cobra.Command {
 func runPlaybookTemplate(cmd *cobra.Command, args []string) {
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Println("📝 剧本模板创建向导")
-	fmt.Println("====================")
+	fmt.Println(i18n.T("playbook.template.wizard_title"))
+	fmt.Println(i18n.T("playbook.template.wizard_sep"))
 	fmt.Println()
 
 	name := promptForName(reader)
@@ -126,7 +58,7 @@ func runPlaybookTemplate(cmd *cobra.Command, args []string) {
 	defaultConfig := promptForDefaultConfig(reader)
 	tasks := promptForTasks(reader)
 
-	playbook := TemplatePlaybook{
+	tpl := playbook.TemplatePlaybook{
 		Name:          name,
 		Description:   description,
 		Version:       version,
@@ -134,65 +66,65 @@ func runPlaybookTemplate(cmd *cobra.Command, args []string) {
 		ExecutionMode: mode,
 		Default:       defaultConfig,
 		Vars:          vars,
-		PreTasks:      []TemplateTask{},
+		PreTasks:      []playbook.TemplateTask{},
 		Tasks:         tasks,
-		PostTasks:     []TemplateTask{},
+		PostTasks:     []playbook.TemplateTask{},
 	}
 
-	playbookYAML, err := yaml.Marshal(&playbook)
+	playbookYAML, err := playbook.RenderTemplateYAML(&tpl)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "生成 YAML 失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_yaml", err))
 		os.Exit(1)
 	}
 
 	outputPath := determineOutputPath(name, playbookTemplateOutput)
 
 	if err := savePlaybookFile(outputPath, playbookYAML); err != nil {
-		fmt.Fprintf(os.Stderr, "保存文件失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_save", err))
 		os.Exit(1)
 	}
 
 	fmt.Println()
-	fmt.Println("✅ 剧本模板已创建!")
-	fmt.Printf("📄 文件路径: %s\n", outputPath)
+	fmt.Println(i18n.T("playbook.template.created"))
+	fmt.Printf("%s", i18n.T("playbook.template.file_path", outputPath))
 	fmt.Println()
-	fmt.Println("💡 下一步:")
-	fmt.Println("   1. 编辑文件，填充占位符内容")
-	fmt.Println("   2. 使用 owl playbook validate 验证语法")
-	fmt.Println("   3. 使用 owl playbook run 执行剧本")
+	fmt.Println(i18n.T("playbook.template.next_step"))
+	fmt.Println(i18n.T("playbook.template.next_1"))
+	fmt.Println(i18n.T("playbook.template.next_2"))
+	fmt.Println(i18n.T("playbook.template.next_3"))
 }
 
 func promptForName(reader *bufio.Reader) string {
 	for {
-		fmt.Print("任务名 (name): ")
+		fmt.Print(i18n.T("playbook.template.prompt_name"))
 		input, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 			os.Exit(1)
 		}
 		name := strings.TrimSpace(input)
 		if name != "" {
 			return name
 		}
-		fmt.Println("❌ 任务名不能为空，请重新输入")
+		fmt.Println(i18n.T("playbook.template.err_name_empty"))
 	}
 }
 
 func promptForDescription(reader *bufio.Reader) string {
-	fmt.Print("描述 (description，可选): ")
+	fmt.Print(i18n.T("playbook.template.prompt_desc"))
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 		os.Exit(1)
 	}
 	return strings.TrimSpace(input)
 }
 
 func promptForVersion(reader *bufio.Reader) string {
-	fmt.Print("版本 (version，默认 1.0): ")
+	fmt.Print(i18n.T("playbook.template.prompt_version"))
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 		os.Exit(1)
 	}
 	version := strings.TrimSpace(input)
@@ -205,10 +137,10 @@ func promptForVersion(reader *bufio.Reader) string {
 func promptForVars(reader *bufio.Reader) map[string]interface{} {
 	vars := make(map[string]interface{})
 
-	fmt.Print("是否添加变量？(y/n，默认 n): ")
+	fmt.Print(i18n.T("playbook.template.prompt_vars"))
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 		os.Exit(1)
 	}
 	choice := strings.ToLower(strings.TrimSpace(input))
@@ -218,10 +150,10 @@ func promptForVars(reader *bufio.Reader) map[string]interface{} {
 	}
 
 	for {
-		fmt.Print("变量名 (留空结束): ")
+		fmt.Print(i18n.T("playbook.template.prompt_var_name"))
 		varNameInput, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 			os.Exit(1)
 		}
 		varName := strings.TrimSpace(varNameInput)
@@ -229,10 +161,10 @@ func promptForVars(reader *bufio.Reader) map[string]interface{} {
 			break
 		}
 
-		fmt.Printf("变量 '%s' 的值: ", varName)
+		fmt.Printf("%s", i18n.T("playbook.template.prompt_var_value", varName))
 		varValueInput, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 			os.Exit(1)
 		}
 		varValue := strings.TrimSpace(varValueInput)
@@ -244,34 +176,34 @@ func promptForVars(reader *bufio.Reader) map[string]interface{} {
 
 func displayActionChoices() {
 	fmt.Println()
-	fmt.Println("请选择任务类型:")
-	fmt.Println("----------------")
-	for i, t := range actionTemplates {
+	fmt.Println(i18n.T("playbook.template.choose_task"))
+	fmt.Println(i18n.T("playbook.template.choose_sep"))
+	for i, t := range playbook.GetActionTemplates() {
 		fmt.Printf("%d. %s  - %s\n", i+1, t.Name, t.Description)
 	}
 	fmt.Println()
 }
 
 func promptForExecutionMode(reader *bufio.Reader) string {
-	fmt.Print("执行模式 (默认 fail_continue, 输入 pipeline 切换为流水线模式): ")
+	fmt.Print(i18n.T("playbook.template.prompt_mode"))
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 		os.Exit(1)
 	}
 	mode := strings.ToLower(strings.TrimSpace(input))
 	if mode == "pipeline" || mode == "p" {
-		fmt.Println("  → 流水线模式: 任一任务失败即终止后续执行")
+		fmt.Println(i18n.T("playbook.template.mode_pipeline"))
 		return "pipeline"
 	}
 	return ""
 }
 
-func promptForDefaultConfig(reader *bufio.Reader) *TemplateDefaultConfig {
-	fmt.Print("是否配置默认值（分组/标签）？(y/n，默认 n): ")
+func promptForDefaultConfig(reader *bufio.Reader) *playbook.TemplateDefaultConfig {
+	fmt.Print(i18n.T("playbook.template.prompt_default"))
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 		os.Exit(1)
 	}
 	choice := strings.ToLower(strings.TrimSpace(input))
@@ -279,12 +211,12 @@ func promptForDefaultConfig(reader *bufio.Reader) *TemplateDefaultConfig {
 		return nil
 	}
 
-	cfg := &TemplateDefaultConfig{}
+	cfg := &playbook.TemplateDefaultConfig{}
 
-	fmt.Print("默认目标分组 (group，多个用逗号分隔，可选): ")
+	fmt.Print(i18n.T("playbook.template.prompt_group"))
 	input, err = reader.ReadString('\n')
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 		os.Exit(1)
 	}
 	groups := strings.TrimSpace(input)
@@ -297,10 +229,10 @@ func promptForDefaultConfig(reader *bufio.Reader) *TemplateDefaultConfig {
 		}
 	}
 
-	fmt.Print("默认执行标签 (tags，多个用逗号分隔，可选): ")
+	fmt.Print(i18n.T("playbook.template.prompt_tags_input"))
 	input, err = reader.ReadString('\n')
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 		os.Exit(1)
 	}
 	tags := strings.TrimSpace(input)
@@ -313,10 +245,10 @@ func promptForDefaultConfig(reader *bufio.Reader) *TemplateDefaultConfig {
 		}
 	}
 
-	fmt.Print("默认跳过标签 (skip_tags，多个用逗号分隔，可选): ")
+	fmt.Print(i18n.T("playbook.template.prompt_skip_tags"))
 	input, err = reader.ReadString('\n')
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 		os.Exit(1)
 	}
 	skipTags := strings.TrimSpace(input)
@@ -332,24 +264,29 @@ func promptForDefaultConfig(reader *bufio.Reader) *TemplateDefaultConfig {
 	return cfg
 }
 
-func promptForTasks(reader *bufio.Reader) []TemplateTask {
-	tasks := []TemplateTask{}
+func promptForTasks(reader *bufio.Reader) []playbook.TemplateTask {
+	tasks := []playbook.TemplateTask{}
 	taskIndex := 1
 
 	for {
 		displayActionChoices()
 
-		fmt.Printf("选择任务类型 (1-%d): ", len(actionTemplates))
+		actionTemplates := playbook.GetActionTemplates()
+		fmt.Printf("%s", i18n.T("playbook.template.choose_action", i18n.F(len(actionTemplates))))
 		input, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_read", err))
 			os.Exit(1)
 		}
 
-		choiceStr := strings.TrimSpace(input)
+		choiceStr := strings.ToLower(strings.TrimSpace(input))
+		if choiceStr == "q" || choiceStr == "quit" || choiceStr == "exit" {
+			break
+		}
+
 		choice, err := strconv.Atoi(choiceStr)
 		if err != nil || choice < 1 || choice > len(actionTemplates) {
-			fmt.Printf("❌ 请输入有效序号 (1-%d)\n", len(actionTemplates))
+			fmt.Printf("%s", i18n.T("playbook.template.invalid_choice", i18n.F(len(actionTemplates))))
 			continue
 		}
 
@@ -360,8 +297,8 @@ func promptForTasks(reader *bufio.Reader) []TemplateTask {
 			argsCopy[k] = v
 		}
 
-		task := TemplateTask{
-			Name:   fmt.Sprintf("任务 %d", taskIndex),
+		task := playbook.TemplateTask{
+			Name:   i18n.T("playbook.template.task_name", i18n.F(taskIndex)),
 			Action: selectedTemplate.Name,
 			Args:   argsCopy,
 		}
@@ -369,26 +306,11 @@ func promptForTasks(reader *bufio.Reader) []TemplateTask {
 		tasks = append(tasks, task)
 		taskIndex++
 
-		fmt.Printf("✅ 已添加任务: %s (%s)\n", task.Name, selectedTemplate.Name)
+		fmt.Printf("%s", i18n.T("playbook.template.task_added", task.Name, selectedTemplate.Name))
 		fmt.Println()
-
-		if !promptForContinue(reader) {
-			break
-		}
 	}
 
 	return tasks
-}
-
-func promptForContinue(reader *bufio.Reader) bool {
-	fmt.Print("是否继续添加任务？(y/n): ")
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "读取输入失败: %v\n", err)
-		os.Exit(1)
-	}
-	choice := strings.ToLower(strings.TrimSpace(input))
-	return choice == "y" || choice == "yes"
 }
 
 func determineOutputPath(name, specifiedPath string) string {
@@ -402,7 +324,7 @@ func savePlaybookFile(path string, content []byte) error {
 	dir := filepath.Dir(path)
 	if dir != "" {
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("创建目录失败: %w", err)
+			return fmt.Errorf(i18n.Raw("playbook.template.err_save_mkdir"), err)
 		}
 	}
 

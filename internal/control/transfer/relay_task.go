@@ -27,6 +27,7 @@ type RelaySubTask struct {
 	Targets      []RelayTarget // 目标列表及其认证信息
 	SourceFile   string        // 源节点上要中继的文件路径
 	TimeoutSec   int           // 每个目标的 SCP 超时时间
+	GscpPath     string        // 远程 gscp 二进制路径，默认 /tmp/gscp
 }
 
 // ToShellArgs 将 RelaySubTask 序列化为 bash 脚本的命令行参数
@@ -52,6 +53,12 @@ func (r *RelaySubTask) ToShellArgs() []string {
 	if hasPassword {
 		args = append(args, "--passwords", strings.Join(targetPasswords, ","))
 	}
+
+	gscpPath := r.GscpPath
+	if gscpPath == "" {
+		gscpPath = "/tmp/gscp"
+	}
+	args = append(args, "--gscp-path", gscpPath)
 
 	return args
 }

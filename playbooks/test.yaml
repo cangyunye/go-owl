@@ -1,0 +1,10 @@
+name: test
+version: "1.0"
+hosts: []
+pre_tasks: []
+tasks:
+    - name: 任务 1
+      action: command
+      args:
+        cmd: <命令内容>
+post_tasks: []

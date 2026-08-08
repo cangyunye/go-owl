@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-const sepLine = "──────────────────────────────────────────────────────────────────────"
-
 func TestNewNodeLogWriter_DefaultPath(t *testing.T) {
 	origHomeDirFunc := homeDirFunc
 	homeDirFunc = func() (string, error) {

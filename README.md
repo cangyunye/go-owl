@@ -22,25 +22,18 @@
 
 ### 从源码构建
 
-项目支持 **DuckDB**（默认）和 **SQLite3** 两种数据库，可根据环境选择：
+默认使用纯 Go 的 SQLite（modernc.org/sqlite）作为历史数据库，无 CGO 依赖，可交叉编译到所有平台：
 
 ```bash
 git clone https://github.com/cangyunye/go-owl.git
 cd go-owl
 
-# 使用 DuckDB 构建（默认）
-go build -o owl-duckdb ./cmd/cli/main.go
-
-# 使用 SQLite3 构建（适用于不支持 DuckDB 的环境）
-go build -tags sqlite3 -o owl-sqlite3 ./cmd/cli/main.go
-```
-
-或者使用 Makefile：
-
-```bash
-make build-duckdb    # DuckDB 版本
-make build-sqlite3   # SQLite3 版本
-make all             # 构建所有版本
+make build                        # 当前平台 owl CLI
+make build WITH=serve,metrics,tui # 追加 Web 控制台 / metrics / TUI 组件
+make build PLATFORMS="linux/amd64 windows/amd64"   # 跨平台
+make build/all                    # 全平台 × 全组件（含 gscp，需网络）
+make install                      # 安装到 ~/.local/bin
+make help                         # 查看全部目标
 ```
 
 ## 🎉 快速开始
@@ -54,7 +47,7 @@ owl node add web-01 \
   --name "Web Server 1" \
   --address 192.168.1.10 \
   --user root \
-  --group web \
+  --groups web \
   --label env=prod
 ```
 
@@ -69,7 +62,7 @@ owl node list
 在所有节点执行命令：
 
 ```bash
-owl exec run "uptime" --group web
+owl exec run "uptime" --groups web
 ```
 
 指定节点执行：
@@ -121,11 +114,11 @@ owl session attach web-01
 
 ```bash
 # 添加 web 服务器
-owl node add web-01 --name web1 --address 192.168.1.10 --user root --group web
-owl node add web-02 --name web2 --address 192.168.1.11 --user root --group web
+owl node add web-01 --name web1 --address 192.168.1.10 --user root --groups web
+owl node add web-02 --name web2 --address 192.168.1.11 --user root --groups web
 
 # 添加数据库服务器
-owl node add db-01 --name db1 --address 192.168.1.20 --user admin --group db
+owl node add db-01 --name db1 --address 192.168.1.20 --user admin --groups db
 
 # 按标签分组
 owl node labels add web-01 --labels env=prod,tier=frontend
@@ -135,7 +128,7 @@ owl node labels add web-01 --labels env=prod,tier=frontend
 
 ```bash
 # 所有 web 节点执行命令
-owl exec run "systemctl status nginx" --group web
+owl exec run "systemctl status nginx" --groups web
 
 # 按标签筛选
 owl exec run "free -h" --label env=prod

@@ -15,6 +15,7 @@ import (
 const (
 	defaultScriptPath  = "scripts/owl-relay.sh"
 	remoteScriptPath   = "/tmp/owl-relay.sh"
+	remoteGscpPath     = "/tmp/gscp"
 	timeoutOverheadSec = 30
 )
 
@@ -22,6 +23,7 @@ type RelayExecutor struct {
 	nodeResolver  *node.NodeResolver
 	sshConfigPath string
 	scriptPath    string
+	gscpDir       string
 }
 
 func NewRelayExecutor(nodeResolver *node.NodeResolver) *RelayExecutor {
@@ -64,13 +66,127 @@ func (e *RelayExecutor) resolveScriptPath() string {
 	return e.scriptPath
 }
 
-func (e *RelayExecutor) DeployScript(ctx context.Context, nodeID string) error {
+func (e *RelayExecutor) detectRemoteArch(executor *ssh.NativeNodeExecutor) (string, string, error) {
+	exitCode, output, err := executor.Execute("uname -sm", 10*time.Second)
+	if err != nil {
+		return "", "", fmt.Errorf("检测远程架构失败: %w", err)
+	}
+	if exitCode != 0 {
+		return "", "", fmt.Errorf("检测远程架构失败，退出码: %d", exitCode)
+	}
+
+	parts := strings.Fields(strings.TrimSpace(output))
+	if len(parts) < 2 {
+		return "", "", fmt.Errorf("无法解析 uname 输出: %q", output)
+	}
+
+	sysName := parts[0]
+	machine := parts[1]
+
+	var goos string
+	switch sysName {
+	case "Linux":
+		goos = "linux"
+	case "Darwin":
+		goos = "darwin"
+	default:
+		return "", "", fmt.Errorf("不支持的操作系统: %s", sysName)
+	}
+
+	var goarch string
+	switch machine {
+	case "x86_64", "amd64":
+		goarch = "amd64"
+	case "aarch64", "arm64":
+		goarch = "arm64"
+	default:
+		return "", "", fmt.Errorf("不支持的架构: %s", machine)
+	}
+
+	return goos, goarch, nil
+}
+
+func (e *RelayExecutor) resolveGscpBinary(goos, goarch string) (string, error) {
+	platformDir := fmt.Sprintf("%s-%s", goos, goarch)
+
+	if e.gscpDir != "" {
+		p := filepath.Join(e.gscpDir, "gscp")
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+		p = filepath.Join(e.gscpDir, platformDir, "gscp")
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+
+	if envDir := os.Getenv("OWL_GSCP_DIR"); envDir != "" {
+		p := filepath.Join(envDir, "gscp")
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+		p = filepath.Join(envDir, platformDir, "gscp")
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+
+	if home, err := os.UserHomeDir(); err == nil {
+		p := filepath.Join(home, ".owl", "gscp", platformDir, "gscp")
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+
+		p := filepath.Join(execDir, "gscp-"+platformDir)
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+
+		p = filepath.Join(execDir, platformDir, "gscp")
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+
+		p = filepath.Join(execDir, "..", platformDir, "gscp")
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+
+	p := filepath.Join("build", platformDir, "gscp")
+	if _, err := os.Stat(p); err == nil {
+		return p, nil
+	}
+
+	return "", fmt.Errorf("未找到 gscp 二进制 (平台: %s)，请执行 make install-gscp 或设置 OWL_GSCP_DIR", platformDir)
+}
+
+func (e *RelayExecutor) DeployRelay(ctx context.Context, nodeID string) error {
 	_, connInfo, err := e.resolveConnInfo(ctx, nodeID)
 	if err != nil {
 		return err
 	}
 
 	executor := ssh.NewNativeNodeExecutor(connInfo)
+
+	goos, goarch, err := e.detectRemoteArch(executor)
+	if err != nil {
+		return fmt.Errorf("节点 %s: %w", nodeID, err)
+	}
+
+	gscpBinary, err := e.resolveGscpBinary(goos, goarch)
+	if err != nil {
+		return fmt.Errorf("节点 %s: %w", nodeID, err)
+	}
+
+	if err := executor.WriteFile(gscpBinary, remoteGscpPath); err != nil {
+		return fmt.Errorf("上传 gscp 到节点 %s 失败: %w", nodeID, err)
+	}
 
 	scriptPath := e.resolveScriptPath()
 	if _, err := os.Stat(scriptPath); err != nil {
@@ -81,15 +197,28 @@ func (e *RelayExecutor) DeployScript(ctx context.Context, nodeID string) error {
 		return fmt.Errorf("上传中继脚本到节点 %s 失败: %w", nodeID, err)
 	}
 
-	exitCode, output, err := executor.Execute("chmod +x "+remoteScriptPath, 10*time.Second)
+	exitCode, output, err := executor.Execute("chmod +x "+remoteGscpPath+" "+remoteScriptPath, 10*time.Second)
 	if err != nil {
-		return fmt.Errorf("设置中继脚本权限失败: %w", err)
+		return fmt.Errorf("设置权限失败: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("设置中继脚本权限失败，退出码: %d, 输出: %s", exitCode, output)
+		return fmt.Errorf("设置权限失败，退出码: %d, 输出: %s", exitCode, output)
+	}
+
+	exitCode, output, err = executor.Execute(remoteGscpPath+" --help", 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("验证 gscp 失败: %w", err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("gscp 验证失败 (退出码 %d): %s", exitCode, output)
 	}
 
 	return nil
+}
+
+// Deprecated: 使用 DeployRelay 替代
+func (e *RelayExecutor) DeployScript(ctx context.Context, nodeID string) error {
+	return e.DeployRelay(ctx, nodeID)
 }
 
 func (e *RelayExecutor) ExecuteRelay(ctx context.Context, nodeID string, task *RelaySubTask) ([]RelayTargetResult, error) {
@@ -114,7 +243,6 @@ func (e *RelayExecutor) ExecuteRelay(ctx context.Context, nodeID string, task *R
 		return nil, fmt.Errorf("节点 %s 执行中继命令失败: %w", nodeID, err)
 	}
 
-	// 始终先尝试解析 CSV 结果——即使退出码非零
 	results, parseErr := ParseRelayResults(output)
 	if parseErr != nil {
 		return nil, fmt.Errorf("解析中继结果失败: %w", parseErr)
@@ -124,7 +252,6 @@ func (e *RelayExecutor) ExecuteRelay(ctx context.Context, nodeID string, task *R
 		return results, nil
 	}
 
-	// 统计成功和失败数，用于构造错误消息
 	successCount := 0
 	failCount := 0
 	var failedTargets []string
@@ -138,11 +265,9 @@ func (e *RelayExecutor) ExecuteRelay(ctx context.Context, nodeID string, task *R
 	}
 
 	if failCount > 0 && successCount > 0 {
-		// 部分成功（owl-relay.sh exit 1）
 		return results, fmt.Errorf("中继部分失败: %d/%d 个目标失败 (%s)", failCount, len(results), strings.Join(failedTargets, ","))
 	}
 
-	// 全部失败（owl-relay.sh exit 2）
 	return results, fmt.Errorf("中继命令退出码非零 (%d)，全部 %d 个目标失败", exitCode, len(results))
 }
 

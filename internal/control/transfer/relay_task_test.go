@@ -24,6 +24,7 @@ func TestRelaySubTask_ToShellArgs_AllPasswords(t *testing.T) {
 	assertArgValue(t, args, "--targets", "root@10.0.0.1:/tmp/file.tar.gz,root@10.0.0.2:/tmp/file.tar.gz,root@10.0.0.3:/tmp/file.tar.gz")
 	assertArgValue(t, args, "--timeout", "300")
 	assertArgValue(t, args, "--passwords", "pass1,pass2,pass3")
+	assertArgValue(t, args, "--gscp-path", "/tmp/gscp")
 }
 
 func TestRelaySubTask_ToShellArgs_NoPasswords(t *testing.T) {
@@ -86,6 +87,23 @@ func TestRelaySubTask_ToShellArgs_SingleTarget(t *testing.T) {
 	assertArgValue(t, args, "--targets", "root@10.0.0.1:/tmp/file.tar.gz")
 	assertArgValue(t, args, "--timeout", "60")
 	assertArgValue(t, args, "--passwords", "secret")
+	assertArgValue(t, args, "--gscp-path", "/tmp/gscp")
+}
+
+func TestRelaySubTask_ToShellArgs_CustomGscpPath(t *testing.T) {
+	task := &RelaySubTask{
+		SourceNodeID: "source-1",
+		Targets: []RelayTarget{
+			{Host: "root@10.0.0.1:/tmp/file.tar.gz", Password: "pass1"},
+		},
+		SourceFile: "/data/file.tar.gz",
+		TimeoutSec: 300,
+		GscpPath:   "/opt/tools/gscp",
+	}
+
+	args := task.ToShellArgs()
+
+	assertArgValue(t, args, "--gscp-path", "/opt/tools/gscp")
 }
 
 func assertArgValue(t *testing.T, args []string, flag string, expectedValue string) {

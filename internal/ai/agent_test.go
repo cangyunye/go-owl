@@ -155,7 +155,7 @@ func TestExtractCommand(t *testing.T) {
 
 func TestQueryDatabaseTool_StructuredFilter(t *testing.T) {
 	mgr := &mockNodeMgr{}
-	tool := NewQueryDatabaseTool(mgr)
+	tool := NewQueryDatabaseTool(nil, mgr)
 	ctx := context.Background()
 
 	t.Run("Group filter", func(t *testing.T) {
@@ -191,7 +191,7 @@ func TestQueryDatabaseTool_StructuredFilter(t *testing.T) {
 
 func TestQueryDatabaseTool_SQLSelect(t *testing.T) {
 	mgr := &mockNodeMgr{}
-	tool := NewQueryDatabaseTool(mgr)
+	tool := NewQueryDatabaseTool(nil, mgr)
 	ctx := context.Background()
 
 	t.Run("SELECT all", func(t *testing.T) {
@@ -217,7 +217,7 @@ func TestQueryDatabaseTool_SQLSelect(t *testing.T) {
 
 func TestQueryDatabaseTool_RejectWrite(t *testing.T) {
 	mgr := &mockNodeMgr{}
-	tool := NewQueryDatabaseTool(mgr)
+	tool := NewQueryDatabaseTool(nil, mgr)
 	ctx := context.Background()
 
 	forbidden := []string{"INSERT INTO nodes", "UPDATE nodes SET", "DELETE FROM nodes", "DROP TABLE nodes", "ALTER TABLE nodes"}
@@ -273,42 +273,32 @@ func TestAffirmativeReplies(t *testing.T) {
 	}
 }
 
-func TestMaybeSetPendingContext(t *testing.T) {
-	agent := &Agent{}
+func TestSessionDefaultConfirmGate(t *testing.T) {
+	agent := newTestAgentForRoute([]string{
+		"exec",
+		"```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"nodes\":[\"node1\"]}}]}\n```",
+	})
 	session := NewSession(agent)
 
-	t.Run("Sets pending on question", func(t *testing.T) {
-		session.maybeSetPendingContext("是否需要我列出全部节点详情？")
-		if session.pendingContext == nil {
-			t.Error("expected pendingContext to be set")
-		}
-		if session.pendingContext.State != "awaiting_confirmation" {
-			t.Errorf("expected 'awaiting_confirmation', got '%s'", session.pendingContext.State)
-		}
-		session.pendingContext = nil
-	})
+	call := ToolCall{Name: "execute_command", Arguments: map[string]interface{}{"command": "uptime"}}
+	d := agent.confirmGate(call)
+	if !d.Confirm {
+		t.Fatal("expected write operation to require confirmation")
+	}
+	if session.pendingContext == nil {
+		t.Fatal("expected pendingContext to be set by gate")
+	}
+	if session.pendingContext.ToolCall.Name != "execute_command" {
+		t.Errorf("expected pending tool execute_command, got %s", session.pendingContext.ToolCall.Name)
+	}
+	if !strings.Contains(d.Question, "是否继续") {
+		t.Errorf("expected confirm question, got %q", d.Question)
+	}
 
-	t.Run("Does not set on statement", func(t *testing.T) {
-		session.maybeSetPendingContext("查询到 1 个节点")
-		if session.pendingContext != nil {
-			t.Error("expected pendingContext to be nil for statement")
-		}
-	})
-
-	t.Run("Sets on question mark with keyword", func(t *testing.T) {
-		session.maybeSetPendingContext("需要我帮你查询吗？")
-		if session.pendingContext == nil {
-			t.Error("expected pendingContext to be set")
-		}
-		session.pendingContext = nil
-	})
-
-	t.Run("Does not set on general question", func(t *testing.T) {
-		session.maybeSetPendingContext("当前负载多少？")
-		if session.pendingContext != nil {
-			t.Error("expected pendingContext to be nil for general question without keyword")
-		}
-	})
+	readCall := ToolCall{Name: "query_nodes", Arguments: map[string]interface{}{}}
+	if d := agent.confirmGate(readCall); d.Confirm {
+		t.Error("expected read-only operation to pass through")
+	}
 }
 
 func TestExtractFilePath(t *testing.T) {
@@ -337,15 +327,26 @@ func TestExtractFilePath(t *testing.T) {
 
 func TestNewAgent(t *testing.T) {
 	config := &Config{}
-	agent, err := NewAgent(config, nil, nil)
+	agent, err := NewAgent(nil, config, nil, nil, nil)
 	if err != nil {
-		t.Fatalf("Expected NewAgent to succeed, got error: %v", err)
+		t.Fatalf("Expected NewAgent to succeed with nil executor, got error: %v", err)
 	}
 	if agent == nil {
 		t.Fatal("Expected agent to be non-nil")
 	}
 	if agent.registry == nil {
 		t.Error("Expected registry to be initialized")
+	}
+}
+
+func TestNewAgentWithNilExecutor(t *testing.T) {
+	config := &Config{}
+	agent, err := NewAgent(nil, config, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Expected NewAgent to succeed with nil executor, got error: %v", err)
+	}
+	if agent == nil {
+		t.Fatal("Expected agent to be non-nil")
 	}
 }
 
@@ -367,7 +368,7 @@ func TestSessionManager(t *testing.T) {
 func TestExecuteToolCallWithInvalidParams(t *testing.T) {
 	ctx := context.Background()
 	registry := NewToolRegistry()
-	registry.Register(NewExecuteCommandTool(&mockNodeMgr{}))
+	registry.Register(NewExecuteCommandTool(nil, &mockNodeMgr{}))
 	agent := &Agent{registry: registry}
 
 	invalidParams := map[string]interface{}{
@@ -388,7 +389,7 @@ func TestExecuteToolCallWithInvalidParams(t *testing.T) {
 func TestExecuteToolCallWithMissingRequiredParams(t *testing.T) {
 	ctx := context.Background()
 	registry := NewToolRegistry()
-	registry.Register(NewExecuteCommandTool(&mockNodeMgr{}))
+	registry.Register(NewExecuteCommandTool(nil, &mockNodeMgr{}))
 	agent := &Agent{registry: registry}
 
 	missingParams := map[string]interface{}{
@@ -408,7 +409,7 @@ func TestExecuteToolCallWithMissingRequiredParams(t *testing.T) {
 func TestExecuteToolCallWithValidParams(t *testing.T) {
 	ctx := context.Background()
 	registry := NewToolRegistry()
-	registry.Register(NewExecuteCommandTool(&mockNodeMgr{}))
+	registry.Register(NewExecuteCommandTool(nil, &mockNodeMgr{}))
 	agent := &Agent{registry: registry}
 
 	validParams := map[string]interface{}{
@@ -444,7 +445,7 @@ func TestExecuteToolCallWithUnknownTool(t *testing.T) {
 func TestTransferFileValidation(t *testing.T) {
 	ctx := context.Background()
 	registry := NewToolRegistry()
-	registry.Register(NewTransferFileTool(&mockNodeMgr{}))
+	registry.Register(NewTransferFileTool(nil, &mockNodeMgr{}))
 	agent := &Agent{registry: registry}
 
 	tests := []struct {
@@ -532,7 +533,22 @@ func (m *mockNodeMgrForAI) GetByID(id string) (*model.Node, error) {
 func (m *mockNodeMgrForAI) UpdateStatus(id string, status model.NodeStatus) error { return nil }
 func (m *mockNodeMgrForAI) GetOnlineNodes() []*model.Node                         { return nil }
 func (m *mockNodeMgrForAI) Count() int                                            { return len(m.nodes) }
-func (m *mockNodeMgrForAI) GetByLabels(labels map[string]string) []*model.Node    { return nil }
+func (m *mockNodeMgrForAI) GetByLabels(labels map[string]string) []*model.Node {
+	var result []*model.Node
+	for _, n := range m.nodes {
+		hit := true
+		for k, v := range labels {
+			if n.Labels[k] != v {
+				hit = false
+				break
+			}
+		}
+		if hit {
+			result = append(result, n)
+		}
+	}
+	return result
+}
 func (m *mockNodeMgrForAI) SearchByName(pattern string) []*model.Node {
 	if pattern == "" {
 		return nil
@@ -582,7 +598,7 @@ func newTestAgentForRoute(responses []string) *Agent {
 			{Name: "node1", Address: "127.0.0.1", Port: 22, Status: "online"},
 		},
 	}
-	agent, _ := NewAgent(config, mgr, nil)
+	agent, _ := NewAgent(nil, config, mgr, nil, nil)
 	agent.SetChatModel(&mockChatModel{responses: responses})
 	return agent
 }
@@ -724,7 +740,7 @@ func TestProcessRouterError(t *testing.T) {
 			{Name: "node1", Address: "127.0.0.1", Port: 22, Status: "online"},
 		},
 	}
-	agent, _ := NewAgent(config, mgr, nil)
+	agent, _ := NewAgent(nil, config, mgr, nil, nil)
 	agent.SetChatModel(mock)
 
 	ctx := context.Background()
@@ -884,7 +900,7 @@ func TestDynamicHintNoInjectionForQueryNodes(t *testing.T) {
 func TestQueryNodesValidation(t *testing.T) {
 	ctx := context.Background()
 	registry := NewToolRegistry()
-	registry.Register(NewQueryNodesTool(&mockNodeMgr{}))
+	registry.Register(NewQueryNodesTool(nil, &mockNodeMgr{}, nil))
 	agent := &Agent{registry: registry}
 
 	tests := []struct {

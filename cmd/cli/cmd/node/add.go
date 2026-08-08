@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 // addFlags
@@ -27,47 +28,32 @@ var (
 func NewAddCmd() *cobra.Command {
 	addCmd := &cobra.Command{
 		Use:   "add <node-id>",
-		Short: "添加新节点",
-		Long: `添加一个新节点到管理列表。
-
-示例：
-  # 基本用法
-  owl node add node1 --name web-server-1 --address 192.168.1.10
-
-  # 指定端口和用户
-  owl node add node2 --name db-server-1 --address 192.168.1.20 --port 22 --user admin
-
-  # 添加分组和多标签
-  owl node add node3 --name app-server --address 192.168.1.30 \
-    --groups web,production --labels env=prod,appname=owl,region=us-east
-
-  # 使用 SSH 密钥认证
-  owl node add node4 --name remote-server --address 192.168.1.40 \
-    --ssh-key ~/.ssh/id_rsa --labels env=staging,tier=backend`,
-		Args: cobra.ExactArgs(1),
-		Run:  runAdd,
+		Short: i18n.T("node.add.short"),
+		Long:  i18n.T("node.add.long"),
+		Args:  cobra.ExactArgs(1),
+		Run:   runAdd,
 	}
 
 	addCmd.Flags().StringVarP(&addName, "name", "n", "",
-		"节点名称 (必需)")
+		i18n.T("node.add.flag_name"))
 	addCmd.Flags().StringVarP(&addAddress, "address", "a", "",
-		"节点地址 IP (必需)")
+		i18n.T("node.add.flag_address"))
 	addCmd.Flags().IntVarP(&addPort, "port", "p", 22,
-		"节点端口 (默认: 22)")
+		i18n.T("node.add.flag_port"))
 	addCmd.Flags().StringVarP(&addUser, "user", "u", "",
-		"SSH 用户 (默认: 当前用户)")
+		i18n.T("node.add.flag_user"))
 	addCmd.Flags().StringVarP(&addPassword, "password", "P", "",
-		"SSH 密码")
+		i18n.T("node.add.flag_password"))
 	addCmd.Flags().StringVar(&addSSHKey, "ssh-key", "",
-		"SSH 私钥文件路径")
+		i18n.T("node.add.flag_ssh_key"))
 	addCmd.Flags().StringVar(&addProxyJump, "proxy-jump", "",
-		"跳板机地址")
+		i18n.T("node.add.flag_proxy_jump"))
 	addCmd.Flags().StringVar(&addGroups, "groups", "",
-		"分组列表 (逗号分隔)")
+		i18n.T("node.add.flag_groups"))
 	addCmd.Flags().StringSliceVarP(&addLabels, "labels", "l", nil,
-		"标签 (格式: key=value)")
+		i18n.T("node.add.flag_labels"))
 	addCmd.Flags().StringSliceVar(&addLabels, "label", nil,
-		"标签 (格式: key=value) (alias)")
+		i18n.T("node.add.flag_labels_alias"))
 
 	_ = addCmd.MarkFlagRequired("name")
 	_ = addCmd.MarkFlagRequired("address")
@@ -81,7 +67,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 
 	// 检查节点是否已存在
 	if _, err := store.Get(nodeID); err == nil {
-		fmt.Fprintf(os.Stderr, "Error: node already exists: %s\n", nodeID)
+		fmt.Fprintln(os.Stderr, i18n.T("node.add.err_exists", nodeID))
 		os.Exit(1)
 	}
 
@@ -124,37 +110,37 @@ func runAdd(cmd *cobra.Command, args []string) {
 
 	// 保存节点
 	if err := store.Add(node); err != nil {
-		fmt.Fprintf(os.Stderr, "Error adding node: %v\n", err)
+		fmt.Fprintln(os.Stderr, i18n.T("node.add.err_add", err))
 		os.Exit(1)
 	}
 
 	// 持久化到文件
 	store.Save()
 
-	fmt.Printf("✓ Node '%s' added successfully\n", nodeID)
-	fmt.Printf("  Name:       %s\n", node.Name)
-	fmt.Printf("  Address:    %s:%d\n", node.Address, node.Port)
+	fmt.Printf("%s\n", i18n.T("node.add.ok", nodeID))
+	fmt.Printf("%s\n", i18n.T("node.add.field_name", node.Name))
+	fmt.Printf("%s\n", i18n.T("node.add.field_address", node.Address, i18n.F(node.Port)))
 	if node.User != "" {
-		fmt.Printf("  User:       %s\n", node.User)
+		fmt.Printf("%s\n", i18n.T("node.add.field_user", node.User))
 	}
 	if node.Password != "" {
-		fmt.Printf("  Password:   [已设置]\n")
+		fmt.Println(i18n.T("node.add.field_password"))
 	}
 	if node.SSHKey != "" {
-		fmt.Printf("  SSH Key:    %s\n", node.SSHKey)
+		fmt.Printf("%s\n", i18n.T("node.add.field_ssh_key", node.SSHKey))
 	}
 	if node.ProxyJump != "" {
-		fmt.Printf("  ProxyJump:  %s\n", node.ProxyJump)
+		fmt.Printf("%s\n", i18n.T("node.add.field_proxyjump", node.ProxyJump))
 	}
 	if len(node.Groups) > 0 {
-		fmt.Printf("  Groups:  %s\n", joinStrings(node.Groups, ", "))
+		fmt.Printf("%s\n", i18n.T("node.add.field_groups", joinStrings(node.Groups, ", ")))
 	}
 	if len(node.Labels) > 0 {
 		labelStr := make([]string, 0, len(node.Labels))
 		for k, v := range node.Labels {
 			labelStr = append(labelStr, fmt.Sprintf("%s=%s", k, v))
 		}
-		fmt.Printf("  Labels:  %s\n", joinStrings(labelStr, ", "))
+		fmt.Printf("%s\n", i18n.T("node.add.field_labels", joinStrings(labelStr, ", ")))
 	}
 }
 

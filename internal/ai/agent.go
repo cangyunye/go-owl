@@ -73,6 +73,181 @@ type Agent struct {
 	systemPrompt   string
 	mu             sync.RWMutex
 	debug          bool
+
+	// confirmGate 在执行工具前由 Process/ProcessWithContext 调用。
+	// 返回 Confirm=true 时工具不执行，Question 作为响应返回给用户。
+	confirmGate func(ToolCall) ConfirmationDecision
+	// sessionMemory 由 Session 注入的会话记忆（对话+操作记录），
+	// 随路由消息发给 LLM 作为参考，不作为新请求。
+	sessionMemory string
+	// nodeContextHook 工具执行成功且涉及节点时回调解析后的节点名列表，
+	// 供 Session 保存节点上下文（跨轮复用，新一轮查询覆盖）。
+	nodeContextHook func(nodes []string, source string)
+}
+
+// ConfirmationDecision 确认门判定结果。
+type ConfirmationDecision struct {
+	Confirm  bool   // true=拦截该工具调用
+	Question string // 拦截时返回给用户的确认问题文案
+	Summary  string // 操作摘要（用于展示与记录）
+}
+
+// confirmRequiredTools 需要用户确认的写操作工具集合。
+var confirmRequiredTools = map[string]bool{
+	"node_add":          true,
+	"node_remove":       true,
+	"node_update":       true,
+	"node_groups":       true,
+	"node_labels":       true,
+	"node_import":       true,
+	"node_export":       true,
+	"execute_command":   true,
+	"execute_script":    true,
+	"run_playbook":      true,
+	"transfer_file":     true,
+	"file_download":     true,
+	"async_cancel":      true,
+	"settings_set":      true,
+	"history_clean":     true,
+	"playbook_generate": true,
+}
+
+// SetConfirmGate 注册确认门回调。nil 可清除。
+func (a *Agent) SetConfirmGate(gate func(ToolCall) ConfirmationDecision) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.confirmGate = gate
+}
+
+// SetSessionMemory 注入会话记忆文本（对话+操作记录），随路由消息发送。
+func (a *Agent) SetSessionMemory(memory string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.sessionMemory = memory
+}
+
+// SetNodeContextHook 注册节点上下文回调：涉及节点的工具执行成功后，
+// 回调解析出的节点名列表与来源描述（程序层确定性保存，供跨轮复用）。
+func (a *Agent) SetNodeContextHook(hook func(nodes []string, source string)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.nodeContextHook = hook
+}
+
+// nodeTargetTools 执行后需要记录节点上下文的工具。
+var nodeTargetTools = map[string]bool{
+	"query_nodes":       true,
+	"query_database":    true,
+	"execute_command":   true,
+	"execute_script":    true,
+	"transfer_file":     true,
+	"file_download":     true,
+	"run_playbook":      true,
+	"node_check":        true,
+	"node_ping":         true,
+	"node_status":       true,
+}
+
+// resolveToolTargets 从工具参数解析目标节点名列表（确定性，非 LLM 记忆）。
+// 支持 nodes 数组 / group（逗号分隔多分组）/ label（逗号分隔多键值）/ search。
+func (a *Agent) resolveToolTargets(call ToolCall) ([]string, string) {
+	args := call.Arguments
+	nodes := strSliceOf(args["nodes"])
+	if len(nodes) == 1 && nodes[0] == "ALL_NODES" {
+		nodes = nil
+	}
+	if len(nodes) > 0 {
+		return nodes, fmt.Sprintf("nodes=%s", strings.Join(nodes, ","))
+	}
+	if g := strOf(args["group"]); g != "" {
+		var names []string
+		for _, part := range strings.Split(g, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			for _, n := range a.nodeMgr.GetByGroup(part) {
+				names = append(names, n.Name)
+			}
+		}
+		return uniqueStrings(names), fmt.Sprintf("group=%s", g)
+	}
+	if l := strOf(args["label"]); l != "" {
+		names := a.nodeMgr.GetByLabels(parseLabelFilter(l))
+		var out []string
+		for _, n := range names {
+			out = append(out, n.Name)
+		}
+		return out, fmt.Sprintf("label=%s", l)
+	}
+	if s := strOf(args["search"]); s != "" {
+		names := a.nodeMgr.SearchByName(s)
+		var out []string
+		for _, n := range names {
+			out = append(out, n.Name)
+		}
+		return out, fmt.Sprintf("search=%s", s)
+	}
+	// 无显式目标：视为全部节点（查询类工具默认行为）
+	var all []string
+	for _, n := range a.nodeMgr.List() {
+		all = append(all, n.Name)
+	}
+	return all, "全部节点"
+}
+
+func uniqueStrings(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// ExecuteToolCall 执行工具调用（供确认门重放使用，不再经过确认门）。
+func (a *Agent) ExecuteToolCall(ctx context.Context, call ToolCall) (string, error) {
+	return a.executeToolCall(ctx, call)
+}
+
+// RejectWriteOpsGate 非交互模式（单次查询）使用的确认门：
+// 写操作一律拒绝并提示进入交互模式。
+func RejectWriteOpsGate() func(ToolCall) ConfirmationDecision {
+	return func(call ToolCall) ConfirmationDecision {
+		if confirmRequiredTools[call.Name] {
+			return ConfirmationDecision{
+				Confirm:  true,
+				Summary:  SummarizeToolCall(call),
+				Question: fmt.Sprintf("该操作（%s）需要交互确认，请进入交互模式执行（不带参数运行 owl ai）。", call.Name),
+			}
+		}
+		return ConfirmationDecision{Confirm: false}
+	}
+}
+
+// SummarizeToolCall 生成工具调用的人类可读摘要。
+func SummarizeToolCall(call ToolCall) string {
+	var sb strings.Builder
+	sb.WriteString(call.Name)
+	if len(call.Arguments) > 0 {
+		keys := []string{"nodes", "command", "name", "group", "id", "node",
+			"source_file", "dest_dir", "script", "requirement", "file", "key", "value", "type"}
+		var parts []string
+		for _, k := range keys {
+			if v, ok := call.Arguments[k]; ok {
+				parts = append(parts, fmt.Sprintf("%s=%v", k, v))
+			}
+		}
+		if len(parts) > 0 {
+			sb.WriteString("(")
+			sb.WriteString(strings.Join(parts, ", "))
+			sb.WriteString(")")
+		}
+	}
+	return sb.String()
 }
 
 type ChatModel interface {
@@ -94,6 +269,7 @@ func (f ChatModelFunc) Generate(ctx context.Context, messages []Message) (string
 
 var groupPrompts = map[string]string{
 	"node_list":         aiPrompts.NodeListSystemPrompt,
+	"query_nodes":       aiPrompts.NodeListSystemPrompt,
 	"node_add":          aiPrompts.NodeAddSystemPrompt,
 	"node_update":       aiPrompts.NodeUpdateSystemPrompt,
 	"node_remove":       aiPrompts.NodeRemoveSystemPrompt,
@@ -108,8 +284,30 @@ var groupPrompts = map[string]string{
 	"file":              aiPrompts.FileSystemPrompt,
 	"playbook_list":     aiPrompts.PlaybookListSystemPrompt,
 	"playbook_run":      aiPrompts.PlaybookRunSystemPrompt,
-	"playbook_info":     aiPrompts.PlaybookInfoSystemPrompt,
 	"playbook_validate": aiPrompts.PlaybookValidateSystemPrompt,
+	// 以下类别使用通用工具目录提示词
+	"node_export":          aiPrompts.GenericToolSystemPrompt,
+	"file_download":        aiPrompts.GenericToolSystemPrompt,
+	"playbook_generate":    aiPrompts.GenericToolSystemPrompt,
+	"playbook_template_list": aiPrompts.GenericToolSystemPrompt,
+	"playbook_template_info": aiPrompts.GenericToolSystemPrompt,
+	"playbook_template_export": aiPrompts.GenericToolSystemPrompt,
+	"playbook_scaffold":    aiPrompts.GenericToolSystemPrompt,
+	"playbook_state_list":  aiPrompts.GenericToolSystemPrompt,
+	"playbook_state_show":  aiPrompts.GenericToolSystemPrompt,
+	"async_list":           aiPrompts.GenericToolSystemPrompt,
+	"async_status":         aiPrompts.GenericToolSystemPrompt,
+	"async_cancel":         aiPrompts.GenericToolSystemPrompt,
+	"settings_show":        aiPrompts.GenericToolSystemPrompt,
+	"settings_set":         aiPrompts.GenericToolSystemPrompt,
+	"history_list":         aiPrompts.GenericToolSystemPrompt,
+	"history_clean":        aiPrompts.GenericToolSystemPrompt,
+}
+
+// unsupportedRouteLabels 路由命中的豁免命令：AI 明确不支持。
+var unsupportedRouteLabels = map[string]bool{
+	"session": true, "serve": true, "tui": true,
+	"metrics": true, "node_sample": true, "sample": true,
 }
 
 var toolHints = map[string]string{
@@ -119,19 +317,42 @@ var toolHints = map[string]string{
 	"transfer_file":     aiPrompts.TransferPrompt,
 }
 
-func NewAgent(config *Config, nodeMgr node.Manager, nodeStore NodeStoreAdapter, playbookParser *playbook.Parser, debug ...bool) (*Agent, error) {
+func NewAgent(executor Executor, config *Config, nodeMgr node.Manager, nodeStore NodeStoreAdapter, playbookParser *playbook.Parser, debug ...bool) (*Agent, error) {
 	registry := NewToolRegistry()
-	registry.Register(NewQueryNodesTool(nodeMgr, nodeStore))
-	registry.Register(NewExecuteCommandTool(nodeMgr))
-	registry.Register(NewGeneratePlaybookTool(nodeMgr))
-	registry.Register(NewTransferFileTool(nodeMgr))
-	registry.Register(NewExecuteScriptTool(nodeMgr))
-	registry.Register(NewQueryDatabaseTool(nodeMgr))
-	registry.Register(NewListPlaybooksTool())
-	registry.Register(NewRunPlaybookTool(nodeMgr))
-	registry.Register(NewPlaybookInfoTool())
-	registry.Register(NewValidatePlaybookTool())
-	registry.Register(NewNodeCheckTool(nodeMgr))
+	registry.Register(NewQueryNodesTool(executor, nodeMgr, nodeStore))
+	registry.Register(NewExecuteCommandTool(executor, nodeMgr))
+	registry.Register(NewGeneratePlaybookTool(executor, nodeMgr))
+	registry.Register(NewTransferFileTool(executor, nodeMgr))
+	registry.Register(NewExecuteScriptTool(executor, nodeMgr))
+	registry.Register(NewQueryDatabaseTool(executor, nodeMgr))
+	registry.Register(NewListPlaybooksTool(executor))
+	registry.Register(NewRunPlaybookTool(executor, nodeMgr))
+	registry.Register(NewFileDownloadTool(executor))
+	registry.Register(NewPlaybookTemplateListTool(executor))
+	registry.Register(NewPlaybookTemplateInfoTool(executor))
+	registry.Register(NewPlaybookTemplateExportTool(executor))
+	registry.Register(NewPlaybookScaffoldTool(executor))
+	registry.Register(NewPlaybookStateListTool(executor))
+	registry.Register(NewPlaybookStateShowTool(executor))
+	registry.Register(NewPlaybookGenerateTool(nodeMgr))
+	registry.Register(NewAsyncListTool(executor))
+	registry.Register(NewAsyncStatusTool(executor))
+	registry.Register(NewAsyncCancelTool(executor))
+	registry.Register(NewSettingsShowTool(executor))
+	registry.Register(NewSettingsSetTool(executor))
+	registry.Register(NewHistoryListTool(executor))
+	registry.Register(NewHistoryCleanTool(executor))
+	registry.Register(NewValidatePlaybookTool(executor))
+	registry.Register(NewNodeCheckTool(executor, nodeMgr))
+	registry.Register(NewNodeAddTool(executor, nodeStore))
+	registry.Register(NewNodeRemoveTool(executor, nodeStore))
+	registry.Register(NewNodeUpdateTool(executor, nodeStore))
+	registry.Register(NewNodeStatusTool(executor, nodeMgr))
+	registry.Register(NewNodePingTool(executor, nodeMgr))
+	registry.Register(NewNodeGroupsTool(executor))
+	registry.Register(NewNodeLabelsTool(executor))
+	registry.Register(NewNodeImportTool(executor))
+	registry.Register(NewNodeExportTool(executor))
 
 	isDebug := len(debug) > 0 && debug[0]
 
@@ -178,10 +399,20 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 
 	nodeInfo := a.getNodeInfo()
 
+	a.mu.RLock()
+	sessionMemory := a.sessionMemory
+	a.mu.RUnlock()
+
 	routerMessages := []Message{
 		{Role: "system", Content: aiPrompts.RouterPrompt},
-		{Role: "user", Content: userInput},
 	}
+	if sessionMemory != "" {
+		routerMessages = append(routerMessages, Message{
+			Role:    "system",
+			Content: "以下是此前会话的对话与操作记录，仅作参考背景，不要把它当作新的用户请求：\n" + sessionMemory,
+		})
+	}
+	routerMessages = append(routerMessages, Message{Role: "user", Content: userInput})
 
 	// 调试：打印路由消息
 	debugPrint(a.debug, "路由消息数量: %d", len(routerMessages))
@@ -232,8 +463,11 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		routeLabel = "node_list"
 	}
 
-	if routeLabel == "node_groups" {
-		routeLabel = "node_list"
+	if unsupportedRouteLabels[routeLabel] {
+		if onProgress != nil {
+			onProgress("result", "不支持")
+		}
+		return "该功能不支持 AI 操作", nil
 	}
 
 	if onProgress != nil {
@@ -249,7 +483,8 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 			}
 		}
 		if groupPrompt == "" {
-			return "我不确定您要做什么", nil
+			// 未定制提示词的类别一律使用通用工具目录，不再直接拒绝
+			groupPrompt = aiPrompts.GenericToolSystemPrompt
 		}
 	}
 
@@ -266,8 +501,16 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 
 	messages := []Message{
 		{Role: "system", Content: formattedPrompt},
-		{Role: "user", Content: userInput},
 	}
+	// 会话记忆（对话+操作+节点上下文）也注入工具生成阶段，
+	// 否则 LLM 生成工具调用时看不到上一轮节点上下文
+	if sessionMemory != "" {
+		messages = append(messages, Message{
+			Role:    "system",
+			Content: "以下是此前会话的对话与操作记录，仅作参考背景，不要把它当作新的用户请求：\n" + sessionMemory,
+		})
+	}
+	messages = append(messages, Message{Role: "user", Content: userInput})
 
 	var fullResponse strings.Builder
 	maxTurns := 10
@@ -342,14 +585,16 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 					toolCallJSON = a.buildToolCall("execute_script", params)
 				case IntentGeneratePlaybook:
 					toolCallJSON = a.buildToolCall("generate_playbook", params)
-				case IntentTransferFile:
-					toolCallJSON = a.buildToolCall("transfer_file", params)
-				default:
-					return "我不确定您要做什么", nil
-				}
+			case IntentTransferFile:
+				toolCallJSON = a.buildToolCall("transfer_file", params)
+			case IntentFileDownload:
+				toolCallJSON = a.buildToolCall("file_download", params)
+			default:
+				return "我不确定您要做什么", nil
+			}
 
-				if toolCallJSON != "" {
-					debugPrint(a.debug, "使用本地提取的工具调用")
+			if toolCallJSON != "" {
+				debugPrint(a.debug, "使用本地提取的工具调用")
 					toolCalls := a.parseToolCalls(toolCallJSON)
 					if len(toolCalls) > 0 {
 						if onProgress != nil {
@@ -358,23 +603,29 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 						lastToolName = toolCalls[0].Name
 						messages = append(messages, Message{Role: "assistant", Content: toolCallJSON})
 
-						for _, call := range toolCalls {
-							if onProgress != nil {
-								onProgress("execute", call.Name)
-							}
-							result, err := a.executeToolCall(ctx, call)
-							if err != nil {
-								result = fmt.Sprintf("Tool execution failed: %v", err)
-							}
-							lastToolResult = result
-							return result, nil
+					for _, call := range toolCalls {
+						if onProgress != nil {
+							onProgress("execute", call.Name)
 						}
+						if ok, question := a.confirmToolCall(call); !ok {
+							if onProgress != nil {
+								onProgress("result", "等待确认")
+							}
+							return question, nil
+						}
+						result, err := a.executeToolCall(ctx, call)
+						if err != nil {
+							result = fmt.Sprintf("Tool execution failed: %v", err)
+						}
+						lastToolResult = result
+						return result, nil
+					}
 					}
 				}
 			}
 
-			fullResponse.WriteString(response)
-			break
+			debugPrint(a.debug, "无有效工具调用，返回不确定（LLM 自由文本不透出）")
+			return "我不确定您要做什么", nil
 		}
 
 		if onProgress != nil && len(toolCalls) > 0 {
@@ -388,6 +639,12 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		for _, call := range toolCalls {
 			if onProgress != nil {
 				onProgress("execute", call.Name)
+			}
+			if ok, question := a.confirmToolCall(call); !ok {
+				if onProgress != nil {
+					onProgress("result", "等待确认")
+				}
+				return question, nil
 			}
 			result, err := a.executeToolCall(ctx, call)
 			if err != nil {
@@ -455,17 +712,17 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 		toolCalls := a.parseToolCalls(response)
 		if len(toolCalls) == 0 {
 			if turn >= 1 {
+				// 多轮：返回 LLM 对工具结果的总结（此前版本误返回空的 fullResponse）
 				if onProgress != nil {
 					onProgress("result", "完成")
 				}
-				return msgs, fullResponse.String(), nil
+				if strings.TrimSpace(response) == "" {
+					response = "完成"
+				}
+				return msgs, response, nil
 			}
-			if len(response) > 100 && !strings.Contains(response, "tool_calls") {
-				return msgs, "我不确定您要做什么", nil
-			}
-			fullResponse.WriteString(response)
-			msgs = append(msgs, Message{Role: "assistant", Content: response})
-			break
+			debugPrint(a.debug, "无有效工具调用，返回不确定（LLM 自由文本不透出）")
+			return msgs, "我不确定您要做什么", nil
 		}
 
 		if onProgress != nil && len(toolCalls) > 0 {
@@ -478,6 +735,12 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 		for _, call := range toolCalls {
 			if onProgress != nil {
 				onProgress("execute", call.Name)
+			}
+			if ok, question := a.confirmToolCall(call); !ok {
+				if onProgress != nil {
+					onProgress("result", "等待确认")
+				}
+				return msgs, question, nil
 			}
 			result, err := a.executeToolCall(ctx, call)
 			if err != nil {
@@ -647,6 +910,26 @@ func (a *Agent) parseToolCalls(response string) []ToolCall {
 	return calls
 }
 
+// confirmToolCall 执行前过确认门。返回 (true,"") 表示放行；
+// 返回 (false, question) 表示已拦截，question 为返回给用户的文案。
+// 未注册确认门时，写操作默认拒绝（安全兜底），只读操作放行。
+func (a *Agent) confirmToolCall(call ToolCall) (bool, string) {
+	a.mu.RLock()
+	gate := a.confirmGate
+	a.mu.RUnlock()
+	if gate == nil {
+		if confirmRequiredTools[call.Name] {
+			return false, fmt.Sprintf("该操作（%s）需要交互确认，当前上下文未启用确认机制，已拒绝执行。", call.Name)
+		}
+		return true, ""
+	}
+	d := gate(call)
+	if d.Confirm {
+		return false, d.Question
+	}
+	return true, ""
+}
+
 func (a *Agent) executeToolCall(ctx context.Context, call ToolCall) (string, error) {
 	debugPrint(a.debug, "执行工具: %s", call.Name)
 	debugPrint(a.debug, "工具参数: %+v", call.Arguments)
@@ -666,6 +949,19 @@ func (a *Agent) executeToolCall(ctx context.Context, call ToolCall) (string, err
 	if err != nil {
 		debugPrint(a.debug, "工具执行失败: %v", err)
 		return "", err
+	}
+
+	// 涉及节点的工具执行成功后，把解析出的节点名回调给会话（程序层保存）
+	if err == nil && nodeTargetTools[call.Name] && a.nodeMgr != nil {
+		nodes, source := a.resolveToolTargets(call)
+		if len(nodes) > 0 {
+			a.mu.RLock()
+			hook := a.nodeContextHook
+			a.mu.RUnlock()
+			if hook != nil {
+				hook(nodes, source)
+			}
+		}
 	}
 
 	debugPrint(a.debug, "工具执行成功，结果前100字符: %.100s...", result)
@@ -715,6 +1011,8 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 		toolCallJSON = a.buildToolCall("generate_playbook", params)
 	case IntentTransferFile:
 		toolCallJSON = a.buildToolCall("transfer_file", params)
+	case IntentFileDownload:
+		toolCallJSON = a.buildToolCall("file_download", params)
 	}
 
 	return toolCallJSON, nil
@@ -890,18 +1188,39 @@ func (a *Agent) stringsToJSON(strs []string) string {
 	return string(data)
 }
 
+// PendingContext 待确认操作（确认门）。由确认门在拦截时写入，
+// 用户肯定后按 ToolCall 确定性重放，不依赖 LLM 从对话历史推断。
 type PendingContext struct {
-	State        string
-	Action       string
-	LastToolName string
-	LastParams   map[string]interface{}
-	Question     string
+	State     string
+	Summary   string
+	Question  string
+	ToolCall  ToolCall
+	UserInput string
+}
+
+// OperationSummary 会话内已完成操作的记录，供"刚才那个操作"类追问。
+type OperationSummary struct {
+	Tool    string
+	Summary string
+	Result  string
+	Time    time.Time
+}
+
+// NodeContext 会话级节点上下文：最近一次涉及节点操作后，
+// 由程序逻辑层（非 LLM）从工具参数解析出的节点集合。
+// 供后续轮次复用/筛选，直到用户发起新一轮节点查询则覆盖。
+type NodeContext struct {
+	Nodes  []string // 解析后的节点名
+	Source string   // 来源描述，如 "group=web 的节点"
 }
 
 type Session struct {
 	agent          *Agent
 	messages       []Message
 	history        []string
+	operations     []OperationSummary
+	dialogue       []Message
+	nodeContext    *NodeContext
 	createdAt      time.Time
 	lastActive     time.Time
 	OnProgress     ProgressCallback
@@ -909,88 +1228,226 @@ type Session struct {
 }
 
 func NewSession(agent *Agent) *Session {
-	return &Session{
+	s := &Session{
 		agent:     agent,
 		messages:  make([]Message, 0),
 		history:   make([]string, 0),
 		createdAt: time.Now(),
 	}
+	s.SetDefaultConfirmGate()
+	s.registerNodeContextHook()
+	return s
+}
+
+// registerNodeContextHook 注册节点上下文回调。agent 可能被多会话共享，
+// 每次 Send 前需重新注册，保证最近注册的是本会话的回调。
+func (s *Session) registerNodeContextHook() {
+	s.agent.SetNodeContextHook(func(nodes []string, source string) {
+		s.nodeContext = &NodeContext{Nodes: nodes, Source: source}
+	})
 }
 
 var affirmativeReplies = map[string]bool{
 	"是": true, "是的": true, "对": true, "对的": true,
 	"好": true, "好的": true, "可以": true, "行": true,
 	"yes": true, "ok": true, "okay": true, "y": true,
-	"嗯": true, "确认": true,
+	"嗯": true, "确认": true, "确定": true,
 }
 
-var questionKeywords = []string{"是否", "要不要", "需要我", "要我", "要不要我"}
+var negativeReplies = map[string]bool{
+	"不": true, "不是": true, "否": true, "不要": true,
+	"算了": true, "取消": true, "停下": true, "停止": true,
+	"no": true, "n": true, "cancel": true, "stop": true,
+	"不用": true, "不需要": true, "不了": true,
+}
+
+// RenderSystemPrompt 渲染系统提示词（注入工具目录与节点信息）。
+func (a *Agent) RenderSystemPrompt(prompt string) string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.registry == nil {
+		return prompt
+	}
+	toolDescs := a.registry.GetToolDescriptions()
+	return a.formatPrompt(prompt, a.getNodeInfo(), toolDescs)
+}
 
 func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	s.lastActive = time.Now()
 	s.history = append(s.history, fmt.Sprintf("User: %s", userInput))
+	// agent 可被多会话共享，每次 Send 前重新注册本会话的节点上下文回调
+	s.registerNodeContextHook()
 
-	// 如果 messages 为空（首次交互），使用 Process 方法（会调用路由器）
+	// 有待确认操作时，先处理确认/取消，其余输入一律提示，保证单 pending 队列。
+	if s.pendingContext != nil && s.pendingContext.State == "awaiting_confirmation" {
+		lowerInput := strings.TrimSpace(strings.ToLower(userInput))
+		if affirmativeReplies[lowerInput] {
+			pending := s.pendingContext
+			s.pendingContext = nil
+			result, err := s.agent.ExecuteToolCall(ctx, pending.ToolCall)
+			if err != nil {
+				return "", err
+			}
+			s.recordOperation(pending.ToolCall, pending.Summary, result)
+			s.messages = append(s.messages,
+				Message{Role: "assistant", Content: fmt.Sprintf("```json\n%s\n```", s.toolCallJSON(pending.ToolCall))},
+				Message{Role: "user", Content: fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)},
+			)
+			msg := fmt.Sprintf("已执行：%s\n%s", pending.Summary, result)
+			s.appendDialogue(userInput, msg)
+			s.history = append(s.history, fmt.Sprintf("Assistant: %s", msg))
+			return msg, nil
+		}
+		if negativeReplies[lowerInput] {
+			s.pendingContext = nil
+			s.appendDialogue(userInput, "已取消该操作")
+			s.history = append(s.history, "Assistant: 已取消该操作")
+			return "已取消该操作", nil
+		}
+		return fmt.Sprintf("有未确认的操作：%s。请回复「是」确认，或「否」取消。", s.pendingContext.Summary), nil
+	}
+
+	// 首次交互（无上下文），使用 Process（带路由）
 	if len(s.messages) == 0 {
 		response, err := s.agent.Process(ctx, userInput, s.OnProgress)
 		if err != nil {
 			return "", err
 		}
-
-		s.maybeSetPendingContext(response)
+		s.appendDialogue(userInput, response)
 		s.history = append(s.history, fmt.Sprintf("Assistant: %s", response))
 		return response, nil
 	}
 
-	// 多轮对话，继续使用 ProcessWithContext
-	if s.pendingContext != nil && s.pendingContext.State == "awaiting_confirmation" {
-		lowerInput := strings.TrimSpace(strings.ToLower(userInput))
-		if affirmativeReplies[lowerInput] {
-			pendingMsg := fmt.Sprintf(
-				"[系统提示] 用户刚才回复了「是」，确认了你的问题：「%s」。请继续执行之前的操作。",
-				s.pendingContext.Question,
-			)
-
-			s.messages = append(s.messages, Message{Role: "system", Content: pendingMsg})
-			s.messages = append(s.messages, Message{Role: "user", Content: fmt.Sprintf("好的，请继续：%s", s.pendingContext.Action)})
-		}
-		s.pendingContext = nil
-	} else {
-		s.messages = append(s.messages, Message{Role: "user", Content: userInput})
+	// 多轮对话，继续使用 ProcessWithContext；注入会话记忆作为背景。
+	s.messages = append(s.messages, Message{Role: "user", Content: userInput})
+	msgs := s.messages
+	// 首条若非带工具目录的 system 引导（如确认重放后首条是 assistant），
+	// 补渲染后的通用工具引导，否则 LLM 生成阶段看不到工具目录。
+	if len(msgs) == 0 || msgs[0].Role != "system" || !strings.Contains(msgs[0].Content, "输出契约") {
+		base := s.agent.RenderSystemPrompt(aiPrompts.GenericToolSystemPrompt)
+		msgs = append([]Message{{Role: "system", Content: base}}, msgs...)
 	}
-
-	var response string
-	var err error
-	var updatedMessages []Message
-	updatedMessages, response, err = s.agent.ProcessWithContext(ctx, s.messages, s.OnProgress)
+	if memory := s.buildMemory(); memory != "" {
+		// 记忆并入引导消息，保证 msgs[0] 仍是完整 system 引导
+		msgs[0].Content = msgs[0].Content + "\n\n" + memory
+	}
+	updatedMessages, response, err := s.agent.ProcessWithContext(ctx, msgs, s.OnProgress)
 	if err == nil {
-		s.messages = updatedMessages
+		if len(msgs) > len(s.messages) {
+			s.messages = updatedMessages[1:]
+		} else {
+			s.messages = updatedMessages
+		}
 	}
 
 	if err != nil {
 		return "", err
 	}
 
-	s.maybeSetPendingContext(response)
-
+	s.appendDialogue(userInput, response)
 	s.history = append(s.history, fmt.Sprintf("Assistant: %s", response))
 	return response, nil
 }
 
-func (s *Session) maybeSetPendingContext(response string) {
-	trimmed := strings.TrimSpace(response)
-	if strings.HasSuffix(trimmed, "？") || strings.HasSuffix(trimmed, "?") {
-		for _, kw := range questionKeywords {
-			if strings.Contains(trimmed, kw) {
-				s.pendingContext = &PendingContext{
-					State:    "awaiting_confirmation",
-					Action:   "继续之前的查询",
-					Question: trimmed,
-				}
-				return
-			}
-		}
+func (s *Session) toolCallJSON(call ToolCall) string {
+	argsJSON, _ := json.Marshal(call.Arguments)
+	return fmt.Sprintf(`{"tool_calls":[{"name":%q,"arguments":%s}]}`, call.Name, argsJSON)
+}
+
+// recordOperation 记录一次已执行的操作（确认后重放或直接执行的工具调用）。
+func (s *Session) recordOperation(call ToolCall, summary, result string) {
+	s.operations = append(s.operations, OperationSummary{
+		Tool:    call.Name,
+		Summary: summary,
+		Result:  truncateStr(result, 300),
+		Time:    time.Now(),
+	})
+	if len(s.operations) > 10 {
+		s.operations = s.operations[len(s.operations)-10:]
 	}
+}
+
+func (s *Session) operationMemory() string {
+	if len(s.operations) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("[会话操作记录]（最近操作：）\n")
+	for i, op := range s.operations {
+		sb.WriteString(fmt.Sprintf("%d. [%s] %s: %s → %s\n", i+1, op.Time.Format("15:04:05"), op.Tool, op.Summary, truncateStr(op.Result, 120)))
+	}
+	return sb.String()
+}
+
+func (s *Session) dialogueMemory() string {
+	if len(s.dialogue) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("[最近对话]\n")
+	for _, m := range s.dialogue {
+		role := "助手"
+		if m.Role == "user" {
+			role = "用户"
+		}
+		sb.WriteString(fmt.Sprintf("%s: %s\n", role, truncateStr(m.Content, 300)))
+	}
+	return sb.String()
+}
+
+func (s *Session) buildMemory() string {
+	mem := s.operationMemory()
+	if d := s.dialogueMemory(); d != "" {
+		if mem != "" {
+			mem += "\n"
+		}
+		mem += d
+	}
+	if n := s.nodeContextMemory(); n != "" {
+		if mem != "" {
+			mem += "\n"
+		}
+		mem += n
+	}
+	return mem
+}
+
+// nodeContextMemory 注入上一轮节点上下文。提示 LLM 仅在用户未指定新目标时复用。
+func (s *Session) nodeContextMemory() string {
+	if s.nodeContext == nil || len(s.nodeContext.Nodes) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("[上一轮节点上下文]\n来源: %s\n节点: %s\n说明: 仅当用户指代之前操作过的节点时复用此节点列表；若用户指定了新的分组/标签/节点，忽略本上下文。",
+		s.nodeContext.Source, strings.Join(s.nodeContext.Nodes, ", "))
+}
+
+func (s *Session) appendDialogue(userInput, response string) {
+	s.dialogue = append(s.dialogue,
+		Message{Role: "user", Content: truncateStr(userInput, 300)},
+		Message{Role: "assistant", Content: truncateStr(response, 300)},
+	)
+	if len(s.dialogue) > 12 {
+		s.dialogue = s.dialogue[len(s.dialogue)-12:]
+	}
+}
+
+// SetDefaultConfirmGate 注册本会话的默认确认门（写操作拦截、保存 pending）。
+// 每次调用 Send 前由 CLI 或调用方执行，保证最近注册的是本会话的门。
+func (s *Session) SetDefaultConfirmGate() {
+	s.agent.SetConfirmGate(func(call ToolCall) ConfirmationDecision {
+		if !confirmRequiredTools[call.Name] {
+			return ConfirmationDecision{Confirm: false}
+		}
+		summary := SummarizeToolCall(call)
+		question := fmt.Sprintf("即将执行：%s\n是否继续？（是/否）", summary)
+		s.pendingContext = &PendingContext{
+			State:    "awaiting_confirmation",
+			Summary:  summary,
+			Question: question,
+			ToolCall: call,
+		}
+		return ConfirmationDecision{Confirm: true, Summary: summary, Question: question}
+	})
 }
 
 func (s *Session) GetHistory() []string {

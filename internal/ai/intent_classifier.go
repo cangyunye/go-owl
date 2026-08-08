@@ -12,6 +12,7 @@ const (
 	IntentExecuteScript    IntentType = "execute_script"
 	IntentGeneratePlaybook IntentType = "generate_playbook"
 	IntentTransferFile     IntentType = "transfer_file"
+	IntentFileDownload     IntentType = "file_download"
 	IntentUncertain        IntentType = "uncertain"
 )
 
@@ -51,10 +52,15 @@ func NewIntentClassifier() *IntentClassifier {
 				"重启", "restart", "启动", "start", "停止", "stop",
 			},
 			IntentTransferFile: {
-				"传输", "上传", "下载", "文件",
-				"transfer", "upload", "download", "file",
+				"传输", "上传", "文件",
+				"transfer", "upload", "file",
 				"传到", "复制到", "拷贝", "copy",
 				".tar", ".gz", ".zip", ".tgz",
+			},
+			IntentFileDownload: {
+				"下载", "download",
+				"拉取", "拉到本地", "取回",
+				"从节点", "从服务器",
 			},
 		},
 	}
@@ -82,7 +88,12 @@ func (c *IntentClassifier) Classify(input string) *IntentResult {
 		}
 	}
 
-	if c.isPathOrFileTransfer(input) {
+	hasDownload := strings.Contains(lowerInput, "下载") || strings.Contains(lowerInput, "download")
+	if hasDownload {
+		scores[IntentFileDownload] += 5
+	}
+
+	if c.isPathOrFileTransfer(input) && !hasDownload {
 		scores[IntentTransferFile] += 5
 	}
 
@@ -147,7 +158,7 @@ func (c *IntentClassifier) isInstallOrDeploy(input string) bool {
 func (c *IntentClassifier) isDirectCommand(input string) bool {
 	commonCommands := []string{
 		"uptime", "df -h", "free -m", "ps aux", "systemctl", "service",
-		"ls", "cat", "grep", "netstat", "ss", "curl", "wget",
+		"ls", "cat", "grep", "netstat", "ss -", "curl", "wget",
 	}
 	for _, cmd := range commonCommands {
 		if strings.Contains(input, cmd) {
@@ -179,6 +190,8 @@ func GetIntentDescription(intent IntentType) string {
 		return "生成并执行剧本"
 	case IntentTransferFile:
 		return "传输文件"
+	case IntentFileDownload:
+		return "下载文件"
 	default:
 		return "无法确定"
 	}

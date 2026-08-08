@@ -1,0 +1,44 @@
+description: 文件备份模板，将远程节点上的指定文件/目录打包下载到本地
+tags: [backup, files, utility]
+
+parameters:
+  - name: source_path
+    description: "要备份的远程路径"
+    required: true
+
+  - name: backup_name
+    description: "备份文件名称前缀"
+    default: "backup"
+    required: false
+
+  - name: compress
+    description: "是否压缩 (gzip)"
+    default: true
+    type: boolean
+    required: false
+
+tasks:
+  - name: 创建本地备份目录
+    action: command
+    args:
+      cmd: mkdir -p ./backups
+
+  - name: 远程打包
+    action: command
+    args:
+      cmd: |
+        timestamp=$(date +%Y%m%d_%H%M%S)
+        tar -czf /tmp/{{ backup_name }}_${timestamp}.tar.gz -C $(dirname {{ source_path }}) $(basename {{ source_path }})
+        echo "/tmp/{{ backup_name }}_${timestamp}.tar.gz"
+
+  - name: 下载备份文件
+    action: download
+    args:
+      src: /tmp/{{ backup_name }}_*.tar.gz
+      dest: ./backups/
+      subdir: true
+
+  - name: 清理远程临时文件
+    action: command
+    args:
+      cmd: rm -f /tmp/{{ backup_name }}_*.tar.gz

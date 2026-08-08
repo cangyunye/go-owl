@@ -71,6 +71,7 @@ func (d *DuckDB) InitSchema() error {
 			playbook_path VARCHAR DEFAULT '',
 			current_task_index INTEGER DEFAULT 0,
 			current_task_phase VARCHAR DEFAULT '',
+			forced INTEGER DEFAULT 0,
 			status VARCHAR,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		);`,
@@ -145,10 +146,6 @@ func (d *DuckDB) InitSchema() error {
 			session_id VARCHAR,
 			command VARCHAR,
 			targets JSON,
-tttttttcurrent_task_phase VARCHAR DEFAULT '',
-tttttttcurrent_task_index INTEGER DEFAULT 0,
-tttttttplaybook_path VARCHAR DEFAULT '',
-tttttttexecution_mode VARCHAR DEFAULT '',
 			results JSON,
 			executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (session_id) REFERENCES sessions(id)
@@ -192,6 +189,44 @@ tttttttexecution_mode VARCHAR DEFAULT '',
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_aichat_session ON aichat(session_id, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_aichat_created ON aichat(created_at);`,
+
+		`CREATE SEQUENCE IF NOT EXISTS seq_step_states_id START 1;`,
+
+		`CREATE TABLE IF NOT EXISTS playbook_run_states (
+			id VARCHAR PRIMARY KEY,
+			playbook_name VARCHAR NOT NULL,
+			playbook_hash VARCHAR NOT NULL,
+			nodes JSON NOT NULL,
+			status VARCHAR NOT NULL DEFAULT 'running',
+			started_at TIMESTAMP NOT NULL,
+			finished_at TIMESTAMP,
+			total_steps INTEGER NOT NULL,
+			completed_steps INTEGER DEFAULT 0,
+			failed_steps INTEGER DEFAULT 0
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_run_states_status ON playbook_run_states(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_run_states_name ON playbook_run_states(playbook_name);`,
+
+		`CREATE TABLE IF NOT EXISTS playbook_step_states (
+			id BIGINT PRIMARY KEY DEFAULT NEXTVAL('seq_step_states_id'),
+			run_id VARCHAR NOT NULL,
+			node_id VARCHAR NOT NULL,
+			step_index INTEGER NOT NULL,
+			step_name VARCHAR NOT NULL,
+			action VARCHAR NOT NULL,
+			status VARCHAR NOT NULL DEFAULT 'pending',
+			started_at TIMESTAMP,
+			finished_at TIMESTAMP,
+			duration_ms INTEGER,
+			exit_code INTEGER,
+			stdout VARCHAR,
+			stderr VARCHAR,
+			error VARCHAR,
+			retry_count INTEGER DEFAULT 0,
+			UNIQUE(run_id, node_id, step_index)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_step_states_run ON playbook_step_states(run_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_step_states_node ON playbook_step_states(run_id, node_id);`,
 	}
 
 	for _, schema := range schemas {
@@ -201,6 +236,32 @@ tttttttexecution_mode VARCHAR DEFAULT '',
 		}
 	}
 
+	// 迁移：兼容旧表缺少的列
+	_, _ = d.conn.Exec("ALTER TABLE nodes ADD COLUMN last_check_at TIMESTAMP")
+
+	return d.EnsureOperationColumns()
+}
+
+// operationColumnSpecsDuckDB 与 operationColumnSpecs（sqlite3）等价，
+// DuckDB 用 VARCHAR 类型与 ADD COLUMN IF NOT EXISTS 幂等写法。
+var operationColumnSpecsDuckDB = []struct {
+	name string
+	ddl  string
+}{
+	{"execution_mode", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS execution_mode VARCHAR DEFAULT ''`},
+	{"playbook_path", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS playbook_path VARCHAR DEFAULT ''`},
+	{"current_task_index", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS current_task_index INTEGER DEFAULT 0`},
+	{"current_task_phase", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS current_task_phase VARCHAR DEFAULT ''`},
+	{"forced", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS forced INTEGER DEFAULT 0`},
+}
+
+// EnsureOperationColumns 为存量库补齐 operations 缺失的列（幂等）。
+func (d *DuckDB) EnsureOperationColumns() error {
+	for _, spec := range operationColumnSpecsDuckDB {
+		if _, err := d.conn.Exec(spec.ddl); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

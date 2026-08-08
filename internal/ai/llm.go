@@ -357,7 +357,7 @@ func CreateLLMClient(config *Config) (LLMClient, error) {
 
 	case "anthropic":
 		if config.AI.Model == "" {
-			config.AI.Model = "claude-3-opus-20240229"
+			config.AI.Model = "claude-sonnet-4-20250514"
 		}
 		return NewAnthropicClient(config), nil
 
@@ -366,7 +366,7 @@ func CreateLLMClient(config *Config) (LLMClient, error) {
 			config.AI.BaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 		}
 		if config.AI.Model == "" {
-			config.AI.Model = "qwen-turbo"
+			config.AI.Model = "qwen-max"
 		}
 		return NewOpenAIClient(config), nil
 
@@ -375,7 +375,7 @@ func CreateLLMClient(config *Config) (LLMClient, error) {
 			config.AI.BaseURL = "https://api.deepseek.com"
 		}
 		if config.AI.Model == "" {
-			config.AI.Model = "deepseek-chat"
+			config.AI.Model = "deepseek-v4-flash"
 		}
 		return NewOpenAIClient(config), nil
 

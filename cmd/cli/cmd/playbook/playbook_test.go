@@ -3,10 +3,12 @@ package playbook_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/playbook"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/testutil"
+	pb "github.com/cangyunye/go-owl/pkg/playbook"
 )
 
 func TestPlaybookCmdExists(t *testing.T) {
@@ -24,7 +26,7 @@ func TestPlaybookListFlags(t *testing.T) {
 	cmd := playbook.NewPlaybookListCmd()
 
 	testutil.AssertFlagExists(t, cmd, "library")
-	testutil.AssertFlagDefault(t, cmd, "library", "./playbooks")
+	testutil.AssertFlagDefault(t, cmd, "library", "")
 
 	testutil.AssertFlagExists(t, cmd, "output")
 	testutil.AssertFlagShorthand(t, cmd, "output", "o")
@@ -38,9 +40,9 @@ func TestPlaybookRunFlags(t *testing.T) {
 	testutil.AssertFlagShorthand(t, cmd, "nodes", "N")
 	testutil.AssertFlagDefault(t, cmd, "nodes", "")
 
-	testutil.AssertFlagExists(t, cmd, "group")
-	testutil.AssertFlagShorthand(t, cmd, "group", "g")
-	testutil.AssertFlagDefault(t, cmd, "group", "")
+	testutil.AssertFlagExists(t, cmd, "groups")
+	testutil.AssertFlagShorthand(t, cmd, "groups", "g")
+	testutil.AssertFlagDefault(t, cmd, "groups", "[]")
 
 	testutil.AssertFlagExists(t, cmd, "label")
 	testutil.AssertFlagShorthand(t, cmd, "label", "l")
@@ -95,13 +97,31 @@ func TestPlaybookTemplateCmd(t *testing.T) {
 		t.Errorf("expected Use 'template', got '%s'", cmd.Use)
 	}
 
+	testutil.AssertSubCommands(t, cmd, []string{"create", "list", "info", "export"})
+}
+
+func TestPlaybookTemplateCreateCmd(t *testing.T) {
+	cmd := playbook.NewPlaybookTemplateCreateCmd()
+
+	if cmd.Use != "create" {
+		t.Errorf("expected Use 'create', got '%s'", cmd.Use)
+	}
+
 	testutil.AssertFlagExists(t, cmd, "output")
 	testutil.AssertFlagShorthand(t, cmd, "output", "o")
 	testutil.AssertFlagDefault(t, cmd, "output", "")
 }
 
+func TestPlaybookTemplateListCmd(t *testing.T) {
+	cmd := playbook.NewPlaybookTemplateListCmd()
+
+	if cmd.Use != "list" {
+		t.Errorf("expected Use 'list', got '%s'", cmd.Use)
+	}
+}
+
 func TestActionTemplatesCount(t *testing.T) {
-	templates := playbook.GetActionTemplates()
+	templates := pb.GetActionTemplates()
 	if len(templates) != 5 {
 		t.Errorf("expected 5 action templates, got %d", len(templates))
 	}
@@ -256,25 +276,156 @@ tasks:
 	}
 }
 
+func TestPlaybookNewAndScaffoldRegistered(t *testing.T) {
+	parent := playbook.NewPlaybookCmd()
+	testutil.AssertSubCommands(t, parent, []string{"new", "scaffold"})
+}
+
+func TestPlaybookNewCmdFlags(t *testing.T) {
+	cmd := playbook.NewPlaybookNewCmd()
+
+	if cmd.Use != "new" {
+		t.Errorf("expected Use 'new', got '%s'", cmd.Use)
+	}
+
+	testutil.AssertFlagExists(t, cmd, "from")
+	testutil.AssertFlagDefault(t, cmd, "from", "")
+
+	testutil.AssertFlagExists(t, cmd, "var")
+
+	testutil.AssertFlagExists(t, cmd, "output")
+	testutil.AssertFlagShorthand(t, cmd, "output", "o")
+	testutil.AssertFlagDefault(t, cmd, "output", "")
+}
+
+func TestPlaybookNewFromTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+	outPath := filepath.Join(tmpDir, "sub", "http.yaml")
+
+	cmd := playbook.NewPlaybookNewCmd()
+	testutil.ExecuteCommand(t, cmd,
+		"--from=utility/healthcheck/http",
+		"--var", "url=http://example.com",
+		"--var", "expected_code=200",
+		"--var", "timeout=5",
+		"--output", outPath,
+	)
+
+	content, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("expected output file to be created: %v", err)
+	}
+
+	s := string(content)
+	if !strings.Contains(s, "http://example.com") {
+		t.Errorf("expected rendered playbook to contain provided url, got:\n%s", s)
+	}
+	if strings.Contains(s, "parameters:") {
+		t.Errorf("expected rendered playbook to strip parameters section, got:\n%s", s)
+	}
+	if strings.Contains(s, "{{") {
+		t.Errorf("expected no unrendered placeholders, got:\n%s", s)
+	}
+}
+
+func TestPlaybookScaffoldCmd(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	if cmd.Use != "scaffold" {
+		t.Errorf("expected Use 'scaffold', got '%s'", cmd.Use)
+	}
+
+	testutil.AssertFlagExists(t, cmd, "type")
+	testutil.AssertFlagDefault(t, cmd, "type", "basic")
+}
+
+func TestPlaybookScaffoldOutput(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	out := testutil.ExecuteCommand(t, cmd)
+
+	expected := []string{
+		`# description: "TODO: 描述此 Playbook 的用途"`,
+		"# parameters:",
+		"tasks:",
+		"action: command",
+		"# retries: 3",
+	}
+	for _, e := range expected {
+		if !strings.Contains(out, e) {
+			t.Errorf("expected scaffold output to contain %q, got:\n%s", e, out)
+		}
+	}
+}
+
+func TestPlaybookScaffoldCommandType(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	out := testutil.ExecuteCommand(t, cmd, "--type", "command")
+
+	if !strings.Contains(out, "action: command") {
+		t.Errorf("expected command scaffold to contain 'action: command', got:\n%s", out)
+	}
+	if !strings.Contains(out, "cmd:") {
+		t.Errorf("expected command scaffold to contain 'cmd:', got:\n%s", out)
+	}
+}
+
+func TestPlaybookScaffoldUploadType(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	out := testutil.ExecuteCommand(t, cmd, "--type", "upload")
+
+	if !strings.Contains(out, "action: upload") {
+		t.Errorf("expected upload scaffold to contain 'action: upload', got:\n%s", out)
+	}
+	if !strings.Contains(out, "src:") || !strings.Contains(out, "dest:") {
+		t.Errorf("expected upload scaffold to contain src/dest args, got:\n%s", out)
+	}
+}
+
+func TestPlaybookScaffoldUnknownType(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	out := testutil.ExecuteCommand(t, cmd, "--type", "nonexistent")
+
+	if strings.Contains(out, "action:") {
+		t.Errorf("expected error output, got valid scaffold:\n%s", out)
+	}
+}
+
+func TestPlaybookScaffoldHelpListsTypes(t *testing.T) {
+	cmd := playbook.NewPlaybookScaffoldCmd()
+
+	help := testutil.ExecuteCommand(t, cmd, "--help")
+
+	expectedTypes := []string{"basic", "command", "script", "upload", "download", "include"}
+	for _, typ := range expectedTypes {
+		if !strings.Contains(help, typ) {
+			t.Errorf("expected help to list type %q, got:\n%s", typ, help)
+		}
+	}
+}
+
 func TestApplyDefaultConfig(t *testing.T) {
 	t.Run("CLI group not set, default has groups", func(t *testing.T) {
-		group, _, _ := playbook.ApplyDefaultConfig("", "", "",
+		groups, _, _ := playbook.ApplyDefaultConfig(nil, "", "",
 			[]string{"web", "db"}, nil, nil)
-		if group != "web,db" {
-			t.Errorf("expected group 'web,db', got '%s'", group)
+		if len(groups) != 2 || groups[0] != "web" || groups[1] != "db" {
+			t.Errorf("expected groups [web, db], got %v", groups)
 		}
 	})
 
 	t.Run("CLI group set, default ignored", func(t *testing.T) {
-		group, _, _ := playbook.ApplyDefaultConfig("db", "", "",
+		groups, _, _ := playbook.ApplyDefaultConfig([]string{"db"}, "", "",
 			[]string{"web"}, nil, nil)
-		if group != "db" {
-			t.Errorf("expected group 'db', got '%s'", group)
+		if len(groups) != 1 || groups[0] != "db" {
+			t.Errorf("expected groups [db], got %v", groups)
 		}
 	})
 
 	t.Run("CLI tags not set, default has tags", func(t *testing.T) {
-		_, tags, _ := playbook.ApplyDefaultConfig("", "", "",
+		_, tags, _ := playbook.ApplyDefaultConfig(nil, "", "",
 			nil, []string{"deploy", "verify"}, nil)
 		if tags != "deploy,verify" {
 			t.Errorf("expected tags 'deploy,verify', got '%s'", tags)
@@ -282,7 +433,7 @@ func TestApplyDefaultConfig(t *testing.T) {
 	})
 
 	t.Run("CLI tags set, default ignored", func(t *testing.T) {
-		_, tags, _ := playbook.ApplyDefaultConfig("", "custom-tag", "",
+		_, tags, _ := playbook.ApplyDefaultConfig(nil, "custom-tag", "",
 			nil, []string{"deploy"}, nil)
 		if tags != "custom-tag" {
 			t.Errorf("expected tags 'custom-tag', got '%s'", tags)
@@ -290,7 +441,7 @@ func TestApplyDefaultConfig(t *testing.T) {
 	})
 
 	t.Run("CLI skip-tags not set, default has skip_tags", func(t *testing.T) {
-		_, _, skipTags := playbook.ApplyDefaultConfig("", "", "",
+		_, _, skipTags := playbook.ApplyDefaultConfig(nil, "", "",
 			nil, nil, []string{"debug"})
 		if skipTags != "debug" {
 			t.Errorf("expected skipTags 'debug', got '%s'", skipTags)
@@ -298,9 +449,9 @@ func TestApplyDefaultConfig(t *testing.T) {
 	})
 
 	t.Run("CLI values preserved with no defaults", func(t *testing.T) {
-		group, tags, _ := playbook.ApplyDefaultConfig("my-group", "my-tags", "", nil, nil, nil)
-		if group != "my-group" {
-			t.Errorf("expected group 'my-group', got '%s'", group)
+		groups, tags, _ := playbook.ApplyDefaultConfig([]string{"my-group"}, "my-tags", "", nil, nil, nil)
+		if len(groups) != 1 || groups[0] != "my-group" {
+			t.Errorf("expected groups [my-group], got %v", groups)
 		}
 		if tags != "my-tags" {
 			t.Errorf("expected tags 'my-tags', got '%s'", tags)
@@ -308,10 +459,10 @@ func TestApplyDefaultConfig(t *testing.T) {
 	})
 
 	t.Run("CLI group set, default also set", func(t *testing.T) {
-		group, _, _ := playbook.ApplyDefaultConfig("cli-group", "", "",
+		groups, _, _ := playbook.ApplyDefaultConfig([]string{"cli-group"}, "", "",
 			[]string{"default-group"}, nil, nil)
-		if group != "cli-group" {
-			t.Errorf("expected group 'cli-group' (CLI wins), got '%s'", group)
+		if len(groups) != 1 || groups[0] != "cli-group" {
+			t.Errorf("expected groups [cli-group] (CLI wins), got %v", groups)
 		}
 	})
 }

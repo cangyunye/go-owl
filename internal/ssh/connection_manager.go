@@ -8,12 +8,14 @@ import (
 
 // ConnectionInfo 连接信息
 type ConnectionInfo struct {
-	User      string
-	Address   string
-	Port      int
-	KeyFile   string
-	Password  string // SSH 密码
-	UseConfig bool   // 是否使用 SSH config 中的配置
+	User       string
+	Address    string
+	Port       int
+	KeyFile    string
+	KeyContent string // 内联 PEM 私钥（Web 数据库存储场景）
+	Password   string // SSH 密码
+	ProxyJump  string // 跳板机 "host" 或 "host:port"
+	UseConfig  bool   // 是否使用 SSH config 中的配置
 }
 
 // GetUser 获取连接用户

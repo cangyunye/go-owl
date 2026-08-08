@@ -1,0 +1,13 @@
+POST /api/v1/ai/chat {message:"列出所有节点", ...deepseek key...} → 200
+
+reply (节选):
+ID: mac | Name: mac-mini-m4 | Address: 192.168.18.100:22 | User: vigil | Status: offline
+ID: node-01 | Name: node-01 | Address: 10.0.0.1:22 | User: root | Status: online
+...
+ID: node-1 | Name: web-01 | Address: 10.0.0.1:22 | User: root | Status: online
+ID: node-2 | Name: db-01 | Address: 10.0.0.2:22 | User: root | Status: online
+ID: node-3 | Name: cache-01 | Address: 10.0.0.3:22 | User: root | Status: offline
+
+同 session 追问 "列出在线的节点" → 仅 online 节点。
+
+修复前: "要列出所有节点，可以使用以下命令：# 列出所有可用节点 ansible all --list-hosts ..."

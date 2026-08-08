@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/cangyunye/go-owl/internal/metrics"
 )
 
@@ -27,27 +28,23 @@ var (
 func NewMetricsCmd() *cobra.Command {
 	metricsCmd := &cobra.Command{
 		Use:   "metrics",
-		Short: "node_exporter 监控",
-		Long:  `从 node_exporter 端点采集系统监控数据，提供类似 top 的动态刷新效果。`,
+		Short: i18n.T("metrics.cmd.short"),
+		Long:  i18n.T("metrics.cmd.long"),
 	}
 
 	watchCmd := &cobra.Command{
 		Use:   "watch",
-		Short: "实时监控 node_exporter 端点",
-		Long: `实时采集 node_exporter 端点数据并以仪表盘展示。
-
-示例:
-  owl metrics watch
-  owl metrics watch --endpoint 192.168.1.10:9100`,
-		Run: runWatch,
+		Short: i18n.T("metrics.watch.short"),
+		Long:  i18n.T("metrics.watch.long"),
+		Run:   runWatch,
 	}
 
 	watchCmd.Flags().StringVar(&metricsCfgFile, "config", "",
-		"配置文件路径 (默认 ~/.owl/metrics.yaml)")
+		i18n.T("metrics.watch.flag_config"))
 	watchCmd.Flags().StringVar(&metricsEndpoint, "endpoint", "",
-		"端点地址，逗号分隔 (覆盖配置文件)")
+		i18n.T("metrics.watch.flag_endpoint"))
 	watchCmd.Flags().StringVar(&metricsAddEndpoint, "add-endpoint", "",
-		"补充端点地址 (与配置文件合并)")
+		i18n.T("metrics.watch.flag_add_endpoint"))
 
 	metricsCmd.AddCommand(watchCmd)
 	return metricsCmd
@@ -56,12 +53,12 @@ func NewMetricsCmd() *cobra.Command {
 func runWatch(cmd *cobra.Command, args []string) {
 	cfg := loadMetricsConfig()
 	if len(cfg.Endpoints) == 0 {
-		fmt.Fprintln(os.Stderr, "错误: 未配置监控端点")
+		fmt.Fprintln(os.Stderr, i18n.T("metrics.watch.err_no_endpoints"))
 		os.Exit(1)
 	}
 
 	if !metrics.IsMetricsEnabled() {
-		fmt.Fprintln(os.Stderr, "错误: metrics 功能未启用，请使用 -tags metrics 编译")
+		fmt.Fprintln(os.Stderr, i18n.T("metrics.watch.err_not_enabled"))
 		os.Exit(1)
 	}
 
@@ -86,7 +83,7 @@ func runWatch(cmd *cobra.Command, args []string) {
 		case <-sigChan:
 			fmt.Print(renderer.ShowCursor())
 			fmt.Println()
-			fmt.Println("监控已退出")
+			fmt.Println(i18n.T("metrics.watch.exited"))
 			return
 		case <-ticker.C:
 			doScrape(ctx, scraper, analyzer, renderer, cfg.Endpoints, cfg.ScrapeInterval, len(cfg.Endpoints), cfg.MaxDiskColumns)
@@ -145,7 +142,7 @@ func doScrape(
 	if len(columns) > 0 && len(rows) > 0 {
 		fmt.Print(renderer.RenderTableHorizontal(columns, rows))
 	} else {
-		fmt.Println("  (等待数据采集...)")
+		fmt.Println(i18n.T("metrics.watch.waiting_data"))
 	}
 
 	var allAlerts []metrics.Alert
@@ -153,7 +150,7 @@ func doScrape(
 		allAlerts = append(allAlerts, nr.alerts...)
 	}
 	if len(allAlerts) > 0 {
-		fmt.Println("\n⚠️  告警:")
+		fmt.Println(i18n.T("metrics.watch.alerts_header"))
 		for _, a := range allAlerts {
 			icon := "⚠"
 			if a.Severity == metrics.AlertCritical {
@@ -267,7 +264,7 @@ func filterDiskCols(cols []buildEntry, metricMap map[string]*buildCell, maxN int
 	var others []buildEntry
 
 	for _, e := range cols {
-		if !strings.HasPrefix(e.name, "磁盘使用率") {
+		if !strings.HasPrefix(e.name, i18n.T("metrics.name_disk_usage")) {
 			others = append(others, e)
 			continue
 		}
@@ -343,18 +340,18 @@ func extractCPU(families []metrics.MetricFamily) []ev {
 	if total == 0 {
 		return nil
 	}
-	return []ev{{name: "CPU使用率", val: fmt.Sprintf("%.1f%%", (1-idle/total)*100)}}
+	return []ev{{name: i18n.T("metrics.name_cpu"), val: fmt.Sprintf("%.1f%%", (1-idle/total)*100)}}
 }
 
 func extractMem(families []metrics.MetricFamily) []ev {
 	if total, avail := findVal(families, "node_memory_MemTotal_bytes"), findVal(families, "node_memory_MemAvailable_bytes"); total > 0 && avail > 0 {
-		return []ev{{name: "内存使用率", val: fmt.Sprintf("%.1f%%", (1-avail/total)*100)}}
+		return []ev{{name: i18n.T("metrics.name_mem"), val: fmt.Sprintf("%.1f%%", (1-avail/total)*100)}}
 	}
 	if t := findVal(families, "node_memory_total_bytes"); t > 0 {
 		free := findVal(families, "node_memory_free_bytes")
 		inact := findVal(families, "node_memory_inactive_bytes")
 		if free+inact > 0 {
-			return []ev{{name: "内存使用率", val: fmt.Sprintf("%.1f%%", (1-(free+inact)/t)*100)}}
+			return []ev{{name: i18n.T("metrics.name_mem"), val: fmt.Sprintf("%.1f%%", (1-(free+inact)/t)*100)}}
 		}
 	}
 	return nil
@@ -362,21 +359,21 @@ func extractMem(families []metrics.MetricFamily) []ev {
 
 func extractL1(families []metrics.MetricFamily) []ev {
 	if v := findVal(families, "node_load1"); v >= 0 {
-		return []ev{{name: "系统负载(1m)", val: fmt.Sprintf("%.2f", v)}}
+		return []ev{{name: i18n.T("metrics.name_load1"), val: fmt.Sprintf("%.2f", v)}}
 	}
 	return nil
 }
 
 func extractL5(families []metrics.MetricFamily) []ev {
 	if v := findVal(families, "node_load5"); v >= 0 {
-		return []ev{{name: "系统负载(5m)", val: fmt.Sprintf("%.2f", v)}}
+		return []ev{{name: i18n.T("metrics.name_load5"), val: fmt.Sprintf("%.2f", v)}}
 	}
 	return nil
 }
 
 func extractL15(families []metrics.MetricFamily) []ev {
 	if v := findVal(families, "node_load15"); v >= 0 {
-		return []ev{{name: "系统负载(15m)", val: fmt.Sprintf("%.2f", v)}}
+		return []ev{{name: i18n.T("metrics.name_load15"), val: fmt.Sprintf("%.2f", v)}}
 	}
 	return nil
 }
@@ -407,13 +404,13 @@ func extractDisk(families []metrics.MetricFamily) []ev {
 		if mp != "" && mp != "/" {
 			l = mp
 		}
-		res = append(res, ev{name: "磁盘使用率", sub: l, val: fmt.Sprintf("%.1f%%", (1-a/m.Value)*100)})
+		res = append(res, ev{name: i18n.T("metrics.name_disk_usage"), sub: l, val: fmt.Sprintf("%.1f%%", (1-a/m.Value)*100)})
 	}
 	return res
 }
 
-func extractNetRX(families []metrics.MetricFamily) []ev { return extNet(families, "node_network_receive_bytes_total", "网络接收") }
-func extractNetTX(families []metrics.MetricFamily) []ev { return extNet(families, "node_network_transmit_bytes_total", "网络发送") }
+func extractNetRX(families []metrics.MetricFamily) []ev { return extNet(families, "node_network_receive_bytes_total", i18n.T("metrics.name_net_rx")) }
+func extractNetTX(families []metrics.MetricFamily) []ev { return extNet(families, "node_network_transmit_bytes_total", i18n.T("metrics.name_net_tx")) }
 func extNet(families []metrics.MetricFamily, name, disp string) []ev {
 	f := findFamily(families, name)
 	if f == nil {
@@ -430,8 +427,8 @@ func extNet(families []metrics.MetricFamily, name, disp string) []ev {
 	return res
 }
 
-func extractDiskR(families []metrics.MetricFamily) []ev { return extDiskM(families, "node_disk_read_bytes_total", "磁盘读取") }
-func extractDiskW(families []metrics.MetricFamily) []ev { return extDiskM(families, "node_disk_written_bytes_total", "磁盘写入") }
+func extractDiskR(families []metrics.MetricFamily) []ev { return extDiskM(families, "node_disk_read_bytes_total", i18n.T("metrics.name_disk_read")) }
+func extractDiskW(families []metrics.MetricFamily) []ev { return extDiskM(families, "node_disk_written_bytes_total", i18n.T("metrics.name_disk_write")) }
 func extDiskM(families []metrics.MetricFamily, name, disp string) []ev {
 	f := findFamily(families, name)
 	if f == nil {
@@ -482,21 +479,23 @@ func fmtB(b float64) string {
 
 func pri(name string) int {
 	switch {
-	case strings.HasPrefix(name, "CPU"):
+	case strings.HasPrefix(name, i18n.T("metrics.name_cpu")):
 		return 0
-	case strings.HasPrefix(name, "内存"):
+	case strings.HasPrefix(name, i18n.T("metrics.name_mem")):
 		return 1
-	case strings.HasPrefix(name, "系统负载"):
+	case strings.HasPrefix(name, i18n.T("metrics.name_load1")),
+		strings.HasPrefix(name, i18n.T("metrics.name_load5")),
+		strings.HasPrefix(name, i18n.T("metrics.name_load15")):
 		return 2
-	case strings.HasPrefix(name, "磁盘使用率"):
+	case strings.HasPrefix(name, i18n.T("metrics.name_disk_usage")):
 		return 3
-	case strings.HasPrefix(name, "磁盘读取"):
+	case strings.HasPrefix(name, i18n.T("metrics.name_disk_read")):
 		return 4
-	case strings.HasPrefix(name, "磁盘写入"):
+	case strings.HasPrefix(name, i18n.T("metrics.name_disk_write")):
 		return 5
-	case strings.HasPrefix(name, "网络接收"):
+	case strings.HasPrefix(name, i18n.T("metrics.name_net_rx")):
 		return 6
-	case strings.HasPrefix(name, "网络发送"):
+	case strings.HasPrefix(name, i18n.T("metrics.name_net_tx")):
 		return 7
 	default:
 		return 99
