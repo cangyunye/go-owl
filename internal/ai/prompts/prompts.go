@@ -62,7 +62,12 @@ node_sample - 不支持 AI 操作
 "检查node-01的SSH连接" → node_check
 "查看节点是否在线" → node_check
 "测试节点连通性" → node_check
-"检查机器状态" → node_check`
+"检查机器状态" → node_check
+"检查/查看 nginx 进程是否在运行" → exec_run
+"sshd 是否启动" → exec_run
+"服务运行状态" → exec_run
+"进程占了多少内存" → exec_run
+"机器还剩多少内存" → exec_run`
 
 // GenericToolSystemPrompt 用于未定制专属提示词的路由类别：
 // 给出完整工具目录与输出契约，让 LLM 自行选择合适工具。

@@ -501,8 +501,16 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 
 	messages := []Message{
 		{Role: "system", Content: formattedPrompt},
-		{Role: "user", Content: userInput},
 	}
+	// 会话记忆（对话+操作+节点上下文）也注入工具生成阶段，
+	// 否则 LLM 生成工具调用时看不到上一轮节点上下文
+	if sessionMemory != "" {
+		messages = append(messages, Message{
+			Role:    "system",
+			Content: "以下是此前会话的对话与操作记录，仅作参考背景，不要把它当作新的用户请求：\n" + sessionMemory,
+		})
+	}
+	messages = append(messages, Message{Role: "user", Content: userInput})
 
 	var fullResponse strings.Builder
 	maxTurns := 10
@@ -1253,6 +1261,17 @@ var negativeReplies = map[string]bool{
 	"不用": true, "不需要": true, "不了": true,
 }
 
+// RenderSystemPrompt 渲染系统提示词（注入工具目录与节点信息）。
+func (a *Agent) RenderSystemPrompt(prompt string) string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.registry == nil {
+		return prompt
+	}
+	toolDescs := a.registry.GetToolDescriptions()
+	return a.formatPrompt(prompt, a.getNodeInfo(), toolDescs)
+}
+
 func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	s.lastActive = time.Now()
 	s.history = append(s.history, fmt.Sprintf("User: %s", userInput))
@@ -1302,8 +1321,15 @@ func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	// 多轮对话，继续使用 ProcessWithContext；注入会话记忆作为背景。
 	s.messages = append(s.messages, Message{Role: "user", Content: userInput})
 	msgs := s.messages
+	// 首条若非带工具目录的 system 引导（如确认重放后首条是 assistant），
+	// 补渲染后的通用工具引导，否则 LLM 生成阶段看不到工具目录。
+	if len(msgs) == 0 || msgs[0].Role != "system" || !strings.Contains(msgs[0].Content, "输出契约") {
+		base := s.agent.RenderSystemPrompt(aiPrompts.GenericToolSystemPrompt)
+		msgs = append([]Message{{Role: "system", Content: base}}, msgs...)
+	}
 	if memory := s.buildMemory(); memory != "" {
-		msgs = append([]Message{{Role: "system", Content: memory}}, msgs...)
+		// 记忆并入引导消息，保证 msgs[0] 仍是完整 system 引导
+		msgs[0].Content = msgs[0].Content + "\n\n" + memory
 	}
 	updatedMessages, response, err := s.agent.ProcessWithContext(ctx, msgs, s.OnProgress)
 	if err == nil {
