@@ -211,6 +211,47 @@ export const api = {
   playbookFile: (id) =>
     request('GET', `/playbooks/${encodeURIComponent(id)}/file`),
 
+  playbookDownload: async (id) => {
+    const t = token();
+    const res = await fetch(`${API_BASE}/playbooks/${encodeURIComponent(id)}/download`, {
+      headers: { 'Authorization': `Bearer ${t}` },
+    });
+    if (!res.ok) throw new Error('Download failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename="?([^";]+)"?/);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = m ? m[1] : 'playbook.yaml';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  playbookUpload: async (file) => {
+    const t = token();
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/playbooks/upload`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${t}` },
+      body: formData,
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || 'Upload failed');
+    }
+    return res.json();
+  },
+
   playbookSettingsPath: () =>
     request('GET', '/playbook/settings/path'),
 

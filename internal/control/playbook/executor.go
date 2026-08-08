@@ -135,11 +135,12 @@ type ActionRunner interface {
 }
 
 type defaultActionRunner struct {
-	cmdExec       command.CommandExecutor
-	nodeResolver  *node.NodeResolver
-	transferMgr   *transfer.TransferManager
-	opts          *PlaybookOptions
+	cmdExec         command.CommandExecutor
+	nodeResolver    *node.NodeResolver
+	transferMgr     *transfer.TransferManager
+	opts            *PlaybookOptions
 	playbookBaseDir string
+	downloadBaseDir string
 }
 
 func NewDefaultActionRunner(cmdExec command.CommandExecutor, nodeResolver *node.NodeResolver) *defaultActionRunner {
@@ -164,12 +165,35 @@ func (r *defaultActionRunner) SetPlaybookBaseDir(path string) {
 	r.playbookBaseDir = path
 }
 
+// SetDownloadBaseDir 设置 download 动作相对路径的落盘目录（未设置时回退为 Playbook 目录）
+func (r *defaultActionRunner) SetDownloadBaseDir(path string) {
+	r.downloadBaseDir = path
+}
+
 // resolvePath 相对于 Playbook 目录解析路径
 func (r *defaultActionRunner) resolvePath(path string) string {
 	if r.playbookBaseDir != "" && !filepath.IsAbs(path) {
 		return filepath.Join(r.playbookBaseDir, path)
 	}
 	return path
+}
+
+// resolveDownloadDest 解析 download 动作的本地目标路径：
+// 绝对路径保持原样；相对路径优先落入 downloadBaseDir（如中转站目录），未设置时回退 Playbook 目录
+func (r *defaultActionRunner) resolveDownloadDest(dest string, vars map[string]interface{}) string {
+	dest = r.interpolateVariables(dest, vars)
+	if isAbsPath(dest) {
+		return dest
+	}
+	if r.downloadBaseDir != "" {
+		return filepath.Join(r.downloadBaseDir, dest)
+	}
+	return r.resolvePath(dest)
+}
+
+// isAbsPath 同时识别 Windows 盘符路径与 Unix 风格绝对路径
+func isAbsPath(p string) bool {
+	return filepath.IsAbs(p) || strings.HasPrefix(p, "/")
 }
 
 func (r *defaultActionRunner) RunAction(action string, args map[string]interface{}, nodeID string, vars map[string]interface{}, actionOpts *ActionOptions) (*TaskResult, error) {
@@ -394,7 +418,7 @@ func (r *defaultActionRunner) runDownload(result *TaskResult, args map[string]in
 
 	// 解析路径和替换变量
 	src = r.interpolateVariables(src, vars)
-	dest = r.resolvePath(r.interpolateVariables(dest, vars))
+	dest = r.resolveDownloadDest(dest, vars)
 
 	// 构建下载选项
 	opts := &transfer.DownloadOptions{

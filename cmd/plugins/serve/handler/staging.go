@@ -37,9 +37,10 @@ func NewStagingHandler(db *sql.DB) *StagingHandler {
 	return &StagingHandler{db: db}
 }
 
-func (h *StagingHandler) stagingDir() string {
+// stagingDirFromDB 读取 settings 中配置的中转站目录，未配置时回退 ~/.owl/staging
+func stagingDirFromDB(db *sql.DB) string {
 	var dir string
-	err := h.db.QueryRow(`SELECT value FROM settings WHERE key = 'staging_dir'`).Scan(&dir)
+	err := db.QueryRow(`SELECT value FROM settings WHERE key = 'staging_dir'`).Scan(&dir)
 	if err != nil || dir == "" {
 		home, _ := os.UserHomeDir()
 		dir = filepath.Join(home, ".owl", "staging")
@@ -47,9 +48,14 @@ func (h *StagingHandler) stagingDir() string {
 	return dir
 }
 
-func (h *StagingHandler) minFreeBytes() uint64 {
+func (h *StagingHandler) stagingDir() string {
+	return stagingDirFromDB(h.db)
+}
+
+// minFreeBytes 读取 settings 中配置的磁盘最低剩余阈值（GB），默认 10GB
+func minFreeBytes(db *sql.DB) uint64 {
 	var val string
-	err := h.db.QueryRow(`SELECT value FROM settings WHERE key = 'staging_min_free'`).Scan(&val)
+	err := db.QueryRow(`SELECT value FROM settings WHERE key = 'staging_min_free'`).Scan(&val)
 	if err != nil || val == "" {
 		return 10 * 1024 * 1024 * 1024 // 10GB default
 	}
@@ -60,13 +66,21 @@ func (h *StagingHandler) minFreeBytes() uint64 {
 	return gb * 1024 * 1024 * 1024
 }
 
-func (h *StagingHandler) diskFree() (uint64, error) {
-	dir := h.stagingDir()
+func (h *StagingHandler) minFreeBytes() uint64 {
+	return minFreeBytes(h.db)
+}
+
+// diskFreeOf 返回指定目录所在磁盘的剩余空间
+func diskFreeOf(dir string) (uint64, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return 0, err
 	}
 	_, free, err := fsStat(dir)
 	return free, err
+}
+
+func (h *StagingHandler) diskFree() (uint64, error) {
+	return diskFreeOf(h.stagingDir())
 }
 
 func (h *StagingHandler) Upload(c *gin.Context) {

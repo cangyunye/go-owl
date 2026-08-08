@@ -3,15 +3,19 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
+	pbexec "github.com/cangyunye/go-owl/internal/control/playbook"
 	pb "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
@@ -134,7 +138,90 @@ func (h *PlaybookHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": created, "file_path": outputPath})
 }
 
+const maxPlaybookUploadSize = 2 * 1024 * 1024 // 2MB
+
+// Upload 从网页上传 playbook 文件到 playbook library（同名覆盖，引用 ID 保持稳定）
+func (h *PlaybookHandler) Upload(c *gin.Context) {
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "file is required"})
+		return
+	}
+	defer file.Close()
+
+	name := filepath.Base(header.Filename)
+	if ext := filepath.Ext(name); ext != ".yaml" && ext != ".yml" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "only .yaml/.yml playbook files are allowed"})
+		return
+	}
+
+	free, err := diskFreeOf(h.getPlaybookLibraryPath())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "cannot check disk space"})
+		return
+	}
+	if free < minFreeBytes(h.db) {
+		c.JSON(http.StatusInsufficientStorage, gin.H{"code": 507, "message": "insufficient disk space for playbook library"})
+		return
+	}
+
+	if header.Size > maxPlaybookUploadSize || header.Size > int64(free-minFreeBytes(h.db)) {
+		c.JSON(http.StatusInsufficientStorage, gin.H{"code": 507, "message": "playbook file too large"})
+		return
+	}
+
+	libraryPath := h.getPlaybookLibraryPath()
+	if err := os.MkdirAll(libraryPath, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "create directory failed"})
+		return
+	}
+
+	dest := filepath.Join(libraryPath, name)
+	out, err := os.Create(dest)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "cannot write file"})
+		return
+	}
+	if _, err := io.Copy(out, file); err != nil {
+		out.Close()
+		os.Remove(dest)
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "write failed"})
+		return
+	}
+	out.Close()
+
+	if _, _, err := h.playbooks.SyncFromDir(c.Request.Context(), libraryPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "sync failed: " + err.Error()})
+		return
+	}
+
+	all, _ := h.playbooks.List(c.Request.Context())
+	for i := range all {
+		if filepath.Clean(all[i].FilePath) == filepath.Clean(dest) {
+			c.JSON(http.StatusCreated, gin.H{"data": all[i], "file_path": dest})
+			return
+		}
+	}
+	c.JSON(http.StatusCreated, gin.H{"file_path": dest})
+}
+
+// Download 下载 playbook 文件到浏览器
+func (h *PlaybookHandler) Download(c *gin.Context) {
+	id := c.Param("id")
+	pb, err := h.playbooks.Get(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "playbook not found"})
+		return
+	}
+	if !pb.FileExists {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "playbook file missing"})
+		return
+	}
+	c.FileAttachment(pb.FilePath, filepath.Base(pb.FilePath))
+}
+
 func (h *PlaybookHandler) Refresh(c *gin.Context) {
+
 	var req refreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.Path == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "path is required"})
@@ -242,6 +329,8 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 		return
 	}
 
+	run.Warnings = h.preflightPlaybook(pb.FilePath)
+
 	op := &store.Operation{TaskID: run.ID, OpType: "playbook", Command: "playbook run " + pb.Name, Targets: req.TargetNodes, PlaybookPath: pb.FilePath, Status: "running", CreatedAt: time.Now().UTC(), Forced: req.DangerConfirmed}
 	if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
 		log.Printf("record history: %v", err)
@@ -257,6 +346,51 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, run)
+}
+
+// preflightPlaybook 运行前预检：检查 upload/script 引用的本地源文件是否存在，
+// 缺失项返回 warning（不阻塞执行）
+func (h *PlaybookHandler) preflightPlaybook(pbFile string) []string {
+	parser := pbexec.NewParser()
+	parsed, err := parser.ParseFromFile(pbFile)
+	if err != nil {
+		return nil
+	}
+
+	allTasks := make([]*pbexec.ParsedTask, 0, len(parsed.PreTasks)+len(parsed.Tasks)+len(parsed.PostTasks))
+	allTasks = append(allTasks, parsed.PreTasks...)
+	allTasks = append(allTasks, parsed.Tasks...)
+	allTasks = append(allTasks, parsed.PostTasks...)
+
+	baseDir := filepath.Dir(pbFile)
+	var warnings []string
+	for _, t := range allTasks {
+		var ref string
+		switch strings.ToLower(t.Action) {
+		case "upload":
+			if s, ok := t.Args["src"].(string); ok {
+				ref = s
+			}
+		case "script":
+			if s, ok := t.Args["script"].(string); ok {
+				ref = s
+			}
+		}
+		if ref == "" {
+			continue
+		}
+		if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+			continue
+		}
+		ref = strings.ReplaceAll(ref, "{{PLAYBOOK_DIR}}", baseDir)
+		if !filepath.IsAbs(ref) {
+			ref = filepath.Join(baseDir, ref)
+		}
+		if _, err := os.Stat(ref); os.IsNotExist(err) {
+			warnings = append(warnings, fmt.Sprintf("task %q: src file not found: %s (upload it via the staging area first)", t.Name, ref))
+		}
+	}
+	return warnings
 }
 
 func (h *PlaybookHandler) RunList(c *gin.Context) {

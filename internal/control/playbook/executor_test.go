@@ -1,7 +1,8 @@
-package playbook
+﻿package playbook
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -770,7 +771,56 @@ func TestExecutor_SuccessFailureCount_MultiNode(t *testing.T) {
 	}
 
 	if exec.SuccessCount() != 3 {
-		t.Errorf("expected SuccessCount 3 (1 task × 3 nodes), got %d", exec.SuccessCount())
+		t.Errorf("expected SuccessCount 3 (1 task 脳 3 nodes), got %d", exec.SuccessCount())
 	}
-	t.Logf("SuccessCount=%d, FailureCount=%d for 1 task × 3 nodes", exec.SuccessCount(), exec.FailureCount())
+	t.Logf("SuccessCount=%d, FailureCount=%d for 1 task 脳 3 nodes", exec.SuccessCount(), exec.FailureCount())
 }
+
+func TestDefaultActionRunner_ResolveDownloadDest(t *testing.T) {
+	dest := "/staging"
+
+	t.Run("absolute dest stays absolute", func(t *testing.T) {
+		runner := NewDefaultActionRunner(nil, nil)
+		runner.SetDownloadBaseDir(dest)
+		got := runner.resolveDownloadDest("/opt/backup/app.log", nil)
+		if got != "/opt/backup/app.log" {
+			t.Errorf("expected absolute dest preserved, got %q", got)
+		}
+	})
+
+	t.Run("relative dest falls into download base dir", func(t *testing.T) {
+		runner := NewDefaultActionRunner(nil, nil)
+		runner.SetDownloadBaseDir(dest)
+		got := runner.resolveDownloadDest("logs/app.log", nil)
+		if got != filepath.Join(dest, "logs/app.log") {
+			t.Errorf("expected %q, got %q", filepath.Join(dest, "logs/app.log"), got)
+		}
+	})
+
+	t.Run("trailing slash dest keeps base dir semantics", func(t *testing.T) {
+		runner := NewDefaultActionRunner(nil, nil)
+		runner.SetDownloadBaseDir(dest)
+		got := runner.resolveDownloadDest("./", nil)
+		if got != filepath.Join(dest, ".") {
+			t.Errorf("expected %q, got %q", filepath.Join(dest, "."), got)
+		}
+	})
+
+	t.Run("no download base dir falls back to playbook base dir", func(t *testing.T) {
+		runner := NewDefaultActionRunner(nil, nil)
+		runner.SetPlaybookBaseDir("/pb")
+		got := runner.resolveDownloadDest("logs/app.log", nil)
+		if got != filepath.Join("/pb", "logs/app.log") {
+			t.Errorf("expected %q, got %q", filepath.Join("/pb", "logs/app.log"), got)
+		}
+	})
+
+	t.Run("no base dirs at all keeps dest as-is", func(t *testing.T) {
+		runner := NewDefaultActionRunner(nil, nil)
+		got := runner.resolveDownloadDest("logs/app.log", nil)
+		if got != "logs/app.log" {
+			t.Errorf("expected %q, got %q", "logs/app.log", got)
+		}
+	})
+}
+

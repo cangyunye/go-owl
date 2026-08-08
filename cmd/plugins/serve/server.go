@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/fs"
+	"log"
 	"math/big"
 	"net/http"
 	"os"
@@ -147,6 +148,9 @@ func (s *Server) Init() (*AdminCredentials, error) {
 			if len(entries) == 0 {
 				copySamplePlaybooks(globalDir)
 			}
+			if _, _, err := playbookStore.SyncFromDir(context.Background(), globalDir); err != nil {
+				log.Printf("sync playbook library: %v", err)
+			}
 		}
 	}
 
@@ -267,9 +271,11 @@ func (s *Server) setupRoutes() {
 			operator.POST("/transfer", s.transferHandler.Create)
 			operator.GET("/transfers", s.transferHandler.List)
 			operator.POST("/staging/upload", s.stagingHandler.Upload)
+			operator.POST("/playbooks/upload", s.playbookHandler.Upload)
 			operator.GET("/playbooks", s.playbookHandler.List)
 			operator.GET("/playbooks/:id", s.playbookHandler.Get)
 			operator.GET("/playbooks/:id/file", s.playbookHandler.GetFile)
+			operator.GET("/playbooks/:id/download", s.playbookHandler.Download)
 			operator.POST("/playbooks/:id/run", s.playbookHandler.Run)
 			operator.GET("/playbook/runs", s.playbookHandler.RunList)
 			operator.GET("/playbook/runs/:id", s.playbookHandler.RunGet)

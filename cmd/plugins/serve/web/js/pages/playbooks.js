@@ -95,6 +95,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
           <td>${esc((pb.task_names || []).join(', '))}</td>
           <td class="action-cell">
             <button class="run-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} style="background:none;border:1px solid var(--primary);color:var(--primary);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px">Run</button>
+            <button class="download-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="下载 playbook 文件" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px;margin-left:4px">下载</button>
           </td>
         </tr>`
       ).join('');
@@ -102,9 +103,49 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     document.querySelectorAll('.run-playbook-btn').forEach(btn => {
       btn.addEventListener('click', (e) => { e.stopPropagation(); showRunModal(btn.dataset.id); });
     });
+    document.querySelectorAll('.download-playbook-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try { await api.playbookDownload(btn.dataset.id); } catch (err) { alert('下载失败: ' + err.message); }
+      });
+    });
     document.querySelectorAll('.playbook-row').forEach(row => {
       row.addEventListener('click', () => showPlaybookDetail(row.dataset.id));
     });
+  }
+
+  async function loadRunStagingFiles() {
+    const listEl = document.getElementById('run-staging-files');
+    const dirEl = document.getElementById('run-staging-dir');
+    if (!listEl) return;
+    listEl.innerHTML = '加载中…';
+    try {
+      const [fRes, dRes] = await Promise.all([api.staging.files(), api.staging.disk()]);
+      const files = fRes.data || [];
+      if (dRes && dRes.staging_dir) dirEl.textContent = `中转站目录: ${dRes.staging_dir}`;
+      if (files.length === 0) {
+        listEl.innerHTML = '<span style="color:var(--muted)">暂无文件，可先在「文件」页上传</span>';
+        return;
+      }
+      listEl.innerHTML = files.map(f => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px dashed var(--border)">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)} <span style="color:var(--muted)">(${f.size} B)</span></span>
+          <button class="staging-copy-path" data-name="${esc(f.name)}" title="复制完整路径" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:var(--radius);cursor:pointer;padding:0 8px;font-size:11px">复制路径</button>
+        </div>`).join('');
+      document.querySelectorAll('.staging-copy-path').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const dir = (document.getElementById('run-staging-dir').textContent || '').replace('中转站目录: ', '').trim();
+          const full = dir ? `${dir.replace(/[\\/]$/, '')}/${btn.dataset.name}` : btn.dataset.name;
+          try {
+            await navigator.clipboard.writeText(full);
+            btn.textContent = '已复制';
+            setTimeout(() => { btn.textContent = '复制路径'; }, 1500);
+          } catch { prompt('复制路径:', full); }
+        });
+      });
+    } catch {
+      listEl.innerHTML = '<span style="color:var(--danger)">中转站文件加载失败</span>';
+    }
   }
 
   function showRunModal(id) {
@@ -116,7 +157,10 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     document.getElementById('run-playbook-tags').value = '';
     document.getElementById('run-playbook-vars').value = '';
     document.getElementById('run-playbook-error').textContent = '';
+    const warnEl = document.getElementById('run-playbook-warnings');
+    if (warnEl) { warnEl.style.display = 'none'; warnEl.textContent = ''; }
     document.getElementById('run-playbook-modal').classList.add('open');
+    loadRunStagingFiles();
   }
 
   async function showPlaybookDetail(id) {
@@ -251,6 +295,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         <label for="playbook-path">Library Path</label>
         <input id="playbook-path" placeholder="/path/to/playbooks">
         <button class="btn btn-secondary btn-sm" id="refresh-playbooks-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg> 刷新</button>
+        <button class="btn btn-secondary btn-sm" id="upload-playbook-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-upload"/></svg> 上传 Playbook</button>
+        <input type="file" id="upload-playbook-file" accept=".yaml,.yml" style="display:none">
       </div>
     </div>
 
@@ -296,6 +342,15 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
           <div class="form-row"><label>Extra Vars (optional)</label><input id="run-playbook-vars" placeholder="key=value, version=2.0"></div>
         </div>
         <p class="error-msg" id="run-playbook-error"></p>
+        <p class="error-msg" id="run-playbook-warnings" style="display:none"></p>
+        <div class="staging-browser" style="margin-top:8px;border:1px solid var(--border);border-radius:var(--radius);padding:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:12px;color:var(--muted)">中转站文件（upload/script 引用时可选用）</span>
+            <button class="btn btn-secondary btn-sm" id="run-staging-refresh" style="padding:1px 8px">刷新</button>
+          </div>
+          <div id="run-staging-files" style="max-height:160px;overflow-y:auto;font-size:12px;color:var(--text-muted)">加载中…</div>
+          <div id="run-staging-dir" style="margin-top:6px;font-size:11px;color:var(--muted);word-break:break-all"></div>
+        </div>
         <div class="modal-actions">
           <button class="btn btn-secondary" id="run-playbook-cancel">Cancel</button>
           <button class="btn btn-primary" id="run-playbook-submit">Execute</button>
@@ -464,10 +519,36 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         if (Object.keys(extraVars).length) body.extra_vars = extraVars;
       }
       try {
-        await api.runPlaybook(id, body);
+        const res = await api.runPlaybook(id, body);
+        const warnings = (res && res.warnings) || [];
+        if (warnings.length > 0) {
+          const warnEl = document.getElementById('run-playbook-warnings');
+          warnEl.style.display = 'block';
+          warnEl.textContent = '⚠ 引用文件缺失（可先上传到中转站再运行）:\n' + warnings.join('\n');
+          return;
+        }
         document.getElementById('run-playbook-modal').classList.remove('open');
         loadRuns();
       } catch (e) { document.getElementById('run-playbook-error').textContent = e.message; }
+    });
+
+    document.getElementById('run-staging-refresh')?.addEventListener('click', loadRunStagingFiles);
+    document.getElementById('upload-playbook-btn').addEventListener('click', () => {
+      document.getElementById('upload-playbook-file').click();
+    });
+    document.getElementById('upload-playbook-file').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      const btn = document.getElementById('upload-playbook-btn');
+      btn.textContent = '上传中…';
+      btn.disabled = true;
+      try {
+        await api.playbookUpload(file);
+        loadAll();
+      } catch (err) { alert('上传失败: ' + err.message); }
+      btn.textContent = '上传 Playbook';
+      btn.disabled = false;
     });
 
     document.getElementById('detail-close-btn').addEventListener('click', () => {

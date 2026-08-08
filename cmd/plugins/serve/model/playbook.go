@@ -35,6 +35,7 @@ type PlaybookRun struct {
 	Tags            string            `json:"tags,omitempty"`
 	DangerConfirmed bool              `json:"danger_confirmed,omitempty"`
 	Error           string            `json:"error,omitempty"`
+	Warnings        []string          `json:"warnings,omitempty"`
 	Results         []*StepResult     `json:"results,omitempty"`
 	CreatedAt       time.Time         `json:"created_at"`
 	StartedAt       *time.Time        `json:"started_at,omitempty"`

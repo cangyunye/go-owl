@@ -194,6 +194,12 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 	if bds, ok := pbExecutor.(interface{ SetPlaybookBaseDir(string) }); ok {
 		bds.SetPlaybookBaseDir(filepath.Dir(run.PlaybookFile))
 	}
+	if dds, ok := pbExecutor.(interface{ SetDownloadBaseDir(string) }); ok {
+		stagingDir := stagingDirFromDB(h.db)
+		if err := os.MkdirAll(stagingDir, 0755); err == nil {
+			dds.SetDownloadBaseDir(stagingDir)
+		}
+	}
 
 	var targetNodes []*commonmodel.Node
 	for _, n := range nodeMgr.List() {
