@@ -28,7 +28,7 @@ cmd/plugins/serve/
 │   ├── exec.go                 # 任务执行（多节点 / 脚本 / 分组标签解析 / 分页）
 │   ├── playbook.go             # 剧本 CRUD / Run / Cancel / Refresh
 │   ├── user.go                 # 用户 CRUD（admin）
-│   ├── settings.go             # 配置 CRUD（admin）
+│   ├── settings.go             # 配置 CRUD（admin，staging_dir/staging_min_free 值校验）
 │   └── ws.go                   # WebSocket Hub + Handler
 ├── service/
 │   └── auth.go                 # JWT 生成/验证 + bcrypt
