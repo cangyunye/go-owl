@@ -3,23 +3,53 @@ export function renderSettings(render, navigate, user, api) {
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
+  const KNOWN_SETTINGS = {
+    staging_dir: {
+      desc: '文件中转站临时地址',
+      defaultValue: null
+    },
+    staging_min_free: {
+      desc: '文件中转站最小剩余空间(GB)',
+      defaultValue: '10'
+    }
+  };
+
   async function loadSettings() {
     try {
-      const res = await api.settings();
-      renderTable(res.data || []);
+      const [res, disk] = await Promise.all([
+        api.settings(),
+        api.staging.disk().catch(() => null)
+      ]);
+      const rows = res.data || [];
+      Object.keys(KNOWN_SETTINGS).forEach(key => {
+        if (rows.some(s => s.key === key)) return;
+        let def = KNOWN_SETTINGS[key].defaultValue;
+        if (key === 'staging_dir' && disk && disk.staging_dir) def = disk.staging_dir;
+        if (def !== null) rows.push({ key, value: def, _default: true });
+      });
+      rows.sort((a, b) => a.key.localeCompare(b.key));
+      renderTable(rows);
     } catch { renderTable([]); }
   }
 
   function renderTable(settings) {
     const list = document.getElementById('settings-list');
     if (settings.length === 0) {
-      list.innerHTML = '<tr><td colspan="3" class="empty-state">No settings</td></tr>';
+      list.innerHTML = '<tr><td colspan="4" class="empty-state">No settings</td></tr>';
     } else {
-      list.innerHTML = settings.map(s => `<tr>
+      list.innerHTML = settings.map(s => {
+        const known = KNOWN_SETTINGS[s.key];
+        const desc = known ? known.desc : '-';
+        const valueHtml = s._default
+          ? `${esc(s.value)} <span style="color:var(--text-muted);font-size:11px">(默认值)</span>`
+          : esc(s.value);
+        return `<tr>
         <td style="font-family:monospace;font-size:13px">${esc(s.key)}</td>
-        <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.value)}</td>
+        <td style="color:var(--text-muted);font-size:12px">${esc(desc)}</td>
+        <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${valueHtml}</td>
         <td><button class="edit-setting-btn" data-key="${esc(s.key)}" data-value="${esc(s.value)}" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px">Edit</button></td>
-      </tr>`).join('');
+      </tr>`;
+      }).join('');
     }
 
     document.querySelectorAll('.edit-setting-btn').forEach(btn => {
@@ -28,6 +58,7 @@ export function renderSettings(render, navigate, user, api) {
         const value = btn.dataset.value;
         document.getElementById('setting-key').textContent = key;
         document.getElementById('setting-value-input').value = value;
+        document.getElementById('setting-desc').textContent = (KNOWN_SETTINGS[key] || {}).desc || '';
         document.getElementById('settings-error').textContent = '';
         document.getElementById('settings-modal').classList.add('open');
       });
@@ -233,7 +264,7 @@ export function renderSettings(render, navigate, user, api) {
   render(`
     <div class="card">
       <table>
-        <thead><tr><th>Key</th><th>Value</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Key</th><th>Description</th><th>Value</th><th>Actions</th></tr></thead>
         <tbody id="settings-list"><tr><td colspan="3" class="loading">Loading...</td></tr></tbody>
       </table>
     </div>
@@ -244,6 +275,7 @@ export function renderSettings(render, navigate, user, api) {
     <div class="modal-overlay" id="settings-modal">
       <div class="modal modal-sm">
         <h3>Edit Setting: <span id="setting-key"></span></h3>
+        <p id="setting-desc" style="font-size:12px;color:var(--text-muted);margin:4px 0 10px"></p>
         <div class="modal-form">
           <div class="form-row"><label>Value</label><input id="setting-value-input" placeholder="value"></div>
         </div>
@@ -628,6 +660,10 @@ export function renderSettings(render, navigate, user, api) {
       const key = document.getElementById('setting-key').textContent;
       const value = document.getElementById('setting-value-input').value.trim();
       if (!value) { document.getElementById('settings-error').textContent = 'Value required'; return; }
+      if (key === 'staging_min_free' && (!/^\d+$/.test(value) || Number(value) <= 0)) {
+        document.getElementById('settings-error').textContent = 'staging_min_free 必须是正整数（GB）';
+        return;
+      }
       try {
         await api.updateSetting(key, value);
         document.getElementById('settings-modal').classList.remove('open');
