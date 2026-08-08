@@ -1,0 +1,38 @@
+name: nginx-deploy
+description: nginx 安装部署流程（安装、上传配置、重启、状态检查）
+version: "1.0"
+hosts: []
+execution_mode: pipeline
+default:
+  groups: ["web"]
+vars:
+  nginx_port: "8080"
+
+pre_tasks:
+  - name: 备份现有配置
+    action: command
+    args:
+      cmd: "cp -r /etc/nginx /etc/nginx.bak.{{nginx_port}} || true"
+
+tasks:
+  - name: 安装 nginx
+    action: command
+    args:
+      cmd: "apt-get update && apt-get install -y nginx"
+
+  - name: 上传配置文件
+    action: upload
+    args:
+      src: "{{PLAYBOOK_DIR}}/configs/nginx.conf"
+      dest: /etc/nginx/nginx.conf
+      overwrite: true
+
+  - name: 重启 nginx
+    action: command
+    args:
+      cmd: "systemctl restart nginx"
+
+  - name: 检查服务状态
+    action: command
+    args:
+      cmd: "systemctl is-active nginx && curl -fsS http://localhost:{{nginx_port}}/ >/dev/null"

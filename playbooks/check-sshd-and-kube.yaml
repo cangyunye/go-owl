@@ -1,0 +1,56 @@
+name: check-sshd-and-kube
+description: 检查 wsl-kube 节点 sshd 进程与 kube 用户，创建文本文件并往返传输 USAGE.md
+version: "1.0"
+hosts: ["wsl-kube"]
+execution_mode: pipeline
+vars:
+  kube_user: "kube"
+  kube_home: "/home/kube"
+  sshd_proc: "sshd"
+  remote_dir: "/tmp"
+  remote_file: "USAGE.md"
+  renamed_file: "USAGE_test.md"
+
+tasks:
+  - name: 检查sshd进程及内存占用
+    action: command
+    args:
+      cmd: |
+        if ps -C {{sshd_proc}} -o pid=,rss= --no-headers; then
+          echo "sshd 进程存在，RSS 内存大小(KB) 见上"
+        else
+          echo "sshd 进程不存在"
+        fi
+
+  - name: 查询kube用户
+    action: command
+    args:
+      cmd: |
+        if getent passwd {{kube_user}}; then
+          echo "{{kube_user}} 用户存在"
+        else
+          echo "{{kube_user}} 用户不存在"
+        fi
+
+  - name: 创建kube用户文本文件
+    action: command
+    args:
+      cmd: "touch {{kube_home}}/tmp.txt && chown {{kube_user}}:{{kube_user}} {{kube_home}}/tmp.txt"
+
+  - name: 上传USAGE.md
+    action: upload
+    args:
+      src: "{{PLAYBOOK_DIR}}/USAGE.md"
+      dest: "{{remote_dir}}/"
+      overwrite: true
+
+  - name: 重命名上传文件
+    action: command
+    args:
+      cmd: "mv -f {{remote_dir}}/{{remote_file}} {{remote_dir}}/{{renamed_file}}"
+
+  - name: 取回重命名文件
+    action: download
+    args:
+      src: "{{remote_dir}}/{{renamed_file}}"
+      dest: "{{PLAYBOOK_DIR}}/downloads/{{renamed_file}}"
