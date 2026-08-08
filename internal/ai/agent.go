@@ -80,6 +80,9 @@ type Agent struct {
 	// sessionMemory 由 Session 注入的会话记忆（对话+操作记录），
 	// 随路由消息发给 LLM 作为参考，不作为新请求。
 	sessionMemory string
+	// nodeContextHook 工具执行成功且涉及节点时回调解析后的节点名列表，
+	// 供 Session 保存节点上下文（跨轮复用，新一轮查询覆盖）。
+	nodeContextHook func(nodes []string, source string)
 }
 
 // ConfirmationDecision 确认门判定结果。
@@ -121,6 +124,88 @@ func (a *Agent) SetSessionMemory(memory string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.sessionMemory = memory
+}
+
+// SetNodeContextHook 注册节点上下文回调：涉及节点的工具执行成功后，
+// 回调解析出的节点名列表与来源描述（程序层确定性保存，供跨轮复用）。
+func (a *Agent) SetNodeContextHook(hook func(nodes []string, source string)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.nodeContextHook = hook
+}
+
+// nodeTargetTools 执行后需要记录节点上下文的工具。
+var nodeTargetTools = map[string]bool{
+	"query_nodes":       true,
+	"query_database":    true,
+	"execute_command":   true,
+	"execute_script":    true,
+	"transfer_file":     true,
+	"file_download":     true,
+	"run_playbook":      true,
+	"node_check":        true,
+	"node_ping":         true,
+	"node_status":       true,
+}
+
+// resolveToolTargets 从工具参数解析目标节点名列表（确定性，非 LLM 记忆）。
+// 支持 nodes 数组 / group（逗号分隔多分组）/ label（逗号分隔多键值）/ search。
+func (a *Agent) resolveToolTargets(call ToolCall) ([]string, string) {
+	args := call.Arguments
+	nodes := strSliceOf(args["nodes"])
+	if len(nodes) == 1 && nodes[0] == "ALL_NODES" {
+		nodes = nil
+	}
+	if len(nodes) > 0 {
+		return nodes, fmt.Sprintf("nodes=%s", strings.Join(nodes, ","))
+	}
+	if g := strOf(args["group"]); g != "" {
+		var names []string
+		for _, part := range strings.Split(g, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			for _, n := range a.nodeMgr.GetByGroup(part) {
+				names = append(names, n.Name)
+			}
+		}
+		return uniqueStrings(names), fmt.Sprintf("group=%s", g)
+	}
+	if l := strOf(args["label"]); l != "" {
+		names := a.nodeMgr.GetByLabels(parseLabelFilter(l))
+		var out []string
+		for _, n := range names {
+			out = append(out, n.Name)
+		}
+		return out, fmt.Sprintf("label=%s", l)
+	}
+	if s := strOf(args["search"]); s != "" {
+		names := a.nodeMgr.SearchByName(s)
+		var out []string
+		for _, n := range names {
+			out = append(out, n.Name)
+		}
+		return out, fmt.Sprintf("search=%s", s)
+	}
+	// 无显式目标：视为全部节点（查询类工具默认行为）
+	var all []string
+	for _, n := range a.nodeMgr.List() {
+		all = append(all, n.Name)
+	}
+	return all, "全部节点"
+}
+
+func uniqueStrings(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // ExecuteToolCall 执行工具调用（供确认门重放使用，不再经过确认门）。
@@ -858,6 +943,19 @@ func (a *Agent) executeToolCall(ctx context.Context, call ToolCall) (string, err
 		return "", err
 	}
 
+	// 涉及节点的工具执行成功后，把解析出的节点名回调给会话（程序层保存）
+	if err == nil && nodeTargetTools[call.Name] && a.nodeMgr != nil {
+		nodes, source := a.resolveToolTargets(call)
+		if len(nodes) > 0 {
+			a.mu.RLock()
+			hook := a.nodeContextHook
+			a.mu.RUnlock()
+			if hook != nil {
+				hook(nodes, source)
+			}
+		}
+	}
+
 	debugPrint(a.debug, "工具执行成功，结果前100字符: %.100s...", result)
 	return result, nil
 }
@@ -1100,12 +1198,21 @@ type OperationSummary struct {
 	Time    time.Time
 }
 
+// NodeContext 会话级节点上下文：最近一次涉及节点操作后，
+// 由程序逻辑层（非 LLM）从工具参数解析出的节点集合。
+// 供后续轮次复用/筛选，直到用户发起新一轮节点查询则覆盖。
+type NodeContext struct {
+	Nodes  []string // 解析后的节点名
+	Source string   // 来源描述，如 "group=web 的节点"
+}
+
 type Session struct {
 	agent          *Agent
 	messages       []Message
 	history        []string
 	operations     []OperationSummary
 	dialogue       []Message
+	nodeContext    *NodeContext
 	createdAt      time.Time
 	lastActive     time.Time
 	OnProgress     ProgressCallback
@@ -1120,7 +1227,16 @@ func NewSession(agent *Agent) *Session {
 		createdAt: time.Now(),
 	}
 	s.SetDefaultConfirmGate()
+	s.registerNodeContextHook()
 	return s
+}
+
+// registerNodeContextHook 注册节点上下文回调。agent 可能被多会话共享，
+// 每次 Send 前需重新注册，保证最近注册的是本会话的回调。
+func (s *Session) registerNodeContextHook() {
+	s.agent.SetNodeContextHook(func(nodes []string, source string) {
+		s.nodeContext = &NodeContext{Nodes: nodes, Source: source}
+	})
 }
 
 var affirmativeReplies = map[string]bool{
@@ -1140,6 +1256,8 @@ var negativeReplies = map[string]bool{
 func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	s.lastActive = time.Now()
 	s.history = append(s.history, fmt.Sprintf("User: %s", userInput))
+	// agent 可被多会话共享，每次 Send 前重新注册本会话的节点上下文回调
+	s.registerNodeContextHook()
 
 	// 有待确认操作时，先处理确认/取消，其余输入一律提示，保证单 pending 队列。
 	if s.pendingContext != nil && s.pendingContext.State == "awaiting_confirmation" {
@@ -1259,7 +1377,22 @@ func (s *Session) buildMemory() string {
 		}
 		mem += d
 	}
+	if n := s.nodeContextMemory(); n != "" {
+		if mem != "" {
+			mem += "\n"
+		}
+		mem += n
+	}
 	return mem
+}
+
+// nodeContextMemory 注入上一轮节点上下文。提示 LLM 仅在用户未指定新目标时复用。
+func (s *Session) nodeContextMemory() string {
+	if s.nodeContext == nil || len(s.nodeContext.Nodes) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("[上一轮节点上下文]\n来源: %s\n节点: %s\n说明: 仅当用户指代之前操作过的节点时复用此节点列表；若用户指定了新的分组/标签/节点，忽略本上下文。",
+		s.nodeContext.Source, strings.Join(s.nodeContext.Nodes, ", "))
 }
 
 func (s *Session) appendDialogue(userInput, response string) {

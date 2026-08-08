@@ -533,7 +533,22 @@ func (m *mockNodeMgrForAI) GetByID(id string) (*model.Node, error) {
 func (m *mockNodeMgrForAI) UpdateStatus(id string, status model.NodeStatus) error { return nil }
 func (m *mockNodeMgrForAI) GetOnlineNodes() []*model.Node                         { return nil }
 func (m *mockNodeMgrForAI) Count() int                                            { return len(m.nodes) }
-func (m *mockNodeMgrForAI) GetByLabels(labels map[string]string) []*model.Node    { return nil }
+func (m *mockNodeMgrForAI) GetByLabels(labels map[string]string) []*model.Node {
+	var result []*model.Node
+	for _, n := range m.nodes {
+		hit := true
+		for k, v := range labels {
+			if n.Labels[k] != v {
+				hit = false
+				break
+			}
+		}
+		if hit {
+			result = append(result, n)
+		}
+	}
+	return result
+}
 func (m *mockNodeMgrForAI) SearchByName(pattern string) []*model.Node {
 	if pattern == "" {
 		return nil
