@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -48,6 +49,7 @@ type createTemplateRequest struct {
 	DefaultGroups   []string               `json:"default_groups,omitempty"`
 	DefaultTags     []string               `json:"default_tags,omitempty"`
 	DefaultSkipTags []string               `json:"default_skip_tags,omitempty"`
+	Tags            []string               `json:"tags,omitempty"`
 	Tasks           []createTemplateTask   `json:"tasks"`
 	PreTasks        []createTemplateTask   `json:"pre_tasks,omitempty"`
 	PostTasks       []createTemplateTask   `json:"post_tasks,omitempty"`
@@ -275,6 +277,7 @@ func (h *PlaybookHandler) renderEditResponse(c *gin.Context, raw *pbexec.Playboo
 		Tasks:         toTemplateTasks(raw.Tasks),
 		PreTasks:      toTemplateTasks(raw.PreTasks),
 		PostTasks:     toTemplateTasks(raw.PostTasks),
+		Tags:          collectPlaybookTags(raw),
 	}
 	if raw.Default != nil {
 		resp.DefaultGroups = raw.Default.Groups
@@ -283,6 +286,35 @@ func (h *PlaybookHandler) renderEditResponse(c *gin.Context, raw *pbexec.Playboo
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// collectPlaybookTags 汇总 playbook 可用的执行标签（default.tags + 所有任务的 tags，去重排序）
+func collectPlaybookTags(raw *pbexec.Playbook) []string {
+	set := make(map[string]bool)
+	if raw.Default != nil {
+		for _, t := range raw.Default.Tags {
+			if t != "" {
+				set[t] = true
+			}
+		}
+	}
+	all := make([]pbexec.PlaybookTask, 0, len(raw.PreTasks)+len(raw.Tasks)+len(raw.PostTasks))
+	all = append(all, raw.PreTasks...)
+	all = append(all, raw.Tasks...)
+	all = append(all, raw.PostTasks...)
+	for _, tk := range all {
+		for _, t := range tk.Tags {
+			if t != "" {
+				set[t] = true
+			}
+		}
+	}
+	tags := make([]string, 0, len(set))
+	for t := range set {
+		tags = append(tags, t)
+	}
+	sort.Strings(tags)
+	return tags
 }
 
 func toTemplateTasks(tasks []pbexec.PlaybookTask) []createTemplateTask {

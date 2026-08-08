@@ -410,19 +410,138 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     }
   }
 
+  let runSel = { nodes: new Set(), groups: new Set(), tags: new Set() };
+  let runNodes = [];
+  let runGroupCounts = {};
+
   function showRunModal(id) {
     const pb = state.playbooks.find(p => p.id === id);
+    runSel = { nodes: new Set(), groups: new Set(), tags: new Set() };
     document.getElementById('run-playbook-id').value = id;
     document.getElementById('run-playbook-name-display').textContent = pb ? pb.name : id;
     document.getElementById('run-playbook-target').value = '';
-    document.getElementById('run-playbook-groups').value = '';
-    document.getElementById('run-playbook-tags').value = '';
     document.getElementById('run-playbook-vars').value = '';
     document.getElementById('run-playbook-error').textContent = '';
+    document.getElementById('run-node-dropdown').style.display = 'none';
     const warnEl = document.getElementById('run-playbook-warnings');
     if (warnEl) { warnEl.style.display = 'none'; warnEl.textContent = ''; }
     document.getElementById('run-playbook-modal').classList.add('open');
+    loadRunTargetData(id);
     loadRunStagingFiles();
+  }
+
+  async function loadRunTargetData(pbId) {
+    try {
+      const [nodesRes, filtersRes] = await Promise.all([api.nodes(), api.filters()]);
+      runNodes = nodesRes.data || [];
+      const counts = {};
+      for (const n of runNodes) {
+        for (const g of (n.groups || [])) counts[g] = (counts[g] || 0) + 1;
+      }
+      runGroupCounts = counts;
+      renderRunGroups((filtersRes.groups || []).sort());
+      renderRunNodeSelected();
+    } catch { renderRunGroups([]); }
+
+    if (pbId) {
+      api.playbookEdit(pbId).then(edit => {
+        renderRunTags((edit.tags || []).slice().sort());
+      }).catch(() => { renderRunTags([]); });
+    } else {
+      renderRunTags([]);
+    }
+  }
+
+  function filterRunNodes(q) {
+    q = (q || '').toLowerCase();
+    if (!q) return runNodes;
+    return runNodes.filter(n => {
+      return (n.id || '').toLowerCase().includes(q)
+        || (n.name || '').toLowerCase().includes(q)
+        || (n.address || '').toLowerCase().includes(q);
+    });
+  }
+
+  function renderRunNodeDropdown() {
+    const q = document.getElementById('run-playbook-target').value;
+    const dd = document.getElementById('run-node-dropdown');
+    const matched = filterRunNodes(q);
+    if (matched.length === 0) {
+      dd.innerHTML = '<div style="padding:8px;color:var(--muted);font-size:12px">无匹配节点</div>';
+    } else {
+      dd.innerHTML = matched.map(n => {
+        const checked = runSel.nodes.has(n.id);
+        const namePart = n.name && n.name !== n.id ? ` <span style="color:var(--muted)">(${esc(n.name)})</span>` : '';
+        return `<label style="display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;font-size:12px">
+          <input type="checkbox" data-node="${esc(n.id)}" ${checked ? 'checked' : ''}>
+          <span>${esc(n.id)}</span>${namePart}
+          <span style="margin-left:auto;color:var(--muted)">${esc(n.address || '')}</span>
+        </label>`;
+      }).join('');
+    }
+    dd.querySelectorAll('input[data-node]').forEach(inp => {
+      inp.addEventListener('click', (e) => {
+        const nodeId = inp.dataset.node;
+        if (inp.checked) runSel.nodes.add(nodeId); else runSel.nodes.delete(nodeId);
+        renderRunNodeSelected();
+      });
+    });
+  }
+
+  function renderRunNodeSelected() {
+    const box = document.getElementById('run-node-selected');
+    if (runSel.nodes.size === 0) {
+      box.innerHTML = '';
+      return;
+    }
+    box.innerHTML = Array.from(runSel.nodes).map(id => `
+      <span class="tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px">
+        ${esc(id)}<button class="run-node-remove" data-node="${esc(id)}" style="background:none;border:none;color:inherit;cursor:pointer;font-size:12px;padding:0">&times;</button>
+      </span>`).join('');
+    box.querySelectorAll('.run-node-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        runSel.nodes.delete(btn.dataset.node);
+        renderRunNodeSelected();
+        renderRunNodeDropdown();
+      });
+    });
+  }
+
+  function renderRunGroups(groups) {
+    const grid = document.getElementById('run-group-grid');
+    if (!groups.length) {
+      grid.innerHTML = '<span style="color:var(--muted);font-size:12px">暂无分组</span>';
+      return;
+    }
+    grid.innerHTML = groups.map(g => `
+      <label style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:var(--radius);padding:3px 8px;cursor:pointer;font-size:12px">
+        <input type="checkbox" data-group="${esc(g)}">
+        <span>${esc(g)}</span>
+        <span style="color:var(--muted)">(${runGroupCounts[g] || 0})</span>
+      </label>`).join('');
+    grid.querySelectorAll('input[data-group]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        if (inp.checked) runSel.groups.add(inp.dataset.group); else runSel.groups.delete(inp.dataset.group);
+      });
+    });
+  }
+
+  function renderRunTags(tags) {
+    const grid = document.getElementById('run-tag-grid');
+    if (!tags.length) {
+      grid.innerHTML = '<span style="color:var(--muted);font-size:12px">该剧本无标签任务</span>';
+      return;
+    }
+    grid.innerHTML = tags.map(t => `
+      <label style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:var(--radius);padding:3px 8px;cursor:pointer;font-size:12px">
+        <input type="checkbox" data-tag="${esc(t)}">
+        <span>${esc(t)}</span>
+      </label>`).join('');
+    grid.querySelectorAll('input[data-tag]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        if (inp.checked) runSel.tags.add(inp.dataset.tag); else runSel.tags.delete(inp.dataset.tag);
+      });
+    });
   }
 
   async function showPlaybookDetail(id) {
@@ -599,9 +718,22 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         <h3>Run Playbook: <span id="run-playbook-name-display"></span></h3>
         <div class="modal-form">
           <input type="hidden" id="run-playbook-id">
-          <div class="form-row"><label>Target Nodes</label><input id="run-playbook-target" placeholder="node1,node2 (comma-separated IDs)"></div>
-          <div class="form-row"><label>Groups (alternative)</label><input id="run-playbook-groups" placeholder="web, db (selects all nodes in these groups)"></div>
-          <div class="form-row"><label>Tags (optional)</label><input id="run-playbook-tags" placeholder="tag1,tag2"></div>
+          <div class="form-row">
+            <label>Target Nodes</label>
+            <div style="position:relative">
+              <input id="run-playbook-target" placeholder="输入关键字过滤节点…" autocomplete="off">
+              <div id="run-node-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);max-height:200px;overflow-y:auto;margin-top:2px;box-shadow:0 4px 12px rgba(0,0,0,.15)"></div>
+            </div>
+            <div id="run-node-selected" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px"></div>
+          </div>
+          <div class="form-row">
+            <label>Groups <span style="font-weight:normal;color:var(--muted);font-size:11px">(与节点同时选择时以节点为准)</span></label>
+            <div id="run-group-grid" style="display:flex;flex-wrap:wrap;gap:6px;max-height:110px;overflow-y:auto"></div>
+          </div>
+          <div class="form-row">
+            <label>Tags <span style="font-weight:normal;color:var(--muted);font-size:11px">(任务执行标签，可选)</span></label>
+            <div id="run-tag-grid" style="display:flex;flex-wrap:wrap;gap:6px;max-height:110px;overflow-y:auto"></div>
+          </div>
           <div class="form-row"><label>Extra Vars (optional)</label><input id="run-playbook-vars" placeholder="key=value, version=2.0"></div>
         </div>
         <p class="error-msg" id="run-playbook-error"></p>
@@ -764,15 +896,15 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     });
     document.getElementById('run-playbook-submit').addEventListener('click', async () => {
       const id = document.getElementById('run-playbook-id').value;
-      const target = document.getElementById('run-playbook-target').value.trim();
-      const groups = document.getElementById('run-playbook-groups').value.trim();
-      const tags = document.getElementById('run-playbook-tags').value.trim();
       const varsStr = document.getElementById('run-playbook-vars').value.trim();
-      if (!target && !groups) { document.getElementById('run-playbook-error').textContent = 'Target nodes or groups required'; return; }
+      if (runSel.nodes.size === 0 && runSel.groups.size === 0) {
+        document.getElementById('run-playbook-error').textContent = '请选择至少一个目标节点或分组';
+        return;
+      }
       const body = {};
-      if (target) body.target_nodes = target.split(',').map(s => s.trim()).filter(Boolean);
-      if (groups) body.groups = groups.split(',').map(s => s.trim()).filter(Boolean);
-      if (tags) body.tags = tags;
+      if (runSel.nodes.size > 0) body.target_nodes = Array.from(runSel.nodes);
+      if (runSel.groups.size > 0) body.groups = Array.from(runSel.groups);
+      if (runSel.tags.size > 0) body.tags = Array.from(runSel.tags).join(',');
       if (varsStr) {
         const extraVars = {};
         varsStr.split(',').forEach(pair => {
@@ -793,6 +925,24 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         document.getElementById('run-playbook-modal').classList.remove('open');
         loadRuns();
       } catch (e) { document.getElementById('run-playbook-error').textContent = e.message; }
+    });
+
+    // Target node fuzzy dropdown
+    const targetInput = document.getElementById('run-playbook-target');
+    targetInput.addEventListener('input', () => {
+      renderRunNodeDropdown();
+      document.getElementById('run-node-dropdown').style.display = 'block';
+    });
+    targetInput.addEventListener('focus', () => {
+      renderRunNodeDropdown();
+      document.getElementById('run-node-dropdown').style.display = 'block';
+    });
+    document.getElementById('run-node-dropdown').addEventListener('mousedown', (e) => e.preventDefault());
+    document.addEventListener('click', (e) => {
+      const dd = document.getElementById('run-node-dropdown');
+      if (dd && !e.target.closest('#run-playbook-target') && !e.target.closest('#run-node-dropdown')) {
+        dd.style.display = 'none';
+      }
     });
 
     document.getElementById('run-staging-refresh')?.addEventListener('click', loadRunStagingFiles);

@@ -335,6 +335,51 @@ post_tasks:
 	assert.Equal(t, "清理", edit.PostTasks[0].Name)
 }
 
+func TestPlaybookEdit_ReturnsTags(t *testing.T) {
+	router, h, db := playbookUploadRouter(t)
+	token := testTokenOp(t)
+
+	var library string
+	require.NoError(t, db.QueryRow(`SELECT value FROM settings WHERE key = 'playbook_library_path'`).Scan(&library))
+
+	pbYAML := `name: tagged
+execution_mode: fail_continue
+default:
+  tags: ["deploy"]
+tasks:
+  - name: one
+    action: command
+    args:
+      cmd: "echo 1"
+    tags: ["deploy", "quick"]
+  - name: two
+    action: command
+    args:
+      cmd: "echo 2"
+    tags: ["rollback"]
+`
+	require.NoError(t, os.WriteFile(filepath.Join(library, "tagged.yaml"), []byte(pbYAML), 0644))
+	_, _, err := h.playbooks.SyncFromDir(t.Context(), library)
+	require.NoError(t, err)
+
+	rec := multipartUploadTo(t, router, token, "/api/v1/playbooks/upload", "tagged.yaml", pbYAML)
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var up struct {
+		Data model.Playbook `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &up))
+
+	req, _ := http.NewRequest("GET", "/api/v1/playbooks/"+up.Data.ID+"/edit", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var edit createTemplateRequest
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &edit))
+	assert.ElementsMatch(t, []string{"deploy", "quick", "rollback"}, edit.Tags)
+}
+
 func TestPlaybookEdit_InvalidButFixablePlaybook(t *testing.T) {
 	router, h, db := playbookUploadRouter(t)
 	token := testTokenOp(t)
