@@ -3,9 +3,9 @@ id: "fix-ai-chat_list-nodes-answers-ansible"
 domain: "fix-ai-chat"
 slug: "list-nodes-answers-ansible"
 title: "为什么在 AI 对话中询问\"列出所有节点\"没有执行 owl node list,而是返回了 ansible 命令提示(用了 ansible-inventory)"
-status: "open"
+status: "resolved"
 created: "2026-08-07T00:16:56+08:00"
-resolved: ""
+resolved: "2026-08-07T00:31:55+08:00"
 commit: "5901172"
 branch: "feat/ui-redesign-phase0"
 platform: "darwin"
@@ -35,6 +35,7 @@ session: "ses_028230b87ffeNVb393w4GItvl0"
 - [00:30] 记录日志 (chat): 修复完成: Web AI 对话改走 agent 全链路, 真实返回节点列表
 - [00:31] 记录证据 1 项
 - [00:31] 记录终端文本快照
+- [00:31] 结案
 
 ## 日志与摘录
 
@@ -76,4 +77,8 @@ E2E(真实 DeepSeek key, 服务器 + 3个种子节点 + 已有节点):
 
 ## 修复方案
 
+Web /ai/chat 不再走裸 LLM: 配了 key+model 时用 webLLMChatModel(把 CallLLM 适配为 ai2.ChatModel)+dbNodeStoreAdapter 构建 per-session agent, 走 session.Send(路由→NodeListSystemPrompt→query_nodes 工具→WebExecutor.QueryNodes 查真实 DB), 与 CLI owl ai 一致; LLM 失败降级 rule-based agent。E2E 用真实 DeepSeek key 验证 "列出所有节点" 返回真实节点表。
+
 ## 复盘
+
+根因: Chat() 为"用户自带 key 直接聊天"引入的裸 LLM 分支绕过了 agent 工具链, LLM 看不到节点库也没工具可调, 于是对运维指令幻觉出 ansible 命令。教训: 带工具/上下文的 agent 流程不能被裸 LLM 捷径替换; 任何新 LLM 调用点都应复用 agent 框架(路由+工具+节点清单)。

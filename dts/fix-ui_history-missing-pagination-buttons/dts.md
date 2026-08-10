@@ -3,9 +3,9 @@ id: "fix-ui_history-missing-pagination-buttons"
 domain: "fix-ui"
 slug: "history-missing-pagination-buttons"
 title: "任务历史缺少翻页按键，只有显示当前页码，这是什么情况"
-status: "open"
+status: "resolved"
 created: "2026-08-07T12:40:50+08:00"
-resolved: ""
+resolved: "2026-08-07T12:43:59+08:00"
 commit: "81eb368"
 branch: "feat/ui-redesign-phase0"
 platform: "darwin"
@@ -35,6 +35,7 @@ session: "ses_0258828dbffe79RyrztZw3jdc2"
 - [12:43] 记录日志 (bash): 修复后翻页组件正常: ◀ 1 2 ▶ 可点击切页
 - [12:43] 记录证据 1 项
 - [12:43] 记录终端文本快照
+- [12:43] 结案
 
 ## 日志与摘录
 
@@ -67,4 +68,8 @@ E2E 验证(Playwright, Chrome headless, 1440x900):
 
 ## 修复方案
 
+任务历史的翻页按钮一直存在，但用的是 btn-ghost 小按钮，只有 ‹ › 单字符、透明边框、禁用态 opacity 0.35，且位于列表最底部(y=854)正下方，极易被当成无翻页；而页码文本「共 N 条 · 第 x/y 页」却在顶部筛选行，造成「只有页码没有按钮」的观感。改用与其他页面一致的 .pagination/.page-btn 组件:◀ 页码 ▶ 按钮、当前页高亮、禁用态明确，替换原 prev-btn/next-btn。
+
 ## 复盘
+
+不要用单个符号的 ghost 按钮做分页控件，符号在小字体/透明边框下不可辨识；页码信息与操作按钮要放在同一视觉区域。复用一个已存在的组件(.pagination)比另写一套更稳。

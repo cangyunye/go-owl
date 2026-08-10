@@ -1,24 +1,37 @@
 # dts 问题档案索引
 
-共 9 条 · 未解决 1 · 已解决 8 · 更新于 2026-08-07T00:16:56+08:00
+共 12 条 · 未解决 0 · 已解决 12 · 更新于 2026-08-07T13:19:54+08:00
+
+## fix-ai
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-ai_settings-query-model-no-dropdown](fix-ai_settings-query-model-no-dropdown/dts.md) | 2026-08-07 | AI设置里的查询模型，为什么查询成功，但是没有下拉框提示可选择模型 | resolved |
+
+## feat-ai-chat
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [feat-ai-chat_markdown-render-tool-results](feat-ai-chat_markdown-render-tool-results/dts.md) | 2026-08-07 | Web AI 对话里"列出所有节点"等工具结果是纯文本,能否通过 Markdown 表格渲染?并做查询/渲染层分离,补上 Groups/Labels 列。 | resolved |
+
+## fix-ui
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-ui_history-missing-pagination-buttons](fix-ui_history-missing-pagination-buttons/dts.md) | 2026-08-07 | 任务历史缺少翻页按键，只有显示当前页码，这是什么情况 | resolved |
+| [fix-ui_dark-theme-menu-text-invisible](fix-ui_dark-theme-menu-text-invisible/dts.md) | 2026-08-06 | 前端暗色主题下概览、节点列表等菜单左侧文字显示灰色看不见,要求与右侧数据表字体颜色一致改为白色 | resolved |
 
 ## fix-ai-chat
 
 | id | 日期 | 摘要 | 状态 |
 |----|------|------|------|
-| [fix-ai-chat_list-nodes-answers-ansible](fix-ai-chat_list-nodes-answers-ansible/dts.md) | 2026-08-07 | 为什么在 AI 对话中询问"列出所有节点"没有执行 owl node list,而是返回了 ansible 命令提示(用了 ansible-inventory) | **open** |
+| [fix-ai-chat_list-nodes-answers-ansible](fix-ai-chat_list-nodes-answers-ansible/dts.md) | 2026-08-07 | 为什么在 AI 对话中询问"列出所有节点"没有执行 owl node list,而是返回了 ansible 命令提示(用了 ansible-inventory) | resolved |
 
 ## fix-auth
 
 | id | 日期 | 摘要 | 状态 |
 |----|------|------|------|
 | [fix-auth_rbac-reader-group-requires-admin](fix-auth_rbac-reader-group-requires-admin/dts.md) | 2026-08-07 | RBACMiddleware 取 allowedRoles 的最大等级而非最小，导致 reader(writer/operator) 分组实际要求 admin  | resolved |
-
-## fix-ui
-
-| id | 日期 | 摘要 | 状态 |
-|----|------|------|------|
-| [fix-ui_dark-theme-menu-text-invisible](fix-ui_dark-theme-menu-text-invisible/dts.md) | 2026-08-06 | 前端暗色主题下概览、节点列表等菜单左侧文字显示灰色看不见,要求与右侧数据表字体颜色一致改为白色 | resolved |
 
 ## fix-db
 

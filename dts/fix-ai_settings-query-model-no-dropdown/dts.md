@@ -3,9 +3,9 @@ id: "fix-ai_settings-query-model-no-dropdown"
 domain: "fix-ai"
 slug: "settings-query-model-no-dropdown"
 title: "AI设置里的查询模型，为什么查询成功，但是没有下拉框提示可选择模型"
-status: "open"
+status: "resolved"
 created: "2026-08-07T13:14:38+08:00"
-resolved: ""
+resolved: "2026-08-07T13:19:54+08:00"
 commit: "ae59de5"
 branch: "feat/ui-redesign-phase0"
 platform: "darwin"
@@ -34,6 +34,7 @@ AI设置里的查询模型，为什么查询成功，但是没有下拉框提示
 - [13:19] 记录日志 (bash): 根因是 custom provider 模型字段为 input,查询成功分支只提示手动输入不渲染下拉框
 - [13:19] 记录证据 1 项
 - [13:19] 记录终端文本快照
+- [13:19] 结案
 
 ## 日志与摘录
 
@@ -62,4 +63,8 @@ AI设置里的查询模型，为什么查询成功，但是没有下拉框提示
 
 ## 修复方案
 
+settings.js 查询模型分支:当模型字段不是 <select> 时(仅 custom provider 的模型字段是 <input type=text>),原来是 toast「请手动输入」后直接 return,不渲染下拉框。改为原地把 input replaceWith 成一个 <select class="ai-model-select" data-provider=...> 并用获取到的模型填充,保持同 class/data-provider,保存/加载逻辑不变。验证:custom provider 查询成功后字段变为下拉框显示 model-alpha/beta/gamma。
+
 ## 复盘
+
+查询模型对非 custom provider 走 select 分支、对 custom provider 走 input 分支,两分支行为不一致是设计遗留;修复时保留同 class/data-provider 以免破坏 saveProviderConfig/loadAiConfig。下次遇到「查询成功但 UI 无变化」先确认该字段当前是 input 还是 select 再定位分支。
