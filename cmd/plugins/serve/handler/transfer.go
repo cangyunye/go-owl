@@ -147,6 +147,8 @@ func (h *TransferHandler) Create(c *gin.Context) {
 		results = append(results, transferResponse{NodeID: nid, Status: "queued"})
 	}
 
+	h.recordStore.MarkRunning(c.Request.Context(), transferRec.ID)
+
 	if parallel {
 		for _, it := range items {
 			go h.runTransfer(it.nodeID, req.SourcePath, req.DestPath, direction, transferRec.ID, it.taskID, it.info, opts)
@@ -158,8 +160,6 @@ func (h *TransferHandler) Create(c *gin.Context) {
 			}
 		}()
 	}
-
-	h.recordStore.MarkRunning(c.Request.Context(), transferRec.ID)
 
 	c.JSON(http.StatusAccepted, gin.H{"record_id": transferRec.ID, "transfers": results})
 }

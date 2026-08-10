@@ -129,53 +129,44 @@ func (s *TransferRecordStore) List(ctx context.Context, limit, offset int) ([]*T
 	return records, total, nil
 }
 
+// MarkRunning 仅在仍处于 pending 时置为 running,避免覆盖此前由
+// UpdateNodeResult 已推导出的终态(如全部节点解析失败直接 failed)。
 func (s *TransferRecordStore) MarkRunning(ctx context.Context, id string) error {
 	now := time.Now().UTC()
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE transfer_records SET status = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE transfer_records SET status = ?, updated_at = ? WHERE id = ? AND status = 'pending'`,
 		TransferRunning, now, id)
 	return err
 }
 
+// UpdateNodeResult 原子地累加成功/失败计数并刷新聚合状态。
+// 不能先 SELECT 再 UPDATE：并发传输(parallel)时多个 goroutine 会读到同一个旧值,
+// 各自 +1 后互相覆盖导致丢增量,聚合状态永远停在 running。这里用单条 UPDATE
+// 在同一语句内完成计数与状态推导,SQLite 串行化写操作后即为原子。
 func (s *TransferRecordStore) UpdateNodeResult(ctx context.Context, id string, success bool) error {
 	now := time.Now().UTC()
-
-	var nodeCount, successCount, failedCount int
-	err := s.db.QueryRowContext(ctx,
-		`SELECT node_count, success_count, failed_count FROM transfer_records WHERE id = ?`, id).
-		Scan(&nodeCount, &successCount, &failedCount)
-	if err != nil {
-		return err
-	}
-
+	inc := 0
 	if success {
-		successCount++
-	} else {
-		failedCount++
+		inc = 1
 	}
-
-	var status TransferRecordStatus
-	if successCount >= nodeCount {
-		status = TransferCompleted
-	} else if failedCount > 0 {
-		status = TransferPartialSuccess
-		if failedCount >= nodeCount {
-			status = TransferFailed
-		}
-	} else {
-		status = TransferRunning
-	}
-
-	var completedAt interface{}
-	if status == TransferCompleted || status == TransferFailed {
-		completedAt = now
-	} else {
-		completedAt = nil
-	}
-
-	_, err = s.db.ExecContext(ctx,
-		`UPDATE transfer_records SET success_count = ?, failed_count = ?, status = ?, updated_at = ?, completed_at = ? WHERE id = ?`,
-		successCount, failedCount, status, now, completedAt, id)
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE transfer_records SET
+			success_count = success_count + ?,
+			failed_count = failed_count + ?,
+			status = CASE
+				WHEN success_count + ? >= node_count THEN 'completed'
+				WHEN failed_count + ? >= node_count THEN 'failed'
+				WHEN failed_count + ? > 0 THEN 'partial_success'
+				ELSE 'running'
+			END,
+			completed_at = CASE
+				WHEN success_count + ? >= node_count
+				  OR failed_count + ? >= node_count THEN ?
+				ELSE completed_at
+			END,
+			updated_at = ?
+		WHERE id = ?`,
+		inc, 1-inc, inc, 1-inc, 1-inc, inc, 1-inc, now, now, id)
 	return err
 }
 
