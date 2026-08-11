@@ -10,8 +10,9 @@ import (
 	"strings"
 	"time"
 
-	ai2 "github.com/cangyunye/go-owl/internal/ai"
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -245,8 +246,8 @@ func (h *AIHandler) Test(c *gin.Context) {
 
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"error":   err.Error(),
+			"success":    false,
+			"error":      err.Error(),
 			"elapsed_ms": elapsed,
 		})
 		return
@@ -278,11 +279,11 @@ func (h *AIHandler) logAudit(userID, intent, result, prompt, reply string, durat
 		promptText = prompt
 	}
 	h.auditStore.Create(context.Background(), &store.AIAuditRecord{
-		UserID:       userID,
-		Intent:       intent,
-		Result:       result,
-		ReplyText:    reply,
-		PromptText:   promptText,
+		UserID:        userID,
+		Intent:        intent,
+		Result:        result,
+		ReplyText:     reply,
+		PromptText:    promptText,
 		LLMDurationMs: durationMs,
 	})
 }
@@ -386,6 +387,50 @@ func (h *AIHandler) Models(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"models": models})
 	}
+}
+
+// AI 会话权限：读工具任何已登录角色可用；写工具仅 operator/admin。
+// 前端按 /api/v1/ai/permissions 的 allowed_tools 过滤 UI，
+// 执行层 requireOperator() 兜底拦截写工具，双保险。
+var (
+	aiReadTools = []string{
+		"query_nodes", "query_database", "node_status",
+		"node_groups", "node_labels",
+		"list_playbooks", "playbook_info",
+		"playbook_template_list", "playbook_template_info",
+		"playbook_state_list", "playbook_state_show",
+		"validate_playbook",
+	}
+	aiWriteTools = []string{
+		"execute_command", "execute_script",
+		"generate_playbook", "transfer_file",
+		"run_playbook", "node_check",
+	}
+)
+
+// Permissions 返回当前用户在 AI 会话中的权限视图：
+// read_only 为 true 时仅允许 aiReadTools；operator/admin 全量可用。
+func (h *AIHandler) Permissions(c *gin.Context) {
+	role := c.GetString("role")
+	if role == "" {
+		role = string(model.RoleViewer)
+	}
+
+	readOnly := role != string(model.RoleOperator) && role != string(model.RoleAdmin)
+
+	allowed := append([]string{}, aiReadTools...)
+	blocked := append([]string{}, aiWriteTools...)
+	if !readOnly {
+		allowed = append(allowed, aiWriteTools...)
+		blocked = []string{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"role":          role,
+		"read_only":     readOnly,
+		"allowed_tools": allowed,
+		"blocked_tools": blocked,
+	})
 }
 
 func (h *AIHandler) Status() (int, int, int, error) {

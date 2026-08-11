@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
-	_ "modernc.org/sqlite"
+	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func aiExecutorSetup(t *testing.T) *WebExecutor {
@@ -220,6 +220,49 @@ func TestWebExecutor_ExecuteScript_NoTargetParams_NoFanout(t *testing.T) {
 	_, total, err := e.History.Query(ctx, &store.QueryOptions{OpType: "script"})
 	require.NoError(t, err)
 	assert.Equal(t, 0, total)
+}
+
+func TestWebExecutor_ExecuteCommand_ViewerDenied(t *testing.T) {
+	e := aiExecutorSetupOffline(t)
+	e.userRole = "viewer"
+	ctx := context.Background()
+
+	res, err := e.ExecuteCommand(ctx, ai2.ExecCommandParams{Nodes: []string{"n1"}, Command: "echo should_not_run_for_viewer"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "权限不足")
+	assert.Contains(t, err.Error(), "operator")
+	assert.Nil(t, res)
+}
+
+func TestWebExecutor_ExecuteScript_EditorDenied(t *testing.T) {
+	e := aiExecutorSetupOffline(t)
+	e.userRole = "editor"
+	ctx := context.Background()
+
+	res, err := e.ExecuteScript(ctx, ai2.ExecScriptParams{Nodes: []string{"n1"}, Script: "echo should_not_run_for_editor"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "权限不足")
+	assert.Nil(t, res)
+}
+
+func TestWebExecutor_TransferFile_ViewerDenied(t *testing.T) {
+	e := aiExecutorSetupOffline(t)
+	e.userRole = "viewer"
+	ctx := context.Background()
+
+	res, err := e.TransferFile(ctx, ai2.TransferFileParams{SourceFile: "/etc/hosts", DestDir: "/tmp", Nodes: []string{"n1"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "权限不足")
+	assert.Nil(t, res)
+}
+
+func TestWebExecutor_QueryNodes_ViewerAllowed(t *testing.T) {
+	e := aiExecutorSetupOffline(t)
+	e.userRole = "viewer"
+
+	res, err := e.QueryNodes(t.Context(), ai2.QueryNodesParams{})
+	require.NoError(t, err)
+	assert.Contains(t, res.Text, "Node1")
 }
 
 func aiRenderTestExecutor(t *testing.T) *WebExecutor {

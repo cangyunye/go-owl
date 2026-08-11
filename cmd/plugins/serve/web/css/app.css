@@ -3101,6 +3101,19 @@ html[data-theme="light-sky"] .ai-btn-test {
   min-width: 0;
 }
 
+/* ---- Read-only permission banner ---- */
+.ai-readonly-banner {
+  flex-shrink: 0;
+  margin: 12px 20px 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--warning-fg, var(--muted));
+  background: color-mix(in oklch, var(--warning, var(--accent)) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--warning, var(--accent)) 30%, transparent);
+  border-radius: var(--radius-md);
+}
+
 /* ---- Header ---- */
 .ai-header {
   display: flex;

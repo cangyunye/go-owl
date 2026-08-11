@@ -32,9 +32,9 @@ import (
 var webFS embed.FS
 
 type Config struct {
-	DBPath     string
-	ListenAddr string
-	DevMode    bool
+	DBPath      string
+	ListenAddr  string
+	DevMode     bool
 	AIDebugMode bool
 }
 
@@ -51,23 +51,23 @@ type Server struct {
 	Auth   *service.AuthService
 	Router *gin.Engine
 
-	authHandler      *handler.AuthHandler
-	userHandler      *handler.UserHandler
-	nodeHandler      *handler.NodeHandler
-	settingsHandler  *handler.SettingsHandler
-	execHandler      *handler.ExecHandler
-	playbookHandler  *handler.PlaybookHandler
-	stagingHandler   *handler.StagingHandler
+	authHandler         *handler.AuthHandler
+	userHandler         *handler.UserHandler
+	nodeHandler         *handler.NodeHandler
+	settingsHandler     *handler.SettingsHandler
+	execHandler         *handler.ExecHandler
+	playbookHandler     *handler.PlaybookHandler
+	stagingHandler      *handler.StagingHandler
 	transferRecordStore *store.TransferRecordStore
-	transferHandler    *handler.TransferHandler
-	auditStore         *store.AIAuditStore
-	keyManager         *handler.KeyManager
-	aiHandler          *handler.AIHandler
-	wsHub              *handler.WSHub
-	historyHandler     *handler.HistoryHandler
-	logHandler         *handler.LogHandler
-	History            *store.HistoryStore
-	terminalHandler    *handler.TerminalHandler
+	transferHandler     *handler.TransferHandler
+	auditStore          *store.AIAuditStore
+	keyManager          *handler.KeyManager
+	aiHandler           *handler.AIHandler
+	wsHub               *handler.WSHub
+	historyHandler      *handler.HistoryHandler
+	logHandler          *handler.LogHandler
+	History             *store.HistoryStore
+	terminalHandler     *handler.TerminalHandler
 }
 
 func NewServer(cfg *Config) *Server {
@@ -241,6 +241,7 @@ func (s *Server) setupRoutes() {
 		reader.GET("/transfer/records", s.transferHandler.Records)
 		reader.GET("/transfer/records/:id", s.transferHandler.RecordGet)
 		reader.GET("/ai/session-key", s.aiHandler.GetSessionKey)
+		reader.GET("/ai/permissions", s.aiHandler.Permissions)
 		reader.GET("/ai/context", s.aiHandler.GetContext)
 		reader.POST("/ai/chat", s.aiHandler.Chat)
 		reader.POST("/ai/audit", s.aiHandler.Audit)
@@ -300,7 +301,7 @@ func (s *Server) setupRoutes() {
 			admin.POST("/playbook/template", s.playbookHandler.Create)
 			admin.POST("/playbook/refresh", s.playbookHandler.Refresh)
 			admin.DELETE("/playbook/runs/:id", s.playbookHandler.RunCancel)
-		admin.DELETE("/history", s.historyHandler.Clean)
+			admin.DELETE("/history", s.historyHandler.Clean)
 		}
 	}
 

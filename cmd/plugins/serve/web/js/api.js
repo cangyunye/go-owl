@@ -262,6 +262,7 @@ export const api = {
     request('POST', '/playbook/template', data),
 
   getSessionKey: () => request('GET', '/ai/session-key'),
+  aiPermissions: () => request('GET', '/ai/permissions'),
   aiChat: (message, sessionId, encryptedApiKey, provider, model, baseUrl, apiType) => request('POST', '/ai/chat', { message, session_id: sessionId, encrypted_api_key: encryptedApiKey, provider, model, base_url: baseUrl, api_type: apiType }),
   getAiContext: () => request('GET', '/ai/context'),
   aiAudit: (record) => request('POST', '/ai/audit', record),

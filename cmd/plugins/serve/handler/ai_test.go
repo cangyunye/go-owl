@@ -16,13 +16,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/control/node"
-	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/gin-gonic/gin"
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 type mockChatModel struct {
@@ -654,9 +654,9 @@ func TestModelsEndpoint_MissingBaseURL_Returns400(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	body, _ := json.Marshal(map[string]string{
-		"session_id":         "test",
-		"encrypted_api_key":  "dGVzdA==",
-		"base_url":           "",
+		"session_id":        "test",
+		"encrypted_api_key": "dGVzdA==",
+		"base_url":          "",
 	})
 	req, _ := http.NewRequest("POST", "/api/v1/ai/models", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -671,9 +671,9 @@ func TestModelsEndpoint_MissingSessionKey_Returns400(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	body, _ := json.Marshal(map[string]string{
-		"session_id":         "",
-		"encrypted_api_key":  "",
-		"base_url":           "https://api.deepseek.com",
+		"session_id":        "",
+		"encrypted_api_key": "",
+		"base_url":          "https://api.deepseek.com",
 	})
 	req, _ := http.NewRequest("POST", "/api/v1/ai/models", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -693,10 +693,10 @@ func TestModelsEndpoint_AnthropicType_ReturnsHardcodedModels(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	body, _ := json.Marshal(map[string]string{
-		"session_id":         session.SessionID,
-		"encrypted_api_key":  "__plain__:" + plaintextB64,
-		"base_url":           "https://api.anthropic.com",
-		"api_type":           "anthropic",
+		"session_id":        session.SessionID,
+		"encrypted_api_key": "__plain__:" + plaintextB64,
+		"base_url":          "https://api.anthropic.com",
+		"api_type":          "anthropic",
 	})
 	req, _ := http.NewRequest("POST", "/api/v1/ai/models", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -720,10 +720,10 @@ func TestTestEndpoint_MissingModel_Returns400(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	body, _ := json.Marshal(map[string]string{
-		"session_id":         "test",
-		"encrypted_api_key":  "dGVzdA==",
-		"base_url":           "https://api.deepseek.com",
-		"model":              "",
+		"session_id":        "test",
+		"encrypted_api_key": "dGVzdA==",
+		"base_url":          "https://api.deepseek.com",
+		"model":             "",
 	})
 	req, _ := http.NewRequest("POST", "/api/v1/ai/test", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -738,10 +738,10 @@ func TestTestEndpoint_MissingBaseURL_Returns400(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	body, _ := json.Marshal(map[string]string{
-		"session_id":         "test",
-		"encrypted_api_key":  "dGVzdA==",
-		"base_url":           "",
-		"model":              "deepseek-v4-flash",
+		"session_id":        "test",
+		"encrypted_api_key": "dGVzdA==",
+		"base_url":          "",
+		"model":             "deepseek-v4-flash",
 	})
 	req, _ := http.NewRequest("POST", "/api/v1/ai/test", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -769,10 +769,10 @@ func TestModelsEndpoint_DeepSeek_Integration(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	body, _ := json.Marshal(map[string]string{
-		"session_id":         session.SessionID,
-		"encrypted_api_key":  "__plain__:" + plaintextB64,
-		"base_url":           "https://api.deepseek.com",
-		"api_type":           "openai",
+		"session_id":        session.SessionID,
+		"encrypted_api_key": "__plain__:" + plaintextB64,
+		"base_url":          "https://api.deepseek.com",
+		"api_type":          "openai",
 	})
 	req, _ := http.NewRequest("POST", "/api/v1/ai/models", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -812,11 +812,11 @@ func TestTestEndpoint_DeepSeek_Integration(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	body, _ := json.Marshal(map[string]string{
-		"session_id":         session.SessionID,
-		"encrypted_api_key":  "__plain__:" + plaintextB64,
-		"base_url":           "https://api.deepseek.com",
-		"api_type":           "openai",
-		"model":              "deepseek-v4-flash",
+		"session_id":        session.SessionID,
+		"encrypted_api_key": "__plain__:" + plaintextB64,
+		"base_url":          "https://api.deepseek.com",
+		"api_type":          "openai",
+		"model":             "deepseek-v4-flash",
 	})
 	req, _ := http.NewRequest("POST", "/api/v1/ai/test", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -919,4 +919,59 @@ func TestSettingsProviderConfig_CRUD(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "ai_endpoint should be in settings list")
+}
+
+func aiPermissionsRequest(t *testing.T, h *AIHandler, role string) (int, map[string]interface{}) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("role", role)
+	h.Permissions(c)
+	var m map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &m))
+	return w.Code, m
+}
+
+func TestAIPermissions_ReadOnlyRoles(t *testing.T) {
+	_, h := aiTestSetup(t)
+	for _, role := range []string{"viewer", "editor"} {
+		code, resp := aiPermissionsRequest(t, h, role)
+		assert.Equal(t, 200, code, "role %s", role)
+		assert.True(t, resp["read_only"].(bool), "role %s should be read_only", role)
+
+		blocked, ok := resp["blocked_tools"].([]interface{})
+		require.True(t, ok, "role %s missing blocked_tools", role)
+		assert.Contains(t, blocked, "execute_command", "role %s", role)
+		assert.Contains(t, blocked, "execute_script", "role %s", role)
+		assert.Contains(t, blocked, "transfer_file", "role %s", role)
+		assert.Contains(t, blocked, "run_playbook", "role %s", role)
+		assert.Contains(t, blocked, "generate_playbook", "role %s", role)
+		assert.Contains(t, blocked, "node_check", "role %s", role)
+
+		allowed, ok := resp["allowed_tools"].([]interface{})
+		require.True(t, ok, "role %s missing allowed_tools", role)
+		assert.Contains(t, allowed, "query_nodes", "role %s", role)
+		assert.Contains(t, allowed, "list_playbooks", "role %s", role)
+		assert.NotContains(t, allowed, "execute_command", "role %s", role)
+	}
+}
+
+func TestAIPermissions_OperatorAndAdmin(t *testing.T) {
+	_, h := aiTestSetup(t)
+	for _, role := range []string{"operator", "admin"} {
+		code, resp := aiPermissionsRequest(t, h, role)
+		assert.Equal(t, 200, code, "role %s", role)
+		assert.False(t, resp["read_only"].(bool), "role %s should be read-write", role)
+
+		blocked, ok := resp["blocked_tools"].([]interface{})
+		require.True(t, ok, "role %s missing blocked_tools", role)
+		assert.Empty(t, blocked, "role %s should have no blocked tools", role)
+
+		allowed, ok := resp["allowed_tools"].([]interface{})
+		require.True(t, ok, "role %s missing allowed_tools", role)
+		assert.Contains(t, allowed, "query_nodes", "role %s", role)
+		assert.Contains(t, allowed, "execute_command", "role %s", role)
+		assert.Contains(t, allowed, "run_playbook", "role %s", role)
+	}
 }

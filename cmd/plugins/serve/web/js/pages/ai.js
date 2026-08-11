@@ -1,31 +1,75 @@
 import { SlashMenu } from '../slash-menu.js';
 
-export function renderAI(render, navigate, user, api, shell) {
+export async function renderAI(render, navigate, user, api, shell) {
   let sessionId = null;
   let publicKeySpki = null;
   let chatMessages = [];
   let currentConvId = null;
   let isProcessing = false;
 
+  // ---- AI 会话权限 ----
+  // 权限权威来源为后端 /api/v1/ai/permissions；拉取失败时按本地角色回退。
+  // read_only 角色仅允许读工具；写工具（执行/传输/剧本运行/检查）仅 operator/admin。
+  const AI_READ_TOOLS = ['query_nodes','query_database','node_status','node_groups','node_labels','list_playbooks','playbook_info','playbook_template_list','playbook_template_info','playbook_state_list','playbook_state_show','validate_playbook'];
+  const AI_WRITE_TOOLS = ['execute_command','execute_script','generate_playbook','transfer_file','run_playbook','node_check'];
+  let aiPerms = null;
+
+  function canWriteRole(role) {
+    return ['admin','operator'].includes(String(role || '').toLowerCase());
+  }
+
+  async function loadPermissions() {
+    try {
+      const p = await api.aiPermissions();
+      if (p && Array.isArray(p.allowed_tools)) {
+        aiPerms = p;
+        return;
+      }
+    } catch (e) {
+      console.error('Failed to load AI permissions, fallback to local role', e);
+    }
+    const canWrite = canWriteRole(user.role);
+    aiPerms = {
+      role: user.role || 'viewer',
+      read_only: !canWrite,
+      allowed_tools: canWrite ? AI_READ_TOOLS.concat(AI_WRITE_TOOLS) : AI_READ_TOOLS.slice(),
+      blocked_tools: canWrite ? [] : AI_WRITE_TOOLS.slice(),
+    };
+  }
+
+  function toolAllowed(tool) {
+    if (!tool) return true;
+    return !!(aiPerms && (aiPerms.allowed_tools || []).indexOf(tool) !== -1);
+  }
+
+  function readOnly() {
+    return !!(aiPerms && aiPerms.read_only);
+  }
+
   // ---- Slash command catalog ----
   // 任务类:展开为提示词模板;导航/系统类:直接执行动作。
+  // tools 列表命中后端 allowed_tools 才展示；导航命令映射到对应页面所需写工具。
   const SLASH_COMMANDS = [
-    { name: 'exec', category: 'task', icon: '▶️', label: '执行命令', desc: '在指定节点上执行 shell 命令', template: '在 {nodes} 上执行命令 {command}', args: ['nodes', 'command'] },
-    { name: 'check', category: 'task', icon: '🩺', label: '节点连通性检查', desc: '检查 SSH 连通性,支持所有/分组/指定节点,并列出不可达节点', template: '检查 {nodes} 的 SSH 连通性，找出不可达节点', args: ['nodes'] },
-    { name: 'diagnose', category: 'task', icon: '🔍', label: '故障诊断', desc: '对目标节点或服务进行全栈故障诊断', template: '对 {target} 进行全栈故障诊断并给出修复建议', args: ['target'] },
-    { name: 'query', category: 'task', icon: '📊', label: '节点查询', desc: '查询符合条件的节点信息', template: '查询 {condition} 的节点信息', args: ['condition'] },
-    { name: 'playbook', category: 'task', icon: '🛠️', label: '生成剧本', desc: '生成一个 Ansible playbook', template: '生成一个 playbook 实现 {requirement}', args: ['requirement'] },
-    { name: 'transfer', category: 'task', icon: '📤', label: '传输文件', desc: '把文件传输到目标节点', template: '把 {source_file} 传输到 {nodes} 的 {dest_dir}', args: ['source_file', 'nodes', 'dest_dir'] },
-    { name: 'script', category: 'task', icon: '🧩', label: '执行脚本', desc: '在指定节点上运行脚本', template: '在 {nodes} 上运行脚本 {script}', args: ['nodes', 'script'] },
+    { name: 'exec', category: 'task', tools: ['execute_command'], icon: '▶️', label: '执行命令', desc: '在指定节点上执行 shell 命令', template: '在 {nodes} 上执行命令 {command}', args: ['nodes', 'command'] },
+    { name: 'check', category: 'task', tools: ['node_check'], icon: '🩺', label: '节点连通性检查', desc: '检查 SSH 连通性,支持所有/分组/指定节点,并列出不可达节点', template: '检查 {nodes} 的 SSH 连通性，找出不可达节点', args: ['nodes'] },
+    { name: 'diagnose', category: 'task', tools: ['node_check'], icon: '🔍', label: '故障诊断', desc: '对目标节点或服务进行全栈故障诊断', template: '对 {target} 进行全栈故障诊断并给出修复建议', args: ['target'] },
+    { name: 'query', category: 'task', tools: ['query_nodes'], icon: '📊', label: '节点查询', desc: '查询符合条件的节点信息', template: '查询 {condition} 的节点信息', args: ['condition'] },
+    { name: 'playbook', category: 'task', tools: ['generate_playbook'], icon: '🛠️', label: '生成剧本', desc: '生成一个 Ansible playbook', template: '生成一个 playbook 实现 {requirement}', args: ['requirement'] },
+    { name: 'transfer', category: 'task', tools: ['transfer_file'], icon: '📤', label: '传输文件', desc: '把文件传输到目标节点', template: '把 {source_file} 传输到 {nodes} 的 {dest_dir}', args: ['source_file', 'nodes', 'dest_dir'] },
+    { name: 'script', category: 'task', tools: ['execute_script'], icon: '🧩', label: '执行脚本', desc: '在指定节点上运行脚本', template: '在 {nodes} 上运行脚本 {script}', args: ['nodes', 'script'] },
 
     { name: 'nodes', category: 'nav', icon: '🖥️', label: '节点管理', desc: '跳转到节点管理页', action: () => navigate('/nodes') },
-    { name: 'exec-page', category: 'nav', icon: '⚡', label: '命令执行页', desc: '跳转到命令执行页', action: () => navigate('/exec') },
-    { name: 'playbooks', category: 'nav', icon: '📜', label: '剧本管理页', desc: '跳转到剧本管理页', action: () => navigate('/playbooks') },
-    { name: 'files', category: 'nav', icon: '🗂️', label: '文件传输页', desc: '跳转到文件传输页', action: () => navigate('/files') },
+    { name: 'exec-page', category: 'nav', tools: ['execute_command'], icon: '⚡', label: '命令执行页', desc: '跳转到命令执行页', action: () => navigate('/exec') },
+    { name: 'playbooks', category: 'nav', tools: ['run_playbook'], icon: '📜', label: '剧本管理页', desc: '跳转到剧本管理页', action: () => navigate('/playbooks') },
+    { name: 'files', category: 'nav', tools: ['transfer_file'], icon: '🗂️', label: '文件传输页', desc: '跳转到文件传输页', action: () => navigate('/files') },
     { name: 'new', category: 'nav', icon: '➕', label: '新建对话', desc: '开始一个新对话', action: () => newConversation() },
     { name: 'clear', category: 'nav', icon: '🗑️', label: '清空对话', desc: '删除当前对话并回到空态', action: () => clearConversation() },
     { name: 'help', category: 'nav', icon: 'ℹ️', label: '命令帮助', desc: '查看全部斜杠命令说明', action: (ta) => toggleHelp(ta) },
   ];
+
+  function visibleCommands() {
+    return SLASH_COMMANDS.filter((c) => (c.tools || []).every(toolAllowed));
+  }
 
 
   async function loadSessionKey() {
@@ -259,7 +303,7 @@ export function renderAI(render, navigate, user, api, shell) {
     if (existing) { existing.remove(); return; }
 
     const groups = {};
-    SLASH_COMMANDS.forEach((c) => { (groups[c.category] = groups[c.category] || []).push(c); });
+    visibleCommands().forEach((c) => { (groups[c.category] = groups[c.category] || []).push(c); });
     const groupTitle = { task: '任务', nav: '导航/系统' };
 
     const overlay = document.createElement('div');
@@ -299,21 +343,22 @@ export function renderAI(render, navigate, user, api, shell) {
   }
 
   function navChips(intent) {
-    const chips = {
+    const navTo = {
       query_nodes: '/nodes',
       execute_command: '/exec',
       generate_playbook: '/playbooks',
       transfer_file: '/files',
     };
-    const path = chips[intent];
-    if (path) {
+    const path = navTo[intent];
+    if (path && !readOnly()) {
       return '<div class="ai-msg-nav"><span class="ai-nav-chip" onclick="window.location=\'' + path + '\'">前往操作 →</span></div>';
     }
-    return '<div class="ai-msg-nav">' +
-      '<span class="ai-nav-chip" onclick="window.location=\'/nodes\'">🖥️ 节点管理</span>' +
-      '<span class="ai-nav-chip" onclick="window.location=\'/exec\'">▶️ 命令执行</span>' +
-      '<span class="ai-nav-chip" onclick="window.location=\'/playbooks\'">📜 剧本管理</span>' +
-      '</div>';
+    const chips = ['<span class="ai-nav-chip" onclick="window.location=\'/nodes\'">🖥️ 节点管理</span>'];
+    if (!readOnly()) {
+      chips.push('<span class="ai-nav-chip" onclick="window.location=\'/exec\'">▶️ 命令执行</span>');
+      chips.push('<span class="ai-nav-chip" onclick="window.location=\'/playbooks\'">📜 剧本管理</span>');
+    }
+    return '<div class="ai-msg-nav">' + chips.join('') + '</div>';
   }
 
   function fillPrompt(text) {
@@ -322,20 +367,26 @@ export function renderAI(render, navigate, user, api, shell) {
   }
 
   // ---- Script list (话术列表) ----
+  // tools 命中后端 allowed_tools 才展示，只读角色仅看到查询类话术。
   const SCRIPTS = [
-    { icon: '🔍', text: '查询所有在线节点的状态和资源使用情况' },
-    { icon: '⚡', text: '在 web-01 上执行 uptime 检查运行时长' },
-    { icon: '📊', text: '查看各节点 CPU 和内存使用率排行' },
-    { icon: '🛡️', text: '对线上服务进行全栈故障诊断' },
-    { icon: '📋', text: '列出当前所有未处理的告警事件' },
-    { icon: '📦', text: '下载近 24 小时所有服务的日志归档' },
-    { icon: '🔧', text: '查询 nginx 网关服务的配置详情' },
-    { icon: '📈', text: '对比昨天和今天的流量变化趋势' },
+    { icon: '🔍', text: '查询所有在线节点的状态和资源使用情况', tools: ['query_nodes'] },
+    { icon: '⚡', text: '在 web-01 上执行 uptime 检查运行时长', tools: ['execute_command'] },
+    { icon: '📊', text: '查看各节点 CPU 和内存使用率排行', tools: ['execute_command'] },
+    { icon: '🛡️', text: '对线上服务进行全栈故障诊断', tools: ['node_check'] },
+    { icon: '📋', text: '列出当前所有未处理的告警事件', tools: ['query_nodes'] },
+    { icon: '📦', text: '下载近 24 小时所有服务的日志归档', tools: ['transfer_file'] },
+    { icon: '🔧', text: '查询 nginx 网关服务的配置详情', tools: ['execute_command'] },
+    { icon: '📈', text: '对比昨天和今天的流量变化趋势', tools: ['execute_command'] },
   ];
 
   function renderScriptList(container) {
     if (!container) return;
-    container.innerHTML = SCRIPTS.map(s =>
+    const visible = SCRIPTS.filter((s) => (s.tools || []).every(toolAllowed));
+    if (visible.length === 0) {
+      container.innerHTML = '<div class="ai-conv-empty">当前角色暂无可用话术</div>';
+      return;
+    }
+    container.innerHTML = visible.map(s =>
       '<div class="ai-script-item" data-prompt="' + esc(s.text) + '">' +
       '<span class="ai-script-item-icon">' + s.icon + '</span>' +
       '<span class="ai-script-item-text">' + esc(s.text) + '</span>' +
@@ -348,16 +399,17 @@ export function renderAI(render, navigate, user, api, shell) {
 
   // ---- Capability buttons ----
   const CAPABILITIES = [
-    { icon: '🔍', label: '故障诊断', prompt: '请对线上服务进行全面故障诊断，检查是否有异常' },
-    { icon: '📊', label: '性能监控', prompt: '查看所有节点的性能监控指标，包括CPU、内存、磁盘和网络' },
-    { icon: '⚙️', label: '配置查询', prompt: '查询当前所有重要服务的配置概览' },
-    { icon: '🔔', label: '告警管理', prompt: '列出当前所有未处理的告警，按严重级别排序' },
-    { icon: '📥', label: '下载日志', prompt: '下载近 24 小时所有服务的日志归档' },
+    { icon: '🔍', label: '故障诊断', prompt: '请对线上服务进行全面故障诊断，检查是否有异常', tools: ['node_check'] },
+    { icon: '📊', label: '性能监控', prompt: '查看所有节点的性能监控指标，包括CPU、内存、磁盘和网络', tools: ['execute_command'] },
+    { icon: '⚙️', label: '配置查询', prompt: '查询当前所有重要服务的配置概览', tools: ['execute_command'] },
+    { icon: '🔔', label: '告警管理', prompt: '列出当前所有未处理的告警，按严重级别排序', tools: ['query_nodes'] },
+    { icon: '📥', label: '下载日志', prompt: '下载近 24 小时所有服务的日志归档', tools: ['transfer_file'] },
   ];
 
   function renderCapabilities(container) {
     if (!container) return;
-    container.innerHTML = CAPABILITIES.map(c =>
+    const visible = CAPABILITIES.filter((c) => (c.tools || []).every(toolAllowed));
+    container.innerHTML = visible.map(c =>
       '<button class="ai-cap-btn" data-prompt="' + esc(c.prompt) + '">' +
       '<span class="cap-icon">' + c.icon + '</span>' +
       c.label +
@@ -462,7 +514,22 @@ export function renderAI(render, navigate, user, api, shell) {
     } catch {}
   }
 
+  // ---- Suggestions (快捷短语) ----
+  const SUGGESTIONS = [
+    { icon: '📊', label: '系统概览', prompt: '查询所有在线节点的状态', tools: ['query_nodes'] },
+    { icon: '🖥️', label: '节点列表', prompt: '列出所有节点', tools: ['query_nodes'] },
+    { icon: '▶️', label: '执行命令', prompt: '在 web-01 上执行 df -h', tools: ['execute_command'] },
+    { icon: '📜', label: '剧本列表', prompt: '有哪些剧本可以运行？', tools: ['list_playbooks'] },
+    { icon: '📁', label: '传输文件', prompt: '传输 /etc/hosts 到 web-01', tools: ['transfer_file'] },
+  ];
+
+  function visibleSuggestions() {
+    return SUGGESTIONS.filter((s) => (s.tools || []).every(toolAllowed));
+  }
+
   // ---- Render ----
+  await loadPermissions();
+
   render(`
     <div class="ai-layout" data-ai-theme="moonlight">
       <!-- Left Sidebar: Conversation list -->
@@ -496,22 +563,21 @@ export function renderAI(render, navigate, user, api, shell) {
           <div class="ai-empty-icon"><svg width="28" height="28"><use href="#icon-brain"/></svg></div>
           <div class="ai-empty-title">开始对话</div>
           <div class="ai-empty-desc">
-            我是 <strong>OPS AI</strong> — 你的运维智能助手。<br>
-            可以帮你管理节点、执行命令、运行剧本和传输文件。<br>
-            输入指令或点击下方快捷短语开始。
+            ${readOnly()
+              ? '我是 <strong>OPS AI</strong> — 你的运维智能助手。<br>当前为 <strong>只读权限</strong>，可帮你查询节点、查看剧本与运行记录。<br>执行命令、脚本、传输文件、运行剧本等写操作需 <strong>operator</strong> 或 <strong>admin</strong> 角色。'
+              : '我是 <strong>OPS AI</strong> — 你的运维智能助手。<br>可以帮你管理节点、执行命令、运行剧本和传输文件。<br>输入指令或点击下方快捷短语开始。'}
           </div>
         </div>
+
+        <!-- Read-only permission banner -->
+        ${readOnly() ? '<div class="ai-readonly-banner" id="ai-readonly-banner">⚠️ 当前角色 <strong>' + esc(aiPerms.role || 'viewer') + '</strong>：AI 会话仅支持查询与查看。执行命令 / 脚本、文件传输、剧本运行、节点检查等操作需 <strong>operator</strong> 或 <strong>admin</strong> 角色。</div>' : ''}
 
         <!-- Messages -->
         <div class="ai-chat-area" id="ai-chat-messages"></div>
 
         <!-- Suggestions -->
         <div class="ai-suggestions" id="ai-suggestions">
-          <span class="ai-suggest-btn" data-prompt="查询所有在线节点的状态">📊 系统概览</span>
-          <span class="ai-suggest-btn" data-prompt="列出所有节点">🖥️ 节点列表</span>
-          <span class="ai-suggest-btn" data-prompt="在 web-01 上执行 df -h">▶️ 执行命令</span>
-          <span class="ai-suggest-btn" data-prompt="有哪些剧本可以运行？">📜 剧本列表</span>
-          <span class="ai-suggest-btn" data-prompt="传输 /etc/hosts 到 web-01">📁 传输文件</span>
+          ${visibleSuggestions().map((s) => '<span class="ai-suggest-btn" data-prompt="' + esc(s.prompt) + '">' + s.icon + ' ' + esc(s.label) + '</span>').join('')}
         </div>
 
         <!-- Toolbar -->
@@ -577,7 +643,7 @@ export function renderAI(render, navigate, user, api, shell) {
     // Send
     const input = document.getElementById('ai-chat-input');
     const sendBtn = document.getElementById('ai-send-btn');
-    const slash = new SlashMenu(input, { commands: SLASH_COMMANDS });
+    const slash = new SlashMenu(input, { commands: visibleCommands() });
 
     sendBtn.addEventListener('click', () => sendMsg(input.value));
 
