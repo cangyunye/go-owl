@@ -1,0 +1,8 @@
+E2E 结果:
+PASS 节点筛选栏:搜索框/下拉/按钮高度一致  {"search":34,"select":34,"buttons":34}
+PASS 剧本路径输入框改为拼接 input-group(无独立圆角)
+PASS 刷新按钮文字保持"刷新"(不再闪现 Refreshing/变宽)
+PASS 执行页:命令/脚本、内联/上传/URL、并行/串行 均用 seg
+PASS seg 内容宽度 107px vs 父容器 632px,不撑满整行
+PASS 文件传输:传输记录/任务详情、全部/成功/失败/进行中 均用 seg
+CONSOLE_ERRORS: []

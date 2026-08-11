@@ -239,12 +239,14 @@ export function renderFiles(render, navigate, user, api, shell) {
     if (!list) return;
     if (tabs) {
       tabs.innerHTML = `
-        <button class="status-btn ${transferRecordTab === 'list' ? 'active' : ''}" data-tab="list">传输记录</button>
-        <button class="status-btn ${transferRecordTab === 'tasks' ? 'active' : ''}" data-tab="tasks">任务详情</button>
+        <div class="seg">
+          <button class="${transferRecordTab === 'list' ? 'active' : ''}" data-tab="list">传输记录</button>
+          <button class="${transferRecordTab === 'tasks' ? 'active' : ''}" data-tab="tasks">任务详情</button>
+        </div>
       `;
-      tabs.querySelectorAll('.status-btn').forEach(btn => {
+      tabs.querySelectorAll('.seg button').forEach(btn => {
         btn.addEventListener('click', function() {
-          tabs.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+          tabs.querySelectorAll('.seg button').forEach(b => b.classList.remove('active'));
           this.classList.add('active');
           transferRecordTab = this.dataset.tab;
           renderTransfers();
@@ -633,11 +635,13 @@ export function renderFiles(render, navigate, user, api, shell) {
           <div class="card-header"><h3>传输记录</h3></div>
           <div class="card-body" style="padding:8px 14px 0">
             <div style="display:flex;gap:6px;margin-bottom:8px" id="transfer-tabs"></div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-              <button class="status-btn active" data-tf="all">全部</button>
-              <button class="status-btn" data-tf="completed">成功</button>
-              <button class="status-btn" data-tf="failed">失败</button>
-              <button class="status-btn" data-tf="running">进行中</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+              <div class="seg">
+                <button class="active" data-tf="all">全部</button>
+                <button data-tf="completed">成功</button>
+                <button data-tf="failed">失败</button>
+                <button data-tf="running">进行中</button>
+              </div>
               <span style="flex:1"></span>
               <input type="text" id="transfer-search" class="exec-input" placeholder="搜索文件名/节点..." style="width:160px">
             </div>
@@ -741,9 +745,9 @@ export function renderFiles(render, navigate, user, api, shell) {
       });
     });
 
-    document.querySelectorAll('.status-btn[data-tf]').forEach(btn => {
+    document.querySelectorAll('.seg button[data-tf]').forEach(btn => {
       btn.addEventListener('click', function() {
-        document.querySelectorAll('.status-btn[data-tf]').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.seg button[data-tf]').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         transferFilter = this.dataset.tf;
         renderTransfers();

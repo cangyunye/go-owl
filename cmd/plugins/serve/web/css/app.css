@@ -940,6 +940,28 @@ tr:hover td { background: var(--surface-2); }
 .filter-bar .input { width: 220px; }
 .filter-bar .select { width: 140px; }
 .filter-bar .spacer { flex: 1; }
+.filter-bar .input,
+.filter-bar .select,
+.filter-bar .btn {
+  height: 34px;
+}
+.filter-bar .input {
+  display: flex;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.filter-bar .input input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  line-height: 1.5;
+}
+.filter-bar .select {
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 34px;
+}
 
 .batch-bar {
   display: flex;
@@ -1899,6 +1921,37 @@ tr:hover td { background: var(--surface-2); }
   border-color: var(--accent);
 }
 
+/* Segmented control: joined pills, content-sized (no stretch) */
+.seg {
+  display: inline-flex;
+  gap: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition);
+}
+.seg button:first-child { border-left: none; }
+.seg button:hover { color: var(--fg); background: var(--surface); }
+.seg button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.seg button:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* Toggle switch */
 .toggle-row {
   display: flex;
@@ -2211,18 +2264,45 @@ tr:hover td { background: var(--surface-2); }
   font-weight: 600;
   color: var(--muted);
 }
-.path-bar input {
+.path-group {
   flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color var(--transition);
+}
+.path-group:focus-within { border-color: var(--accent); }
+.path-group input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
   padding: 8px 12px;
   color: var(--fg);
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
   font-family: var(--font);
 }
-.path-bar input:focus { border-color: var(--accent); }
+.path-group .btn {
+  border: none;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface-2);
+  height: auto;
+  align-self: stretch;
+}
+.path-group .btn:hover { background: var(--border); }
+.path-group .btn svg { flex-shrink: 0; }
+.path-group .btn.loading svg {
+  animation: owl-spin 0.9s linear infinite;
+}
+@keyframes owl-spin {
+  to { transform: rotate(360deg); }
+}
 
 /* ================================================================
    COMPONENTS — Empty / Loading / Error states

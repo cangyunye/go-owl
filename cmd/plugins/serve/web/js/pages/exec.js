@@ -540,9 +540,9 @@ export function renderExec(render, navigate, user, api, shell) {
       <div class="exec-main">
         <div class="cmd-editor">
           <div class="editor-header">
-            <div class="btn-group" style="display:flex;gap:4px">
-              <button class="btn btn-sm mode-btn active" id="tab-command">命令</button>
-              <button class="btn btn-sm mode-btn" id="tab-script">脚本</button>
+            <div class="seg">
+              <button class="active" id="tab-command">命令</button>
+              <button id="tab-script">脚本</button>
             </div>
             <span style="display:flex;gap:6px">
               <button class="btn btn-ghost btn-sm" id="clear-cmd-btn">清空</button>
@@ -554,10 +554,10 @@ free -m</textarea>
           <div id="script-options" style="display:none;padding:10px 12px;border-top:1px solid var(--border)">
             <div class="filter-row">
               <label>脚本来源</label>
-              <div class="btn-group" style="display:flex;gap:4px">
-                <button class="btn btn-sm mode-btn active" data-script-src="inline">内联</button>
-                <button class="btn btn-sm mode-btn" data-script-src="upload">上传</button>
-                <button class="btn btn-sm mode-btn" data-script-src="url">URL</button>
+              <div class="seg">
+                <button class="active" data-script-src="inline">内联</button>
+                <button data-script-src="upload">上传</button>
+                <button data-script-src="url">URL</button>
               </div>
             </div>
             <div class="filter-row" id="script-upload-row" style="display:none">
@@ -625,9 +625,9 @@ free -m</textarea>
         <div class="card">
           <div class="card-header"><h3>执行模式</h3></div>
           <div class="card-body">
-            <div class="btn-group" style="display:flex;gap:4px;margin-bottom:8px">
-              <button class="btn btn-sm mode-btn active" id="mode-parallel" data-mode="parallel">并行</button>
-              <button class="btn btn-sm mode-btn" id="mode-serial" data-mode="serial">串行</button>
+            <div class="seg" style="margin-bottom:8px">
+              <button class="active" id="mode-parallel" data-mode="parallel">并行</button>
+              <button id="mode-serial" data-mode="serial">串行</button>
             </div>
             <label class="toggle-row">
               <input type="checkbox" id="async-toggle">

@@ -675,9 +675,11 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     <div class="card" style="margin-bottom:0">
       <div class="path-bar">
         <label for="playbook-path">Library Path</label>
-        <input id="playbook-path" placeholder="/path/to/playbooks">
-        <button class="btn btn-secondary btn-sm" id="refresh-playbooks-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg> 刷新</button>
-        <button class="btn btn-secondary btn-sm" id="upload-playbook-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-upload"/></svg> 上传 Playbook</button>
+        <div class="path-group">
+          <input id="playbook-path" placeholder="/path/to/playbooks" spellcheck="false">
+          <button class="btn btn-secondary btn-sm" id="refresh-playbooks-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg> 刷新</button>
+          <button class="btn btn-secondary btn-sm" id="upload-playbook-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-upload"/></svg> 上传 Playbook</button>
+        </div>
         <input type="file" id="upload-playbook-file" accept=".yaml,.yml" style="display:none">
       </div>
     </div>
@@ -875,8 +877,9 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     document.getElementById('refresh-playbooks-btn').addEventListener('click', async () => {
       const path = document.getElementById('playbook-path').value.trim();
       if (!path) { alert('Library path is required'); return; }
-      document.getElementById('refresh-playbooks-btn').textContent = 'Refreshing...';
-      document.getElementById('refresh-playbooks-btn').disabled = true;
+      const btn = document.getElementById('refresh-playbooks-btn');
+      btn.classList.add('loading');
+      btn.disabled = true;
       try {
         const res = await api.refreshPlaybooks(path);
         if (res.errors && res.errors.length > 0) {
@@ -884,8 +887,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         }
         loadAll();
       } catch (e) { alert('Refresh failed: ' + e.message); }
-      document.getElementById('refresh-playbooks-btn').textContent = '刷新';
-      document.getElementById('refresh-playbooks-btn').disabled = false;
+      btn.classList.remove('loading');
+      btn.disabled = false;
     });
 
     document.getElementById('run-playbook-cancel').addEventListener('click', () => {
