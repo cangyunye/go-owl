@@ -28,7 +28,7 @@ func TestTransferRecordStore_ConcurrentUpdateNodeResult(t *testing.T) {
 	ctx := context.Background()
 	s := newTransferRecordStore(t)
 
-	rec, err := s.Create(ctx, "/tmp/src", "/opt/dst", "push")
+	rec, err := s.Create(ctx, "/tmp/src", "/opt/dst", "push", "")
 	require.NoError(t, err)
 
 	const nodeCount = 20
@@ -56,7 +56,7 @@ func TestTransferRecordStore_UpdateNodeResult_AllFail(t *testing.T) {
 	ctx := context.Background()
 	s := newTransferRecordStore(t)
 
-	rec, err := s.Create(ctx, "/tmp/src", "/opt/dst", "push")
+	rec, err := s.Create(ctx, "/tmp/src", "/opt/dst", "push", "")
 	require.NoError(t, err)
 	require.NoError(t, s.SetNodeCount(ctx, rec.ID, 3))
 
@@ -74,7 +74,7 @@ func TestTransferRecordStore_UpdateNodeResult_Partial(t *testing.T) {
 	ctx := context.Background()
 	s := newTransferRecordStore(t)
 
-	rec, err := s.Create(ctx, "/tmp/src", "/opt/dst", "push")
+	rec, err := s.Create(ctx, "/tmp/src", "/opt/dst", "push", "")
 	require.NoError(t, err)
 	require.NoError(t, s.SetNodeCount(ctx, rec.ID, 3))
 
@@ -90,3 +90,27 @@ func TestTransferRecordStore_UpdateNodeResult_Partial(t *testing.T) {
 }
 
 var _ = sql.ErrNoRows
+
+func TestTransferRecordStore_PayloadPersistAndRead(t *testing.T) {
+	ctx := context.Background()
+	s := newTransferRecordStore(t)
+
+	payload := `{"action":"push","node_ids":["n1","n2"],"groups":["web"],"labels":{"env":"prod"},"source_path":"/a/b.txt","dest_path":"/tmp/","direction":"push","overwrite":true,"mode":"0644","parallel":true,"resume":true}`
+	rec, err := s.Create(ctx, "/a/b.txt", "/tmp/", "push", payload)
+	require.NoError(t, err)
+
+	got, err := s.Get(ctx, rec.ID)
+	require.NoError(t, err)
+	assert.Equal(t, payload, got.Payload)
+
+	recs, total, err := s.List(ctx, 10, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, recs, 1)
+	assert.Equal(t, payload, recs[0].Payload)
+
+	require.NoError(t, s.SetPayload(ctx, rec.ID, `{"node_ids":["n3"]}`))
+	got, err = s.Get(ctx, rec.ID)
+	require.NoError(t, err)
+	assert.Equal(t, `{"node_ids":["n3"]}`, got.Payload)
+}

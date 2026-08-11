@@ -55,6 +55,8 @@ func transferTestSetup(t *testing.T) (*sql.DB, *TransferHandler, *gin.Engine, st
 	auth := r.Group("/api/v1")
 	auth.Use(ah.AuthMiddleware(), ah.RBACMiddleware(model.RoleOperator))
 	auth.POST("/transfer", th.Create)
+	auth.POST("/transfer/records/:id/rerun", th.Rerun)
+	auth.GET("/transfer/records/:id", th.RecordGet)
 
 	opToken, _ := as.GenerateToken("operator", "operator")
 
@@ -363,4 +365,89 @@ func TestSFTPTransfer_ResumeE2E(t *testing.T) {
 	data, _ := io.ReadAll(rf)
 	rf.Close()
 	assert.Equal(t, full, string(data))
+}
+
+// Rerun 应按持久化 payload 原样重放(含筛选条件/选项),并生成新记录
+func TestTransferRerun_ReplaysStoredPayload(t *testing.T) {
+	db, _, router, token := transferTestSetup(t)
+
+	// 先创建一个传输,payload 应被持久化
+	body := map[string]interface{}{
+		"action":      "push",
+		"node_ids":    []string{"node-1"},
+		"source_path": "/nonexistent/rerun-me.txt",
+		"dest_path":   "/tmp/rerun/",
+		"direction":   "push",
+		"overwrite":   true,
+		"mode":        "0644",
+		"parallel":    true,
+		"resume":      true,
+	}
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/transfer", &buf)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	require.Equal(t, 202, w.Code)
+
+	var created struct {
+		RecordID string `json:"record_id"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	require.NotEmpty(t, created.RecordID)
+
+	// 校验持久化的 payload 包含筛选条件
+	w2 := httptest.NewRecorder()
+	req2, _ := http.NewRequest("GET", "/api/v1/transfer/records/"+created.RecordID, nil)
+	req2.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w2, req2)
+	require.Equal(t, 200, w2.Code)
+	var rec struct {
+		Payload string `json:"payload"`
+	}
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &rec))
+	require.Contains(t, rec.Payload, "rerun-me.txt")
+	require.Contains(t, rec.Payload, "node-1")
+	require.Contains(t, rec.Payload, "overwrite")
+
+	// 重新执行:应返回 202 并生成新记录
+	w3 := httptest.NewRecorder()
+	req3, _ := http.NewRequest("POST", "/api/v1/transfer/records/"+created.RecordID+"/rerun", nil)
+	req3.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w3, req3)
+	require.Equal(t, 202, w3.Code)
+	var rerun struct {
+		RecordID string `json:"record_id"`
+	}
+	require.NoError(t, json.Unmarshal(w3.Body.Bytes(), &rerun))
+	require.NotEmpty(t, rerun.RecordID)
+	require.NotEqual(t, created.RecordID, rerun.RecordID)
+
+	// 新记录也应持久化 payload
+	w4 := httptest.NewRecorder()
+	req4, _ := http.NewRequest("GET", "/api/v1/transfer/records/"+rerun.RecordID, nil)
+	req4.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w4, req4)
+	require.Equal(t, 200, w4.Code)
+	var rec2 struct {
+		Payload string `json:"payload"`
+	}
+	require.NoError(t, json.Unmarshal(w4.Body.Bytes(), &rec2))
+	require.Equal(t, rec.Payload, rec2.Payload)
+
+	_ = db
+}
+
+// Rerun 对不存在的记录返回 404
+func TestTransferRerun_RecordNotFound(t *testing.T) {
+	_, _, router, token := transferTestSetup(t)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/transfer/records/does-not-exist/rerun", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w, req)
+	require.Equal(t, 404, w.Code)
 }

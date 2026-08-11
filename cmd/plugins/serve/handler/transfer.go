@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -77,6 +78,23 @@ func (h *TransferHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request body"})
 		return
 	}
+	h.submit(c, &req)
+}
+
+// saveRecordPayload 持久化完整请求(含筛选条件与传输选项),
+// 供"重新执行"时按原样重放,保证节点选择/参数与首次完全一致。
+func (h *TransferHandler) saveRecordPayload(ctx context.Context, recordID string, req *transferRequest, direction string) error {
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	if direction != "" && req.Direction == "" {
+		req.Direction = direction
+	}
+	return h.recordStore.SetPayload(ctx, recordID, string(payload))
+}
+
+func (h *TransferHandler) submit(c *gin.Context, req *transferRequest) {
 	if len(req.NodeIDs) == 0 {
 		sel := nodeselect.NewSelector(&dbNodeSource{db: h.db})
 		opts := nodeselect.SelectOptions{Groups: req.Groups, Labels: req.Labels}
@@ -105,10 +123,13 @@ func (h *TransferHandler) Create(c *gin.Context) {
 	parallel := req.Parallel == nil || *req.Parallel
 	opts := transferOptions{Overwrite: req.Overwrite, Mode: parseFileMode(req.Mode), Resume: req.Resume}
 
-	transferRec, err := h.recordStore.Create(c.Request.Context(), req.SourcePath, req.DestPath, direction)
+	transferRec, err := h.recordStore.Create(c.Request.Context(), req.SourcePath, req.DestPath, direction, "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "create record failed"})
 		return
+	}
+	if err := h.saveRecordPayload(c.Request.Context(), transferRec.ID, req, direction); err != nil {
+		log.Printf("save record payload: %v", err)
 	}
 	h.recordStore.SetNodeCount(c.Request.Context(), transferRec.ID, len(req.NodeIDs))
 
@@ -415,6 +436,33 @@ func (h *TransferHandler) RecordGet(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, rec)
+}
+
+// Rerun 按记录持久化的原始请求(含筛选条件/传输选项)重新执行传输,
+// 不重新绑定参数,保证与首次提交完全一致。
+func (h *TransferHandler) Rerun(c *gin.Context) {
+	id := c.Param("id")
+	rec, err := h.recordStore.Get(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "record not found"})
+		return
+	}
+	if rec.Payload == "" {
+		// 兼容旧记录(未持久化 payload):用记录的源/目标/方向构造最小请求
+		req := &transferRequest{
+			SourcePath: rec.FileSource,
+			DestPath:   rec.DestPath,
+			Direction:  rec.Direction,
+		}
+		h.submit(c, req)
+		return
+	}
+	var req transferRequest
+	if err := json.Unmarshal([]byte(rec.Payload), &req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "corrupt record payload"})
+		return
+	}
+	h.submit(c, &req)
 }
 
 func (h *TransferHandler) updateOpStatus(ctx context.Context, recordID string) {

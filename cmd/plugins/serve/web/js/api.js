@@ -313,6 +313,9 @@ export const api = {
   transferRecord: (id) =>
     request('GET', `/transfer/records/${encodeURIComponent(id)}`),
 
+  transferRerun: (id) =>
+    request('POST', `/transfer/records/${encodeURIComponent(id)}/rerun`),
+
   historyList: (params = {}) => {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') q.set(k, v);

@@ -291,15 +291,29 @@ export function renderFiles(render, navigate, user, api, shell) {
         const stats = r.success_count + r.failed_count > 0
           ? ` · ${r.success_count}/${r.node_count} 成功`
           : ` · ${r.node_count} 节点`;
-        return `<li class="task-item">
+        return `<li class="task-item" data-record-id="${esc(r.id)}">
           ${recordStatusIcon(r.status)}
           <div class="task-info">
             <div class="task-name">${esc(r.file_source.split('/').pop())}</div>
             <div class="task-meta">${esc(r.dest_path)}${stats} · ${r.created_at ? timeAgo(r.created_at) : ''}</div>
           </div>
           <span class="task-time">${recordStatusText(r.status)}</span>
+          <button class="btn btn-ghost btn-icon btn-sm transfer-rerun-btn" data-id="${esc(r.id)}" data-name="${esc(r.file_source.split('/').pop())}" title="重新执行" aria-label="重新执行">
+            <svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg>
+          </button>
         </li>`;
       }).join('');
+    }
+  }
+
+  async function handleRerun(id, name) {
+    if (!confirm(`确认按原参数重新执行「${name}」的传输任务？`)) return;
+    try {
+      const res = await api.transferRerun(id);
+      alert(`重新执行已提交：${res.transfers ? res.transfers.length : '未知'} 个节点`);
+      loadTransfers();
+    } catch (e) {
+      alert('重新执行失败: ' + (e.message || '未知错误'));
     }
   }
 
@@ -857,6 +871,13 @@ document.getElementById('staging-multi-btn').addEventListener('click', function(
     document.getElementById('staging-batch-btn').style.display = 'none';
     loadTransfers();
     renderStaging();
+  });
+
+  document.getElementById('transfer-list').addEventListener('click', function(e) {
+    const btn = e.target.closest('.transfer-rerun-btn');
+    if (!btn) return;
+    e.stopPropagation();
+    handleRerun(btn.dataset.id, btn.dataset.name);
   });
   });
 }

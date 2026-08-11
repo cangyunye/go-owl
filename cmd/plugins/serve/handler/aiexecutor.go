@@ -327,7 +327,7 @@ func (e *WebExecutor) TransferFile(ctx context.Context, params ai2.TransferFileP
 	}
 	opts := transferOptions{Overwrite: true, Mode: mode, Resume: true}
 
-	rec, err := e.transferRecordStore.Create(ctx, params.SourceFile, params.DestDir, "push")
+	rec, err := e.transferRecordStore.Create(ctx, params.SourceFile, params.DestDir, "push", "")
 	if err != nil {
 		return nil, fmt.Errorf("create transfer record: %w", err)
 	}

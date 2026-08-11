@@ -269,6 +269,7 @@ func (s *Server) setupRoutes() {
 		{
 			operator.POST("/exec", s.execHandler.Create)
 			operator.POST("/transfer", s.transferHandler.Create)
+			operator.POST("/transfer/records/:id/rerun", s.transferHandler.Rerun)
 			operator.GET("/transfers", s.transferHandler.List)
 			operator.POST("/staging/upload", s.stagingHandler.Upload)
 			operator.POST("/playbooks/upload", s.playbookHandler.Upload)

@@ -32,6 +32,7 @@ type TransferRecord struct {
 	CreatedAt     time.Time            `json:"created_at"`
 	UpdatedAt     time.Time            `json:"updated_at"`
 	CompletedAt   *time.Time           `json:"completed_at,omitempty"`
+	Payload       string               `json:"payload,omitempty"`
 }
 
 type TransferRecordStore struct {
@@ -65,22 +66,27 @@ func (s *TransferRecordStore) Init(ctx context.Context) error {
 	if err != nil && !isColumnExists(err) {
 		return err
 	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE transfer_records ADD COLUMN payload TEXT DEFAULT ''`)
+	if err != nil && !isColumnExists(err) {
+		return err
+	}
 	return nil
 }
 
-func (s *TransferRecordStore) Create(ctx context.Context, fileSource, destPath, direction string) (*TransferRecord, error) {
+func (s *TransferRecordStore) Create(ctx context.Context, fileSource, destPath, direction, payload string) (*TransferRecord, error) {
 	rec := &TransferRecord{
-		ID:        uuid.New().String(),
+		ID:         uuid.New().String(),
 		FileSource: fileSource,
-		DestPath:  destPath,
-		Direction: direction,
-		Status:    TransferPending,
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
+		DestPath:   destPath,
+		Direction:  direction,
+		Status:     TransferPending,
+		Payload:    payload,
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO transfer_records (id, file_source, dest_path, direction, status, node_count, success_count, failed_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?)`,
-		rec.ID, rec.FileSource, rec.DestPath, rec.Direction, rec.Status, rec.CreatedAt, rec.UpdatedAt)
+		`INSERT INTO transfer_records (id, file_source, dest_path, direction, status, node_count, success_count, failed_count, created_at, updated_at, payload) VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)`,
+		rec.ID, rec.FileSource, rec.DestPath, rec.Direction, rec.Status, rec.CreatedAt, rec.UpdatedAt, rec.Payload)
 	if err != nil {
 		return nil, err
 	}
@@ -91,8 +97,8 @@ func (s *TransferRecordStore) Get(ctx context.Context, id string) (*TransferReco
 	rec := &TransferRecord{}
 	var completedAt sql.NullTime
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, file_source, dest_path, direction, status, node_count, success_count, failed_count, created_at, updated_at, completed_at FROM transfer_records WHERE id = ?`, id).
-		Scan(&rec.ID, &rec.FileSource, &rec.DestPath, &rec.Direction, &rec.Status, &rec.NodeCount, &rec.SuccessCount, &rec.FailedCount, &rec.CreatedAt, &rec.UpdatedAt, &completedAt)
+		`SELECT id, file_source, dest_path, direction, status, node_count, success_count, failed_count, created_at, updated_at, completed_at, payload FROM transfer_records WHERE id = ?`, id).
+		Scan(&rec.ID, &rec.FileSource, &rec.DestPath, &rec.Direction, &rec.Status, &rec.NodeCount, &rec.SuccessCount, &rec.FailedCount, &rec.CreatedAt, &rec.UpdatedAt, &completedAt, &rec.Payload)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +113,7 @@ func (s *TransferRecordStore) List(ctx context.Context, limit, offset int) ([]*T
 	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM transfer_records`).Scan(&total)
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, file_source, dest_path, direction, status, node_count, success_count, failed_count, created_at, updated_at, completed_at
+		`SELECT id, file_source, dest_path, direction, status, node_count, success_count, failed_count, created_at, updated_at, completed_at, payload
 		FROM transfer_records ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -118,7 +124,7 @@ func (s *TransferRecordStore) List(ctx context.Context, limit, offset int) ([]*T
 	for rows.Next() {
 		rec := &TransferRecord{}
 		var completedAt sql.NullTime
-		if err := rows.Scan(&rec.ID, &rec.FileSource, &rec.DestPath, &rec.Direction, &rec.Status, &rec.NodeCount, &rec.SuccessCount, &rec.FailedCount, &rec.CreatedAt, &rec.UpdatedAt, &completedAt); err != nil {
+		if err := rows.Scan(&rec.ID, &rec.FileSource, &rec.DestPath, &rec.Direction, &rec.Status, &rec.NodeCount, &rec.SuccessCount, &rec.FailedCount, &rec.CreatedAt, &rec.UpdatedAt, &completedAt, &rec.Payload); err != nil {
 			continue
 		}
 		if completedAt.Valid {
@@ -171,11 +177,17 @@ func (s *TransferRecordStore) UpdateNodeResult(ctx context.Context, id string, s
 }
 
 func isColumnExists(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "duplicate column name: record_id")
+	return err != nil && (strings.Contains(err.Error(), "duplicate column name") || strings.Contains(err.Error(), "already exists"))
 }
 
 func (s *TransferRecordStore) SetNodeCount(ctx context.Context, id string, count int) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE transfer_records SET node_count = ? WHERE id = ?`, count, id)
+	return err
+}
+
+func (s *TransferRecordStore) SetPayload(ctx context.Context, id, payload string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE transfer_records SET payload = ? WHERE id = ?`, payload, id)
 	return err
 }
