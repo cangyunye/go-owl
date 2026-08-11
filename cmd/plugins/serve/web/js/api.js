@@ -76,6 +76,21 @@ export const api = {
   filters: () =>
     request('GET', '/nodes/filters'),
 
+  shortcuts: () =>
+    request('GET', '/shortcuts'),
+
+  createShortcut: (data) =>
+    request('POST', '/shortcuts', data),
+
+  updateShortcut: (id, data) =>
+    request('PUT', `/shortcuts/${encodeURIComponent(id)}`, data),
+
+  deleteShortcut: (id) =>
+    request('DELETE', `/shortcuts/${encodeURIComponent(id)}`),
+
+  reorderShortcuts: (orderedIds) =>
+    request('PUT', '/shortcuts/reorder', { ordered_ids: orderedIds }),
+
   searchNodes: (q) =>
     request('GET', `/nodes/search?q=${encodeURIComponent(q)}`),
 
