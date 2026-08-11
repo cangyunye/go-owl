@@ -1,7 +1,7 @@
 // AI conversation + API key storage
 const AIStorage = {
   DB_NAME: 'owl_ai_chat',
-  DB_VERSION: 1,
+  DB_VERSION: 2,
 
   async openDb() {
     return new Promise((resolve, reject) => {
@@ -11,6 +11,12 @@ const AIStorage = {
         if (!db.objectStoreNames.contains('conversations')) {
           const store = db.createObjectStore('conversations', { keyPath: 'id' });
           store.createIndex('created_at', 'createdAt', { unique: false });
+          store.createIndex('user_id', 'userId', { unique: false });
+        } else {
+          const store = req.transaction.objectStore('conversations');
+          if (!store.indexNames.contains('user_id')) {
+            store.createIndex('user_id', 'userId', { unique: false });
+          }
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -18,7 +24,8 @@ const AIStorage = {
     });
   },
 
-  async saveConversation(conv) {
+  async saveConversation(conv, userId) {
+    if (userId) conv.userId = userId;
     const db = await this.openDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('conversations', 'readwrite');
@@ -28,25 +35,23 @@ const AIStorage = {
     });
   },
 
-  async getConversations(limit = 50, offset = 0) {
+  async getConversations(userId, limit = 50, offset = 0) {
     const db = await this.openDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('conversations', 'readonly');
       const store = tx.objectStore('conversations');
-      const index = store.index('created_at');
-      const req = index.openCursor(null, 'prev');
+      const index = store.index('user_id');
       const results = [];
-      let skipped = 0;
+      const req = index.openCursor(userId ? IDBKeyRange.only(userId) : null);
       req.onsuccess = () => {
         const cursor = req.result;
-        if (!cursor) { resolve(results); return; }
-        if (skipped < offset) { skipped++; cursor.continue(); return; }
-        if (results.length < limit) {
-          results.push(cursor.value);
-          cursor.continue();
-        } else {
-          resolve(results);
+        if (!cursor) {
+          results.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          resolve(results.slice(offset, offset + limit));
+          return;
         }
+        results.push(cursor.value);
+        cursor.continue();
       };
       req.onerror = () => reject(req.error);
     });

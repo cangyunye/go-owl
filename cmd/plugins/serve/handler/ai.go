@@ -120,9 +120,16 @@ func (h *AIHandler) Chat(c *gin.Context) {
 		sessionID = uuid.New().String()
 	}
 
+	// 服务端会话键按用户命名空间隔离:同一 sessionID 在不同用户下是不同会话,
+	// 防止用户之间共享/续接彼此的对话上下文。
+	sessionKey := sessionID
+	if userID != "anonymous" {
+		sessionKey = userID + ":" + sessionID
+	}
+
 	h.executor.userRole = c.GetString("role")
 
-	session, exists := h.sessionMgr.GetSession(sessionID)
+	session, exists := h.sessionMgr.GetSession(sessionKey)
 	if !exists {
 		agent := h.agent
 		if req.EncryptedAPIKey != "" && req.Model != "" {
@@ -146,7 +153,7 @@ func (h *AIHandler) Chat(c *gin.Context) {
 				}
 			}
 		}
-		session = h.sessionMgr.CreateSession(sessionID, agent)
+		session = h.sessionMgr.CreateSession(sessionKey, agent)
 	}
 
 	startTime := time.Now()
@@ -154,7 +161,7 @@ func (h *AIHandler) Chat(c *gin.Context) {
 	if err != nil {
 		// The LLM-backed agent failed (invalid key, provider error, etc.).
 		// Degrade gracefully to the rule-based default agent.
-		fallbackID := "fallback:" + sessionID
+		fallbackID := "fallback:" + sessionKey
 		if fallback, ok := h.sessionMgr.GetSession(fallbackID); ok {
 			session = fallback
 		} else {

@@ -146,6 +146,32 @@ func TestMeEndpoint(t *testing.T) {
 	assert.Equal(t, model.RoleAdmin, resp.Role)
 }
 
+func TestAuthMiddleware_SetsUserID(t *testing.T) {
+	h, _, _ := newTestAuth(t)
+
+	token, _ := h.auth.GenerateToken("alice", "operator")
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/t", h.AuthMiddleware(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"user_id": c.GetString("user_id"),
+			"role":    c.GetString("role"),
+		})
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/t", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "alice", resp["user_id"])
+	assert.Equal(t, "operator", resp["role"])
+}
+
 func TestMeEndpoint_NoToken(t *testing.T) {
 	h, _, _ := newTestAuth(t)
 

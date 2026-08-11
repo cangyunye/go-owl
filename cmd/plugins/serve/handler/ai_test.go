@@ -377,6 +377,38 @@ func TestChat_WithSession(t *testing.T) {
 	assert.NotEmpty(t, r2.Reply)
 }
 
+func TestChat_SessionIsolatedPerUser(t *testing.T) {
+	_, h := aiTestSetup(t)
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		if u := c.GetHeader("X-Test-User"); u != "" {
+			c.Set("user_id", u)
+			c.Set("role", "operator")
+		}
+	})
+	router.POST("/api/v1/ai/chat", h.Chat)
+
+	chat := func(userID, sessionID string) int {
+		w := httptest.NewRecorder()
+		body, _ := json.Marshal(map[string]string{"message": "list nodes", "session_id": sessionID})
+		req, _ := http.NewRequest("POST", "/api/v1/ai/chat", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Test-User", userID)
+		router.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	require.Equal(t, 200, chat("alice", "S-1"))
+	require.Equal(t, 200, chat("bob", "S-1"))
+	assert.Equal(t, 2, len(h.sessionMgr.ListSessions()),
+		"alice and bob must get isolated sessions even with the same session id")
+
+	require.Equal(t, 200, chat("alice", "S-1"))
+	assert.Equal(t, 2, len(h.sessionMgr.ListSessions()),
+		"alice resuming S-1 must reuse her own session")
+}
+
 func TestChat_AuditRecordCreated(t *testing.T) {
 	_, h := aiTestSetup(t)
 

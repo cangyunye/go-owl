@@ -99,6 +99,7 @@ func (h *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 		c.Set("claims", claims)
 		c.Set("username", claims.Username)
 		c.Set("role", claims.Role)
+		c.Set("user_id", claims.Username)
 		c.Next()
 	}
 }

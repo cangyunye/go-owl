@@ -26,3 +26,40 @@ func TestFilesJS_UploadButton_SingleClickTriggersTransfer(t *testing.T) {
 			"transfer must not be gated behind double-click for %s", btn)
 	}
 }
+
+func TestAIStorage_ConversationsScopedPerUser(t *testing.T) {
+	src := readWebFile(t, "web/js/storage.js")
+
+	assert.True(t, strings.Contains(src, "DB_VERSION: 2"),
+		"storage.js must bump DB version to add the user_id index")
+	assert.True(t, strings.Contains(src, "createIndex('user_id'"),
+		"storage.js must create a user_id index on conversations")
+	assert.True(t, strings.Contains(src, "conv.userId = userId"),
+		"storage.js must stamp the owner on saved conversations")
+	assert.True(t, strings.Contains(src, "IDBKeyRange.only(userId)"),
+		"storage.js must filter conversations by userId")
+}
+
+func TestAIJS_PassesUserIdToStorage(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/ai.js")
+
+	assert.True(t, strings.Contains(src, "saveConversation(conv, userId)"),
+		"ai.js must persist conversations with the current user id")
+	assert.True(t, strings.Contains(src, "getConversations(userId, 50, 0)"),
+		"ai.js must load conversations filtered by the current user id")
+	assert.True(t, strings.Contains(src, "userId + '::'"),
+		"ai.js must namespace new conversation ids by user to avoid cross-user collisions")
+}
+
+func TestExecJS_SafetyConfirmations(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/exec.js")
+
+	assert.True(t, strings.Contains(src, "hasTargetFilter()"),
+		"exec.js must detect whether any target condition (nodes/groups/labels) is set")
+	assert.True(t, strings.Contains(src, "countExecTargetNodes()"),
+		"exec.js must count the actual execution target nodes before submitting")
+	assert.True(t, strings.Contains(src, "未选择任何分组/标签"),
+		"exec.js must warn when no group/label condition is set (full-scope execution)")
+	assert.True(t, strings.Contains(src, "targetCount > 50"),
+		"exec.js must confirm before executing on more than 50 nodes")
+}

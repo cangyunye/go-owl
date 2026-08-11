@@ -7,6 +7,10 @@ export async function renderAI(render, navigate, user, api, shell) {
   let currentConvId = null;
   let isProcessing = false;
 
+  // 会话归属用户命名空间：IndexedDB 历史与会话 id 均按当前登录用户隔离，
+  // 避免同一浏览器下不同用户互相看到对方的 AI 对话。
+  const userId = user?.id || user?.username || 'default';
+
   // ---- AI 会话权限 ----
   // 权限权威来源为后端 /api/v1/ai/permissions；拉取失败时按本地角色回退。
   // read_only 角色仅允许读工具；写工具（执行/传输/剧本运行/检查）仅 operator/admin。
@@ -191,12 +195,13 @@ export async function renderAI(render, navigate, user, api, shell) {
   async function saveCurrentConv() {
     if (chatMessages.length === 0) return;
     const conv = {
-      id: currentConvId || Date.now().toString(),
+      id: currentConvId || (userId + '::' + Date.now()),
+      userId: userId,
       messages: chatMessages,
       createdAt: new Date().toISOString()
     };
     if (!currentConvId) currentConvId = conv.id;
-    await window.AIStorage.saveConversation(conv).catch(() => {});
+    await window.AIStorage.saveConversation(conv, userId).catch(() => {});
     loadHistory();
   }
 
@@ -204,7 +209,7 @@ export async function renderAI(render, navigate, user, api, shell) {
     const list = document.getElementById('ai-conv-list');
     if (!list) return;
     try {
-      const convs = await window.AIStorage.getConversations(50, 0);
+      const convs = await window.AIStorage.getConversations(userId, 50, 0);
       if (convs.length === 0) {
         list.innerHTML = '<div class="ai-conv-empty">暂无历史会话</div>';
         return;
@@ -243,7 +248,7 @@ export async function renderAI(render, navigate, user, api, shell) {
     // If convs not provided, fetch fresh
     let list;
     if (!convs) {
-      try { convs = await window.AIStorage.getConversations(50, 0); } catch { return; }
+      try { convs = await window.AIStorage.getConversations(userId, 50, 0); } catch { return; }
     }
     const conv = convs.find(c => c.id === id);
     if (!conv) return;
