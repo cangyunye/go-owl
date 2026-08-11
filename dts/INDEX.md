@@ -1,18 +1,19 @@
 # dts 问题档案索引
 
-共 14 条 · 未解决 0 · 已解决 14 · 更新于 2026-08-10T23:47:23+08:00
+共 15 条 · 未解决 0 · 已解决 15 · 更新于 2026-08-11T19:29:29+08:00
+
+## fix-webui
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-webui_files-upload-btn-gray-and-double-click](fix-webui_files-upload-btn-gray-and-double-click/dts.md) | 2026-08-11 | 1.文件传输的上传按钮字体颜色为什么一直是灰色的失效感觉,2.文件传输的上传按钮还是要点两次 | resolved |
+| [fix-webui_file-transfer-stuck-in-progress](fix-webui_file-transfer-stuck-in-progress/dts.md) | 2026-08-10 | owl-serve 界面文件传输在大批节点任务时执行任务卡在"进行中"不刷新,是否因获取状态太快且一次性,刷新无反应;历史里显示所有节点已处理完成 | resolved |
 
 ## fix-tui
 
 | id | 日期 | 摘要 | 状态 |
 |----|------|------|------|
 | [fix-tui_file-upload-button-double-click](fix-tui_file-upload-button-double-click/dts.md) | 2026-08-10 | 为什么界面版本的文件传输上传按钮要双击? | resolved |
-
-## fix-webui
-
-| id | 日期 | 摘要 | 状态 |
-|----|------|------|------|
-| [fix-webui_file-transfer-stuck-in-progress](fix-webui_file-transfer-stuck-in-progress/dts.md) | 2026-08-10 | owl-serve 界面文件传输在大批节点任务时执行任务卡在"进行中"不刷新,是否因获取状态太快且一次性,刷新无反应;历史里显示所有节点已处理完成 | resolved |
 
 ## fix-ai
 

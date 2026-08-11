@@ -1034,6 +1034,7 @@ tr:hover td { background: var(--surface-2); }
   background: color-mix(in oklch, var(--accent) 10%, transparent);
 }
 .btn-primary.active {
+  color: #fff;
   border-color: color-mix(in oklch, var(--accent) 60%, #fff);
   background: var(--accent-hover, var(--primary-hover));
 }

@@ -1,0 +1,5 @@
+E2E 结果:
+PASS: 上传按钮文字为白色(非灰)  color:rgb(255,255,255) opacity:1 disabled:false
+PASS: 单击上传即提交传输任务  弹窗:'传输任务已提交:57 个节点'
+PASS: 拖放上传成功  dropped-from-browser.txt 已出现在中转站
+CONSOLE_ERRORS: []
