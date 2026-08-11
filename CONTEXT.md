@@ -42,6 +42,28 @@ parallel or sequential, with configurable timeouts and retry.
 - **Script**: executable content (could be multi-line), run inline via
   `echo '<content>' | ssh <node> bash` or uploaded then executed.
 
+## User (用户)
+
+A Web Console account that can log in and operate the console. Has a `role`
+(viewer/editor/operator/admin) governing what it may do. Owns its Shortcut
+Commands; deleting a user deletes their shortcuts.
+_Avoid_: account, operator (when meaning the user)
+
+## New-User Defaults (新用户默认指令)
+
+The initial set of Shortcut Commands granted to a User exactly once, at account
+creation. A creation-time snapshot: when the default set later changes, existing
+users are not retroactively seeded — they add new ones manually.
+_Avoid_: seeding, provisioning (when implying ongoing sync)
+
+## Shortcut Command (快捷命令)
+
+A user-owned, named command template displayed horizontally in the Execution
+Console for quick reuse. Composed of a `name` (display label) and a `command`
+(one Command). Distinct from Command: a shortcut wraps a Command with a name and
+a user owner; a Command is just the raw string.
+_Avoid_: shortcut template, saved command, 快捷指令
+
 ## i18n
 
 ## Message Catalog (消息目录)
