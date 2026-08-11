@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"strconv"
@@ -13,8 +14,9 @@ import (
 )
 
 type UserHandler struct {
-	users *store.UserStore
-	auth  *service.AuthService
+	users         *store.UserStore
+	auth          *service.AuthService
+	OnUserCreated func(ctx context.Context, userID int64)
 }
 
 func NewUserHandler(users *store.UserStore, auth *service.AuthService) *UserHandler {
@@ -120,6 +122,10 @@ func (h *UserHandler) Create(c *gin.Context) {
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "create failed"})
 		return
+	}
+
+	if h.OnUserCreated != nil {
+		h.OnUserCreated(c.Request.Context(), user.ID)
 	}
 
 	c.JSON(http.StatusCreated, toUserResponse(user))

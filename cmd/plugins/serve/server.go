@@ -68,6 +68,9 @@ type Server struct {
 	logHandler          *handler.LogHandler
 	History             *store.HistoryStore
 	terminalHandler     *handler.TerminalHandler
+	commands            *store.CommandStore
+	userCreatedHooks    []UserCreatedHook
+	shortcutHandler     *handler.ShortcutHandler
 }
 
 func NewServer(cfg *Config) *Server {
@@ -104,6 +107,13 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	if err := s.Tasks.Init(context.Background()); err != nil {
 		return nil, fmt.Errorf("init task store: %w", err)
 	}
+	s.commands = store.NewCommandStore(db)
+	if err := s.commands.Init(context.Background()); err != nil {
+		return nil, fmt.Errorf("init command store: %w", err)
+	}
+	s.RegisterUserCreatedHook(func(ctx context.Context, userID int64) error {
+		return seedDefaultShortcuts(ctx, s.commands, userID)
+	})
 	if err := initNodes(context.Background(), db); err != nil {
 		return nil, fmt.Errorf("init nodes: %w", err)
 	}
@@ -123,13 +133,15 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	s.Auth = service.NewAuthService(secret)
 
 	// Admin user
-	creds, err := ensureAdmin(context.Background(), s.Users, s.Auth)
+	creds, err := ensureAdmin(context.Background(), s.Users, s.Auth, s.runUserCreatedHooks)
 	if err != nil {
 		return nil, fmt.Errorf("ensure admin: %w", err)
 	}
 
 	s.authHandler = handler.NewAuthHandler(s.Users, s.Auth)
 	s.userHandler = handler.NewUserHandler(s.Users, s.Auth)
+	s.userHandler.OnUserCreated = s.runUserCreatedHooks
+	s.shortcutHandler = handler.NewShortcutHandler(s.commands, s.Users)
 	s.nodeHandler = handler.NewNodeHandler(db)
 	s.settingsHandler = handler.NewSettingsHandler(db)
 	s.wsHub = handler.NewWSHub()
@@ -224,6 +236,13 @@ func (s *Server) setupRoutes() {
 	auth := s.Router.Group("/api/v1", s.authHandler.AuthMiddleware())
 	{
 		auth.GET("/me", s.authHandler.Me)
+
+		// 快捷命令:所有已登录用户可管理自己的(个人数据)
+		auth.GET("/shortcuts", s.shortcutHandler.List)
+		auth.POST("/shortcuts", s.shortcutHandler.Create)
+		auth.PUT("/shortcuts/reorder", s.shortcutHandler.Reorder)
+		auth.PUT("/shortcuts/:id", s.shortcutHandler.Update)
+		auth.DELETE("/shortcuts/:id", s.shortcutHandler.Delete)
 
 		reader := auth.Group("", s.authHandler.RBACMiddleware(model.RoleViewer, model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{
@@ -389,7 +408,7 @@ func getOrCreateJWTSecret(ctx context.Context, db *sql.DB, dbPath string) (strin
 	return secret, nil
 }
 
-func ensureAdmin(ctx context.Context, users *store.UserStore, auth *service.AuthService) (*AdminCredentials, error) {
+func ensureAdmin(ctx context.Context, users *store.UserStore, auth *service.AuthService, onCreated func(context.Context, int64)) (*AdminCredentials, error) {
 	count, err := users.Count(ctx)
 	if err != nil {
 		return nil, err
@@ -404,14 +423,19 @@ func ensureAdmin(ctx context.Context, users *store.UserStore, auth *service.Auth
 		return nil, err
 	}
 
-	err = users.Create(ctx, &model.User{
+	user := &model.User{
 		Username:     "admin",
 		PasswordHash: hash,
 		Role:         model.RoleAdmin,
 		DisplayName:  "Administrator",
-	})
+	}
+	err = users.Create(ctx, user)
 	if err != nil {
 		return nil, err
+	}
+
+	if onCreated != nil {
+		onCreated(ctx, user.ID)
 	}
 
 	return &AdminCredentials{Username: "admin", Password: password}, nil
