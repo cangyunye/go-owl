@@ -157,13 +157,12 @@ a:hover { color: var(--accent-hover, var(--primary-hover)); }
   border-radius: 50%;
   background: var(--accent);
   display: grid; place-items: center;
-  font: 700 16px/1 var(--font-display);
   color: #fff;
   margin-bottom: 4px;
   flex-shrink: 0;
   transition: all var(--transition);
 }
-.nav-rail .logo span { transform: translateY(-1px); }
+.nav-rail .logo svg { width: 22px; height: 22px; display: block; }
 .nav-rail.expanded .logo { align-self: flex-start; margin-left: 12px; }
 .nav-toggle {
   width: 32px; height: 32px;
@@ -2463,7 +2462,8 @@ tr:hover td { background: var(--surface-2); }
     padding: 0; gap: 0;
   }
   .nav-item svg { width: 18px; height: 18px; }
-  .nav-rail .logo { width: 28px; height: 28px; font-size: 13px; }
+  .nav-rail .logo { width: 28px; height: 28px; }
+  .nav-rail .logo svg { width: 17px; height: 17px; }
   .nav-rail.expanded .logo,
   .nav-rail.expanded .nav-avatar,
   .nav-rail.expanded .nav-toggle { align-self: auto; margin-left: 0; }

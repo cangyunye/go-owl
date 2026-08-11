@@ -28,7 +28,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed web/index.html web/css/* web/js/* web/js/pages/*
+//go:embed web/index.html web/favicon.svg web/css/* web/js/* web/js/pages/*
 var webFS embed.FS
 
 type Config struct {

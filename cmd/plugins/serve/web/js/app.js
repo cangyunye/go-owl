@@ -97,7 +97,7 @@ function renderShell() {
   app.innerHTML = `
 <div class="app-shell">
   <nav class="nav-rail" aria-label="主导航">
-    <div class="logo" aria-label="OWL Console 首页"><span>O</span></div>
+    <div class="logo" aria-label="OWL Console 首页"><svg aria-hidden="true"><use href="#icon-owl"/></svg></div>
     <button class="nav-toggle" id="navToggle" title="展开导航" aria-label="展开导航">
       <svg width="16" height="16" aria-hidden="true"><use href="#icon-chevron-right"/></svg>
     </button>
