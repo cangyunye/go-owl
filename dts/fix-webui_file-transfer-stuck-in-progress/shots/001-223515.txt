@@ -1,0 +1,19 @@
+$ curl http://localhost:8099/api/v1/transfer/records/ec72d72b-8e64-4f2f-afe1-89909deffd0d
+{
+    "id": "ec72d72b-8e64-4f2f-afe1-89909deffd0d",
+    "file_source": "/tmp/nonexistent-e2e.tar",
+    "dest_path": "/tmp/",
+    "direction": "push",
+    "status": "failed",
+    "node_count": 20,
+    "success_count": 0,
+    "failed_count": 20,
+    "completed_at": "2026-08-10T14:34:07.571692Z"
+}
+
+t+1s: status=partial_success success=0 failed=2  node_count=20
+t+9s: status=failed            success=0 failed=20 node_count=20
+
+单测(race):
+ok  github.com/cangyunye/go-owl/cmd/plugins/serve/store  (TestTransferRecordStore -count=5 -race)
+ok  github.com/cangyunye/go-owl/cmd/plugins/serve/...

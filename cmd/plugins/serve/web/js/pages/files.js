@@ -575,6 +575,25 @@ export function renderFiles(render, navigate, user, api, shell) {
     }
   }
 
+  async function handleStagingUploads(files) {
+    if (!files || !files.length) return;
+    let success = 0;
+    let fail = 0;
+    for (const file of files) {
+      try {
+        await api.staging.upload(file);
+        success++;
+      } catch (e) {
+        fail++;
+        console.error('上传失败', file.name, e);
+      }
+    }
+    if (files.length > 1) {
+      alert(`上传完成：${success} 成功, ${fail} 失败`);
+    }
+    loadStaging();
+  }
+
   function startAutoRefresh() {
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(loadTransfers, 5000);
@@ -641,7 +660,13 @@ export function renderFiles(render, navigate, user, api, shell) {
             <h3 style="flex:1">文件中转站</h3>
             <input type="text" id="staging-search" class="exec-input" placeholder="搜索文件名..." style="width:140px;font-size:12px">
           </div>
-          <div class="card-body">
+          <div class="card-body staging-dropzone" id="staging-dropzone">
+            <div class="staging-drop-overlay" id="staging-drop-overlay">
+              <div style="text-align:center">
+                <div style="font-size:14px;font-weight:600;margin-bottom:4px">松开以上传文件</div>
+                <div style="font-size:12px;color:var(--muted)">支持拖放多个文件到中转站</div>
+              </div>
+            </div>
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
               <div style="flex:1;min-width:0">
                 <div id="staging-disk-bar" style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"></div>
@@ -686,14 +711,13 @@ export function renderFiles(render, navigate, user, api, shell) {
     document.getElementById('upload-btn').addEventListener('click', () => {
       activeDirection = 'push';
       updatePathLabels();
+      handleTransfer('push');
     });
     document.getElementById('download-btn').addEventListener('click', () => {
       activeDirection = 'pull';
       updatePathLabels();
+      handleTransfer('pull');
     });
-
-    document.getElementById('upload-btn').addEventListener('dblclick', () => handleTransfer('push'));
-    document.getElementById('download-btn').addEventListener('dblclick', () => handleTransfer('pull'));
 
     document.getElementById('panel-node-search').addEventListener('input', function() {
       searchQuery = this.value.trim();
@@ -766,6 +790,30 @@ export function renderFiles(render, navigate, user, api, shell) {
     document.getElementById('staging-search').addEventListener('input', function() {
       stagingSearch = this.value.trim();
       renderStaging();
+    });
+
+    const dropzone = document.getElementById('staging-dropzone');
+    let dragDepth = 0;
+    dropzone.addEventListener('dragenter', e => {
+      if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+      e.preventDefault();
+      dragDepth++;
+      dropzone.classList.add('staging-drag-over');
+    });
+    dropzone.addEventListener('dragover', e => {
+      if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+      e.preventDefault();
+    });
+    dropzone.addEventListener('dragleave', e => {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) dropzone.classList.remove('staging-drag-over');
+    });
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dragDepth = 0;
+      dropzone.classList.remove('staging-drag-over');
+      const files = e.dataTransfer ? Array.from(e.dataTransfer.files || []) : [];
+      if (files.length) handleStagingUploads(files);
     });
 
 document.getElementById('staging-multi-btn').addEventListener('click', function() {

@@ -909,6 +909,27 @@ tr:hover td { background: var(--surface-2); }
   font-size: 12px;
 }
 
+/* Staging Drop Zone */
+.staging-dropzone { position: relative; }
+.staging-dropzone.staging-drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.staging-drop-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  z-index: 10;
+  pointer-events: none;
+}
+.staging-dropzone.staging-drag-over .staging-drop-overlay { display: flex; }
+
+
 /* Filter Bar */
 .filter-bar {
   display: flex;

@@ -1,0 +1,4 @@
+upload-btn found: 1 text: 上传
+DIALOGS: ['传输任务已提交：57 个节点']
+JS ERRORS: []
+PASS: 单击即触发传输,无需双击

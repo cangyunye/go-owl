@@ -11,5 +11,6 @@ build/*
 .trae/
 admin.txt
 frontend-design/
+.reasonix-tmp/
 owl-serve
 
