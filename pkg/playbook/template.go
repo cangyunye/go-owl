@@ -50,6 +50,7 @@ type TemplateDefaultConfig struct {
 
 type TemplatePlaybook struct {
 	Name          string                 `yaml:"name"`
+	Category      string                 `yaml:"category,omitempty"`
 	Description   string                 `yaml:"description,omitempty"`
 	Version       string                 `yaml:"version,omitempty"`
 	Hosts         []string               `yaml:"hosts"`

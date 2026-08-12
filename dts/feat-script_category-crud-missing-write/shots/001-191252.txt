@@ -1,0 +1,13 @@
+Playwright E2E (server :8087, create/edit wizard):
+- category input visible: True
+- summary has category ui-cat: True   (创建向导第5步确认页)
+- table row shows category ui-cat: True (创建后列表分类列显示 tag)
+- edit prefilled category: 'ui-cat'     (编辑弹窗回填分类)
+- table row shows updated category ui-cat2: True (编辑改分类保存后列表更新)
+
+API E2E:
+POST /api/v1/playbook/template {"name":"deploy-app","category":"web",...} -> 201, data.category="web"
+YAML on disk: name: deploy-app / category: web / ...
+GET /api/v1/playbooks/d396ae89cffe/edit -> category: 'web'
+POST edit with category:"deploy" -> same id d396ae89cffe, category: 'deploy'
+playbooks list after sync -> deploy-app -> 'deploy'  (refresh 后分类保留)

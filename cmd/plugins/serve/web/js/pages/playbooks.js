@@ -131,6 +131,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     cpState = { step: 1, totalSteps: 5, vars: [], tasks: [] };
     cpTaskCounter = 0;
     document.getElementById('cp-name').value = '';
+    document.getElementById('cp-category').value = '';
     document.getElementById('cp-desc').value = '';
     document.getElementById('cp-version').value = '1.0';
     document.getElementById('cp-mode').value = '';
@@ -154,6 +155,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       document.getElementById('cp-title').textContent = '✏️ 编辑剧本: ' + (data.name || id);
       resetCpModal();
       document.getElementById('cp-name').value = data.name || '';
+      document.getElementById('cp-category').value = data.category || '';
       document.getElementById('cp-desc').value = data.description || '';
       document.getElementById('cp-version').value = data.version || '1.0';
       document.getElementById('cp-mode').value = data.execution_mode || '';
@@ -346,6 +348,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   function buildCpSummary() {
     const name = document.getElementById('cp-name').value.trim();
     const desc = document.getElementById('cp-desc').value.trim();
+    const category = document.getElementById('cp-category').value.trim();
     const version = document.getElementById('cp-version').value.trim() || '1.0';
     const mode = document.getElementById('cp-mode').value || 'fail_continue';
 
@@ -354,6 +357,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         <div><strong>名称:</strong> ${esc(name)}</div>
         <div><strong>版本:</strong> ${esc(version)}</div>
         <div><strong>描述:</strong> ${esc(desc || '-')}</div>
+        <div><strong>分类:</strong> ${esc(category || '-')}</div>
         <div><strong>执行模式:</strong> ${mode}</div>
       </div>
     `;
@@ -361,6 +365,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
     // Build preview YAML (for visual only — the actual YAML is generated server-side)
     const lines = [`name: ${name}`];
+    if (category) lines.push(`category: ${category}`);
     if (desc) lines.push(`description: ${desc}`);
     lines.push(`version: "${version}"`, 'hosts: []');
     if (mode) lines.push(`execution_mode: ${mode}`);
@@ -834,6 +839,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
           <!-- Step 1: Basic Info -->
           <div class="create-pb-page" data-page="1">
             <div class="form-row"><label>剧本名称 *</label><input id="cp-name" placeholder="my-playbook" style="width:100%"></div>
+            <div class="form-row"><label>分类</label><input id="cp-category" placeholder="web, db, cache…（可选）" style="width:100%"></div>
             <div class="form-row"><label>描述</label><textarea id="cp-desc" placeholder="可选" style="width:100%;resize:vertical" rows="2"></textarea></div>
             <div class="form-row"><label>版本</label><input id="cp-version" value="1.0" style="width:100%"></div>
           </div>
@@ -1077,6 +1083,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       const data = {
         name,
         description: document.getElementById('cp-desc').value.trim() || undefined,
+        category: document.getElementById('cp-category').value.trim() || undefined,
         version: document.getElementById('cp-version').value.trim() || '1.0',
         execution_mode: document.getElementById('cp-mode').value || undefined,
         vars: Object.keys(vars).length > 0 ? vars : undefined,

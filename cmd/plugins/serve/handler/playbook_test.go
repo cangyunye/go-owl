@@ -487,6 +487,86 @@ func TestPlaybookDownload_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
+func TestPlaybookCreate_WithCategory(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`)
+	require.NoError(t, err)
+	library := t.TempDir()
+	_, err = db.Exec(`INSERT INTO settings (key, value) VALUES ('playbook_library_path', ?)`, library)
+	require.NoError(t, err)
+
+	ps := store.NewPlaybookStore(db)
+	require.NoError(t, ps.Init(t.Context()))
+	rs := store.NewPlaybookRunStore(db)
+	require.NoError(t, rs.Init(t.Context()))
+	ns := store.NewNodeStore(db)
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(t.Context()))
+	h := NewPlaybookHandler(db, ps, rs, ns, nil)
+	h.History = hs
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body := `{"name":"cat-pb","category":"web","tasks":[{"name":"main","action":"command","args":{"cmd":"echo hi"}}]}`
+	c.Request = httptest.NewRequest("POST", "/api/v1/playbook/template", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h.Create(c)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	data, err := os.ReadFile(filepath.Join(library, "cat-pb.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "category: web", "created playbook YAML must embed the category")
+
+	all, _ := h.playbooks.List(t.Context())
+	var created *model.Playbook
+	for _, pb := range all {
+		if pb.Name == "cat-pb" {
+			created = pb
+			break
+		}
+	}
+	require.NotNil(t, created)
+	assert.Equal(t, "web", created.Category, "created playbook record must carry the category")
+}
+
+func TestPlaybookEdit_ReturnsCategory(t *testing.T) {
+	router, h, db := playbookUploadRouter(t)
+	token := testTokenOp(t)
+
+	var library string
+	require.NoError(t, db.QueryRow(`SELECT value FROM settings WHERE key = 'playbook_library_path'`).Scan(&library))
+
+	pbYAML := `name: edit-cat
+category: web
+execution_mode: fail_continue
+tasks:
+  - name: one
+    action: command
+    args:
+      cmd: "echo 1"
+`
+	require.NoError(t, os.WriteFile(filepath.Join(library, "edit-cat.yaml"), []byte(pbYAML), 0644))
+	_, _, err := h.playbooks.SyncFromDir(t.Context(), library)
+	require.NoError(t, err)
+
+	all, _ := h.playbooks.List(t.Context())
+	require.Len(t, all, 1)
+	pbID := all[0].ID
+
+	req, _ := http.NewRequest("GET", "/api/v1/playbooks/"+pbID+"/edit", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var edit createTemplateRequest
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &edit))
+	assert.Equal(t, "web", edit.Category, "edit response must carry the playbook category")
+}
+
 func TestPlaybookRun_PreflightWarnings(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)

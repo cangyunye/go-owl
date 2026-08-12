@@ -43,6 +43,7 @@ type refreshRequest struct {
 type createTemplateRequest struct {
 	Name            string                 `json:"name"`
 	Description     string                 `json:"description,omitempty"`
+	Category        string                 `json:"category,omitempty"`
 	Version         string                 `json:"version,omitempty"`
 	ExecutionMode   string                 `json:"execution_mode,omitempty"`
 	Vars            map[string]interface{} `json:"vars,omitempty"`
@@ -105,6 +106,7 @@ func (h *PlaybookHandler) Create(c *gin.Context) {
 	tpl := &pb.TemplatePlaybook{
 		Name:          req.Name,
 		Description:   req.Description,
+		Category:      req.Category,
 		Version:       req.Version,
 		Hosts:         []string{},
 		ExecutionMode: req.ExecutionMode,
@@ -246,6 +248,8 @@ func (h *PlaybookHandler) Edit(c *gin.Context) {
 		return
 	}
 
+	category := pb.Category
+
 	parser := pbexec.NewParser()
 	parsed, err := parser.ParseFromFile(pb.FilePath)
 	if err != nil {
@@ -261,16 +265,17 @@ func (h *PlaybookHandler) Edit(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "parse playbook failed: " + err.Error()})
 			return
 		}
-		h.renderEditResponse(c, &raw)
+		h.renderEditResponse(c, &raw, category)
 		return
 	}
-	h.renderEditResponse(c, parsed.Raw)
+	h.renderEditResponse(c, parsed.Raw, category)
 }
 
-func (h *PlaybookHandler) renderEditResponse(c *gin.Context, raw *pbexec.Playbook) {
+func (h *PlaybookHandler) renderEditResponse(c *gin.Context, raw *pbexec.Playbook, category string) {
 	resp := createTemplateRequest{
 		Name:          raw.Name,
 		Description:   raw.Description,
+		Category:      category,
 		Version:       raw.Version,
 		ExecutionMode: raw.ExecutionMode,
 		Vars:          raw.Vars,

@@ -263,6 +263,48 @@ tasks:
 	}
 }
 
+func TestPlaybookStore_SyncFromDir_CategoryFromYAML(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, filepath.Join(dir, "tagged.yaml"), `name: tagged
+category: web
+tasks:
+  - name: task1
+    command: echo hi
+`)
+
+	s := openPlaybookTestDB(t)
+	ctx := context.Background()
+
+	_, errs, err := s.SyncFromDir(ctx, dir)
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+
+	list, _ := s.List(ctx)
+	require.Len(t, list, 1)
+	assert.Equal(t, "web", list[0].Category, "root-level playbook must keep YAML-embedded category")
+}
+
+func TestPlaybookStore_SyncFromDir_SubdirCategoryWins(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, filepath.Join(dir, "web", "deploy.yaml"), `name: deploy
+category: db
+tasks:
+  - name: task1
+    command: echo hi
+`)
+
+	s := openPlaybookTestDB(t)
+	ctx := context.Background()
+
+	_, errs, err := s.SyncFromDir(ctx, dir)
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+
+	list, _ := s.List(ctx)
+	require.Len(t, list, 1)
+	assert.Equal(t, "web", list[0].Category, "path-derived category must win over YAML for subdir playbooks")
+}
+
 func TestPlaybookStore_SyncFromDir_FilePathReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "notadir.yaml")

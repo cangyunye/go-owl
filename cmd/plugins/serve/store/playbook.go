@@ -197,6 +197,7 @@ func (s *PlaybookStore) Delete(ctx context.Context, id string) error {
 type playbookYAMLMeta struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
+	Category    string `yaml:"category"`
 	Tasks       []any  `yaml:"tasks"`
 }
 
@@ -228,6 +229,7 @@ func readPlaybookMeta(path string) *model.Playbook {
 		ID:          playbookID(path),
 		Name:        name,
 		Description: meta.Description,
+		Category:    meta.Category,
 		FilePath:    path,
 		TasksCount:  len(meta.Tasks),
 		TaskNames:   taskNames,
