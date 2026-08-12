@@ -224,7 +224,7 @@ func resolveStagingScriptRef(dir, ref string) (string, string, error) {
 		return "", "", fmt.Errorf("invalid script_ref %q: only [A-Za-z0-9._-] allowed", ref)
 	}
 	path := filepath.Join(dir, ref)
-	fi, err := os.Stat(path)
+	fi, err := os.Lstat(path)
 	if err != nil {
 		return "", "", fmt.Errorf("script not found in staging: %s", ref)
 	}

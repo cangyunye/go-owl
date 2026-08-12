@@ -784,6 +784,48 @@ func TestExecCreate_ScriptMode_StagingRef(t *testing.T) {
 	assert.Equal(t, "script: deploy.sh", resp.Tasks[0].Command)
 }
 
+func TestExecCreate_ScriptMode_StagingRef_Blacklist(t *testing.T) {
+	_, h := execTestSetup(t)
+	router := execRBACRouter(t, h)
+
+	_, err := h.db.Exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "danger.sh"), []byte("#!/bin/bash\nrm -rf /\n"), 0644))
+	_, err = h.db.Exec(`INSERT INTO settings (key, value) VALUES ('staging_dir', ?)`, dir)
+	require.NoError(t, err)
+
+	w := execPOST(t, router, map[string]interface{}{
+		"mode":       "script",
+		"node_ids":   []string{"test-node"},
+		"script_ref": "danger.sh",
+	})
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	assert.True(t, strings.Contains(w.Body.String(), "危险命令已被黑名单拦截"))
+}
+
+func TestResolveStagingScriptRef_RejectDotPaths(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.sh"), []byte("echo hi"), 0644))
+
+	_, _, err := resolveStagingScriptRef(dir, ".")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid script_ref")
+	_, _, err = resolveStagingScriptRef(dir, "..")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid script_ref")
+}
+
+func TestResolveStagingScriptRef_RejectEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty.sh"), nil, 0644))
+
+	_, _, err := resolveStagingScriptRef(dir, "empty.sh")
+	assert.ErrorContains(t, err, "is empty")
+}
+
 func TestExecCreate_ScriptMode_StagingRef_MissingFile(t *testing.T) {
 	_, h := execTestSetup(t)
 	router := execRBACRouter(t, h)

@@ -367,7 +367,7 @@ export function renderExec(render, navigate, user, api, shell) {
   async function loadStagingScripts() {
     try {
       const res = await api.staging.files();
-      stagingScripts = (res.data || []).filter(f => /\.(sh|bash|py|pl|rb|go|expect|exp)$/i.test(f.name));
+      stagingScripts = (res.data || []).filter(f => /^[A-Za-z0-9._-]+\.(sh|bash|py|pl|rb|go|expect|exp)$/i.test(f.name));
     } catch { stagingScripts = []; }
     renderStagingScriptSelect();
   }
