@@ -472,18 +472,32 @@ export function renderExec(render, navigate, user, api, shell) {
         e.dataTransfer.effectAllowed = 'move';
       });
       chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
-      chip.addEventListener('dragover', e => e.preventDefault());
-      chip.addEventListener('drop', e => {
-        e.preventDefault();
-        const from = parseInt(e.dataTransfer.getData('text/plain'));
-        if (from === idx) return;
-        const arr = shortcuts.slice();
-        const [moved] = arr.splice(from, 1);
-        arr.splice(idx, 0, moved);
-        shortcuts = arr;
-        renderShortcutChips();
-        api.reorderShortcuts(shortcuts.map(x => x.id)).catch(() => loadShortcuts());
-      });
+    });
+
+    c.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+    c.addEventListener('drop', e => {
+      e.preventDefault();
+      const from = parseInt(e.dataTransfer.getData('text/plain'));
+      if (!Number.isInteger(from) || from < 0 || from >= shortcuts.length) return;
+      const chips = c.querySelectorAll('.shortcut-chip');
+      let to = shortcuts.length;
+      for (let i = 0; i < chips.length; i++) {
+        const rect = chips[i].getBoundingClientRect();
+        if (e.clientX < rect.left + rect.width / 2) {
+          to = i;
+          break;
+        }
+      }
+      if (to === from || to === from + 1) return;
+      const arr = shortcuts.slice();
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to > from ? to - 1 : to, 0, moved);
+      shortcuts = arr;
+      renderShortcutChips();
+      api.reorderShortcuts(shortcuts.map(x => x.id)).catch(() => loadShortcuts());
     });
   }
 
