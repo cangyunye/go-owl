@@ -758,3 +758,47 @@ func TestExecCreate_ScriptMode_MissingContent(t *testing.T) {
 	assert.Equal(t, 400, w.Code)
 	assert.True(t, strings.Contains(w.Body.String(), "script_content, script_url or script_ref is required"))
 }
+
+func TestExecCreate_ScriptMode_StagingRef(t *testing.T) {
+	_, h := execTestSetup(t)
+	router := execRBACRouter(t, h)
+
+	_, err := h.db.Exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "deploy.sh"), []byte("#!/bin/bash\necho from-staging"), 0644))
+	_, err = h.db.Exec(`INSERT INTO settings (key, value) VALUES ('staging_dir', ?)`, dir)
+	require.NoError(t, err)
+
+	w := execPOST(t, router, map[string]interface{}{
+		"mode":       "script",
+		"node_ids":   []string{"test-node"},
+		"script_ref": "deploy.sh",
+	})
+
+	require.Equal(t, 202, w.Code)
+	var resp execResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.Len(t, resp.Tasks, 1)
+	assert.Equal(t, "script: deploy.sh", resp.Tasks[0].Command)
+}
+
+func TestExecCreate_ScriptMode_StagingRef_MissingFile(t *testing.T) {
+	_, h := execTestSetup(t)
+	router := execRBACRouter(t, h)
+
+	_, err := h.db.Exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
+	require.NoError(t, err)
+
+	_, err = h.db.Exec(`INSERT INTO settings (key, value) VALUES ('staging_dir', ?)`, t.TempDir())
+	require.NoError(t, err)
+
+	w := execPOST(t, router, map[string]interface{}{
+		"mode":       "script",
+		"node_ids":   []string{"test-node"},
+		"script_ref": "ghost.sh",
+	})
+	assert.Equal(t, 400, w.Code)
+	assert.True(t, strings.Contains(w.Body.String(), "script not found in staging"))
+}
