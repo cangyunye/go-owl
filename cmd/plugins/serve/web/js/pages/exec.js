@@ -510,7 +510,6 @@ export function renderExec(render, navigate, user, api, shell) {
   function buildExecPayload() {
     const nodeIDs = Array.from(selectedNodes);
     const cmd = document.getElementById('cmd-input').value.trim();
-    const formatEl = document.getElementById('format-select');
     const isAsync = document.getElementById('async-toggle')?.checked || false;
     const isSerial = document.getElementById('mode-serial')?.checked || false;
     const isDebug = document.getElementById('debug-toggle')?.checked || false;
@@ -548,7 +547,6 @@ export function renderExec(render, navigate, user, api, shell) {
     }
 
     if (isAsync) payload.async = true;
-    if (formatEl && formatEl.value !== 'simple') payload.format = formatEl.value;
     if (isSerial) payload.serial = true;
     if (isDebug) payload.debug = true;
     if (retryCount !== 3) payload.retry = retryCount;
@@ -779,14 +777,6 @@ free -m</textarea>
         <div class="card">
           <div class="card-header"><h3>输出选项</h3></div>
           <div class="card-body">
-            <div class="filter-row">
-              <label>格式</label>
-              <select id="format-select" class="exec-select">
-                <option value="simple">simple</option>
-                <option value="detail">detail</option>
-                <option value="json">json</option>
-              </select>
-            </div>
             <label class="toggle-row" style="margin-top:6px">
               <input type="checkbox" id="debug-toggle">
               <span class="toggle-track"><span class="toggle-thumb"></span></span>
