@@ -22,11 +22,15 @@ func NewShortcutHandler(commands *store.CommandStore, users *store.UserStore) *S
 
 // currentUserID 从 JWT claims.username 反查当前用户 ID。
 func (h *ShortcutHandler) currentUserID(c *gin.Context) (int64, bool) {
-	claims, ok := c.Get("claims")
+	claimsVal, ok := c.Get("claims")
 	if !ok {
 		return 0, false
 	}
-	user, err := h.users.FindByUsername(c.Request.Context(), claims.(*service.Claims).Username)
+	claims, ok := claimsVal.(*service.Claims)
+	if !ok {
+		return 0, false
+	}
+	user, err := h.users.FindByUsername(c.Request.Context(), claims.Username)
 	if err != nil {
 		return 0, false
 	}

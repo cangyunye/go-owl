@@ -473,32 +473,6 @@ export function renderExec(render, navigate, user, api, shell) {
       });
       chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
     });
-
-    c.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-    });
-    c.addEventListener('drop', e => {
-      e.preventDefault();
-      const from = parseInt(e.dataTransfer.getData('text/plain'));
-      if (!Number.isInteger(from) || from < 0 || from >= shortcuts.length) return;
-      const chips = c.querySelectorAll('.shortcut-chip');
-      let to = shortcuts.length;
-      for (let i = 0; i < chips.length; i++) {
-        const rect = chips[i].getBoundingClientRect();
-        if (e.clientX < rect.left + rect.width / 2) {
-          to = i;
-          break;
-        }
-      }
-      if (to === from || to === from + 1) return;
-      const arr = shortcuts.slice();
-      const [moved] = arr.splice(from, 1);
-      arr.splice(to > from ? to - 1 : to, 0, moved);
-      shortcuts = arr;
-      renderShortcutChips();
-      api.reorderShortcuts(shortcuts.map(x => x.id)).catch(() => loadShortcuts());
-    });
   }
 
   function openShortcutModal(s) {
@@ -956,6 +930,33 @@ free -m</textarea>
     });
     document.getElementById('shortcut-name').addEventListener('keydown', e => { if (e.key === 'Enter') saveShortcut(); });
     document.getElementById('shortcut-command').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveShortcut(); });
+
+    const shortcutChips = document.getElementById('shortcut-chips');
+    shortcutChips.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+    shortcutChips.addEventListener('drop', e => {
+      e.preventDefault();
+      const from = parseInt(e.dataTransfer.getData('text/plain'));
+      if (!Number.isInteger(from) || from < 0 || from >= shortcuts.length) return;
+      const chips = shortcutChips.querySelectorAll('.shortcut-chip');
+      let to = shortcuts.length;
+      for (let i = 0; i < chips.length; i++) {
+        const rect = chips[i].getBoundingClientRect();
+        if (e.clientX < rect.left + rect.width / 2) {
+          to = i;
+          break;
+        }
+      }
+      if (to === from || to === from + 1) return;
+      const arr = shortcuts.slice();
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to > from ? to - 1 : to, 0, moved);
+      shortcuts = arr;
+      renderShortcutChips();
+      api.reorderShortcuts(shortcuts.map(x => x.id)).catch(() => loadShortcuts());
+    });
 
     const noRetryCb = document.getElementById('no-retry');
     if (noRetryCb) {

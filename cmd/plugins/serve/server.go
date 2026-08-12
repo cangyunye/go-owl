@@ -532,6 +532,10 @@ func (s *Server) ResetAdmin() (*AdminCredentials, error) {
 	}
 	defer db.Close()
 
+	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); err != nil {
+		return nil, fmt.Errorf("set pragma: %w", err)
+	}
+
 	users := store.NewUserStore(db)
 	if err := users.Init(context.Background()); err != nil {
 		return nil, fmt.Errorf("init user store: %w", err)
