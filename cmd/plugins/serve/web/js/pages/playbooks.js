@@ -589,8 +589,52 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     }
   }
 
+  // 事件委托绑定在容器上(仅一次):run 更新触发的 loadRuns() 会整体重绘表格,
+  // 若监听器绑在按钮上,重绘发生在 mousedown→mouseup 之间时按钮被替换,
+  // 浏览器不再派发 click 事件 → 表现为「View 没有响应」。
+  // 改用 pointerdown 记录意图 + pointerup 执行(pointer 事件不受重绘影响)。
+  function delegateRunActions(list) {
+    if (list.dataset.runDelegated) return;
+    list.dataset.runDelegated = '1';
+
+    list.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const btn = e.target.closest('.view-run-btn, .cancel-run-btn');
+      list._pendingRunAction = btn
+        ? { type: btn.classList.contains('cancel-run-btn') ? 'cancel' : 'view', id: btn.dataset.id }
+        : null;
+    });
+
+    list.addEventListener('pointerup', (e) => {
+      if (e.button !== 0) return;
+      const pending = list._pendingRunAction;
+      list._pendingRunAction = null;
+      if (!pending) return;
+      if (!e.target.closest('.view-run-btn, .cancel-run-btn')) return;
+
+      if (pending.type === 'cancel') {
+        if (!confirm('Cancel this playbook run?')) return;
+        api.cancelPlaybookRun(pending.id)
+          .then(loadRuns)
+          .catch(err => alert('Cancel failed: ' + err.message));
+        return;
+      }
+
+      const id = pending.id;
+      history.replaceState(null, '', '/playbooks?run=' + encodeURIComponent(id));
+      api.playbookRun(id).then(run => {
+        const detail = document.getElementById('run-detail');
+        if (detail) detail.dataset.runId = id;
+        showRunDetail(run);
+        const card = document.getElementById('run-detail-card');
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }).catch(err => showRunDetailError(err));
+    });
+  }
+
   function renderRuns(runs) {
     const list = document.getElementById('playbook-runs-list');
+    if (!list) return;
     if (!runs || runs.length === 0) {
       list.innerHTML = '<tr><td colspan="5" class="empty-state">No runs yet</td></tr>';
     } else {
@@ -605,24 +649,14 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         </td>
       </tr>`).join('');
     }
+    delegateRunActions(list);
+  }
 
-    document.querySelectorAll('.view-run-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        history.replaceState(null, '', '/playbooks?run=' + encodeURIComponent(id));
-        api.playbookRun(id).then(run => showRunDetail(run)).catch(() => {});
-      });
-    });
-
-    document.querySelectorAll('.cancel-run-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('Cancel this playbook run?')) return;
-        try {
-          await api.cancelPlaybookRun(btn.dataset.id);
-          loadRuns();
-        } catch (e) { alert('Cancel failed: ' + e.message); }
-      });
-    });
+  function showRunDetailError(err) {
+    const detail = document.getElementById('run-detail');
+    if (!detail) return;
+    detail.innerHTML = `<p class="empty-state" style="color:var(--danger)">加载运行详情失败: ${esc(err && err.message ? err.message : err)}</p>`;
+    console.error('load playbook run detail failed:', err);
   }
 
   function showRunDetail(run) {
@@ -664,7 +698,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     ws = api.connectWebSocket(msg => {
       if (msg.type === 'playbook_run_update') {
         loadRuns();
-        if (msg.data && msg.data.id === document.getElementById('run-detail').dataset.runId) {
+        const detail = document.getElementById('run-detail');
+        if (msg.data && detail && msg.data.id === detail.dataset.runId) {
           showRunDetail(msg.data);
         }
       }
@@ -1076,7 +1111,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       api.playbookRun(runId).then(run => {
         document.getElementById('run-detail').dataset.runId = runId;
         showRunDetail(run);
-      }).catch(() => {});
+      }).catch(err => showRunDetailError(err));
     }
   });
 }

@@ -51,6 +51,21 @@ func TestAIJS_PassesUserIdToStorage(t *testing.T) {
 		"ai.js must namespace new conversation ids by user to avoid cross-user collisions")
 }
 
+func TestPlaybooksJS_RunViewClickSurvivesRerender(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/playbooks.js")
+
+	assert.True(t, strings.Contains(src, "addEventListener('pointerdown'"),
+		"playbooks.js must capture run action intent on pointerdown")
+	assert.True(t, strings.Contains(src, "addEventListener('pointerup'"),
+		"playbooks.js must execute run actions on pointerup (click can be swallowed by re-render)")
+	assert.True(t, strings.Contains(src, "closest('.view-run-btn, .cancel-run-btn')"),
+		"playbooks.js must resolve run action buttons via closest() under delegation")
+	assert.True(t, strings.Contains(src, "runDelegated"),
+		"playbooks.js must bind the delegated listener only once")
+	assert.True(t, strings.Contains(src, "showRunDetailError"),
+		"playbooks.js must surface run-detail load failures instead of swallowing them")
+}
+
 func TestExecJS_SafetyConfirmations(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 
