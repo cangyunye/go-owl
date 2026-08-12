@@ -401,6 +401,28 @@ export function renderExec(render, navigate, user, api, shell) {
     });
   }
 
+  function hasTargetFilter() {
+    return selectedNodes.size > 0 || activeGroups.length > 0 || labelInputs.length > 0;
+  }
+
+  // 统计实际执行目标节点数：已手动选中则直接计数；
+  // 否则按执行 payload 的分组/标签语义(与 /exec 服务端 SelectIntersect 一致，
+  // 不含状态/搜索框等仅影响预览列表的筛选)查询总数。
+  async function countExecTargetNodes() {
+    if (selectedNodes.size > 0) return selectedNodes.size;
+    const opts = {};
+    if (activeGroups.length) opts.group = activeGroups.join(',');
+    const labels = labelInputs.map(l => {
+      const i = l.indexOf('=');
+      return i > 0 ? l.slice(0, i) + ':' + l.slice(i + 1) : null;
+    }).filter(Boolean);
+    if (labels.length) opts.label = labels;
+    opts.page = 1;
+    opts.page_size = 1;
+    const res = await api.nodes(opts);
+    return res.meta?.total || 0;
+  }
+
   function buildExecPayload() {
     const nodeIDs = Array.from(selectedNodes);
     const cmd = document.getElementById('cmd-input').value.trim();
@@ -474,6 +496,19 @@ export function renderExec(render, navigate, user, api, shell) {
 
     const nodeIDs = Array.from(selectedNodes);
     const isAsync = document.getElementById('async-toggle')?.checked || false;
+
+    let targetCount = 0;
+    try {
+      targetCount = await countExecTargetNodes();
+    } catch {}
+
+    const noFilter = !hasTargetFilter();
+    if (noFilter) {
+      const scope = targetCount > 0 ? `全部 ${targetCount} 个节点` : '全部匹配节点';
+      if (!confirm(`⚠️ 未选择任何分组/标签，也未手动选择节点。\n命令将执行到【${scope}】！\n\n确定要继续吗？`)) return;
+    } else if (targetCount > 50) {
+      if (!confirm(`⚠️ 本次操作将同时在 ${targetCount} 个节点上执行，超过 50 个。\n\n确定要继续吗？`)) return;
+    }
 
     clearTerminal();
     const dl = document.getElementById('exec-log-downloads');
