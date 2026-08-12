@@ -108,3 +108,20 @@ func TestExecJS_ShortcutBar(t *testing.T) {
 	assert.True(t, strings.Contains(src, "openShortcutModal"), "exec.js must support add/edit modal")
 	assert.True(t, strings.Contains(src, "deleteShortcut"), "exec.js must support delete")
 }
+
+func TestExecJS_StagingScriptSource(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/exec.js")
+
+	assert.True(t, strings.Contains(src, `data-script-src="staging"`),
+		"exec.js must expose a staging script source")
+	assert.True(t, strings.Contains(src, "script-staging-row"),
+		"exec.js must render the staging picker row")
+	assert.True(t, strings.Contains(src, "script-staging-select"),
+		"exec.js must render a staging file select")
+	assert.True(t, strings.Contains(src, "api.staging.files()"),
+		"exec.js must load staging files via the staging api")
+	assert.True(t, strings.Contains(src, "payload.script_ref"),
+		"exec.js must send script_ref in the exec payload")
+	assert.True(t, strings.Contains(src, "script-save-staging"),
+		"exec.js must offer saving an uploaded script to staging")
+}

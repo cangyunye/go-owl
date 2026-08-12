@@ -21,6 +21,8 @@ export function renderExec(render, navigate, user, api, shell) {
   let scriptFileName = '';
   let commandContent = 'uptime\ndf -h\nfree -m';
   let scriptInlineContent = '';
+  let scriptStagingName = '';
+  let stagingScripts = [];
   let shortcuts = [];
   let editingShortcutID = null;
 
@@ -308,6 +310,7 @@ export function renderExec(render, navigate, user, api, shell) {
     if (scriptInputMode === 'inline') return document.getElementById('cmd-input').value.trim() !== '';
     if (scriptInputMode === 'upload') return scriptFileContent !== '';
     if (scriptInputMode === 'url') return (document.getElementById('script-url')?.value.trim() || '') !== '';
+    if (scriptInputMode === 'staging') return scriptStagingName !== '';
     return false;
   }
 
@@ -348,6 +351,8 @@ export function renderExec(render, navigate, user, api, shell) {
     scriptInputMode = src;
     document.getElementById('script-upload-row').style.display = src === 'upload' ? '' : 'none';
     document.getElementById('script-url-row').style.display = src === 'url' ? '' : 'none';
+    document.getElementById('script-staging-row').style.display = src === 'staging' ? '' : 'none';
+    if (src === 'staging') loadStagingScripts();
     if (src === 'inline') {
       ta.value = scriptInlineContent;
       ta.placeholder = '#!/bin/bash\n# 输入脚本内容\necho "hello world"';
@@ -356,6 +361,24 @@ export function renderExec(render, navigate, user, api, shell) {
       ta.value = '';
       ta.style.display = 'none';
     }
+    updateExecButton();
+  }
+
+  async function loadStagingScripts() {
+    try {
+      const res = await api.staging.files();
+      stagingScripts = (res.data || []).filter(f => /\.(sh|bash|py|pl|rb|go|expect|exp)$/i.test(f.name));
+    } catch { stagingScripts = []; }
+    renderStagingScriptSelect();
+  }
+
+  function renderStagingScriptSelect() {
+    const sel = document.getElementById('script-staging-select');
+    if (!sel) return;
+    sel.innerHTML = stagingScripts.length === 0
+      ? '<option value="">中转站无脚本文件，可先在「上传」中勾选保存</option>'
+      : stagingScripts.map(f => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join('');
+    scriptStagingName = sel.value;
     updateExecButton();
   }
 
@@ -533,6 +556,8 @@ export function renderExec(render, navigate, user, api, shell) {
         payload.script_content = scriptFileContent;
       } else if (scriptInputMode === 'url') {
         payload.script_url = document.getElementById('script-url')?.value.trim() || '';
+      } else if (scriptInputMode === 'staging') {
+        payload.script_ref = scriptStagingName;
       }
       const sName = document.getElementById('script-name')?.value.trim();
       if (sName) payload.script_name = sName;
@@ -680,15 +705,25 @@ free -m</textarea>
                 <button class="active" data-script-src="inline">内联</button>
                 <button data-script-src="upload">上传</button>
                 <button data-script-src="url">URL</button>
+                <button data-script-src="staging">中转站</button>
               </div>
             </div>
             <div class="filter-row" id="script-upload-row" style="display:none">
               <label>脚本文件</label>
-              <input type="file" id="script-file" class="exec-input">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <input type="file" id="script-file" class="exec-input">
+                <label class="force-check">
+                  <input type="checkbox" id="script-save-staging"> 保存到中转站
+                </label>
+              </div>
             </div>
             <div class="filter-row" id="script-url-row" style="display:none">
               <label>脚本 URL</label>
               <input type="text" id="script-url" class="exec-input" placeholder="https://example.com/deploy.sh">
+            </div>
+            <div class="filter-row" id="script-staging-row" style="display:none">
+              <label>中转站脚本</label>
+              <select id="script-staging-select" class="exec-input"></select>
             </div>
             <div class="param-group" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
               <div class="param-row">
@@ -895,6 +930,9 @@ free -m</textarea>
       const file = this.files && this.files[0];
       if (!file) { scriptFileContent = ''; scriptFileName = ''; updateExecButton(); return; }
       scriptFileName = file.name;
+      if (document.getElementById('script-save-staging')?.checked) {
+        api.staging.upload(file).then(() => loadStagingScripts()).catch(() => {});
+      }
       const reader = new FileReader();
       reader.onload = () => { scriptFileContent = reader.result; updateExecButton(); };
       reader.readAsText(file);
@@ -902,6 +940,12 @@ free -m</textarea>
 
     const scriptUrlEl = document.getElementById('script-url');
     if (scriptUrlEl) scriptUrlEl.addEventListener('input', updateExecButton);
+
+    const stagingSelect = document.getElementById('script-staging-select');
+    if (stagingSelect) stagingSelect.addEventListener('change', function() {
+      scriptStagingName = this.value;
+      updateExecButton();
+    });
 
     document.getElementById('panel-node-search').addEventListener('input', function() {
       searchQuery = this.value.trim();
