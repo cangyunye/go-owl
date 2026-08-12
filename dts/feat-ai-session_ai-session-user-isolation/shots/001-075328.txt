@@ -1,0 +1,16 @@
+== admin chat ==
+reply: 我不确定您要做什么 | session: e2e-shared-session-001
+== alice chat ==
+reply: 我不确定您要做什么 | session: e2e-shared-session-001
+== audit log ==
+alice|conversation|我不确定您要做什么|2026-08-12T07:53:03+08:00
+admin|conversation|我不确定您要做什么|2026-08-12T07:53:02+08:00
+anonymous|conversation|...|2026-08-07T13:08:55+08:00   (旧记录, 修复前)
+
+== storage.js served ==
+DB_VERSION: 2 / createIndex('user_id') / conv.userId = userId / IDBKeyRange.only(userId) / getConversations(userId, limit)
+== ai.js served ==
+userId + '::' / saveConversation(conv, userId) / getConversations(userId, 50, 0)
+
+单元测试: TestChat_SessionIsolatedPerUser (同一 sessionID 两用户 → ListSessions()==2) PASS
+go test ./... (serve 模块) PASS; go vet PASS

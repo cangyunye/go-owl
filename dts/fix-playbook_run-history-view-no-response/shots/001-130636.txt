@@ -1,0 +1,20 @@
+== RACE 复现(修复前)==
+detail after race: 选择一个运行记录查看详情
+url: http://localhost:8081/playbooks
+URL updated (handler ran): False   ← click 被吞
+
+== RACE 修复后 ==
+detail after race: Playbook: deploy_app | Status: completed | Nodes: localhost-real | ...
+url: http://localhost:8081/playbooks?run=14af4c70-...   ← 正常
+URL updated (handler ran): True
+
+== 活跃执行中连点 6 次 View ==
+detail: Playbook: slow-pb | Status: running | Nodes: localhost-real | No results
+url: http://localhost:8081/playbooks?run=04b4e46a-...   ← 正常
+console 错误: 无
+
+== 事件分析 ==
+race 期间触发: pointerdown/mousedown/pointerup/mouseup
+race 期间不触发: click  ← Chromium 对 mousedown 目标被移除时不派发 click
+
+go test ./... (serve) PASS; go vet PASS

@@ -1,6 +1,13 @@
 # dts 问题档案索引
 
-共 22 条 · 未解决 0 · 已解决 22 · 更新于 2026-08-12T19:19:30+08:00
+共 23 条 · 未解决 0 · 已解决 23 · 更新于 2026-08-12T19:55:28+08:00
+
+## fix-exec
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-exec_exec-detail-same-as-simple](fix-exec_exec-detail-same-as-simple/dts.md) | 2026-08-12 | 命令执行菜单 /exec 里 detail 和 simple 的 JSON 输出为什么一样? | resolved |
+| [fix-exec_exec-no-output-no-history](fix-exec_exec-no-output-no-history/dts.md) | 2026-08-06 | 运维中心命令执行可执行但看不到输出:后端不广播task_output,exec页不渲染WS流,历史详情不展示stdout/stderr | resolved |
 
 ## feat-script
 
@@ -83,12 +90,6 @@
 | id | 日期 | 摘要 | 状态 |
 |----|------|------|------|
 | [fix-db_no-such-table-settings-execution-mode](fix-db_no-such-table-settings-execution-mode/dts.md) | 2026-08-06 | 1. owl-serve 报错 no such table settings;2. 前端节点执行命令提示 has no column named executi | resolved |
-
-## fix-exec
-
-| id | 日期 | 摘要 | 状态 |
-|----|------|------|------|
-| [fix-exec_exec-no-output-no-history](fix-exec_exec-no-output-no-history/dts.md) | 2026-08-06 | 运维中心命令执行可执行但看不到输出:后端不广播task_output,exec页不渲染WS流,历史详情不展示stdout/stderr | resolved |
 
 ## fix-dashboard
 

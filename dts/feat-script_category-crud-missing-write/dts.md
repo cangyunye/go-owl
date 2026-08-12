@@ -3,9 +3,9 @@ id: "feat-script_category-crud-missing-write"
 domain: "feat-script"
 slug: "category-crud-missing-write"
 title: "owl剧本管理菜单缺少对\"分类\"编辑和添加时的写入"
-status: "open"
+status: "resolved"
 created: "2026-08-12T18:57:17+08:00"
-resolved: ""
+resolved: "2026-08-12T19:13:26+08:00"
 commit: "98004dc"
 branch: "main"
 platform: "darwin"
@@ -35,6 +35,7 @@ owl剧本管理菜单缺少对"分类"编辑和添加时的写入
 - [19:12] 记录终端文本快照
 - [19:12] 新增 E2E 用例: 剧本管理:创建/编辑剧本时写入分类
 - [19:12] 记录日志 (chat): 根因与方案:分类此前仅由路径派生,向导写文件始终为空
+- [19:13] 结案
 
 ## 日志与摘录
 
@@ -64,4 +65,14 @@ owl剧本管理菜单缺少对"分类"编辑和添加时的写入
 
 ## 修复方案
 
+分类内嵌进 playbook YAML 顶层 category 字段,打通"新建/编辑向导→后端→库→前端"全链路:
+1. pkg/playbook/template.go:TemplatePlaybook 增加 Category(yaml:category,omitempty),RenderTemplateYAML 渲染进文件
+2. store/playbook.go:playbookYAMLMeta/readPlaybookMeta 从 YAML 读 category,刷新(SyncFromDir)时根目录文件保留内嵌分类、子目录文件仍以路径派生优先(原行为不变)
+3. handler/playbook.go:createTemplateRequest 增加 Category;Create 写入 tpl.Category;Edit 返回 DB 行 pb.Category(覆盖路径派生分类的剧本),宽松解析分支同样回填
+4. 前端 playbooks.js:wizard Step1 增加"分类"输入框,resetCpModal 清空,编辑回填 data.category,保存携带 category,确认页与 YAML 预览展示
+
+验证:go test(store/handler/pkg-playbook 全绿)+ Playwright 浏览器 E2E(创建 ui-cat → 列表显示;编辑回填 ui-cat → 改为 ui-cat2 → 列表更新);API E2E:分类写入 YAML 与 DB,playbook/refresh 后分类保留,编辑改分类 ID 保持稳定。
+
 ## 复盘
+
+根因:分类此前唯一来源是 SyncFromDir 按库目录子目录路径派生,而向导始终把文件写进库根目录且无分类字段,导致永远为空。踩坑点:曾考虑"按分类写子目录",但文件路径变更会改变 playbook ID(hash of abs path),破坏运行历史引用与 Sync 去重,风险大;最终选"分类内嵌 YAML"这一低风险方案。下次遇到同类"元数据写不进"的问题,先确认该元数据的既有来源与 ID 稳定性约束,再选落点(路径 vs 文件内嵌)。
