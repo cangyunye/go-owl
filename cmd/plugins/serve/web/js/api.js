@@ -187,8 +187,14 @@ export const api = {
   updateSetting: (key, value) =>
     request('PUT', `/settings/${encodeURIComponent(key)}`, { value }),
 
-  users: () =>
-    request('GET', '/users'),
+  users: (params = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null || v === '') continue;
+      q.set(k, v);
+    }
+    return request('GET', `/users?${q}`);
+  },
 
   createUser: (data) =>
     request('POST', '/users', data),

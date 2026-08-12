@@ -1,6 +1,37 @@
 # dts 问题档案索引
 
-共 16 条 · 未解决 0 · 已解决 16 · 更新于 2026-08-11T20:00:15+08:00
+共 22 条 · 未解决 0 · 已解决 22 · 更新于 2026-08-12T19:19:30+08:00
+
+## feat-script
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [feat-script_category-crud-missing-write](feat-script_category-crud-missing-write/dts.md) | 2026-08-12 | owl剧本管理菜单缺少对"分类"编辑和添加时的写入 | resolved |
+
+## feat-user
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [feat-user_role-select-pagination-search](feat-user_role-select-pagination-search/dts.md) | 2026-08-12 | 用户管理界面的用户角色没有加载，添加的用户很多，无法下拉，需要增加翻页和搜索 | resolved |
+
+## fix-playbook
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-playbook_run-history-view-no-response](fix-playbook_run-history-view-no-response/dts.md) | 2026-08-12 | 剧本管理菜单的执行后的运行历史里的 view 按钮没有响应 | resolved |
+
+## feat-playbook
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [feat-playbook_cli-playbook-logging](feat-playbook_cli-playbook-logging/dts.md) | 2026-08-12 | owl 的 cli 端的 playbook 执行是否有日志记录? | resolved |
+| [feat-playbook_playbook-run-realtime-output](feat-playbook_playbook-run-realtime-output/dts.md) | 2026-08-12 | 剧本管理菜单里的执行内容,能否设计个和命令执行一样的实时打印输出? | resolved |
+
+## feat-ai-session
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [feat-ai-session_ai-session-user-isolation](feat-ai-session_ai-session-user-isolation/dts.md) | 2026-08-12 | AI助手会话与前端对话历史未按用户区分:前端 IndexedDB 固定库名所有用户共享,服务端 Session 内存键仅 sessionID 不绑 user_i | resolved |
 
 ## fix-webui
 

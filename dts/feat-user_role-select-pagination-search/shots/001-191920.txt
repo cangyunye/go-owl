@@ -1,0 +1,14 @@
+[E2E 后端] GET /api/v1/users (36 用户)
+默认:  data:20  meta:{page:1, page_size:20, total:36}
+page=2:  total:36 count:16 first:user20 last:user35
+q=user3:  total:7 → user3, user30..35
+page_size=5 page=3: count:5
+q=zzzz:  total:0
+
+[E2E 浏览器 /users]
+PAGE_INFO: 共 36 条 · 第 1/2 页   ROWS_PAGE1: 20
+SEARCH_INFO: 共 7 条 · 第 1/1 页
+PAGE2_INFO: 共 36 条 · 第 2/2 页  PAGE2_FIRST_ROW: user20
+截图: /tmp/owl-users-page.png
+
+[单测] store TestUserStore_ListPaged PASS; handler TestUserList_PaginationAndSearch + TestUserList_DefaultsAndRBAC PASS; serve TestUsersJS_PaginationAndSearch PASS

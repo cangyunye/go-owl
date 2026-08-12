@@ -66,6 +66,23 @@ func TestPlaybooksJS_RunViewClickSurvivesRerender(t *testing.T) {
 		"playbooks.js must surface run-detail load failures instead of swallowing them")
 }
 
+func TestUsersJS_PaginationAndSearch(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/users.js")
+
+	assert.True(t, strings.Contains(src, "api.users("),
+		"users.js must load users via api with query params")
+	assert.True(t, strings.Contains(src, "page_size"),
+		"users.js must request a bounded page_size")
+	assert.True(t, strings.Contains(src, "meta"),
+		"users.js must read meta.total for pagination")
+	assert.True(t, strings.Contains(src, "user-search-input"),
+		"users.js must render a search input")
+	assert.True(t, strings.Contains(src, "user-prev-btn"),
+		"users.js must render a prev page button")
+	assert.True(t, strings.Contains(src, "user-next-btn"),
+		"users.js must render a next page button")
+}
+
 func TestExecJS_SafetyConfirmations(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

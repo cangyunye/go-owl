@@ -1,13 +1,17 @@
 export function renderUsers(render, navigate, user, api) {
+  let state = { page: 1, pageSize: 20, query: '', total: 0 };
   loadUsers();
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
   async function loadUsers() {
     try {
-      const res = await api.users();
+      const params = { page: state.page, page_size: state.pageSize };
+      if (state.query) params.q = state.query;
+      const res = await api.users(params);
+      state.total = res.meta?.total || 0;
       renderTable(res.data || []);
-    } catch { renderTable([]); }
+    } catch { state.total = 0; renderTable([]); }
   }
 
   function renderTable(users) {
@@ -47,11 +51,28 @@ export function renderUsers(render, navigate, user, api) {
         } catch (e) { alert('Delete failed: ' + e.message); }
       });
     });
+
+    updatePagination();
+  }
+
+  function updatePagination() {
+    const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
+    const info = document.getElementById('user-page-info');
+    if (info) info.textContent = `共 ${state.total} 条 · 第 ${state.page}/${totalPages} 页`;
+    const prev = document.getElementById('user-prev-btn');
+    const next = document.getElementById('user-next-btn');
+    if (prev) prev.disabled = state.page <= 1;
+    if (next) next.disabled = state.page >= totalPages;
   }
 
   render(`
     <div style="display:flex;gap:8px;align-items:center">
       <button class="btn btn-primary btn-sm" id="add-user-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 添加用户</button>
+      <div style="flex:1"></div>
+      <div class="input" style="position:relative;padding-left:32px;width:240px">
+        <svg width="14" height="14" aria-hidden="true" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)"><use href="#icon-search"/></svg>
+        <input type="text" id="user-search-input" placeholder="搜索用户名 / 显示名…" aria-label="搜索用户" style="border:none;background:transparent;outline:none;color:var(--fg);width:100%;font:13px/1.5 var(--font-body)" value="${esc(state.query)}">
+      </div>
     </div>
 
     <details class="card matrix-card" id="matrix-toggle" open>
@@ -87,6 +108,11 @@ export function renderUsers(render, navigate, user, api) {
           <thead><tr><th>Username</th><th>Display Name</th><th>Role</th><th>Actions</th></tr></thead>
           <tbody id="users-list"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
         </table>
+        <div style="display:flex;justify-content:center;gap:6px;padding:4px 0">
+          <button class="btn btn-ghost btn-sm" id="user-prev-btn" disabled>‹</button>
+          <span style="font-size:12px;color:var(--muted);padding:0 8px" id="user-page-info"></span>
+          <button class="btn btn-ghost btn-sm" id="user-next-btn">›</button>
+        </div>
       </div>
 
     <div class="modal-overlay" id="user-add-modal">
@@ -137,6 +163,24 @@ export function renderUsers(render, navigate, user, api) {
       </div>
     </div>
   `, () => {
+    let searchDebounceTimer;
+    document.getElementById('user-search-input').addEventListener('input', (e) => {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        state.query = e.target.value.trim();
+        state.page = 1;
+        loadUsers();
+      }, 100);
+    });
+
+    document.getElementById('user-prev-btn').addEventListener('click', () => {
+      if (state.page > 1) { state.page--; loadUsers(); }
+    });
+    document.getElementById('user-next-btn').addEventListener('click', () => {
+      const totalPages = Math.ceil(state.total / state.pageSize);
+      if (state.page < totalPages) { state.page++; loadUsers(); }
+    });
+
     document.getElementById('add-user-btn').addEventListener('click', () => {
       document.getElementById('add-username').value = '';
       document.getElementById('add-display-name').value = '';
@@ -160,6 +204,7 @@ export function renderUsers(render, navigate, user, api) {
       try {
         await api.createUser({ username, password, role, display_name: display_name || undefined });
         document.getElementById('user-add-modal').classList.remove('open');
+        state.page = 1;
         loadUsers();
       } catch (e) { document.getElementById('user-add-error').textContent = e.message; }
     });

@@ -88,6 +88,48 @@ func (s *UserStore) List(ctx context.Context) ([]*model.User, error) {
 	return users, rows.Err()
 }
 
+func (s *UserStore) ListPaged(ctx context.Context, keyword string, page, pageSize int) ([]*model.User, int, error) {
+	where := ""
+	args := []interface{}{}
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		where = " WHERE username LIKE ? OR display_name LIKE ?"
+		args = append(args, like, like)
+	}
+
+	var total int
+	countQuery := `SELECT COUNT(*) FROM web_users` + where
+	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	offset := (page - 1) * pageSize
+
+	query := `SELECT id, username, password, role, display_name FROM web_users` + where + ` ORDER BY id LIMIT ? OFFSET ?`
+	queryArgs := append(args, pageSize, offset)
+	rows, err := s.db.QueryContext(ctx, query, queryArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var users []*model.User
+	for rows.Next() {
+		user := &model.User{}
+		if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.DisplayName); err != nil {
+			return nil, 0, err
+		}
+		users = append(users, user)
+	}
+	return users, total, rows.Err()
+}
+
 func (s *UserStore) Update(ctx context.Context, user *model.User) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE web_users SET username = ?, password = ?, role = ?, display_name = ? WHERE id = ?`,

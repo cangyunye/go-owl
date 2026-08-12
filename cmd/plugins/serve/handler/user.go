@@ -60,7 +60,17 @@ func toUserResponse(u *model.User) userResponse {
 }
 
 func (h *UserHandler) List(c *gin.Context) {
-	users, err := h.users.List(c.Request.Context())
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	keyword := strings.TrimSpace(c.Query("q"))
+
+	users, total, err := h.users.ListPaged(c.Request.Context(), keyword, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
 		return
@@ -69,7 +79,14 @@ func (h *UserHandler) List(c *gin.Context) {
 	for _, u := range users {
 		resp = append(resp, toUserResponse(u))
 	}
-	c.JSON(http.StatusOK, gin.H{"data": resp})
+	c.JSON(http.StatusOK, gin.H{
+		"data": resp,
+		"meta": gin.H{
+			"total":     total,
+			"page":      page,
+			"page_size": pageSize,
+		},
+	})
 }
 
 func (h *UserHandler) Get(c *gin.Context) {
