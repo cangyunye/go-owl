@@ -3748,3 +3748,15 @@ html[data-theme="light-sky"] .ai-btn-test {
   .ai-input-area { padding: 6px 14px 12px; }
   .ai-suggest-btn { font-size: 11px; padding: 4px 10px; }
 }
+
+/* 快捷命令条 */
+.shortcut-bar { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.shortcut-bar-title { font-size:12px; color:var(--muted); white-space:nowrap; }
+.shortcut-chips { display:flex; gap:6px; flex-wrap:wrap; align-items:center; flex:1; min-width:0; }
+.shortcut-chip { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border:1px solid var(--border); border-radius:999px; cursor:pointer; font-size:12px; user-select:none; background:var(--bg); color:var(--fg); }
+.shortcut-chip:hover { border-color:var(--accent-dim); }
+.shortcut-chip.dragging { opacity:.5; border-style:dashed; }
+.shortcut-chip-actions { display:inline-flex; gap:2px; visibility:hidden; }
+.shortcut-chip:hover .shortcut-chip-actions { visibility:visible; }
+.shortcut-chip-btn { background:none; border:none; cursor:pointer; color:var(--muted); font-size:12px; padding:0 2px; line-height:1; }
+.shortcut-chip-btn:hover { color:var(--danger); }

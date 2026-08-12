@@ -63,3 +63,16 @@ func TestExecJS_SafetyConfirmations(t *testing.T) {
 	assert.True(t, strings.Contains(src, "targetCount > 50"),
 		"exec.js must confirm before executing on more than 50 nodes")
 }
+
+func TestExecJS_ShortcutBar(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/exec.js")
+
+	assert.True(t, strings.Contains(src, "id=\"shortcut-chips\""), "exec.js must render a shortcut chip container")
+	assert.True(t, strings.Contains(src, "id=\"add-shortcut-btn\""), "exec.js must expose an add-shortcut button")
+	assert.True(t, strings.Contains(src, "api.shortcuts()"), "exec.js must load shortcuts via api")
+	assert.True(t, strings.Contains(src, "reorderShortcuts"), "exec.js must persist drag-drop order")
+	assert.True(t, strings.Contains(src, "draggable=\"true\""), "exec.js must make chips draggable")
+	assert.True(t, strings.Contains(src, "switchExecMode('command')"), "exec.js must switch to command mode when a chip is clicked")
+	assert.True(t, strings.Contains(src, "openShortcutModal"), "exec.js must support add/edit modal")
+	assert.True(t, strings.Contains(src, "deleteShortcut"), "exec.js must support delete")
+}

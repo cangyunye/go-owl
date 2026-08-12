@@ -21,6 +21,8 @@ export function renderExec(render, navigate, user, api, shell) {
   let scriptFileName = '';
   let commandContent = 'uptime\ndf -h\nfree -m';
   let scriptInlineContent = '';
+  let shortcuts = [];
+  let editingShortcutID = null;
 
   const params = new URLSearchParams(window.location.search);
   const initNodes = params.get('nodes');
@@ -423,6 +425,100 @@ export function renderExec(render, navigate, user, api, shell) {
     return res.meta?.total || 0;
   }
 
+  async function loadShortcuts() {
+    try {
+      const res = await api.shortcuts();
+      shortcuts = res.data || [];
+    } catch { shortcuts = []; }
+    renderShortcutChips();
+  }
+
+  function renderShortcutChips() {
+    const c = document.getElementById('shortcut-chips');
+    if (!c) return;
+    if (shortcuts.length === 0) {
+      c.innerHTML = '<span style="color:var(--muted);font-size:12px">暂无快捷命令,点 + 添加</span>';
+      return;
+    }
+    c.innerHTML = shortcuts.map((s, i) => `
+      <span class="shortcut-chip" draggable="true" data-index="${i}">
+        <span class="shortcut-chip-label">${esc(s.name)}</span>
+        <span class="shortcut-chip-actions">
+          <button class="shortcut-chip-btn" data-act="edit" title="编辑">✎</button>
+          <button class="shortcut-chip-btn" data-act="del" title="删除">×</button>
+        </span>
+      </span>`).join('');
+
+    c.querySelectorAll('.shortcut-chip').forEach(chip => {
+      const idx = parseInt(chip.dataset.index);
+      chip.addEventListener('click', e => {
+        if (e.target.closest('.shortcut-chip-actions')) return;
+        const s = shortcuts[idx];
+        switchExecMode('command');
+        document.getElementById('cmd-input').value = s.command;
+        updateExecButton();
+      });
+      chip.querySelectorAll('.shortcut-chip-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const s = shortcuts[idx];
+          if (btn.dataset.act === 'edit') openShortcutModal(s);
+          else if (btn.dataset.act === 'del' && confirm(`删除快捷命令「${s.name}」?`)) deleteShortcut(s.id);
+        });
+      });
+      chip.addEventListener('dragstart', e => {
+        chip.classList.add('dragging');
+        e.dataTransfer.setData('text/plain', String(idx));
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
+      chip.addEventListener('dragover', e => e.preventDefault());
+      chip.addEventListener('drop', e => {
+        e.preventDefault();
+        const from = parseInt(e.dataTransfer.getData('text/plain'));
+        if (from === idx) return;
+        const arr = shortcuts.slice();
+        const [moved] = arr.splice(from, 1);
+        arr.splice(idx, 0, moved);
+        shortcuts = arr;
+        renderShortcutChips();
+        api.reorderShortcuts(shortcuts.map(x => x.id)).catch(() => loadShortcuts());
+      });
+    });
+  }
+
+  function openShortcutModal(s) {
+    editingShortcutID = s ? s.id : null;
+    document.getElementById('shortcut-modal-title').textContent = s ? '编辑快捷命令' : '新增快捷命令';
+    document.getElementById('shortcut-name').value = s ? s.name : '';
+    document.getElementById('shortcut-command').value = s ? s.command : '';
+    document.getElementById('shortcut-error').textContent = '';
+    document.getElementById('shortcut-modal').classList.add('open');
+  }
+
+  async function saveShortcut() {
+    const name = document.getElementById('shortcut-name').value.trim();
+    const command = document.getElementById('shortcut-command').value.trim();
+    const err = document.getElementById('shortcut-error');
+    if (!name || !command) { err.textContent = '名称和命令都不能为空'; return; }
+    try {
+      if (editingShortcutID) {
+        await api.updateShortcut(editingShortcutID, { name, command });
+      } else {
+        await api.createShortcut({ name, command });
+      }
+      document.getElementById('shortcut-modal').classList.remove('open');
+      loadShortcuts();
+    } catch (e) { err.textContent = e.message || '保存失败'; }
+  }
+
+  async function deleteShortcut(id) {
+    try {
+      await api.deleteShortcut(id);
+      loadShortcuts();
+    } catch (e) { alert('删除失败: ' + (e.message || e)); }
+  }
+
   function buildExecPayload() {
     const nodeIDs = Array.from(selectedNodes);
     const cmd = document.getElementById('cmd-input').value.trim();
@@ -574,6 +670,11 @@ export function renderExec(render, navigate, user, api, shell) {
     <div class="exec-layout">
       <div class="exec-main">
         <div class="cmd-editor">
+          <div class="shortcut-bar">
+            <span class="shortcut-bar-title">快捷命令</span>
+            <div class="shortcut-chips" id="shortcut-chips"></div>
+            <button class="btn btn-ghost btn-sm" id="add-shortcut-btn" title="新增快捷命令">＋</button>
+          </div>
           <div class="editor-header">
             <div class="seg">
               <button class="active" id="tab-command">命令</button>
@@ -642,6 +743,21 @@ free -m</textarea>
         </div>
 
         <div id="exec-log-downloads" style="display:none;margin-top:12px"></div>
+
+        <div class="modal-overlay" id="shortcut-modal">
+          <div class="modal modal-sm">
+            <h3 id="shortcut-modal-title">新增快捷命令</h3>
+            <div class="modal-form">
+              <div class="form-row"><label>名称</label><input id="shortcut-name" placeholder="如:磁盘占用"></div>
+              <div class="form-row"><label>命令</label><textarea id="shortcut-command" placeholder="df -h" style="min-height:80px;width:100%"></textarea></div>
+            </div>
+            <p class="error-msg" id="shortcut-error"></p>
+            <div class="modal-actions">
+              <button class="btn btn-secondary" id="shortcut-cancel">取消</button>
+              <button class="btn btn-primary" id="shortcut-save">保存</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="exec-sidebar">
@@ -753,6 +869,7 @@ free -m</textarea>
   `, () => {
     loadNodes();
     loadFilters();
+    loadShortcuts();
     updateSelectedCount();
 
     document.getElementById('cmd-input').addEventListener('input', updateExecButton);
@@ -816,6 +933,15 @@ free -m</textarea>
 
     document.getElementById('select-all-btn').addEventListener('click', selectAllFiltered);
     document.getElementById('clear-selection-btn').addEventListener('click', clearSelection);
+
+    document.getElementById('add-shortcut-btn').addEventListener('click', () => openShortcutModal(null));
+    document.getElementById('shortcut-save').addEventListener('click', saveShortcut);
+    document.getElementById('shortcut-cancel').addEventListener('click', () => document.getElementById('shortcut-modal').classList.remove('open'));
+    document.getElementById('shortcut-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+    });
+    document.getElementById('shortcut-name').addEventListener('keydown', e => { if (e.key === 'Enter') saveShortcut(); });
+    document.getElementById('shortcut-command').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveShortcut(); });
 
     const noRetryCb = document.getElementById('no-retry');
     if (noRetryCb) {
