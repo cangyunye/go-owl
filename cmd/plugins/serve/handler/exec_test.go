@@ -673,21 +673,46 @@ func TestBuildExecCommand_ScriptArgs(t *testing.T) {
 }
 
 func TestResolveScriptContent_Inline(t *testing.T) {
-	content, name, err := resolveScriptContent(execRequest{ScriptContent: "echo hi", ScriptName: "a.sh"})
+	content, name, err := resolveScriptContent(execRequest{ScriptContent: "echo hi", ScriptName: "a.sh"}, t.TempDir())
 	require.NoError(t, err)
 	assert.Equal(t, "echo hi", content)
 	assert.Equal(t, "a.sh", name)
 }
 
 func TestResolveScriptContent_InlineDefaultName(t *testing.T) {
-	content, name, err := resolveScriptContent(execRequest{ScriptContent: "echo hi"})
+	content, name, err := resolveScriptContent(execRequest{ScriptContent: "echo hi"}, t.TempDir())
 	require.NoError(t, err)
 	assert.Equal(t, "echo hi", content)
 	assert.Equal(t, "script.sh", name)
 }
 
 func TestResolveScriptContent_Missing(t *testing.T) {
-	_, _, err := resolveScriptContent(execRequest{})
+	_, _, err := resolveScriptContent(execRequest{}, t.TempDir())
+	assert.Error(t, err)
+}
+
+func TestResolveScriptContent_StagingRef(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "deploy.sh"), []byte("#!/bin/bash\necho staging"), 0644))
+
+	content, name, err := resolveScriptContent(execRequest{ScriptRef: "deploy.sh"}, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "#!/bin/bash\necho staging", content)
+	assert.Equal(t, "deploy.sh", name)
+}
+
+func TestResolveScriptContent_StagingRef_NotFound(t *testing.T) {
+	_, _, err := resolveScriptContent(execRequest{ScriptRef: "missing.sh"}, t.TempDir())
+	assert.ErrorContains(t, err, "script not found in staging")
+}
+
+func TestResolveScriptContent_StagingRef_RejectTraversal(t *testing.T) {
+	_, _, err := resolveScriptContent(execRequest{ScriptRef: "../secret.sh"}, t.TempDir())
+	assert.Error(t, err)
+}
+
+func TestResolveScriptContent_StagingRef_RejectSubpath(t *testing.T) {
+	_, _, err := resolveScriptContent(execRequest{ScriptRef: "sub/dir.sh"}, t.TempDir())
 	assert.Error(t, err)
 }
 
@@ -731,5 +756,5 @@ func TestExecCreate_ScriptMode_MissingContent(t *testing.T) {
 		"node_ids": []string{"test-node"},
 	})
 	assert.Equal(t, 400, w.Code)
-	assert.True(t, strings.Contains(w.Body.String(), "script_content or script_url"))
+	assert.True(t, strings.Contains(w.Body.String(), "script_content, script_url or script_ref is required"))
 }

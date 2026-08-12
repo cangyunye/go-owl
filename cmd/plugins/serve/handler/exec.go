@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -72,6 +73,7 @@ type execRequest struct {
 	ScriptName      string            `json:"script_name"`
 	ScriptArgs      string            `json:"script_args"`
 	ScriptURL       string            `json:"script_url"`
+	ScriptRef       string            `json:"script_ref"`
 	ScriptDest      string            `json:"script_dest"`
 	ScriptKeep      bool              `json:"script_keep"`
 	Group           string            `json:"group"`
@@ -179,7 +181,7 @@ func loadNodeUsers(ctx context.Context, db *sql.DB) (map[string]string, error) {
 	return users, nil
 }
 
-func resolveScriptContent(req execRequest) (content string, name string, err error) {
+func resolveScriptContent(req execRequest, stagingDir string) (content string, name string, err error) {
 	if req.ScriptContent != "" {
 		name = req.ScriptName
 		if name == "" {
@@ -209,7 +211,34 @@ func resolveScriptContent(req execRequest) (content string, name string, err err
 		}
 		return string(body), name, nil
 	}
-	return "", "", fmt.Errorf("script_content or script_url is required")
+	if req.ScriptRef != "" {
+		return resolveStagingScriptRef(stagingDir, req.ScriptRef)
+	}
+	return "", "", fmt.Errorf("script_content, script_url or script_ref is required")
+}
+
+// resolveStagingScriptRef 从中转站目录读取脚本内容；
+// 文件名复用 scriptNameRe 白名单（仅 [A-Za-z0-9._-]），天然禁止 / 与 ..，防路径穿越。
+func resolveStagingScriptRef(dir, ref string) (string, string, error) {
+	if !scriptNameRe.MatchString(ref) || ref == "." || ref == ".." {
+		return "", "", fmt.Errorf("invalid script_ref %q: only [A-Za-z0-9._-] allowed", ref)
+	}
+	path := filepath.Join(dir, ref)
+	fi, err := os.Stat(path)
+	if err != nil {
+		return "", "", fmt.Errorf("script not found in staging: %s", ref)
+	}
+	if fi.IsDir() {
+		return "", "", fmt.Errorf("script_ref %q is a directory", ref)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", fmt.Errorf("read staging script: %w", err)
+	}
+	if len(b) == 0 {
+		return "", "", fmt.Errorf("staging script %q is empty", ref)
+	}
+	return string(b), ref, nil
 }
 
 func (h *ExecHandler) Create(c *gin.Context) {
@@ -234,7 +263,7 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	var scriptContent, scriptName string
 
 	if isScript {
-		content, name, err := resolveScriptContent(req)
+		content, name, err := resolveScriptContent(req, stagingDirFromDB(h.db))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 			return
