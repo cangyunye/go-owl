@@ -100,6 +100,17 @@ func TestApplyFilter_Empty_ReturnsNothing(t *testing.T) {
 	}
 }
 
+func TestApplyFilter_Search_MultipleTermsAND(t *testing.T) {
+	nodes := []*common.NodeInfo{
+		{ID: "web-1", Name: "cache-srv", Address: "10.0.0.1"},
+		{ID: "web-2", Name: "web-2", Address: "10.0.0.2"},
+	}
+	got := applyFilter(nodes, ParseFilterQuery("web cache"))
+	if len(got) != 1 || got[0].ID != "web-1" {
+		t.Fatalf("expected AND per-term match, got: %+v", got)
+	}
+}
+
 func TestGroupsIntersect(t *testing.T) {
 	if !groupsIntersect([]string{"a", "b"}, []string{"b", "c"}) {
 		t.Fatal("expected true")

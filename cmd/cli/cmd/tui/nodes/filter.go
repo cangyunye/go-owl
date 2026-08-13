@@ -63,8 +63,11 @@ func matchFilter(n *common.NodeInfo, fq FilterQuery) bool {
 	}
 	if fq.Search != "" {
 		hay := strings.ToLower(n.ID + " " + n.Name + " " + n.Address)
-		if !strings.Contains(hay, strings.ToLower(fq.Search)) {
-			return false
+		// 多个裸词 = AND 逐词匹配
+		for _, term := range strings.Fields(fq.Search) {
+			if !strings.Contains(hay, strings.ToLower(term)) {
+				return false
+			}
 		}
 	}
 	return true
