@@ -140,7 +140,7 @@ func TestParseFilterQuery_Groups(t *testing.T) {
 	if len(fq.Groups) != 2 || fq.Groups[0] != "web" || fq.Groups[1] != "db" {
 		t.Fatalf("unexpected groups: %#v", fq.Groups)
 	}
-	if !fq.Empty() {
+	if fq.Empty() {
 		t.Fatal("expected not empty")
 	}
 }
