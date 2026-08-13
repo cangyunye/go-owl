@@ -86,6 +86,15 @@ func NewInMemoryNodeStore() *InMemoryNodeStore {
 	return store
 }
 
+// NewInMemoryNodeStoreAt 创建内存节点存储(数据文件路径自定义,测试用)
+func NewInMemoryNodeStoreAt(dataFile string) *InMemoryNodeStore {
+	store := &InMemoryNodeStore{
+		nodes:    make(map[string]*NodeInfo),
+		dataFile: dataFile,
+	}
+	return store
+}
+
 func (s *InMemoryNodeStore) initSampleData() {
 	// 空实现，不再自动加载示例节点
 	// 示例节点将通过 'owl node sample' 命令生成
