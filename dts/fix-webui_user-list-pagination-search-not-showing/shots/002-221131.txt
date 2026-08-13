@@ -1,0 +1,12 @@
+[浏览器 localhost:8080 /users]
+panel title: 用户角色
+panel search box: 1
+panel items: 13
+panel role badges: 13
+after search "user3": 1 条
+点击面板用户 → 主表搜索值=viewer1, PAGE_INFO=共 1 条·第 1/1 页
+截图: /tmp/owl-users-panel.png
+
+[服务端]
+users.js 含 panel-user-search/setPanelContent/role-badge;app.js ESM 语法 OK
+新 admin 密码(重启 --reset-admin): s8XWjtpn0Rat

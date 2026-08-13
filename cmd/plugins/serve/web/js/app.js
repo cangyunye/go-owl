@@ -317,7 +317,7 @@ function switchView(viewId, pushState) {
       renderSettings(render, navigate, user, api);
       break;
     case 'users':
-      renderUsers(render, navigate, user, api);
+      renderUsers(render, navigate, user, api, shell);
       break;
     default:
       renderDashboard(render, navigate, user, api);
@@ -326,12 +326,51 @@ function switchView(viewId, pushState) {
   updatePanelContent(viewId);
 }
 
+let settingsSections = readSettingsSections();
+
+function readSettingsSections() {
+  try {
+    const s = JSON.parse(localStorage.getItem('owl-settings-sections') || '{}');
+    return { ai: s.ai !== false, kv: s.kv !== false };
+  } catch { return { ai: true, kv: true }; }
+}
+
+function dispatchSettingsSections() {
+  document.dispatchEvent(new CustomEvent('owl:settings-sections', { detail: { ...settingsSections } }));
+}
+
 function updatePanelContent(viewId) {
   const list = document.getElementById('panelList');
   if (!list) return;
   const P = PANEL_TITLES[viewId] || '导航';
   shell.setPanelTitle(P);
-  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes' || viewId === 'exec' || viewId === 'playbooks' || viewId === 'files') {
+  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes' || viewId === 'exec' || viewId === 'playbooks' || viewId === 'files' || viewId === 'users') {
+    return;
+  }
+  if (viewId === 'settings') {
+    list.innerHTML = `
+      <li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">显示内容</li>
+      <li class="panel-item">
+        <label>
+          <input type="checkbox" class="group-check settings-sec-check" data-sec="ai" ${settingsSections.ai ? 'checked' : ''}>
+          <span class="dot" style="background:${settingsSections.ai ? 'var(--accent)' : 'var(--muted)'}"></span>
+          <span class="group-text">AI 供应商</span>
+        </label>
+      </li>
+      <li class="panel-item">
+        <label>
+          <input type="checkbox" class="group-check settings-sec-check" data-sec="kv" ${settingsSections.kv ? 'checked' : ''}>
+          <span class="dot" style="background:${settingsSections.kv ? 'var(--accent)' : 'var(--muted)'}"></span>
+          <span class="group-text">KV 配置</span>
+        </label>
+      </li>`;
+    document.querySelectorAll('.settings-sec-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        settingsSections[cb.dataset.sec] = cb.checked;
+        localStorage.setItem('owl-settings-sections', JSON.stringify(settingsSections));
+        dispatchSettingsSections();
+      });
+    });
     return;
   }
   list.innerHTML = '<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载中…</li>';

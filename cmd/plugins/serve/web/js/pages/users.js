@@ -1,6 +1,7 @@
-export function renderUsers(render, navigate, user, api) {
-  let state = { page: 1, pageSize: 20, query: '', total: 0 };
+export function renderUsers(render, navigate, user, api, shell) {
+  let state = { page: 1, pageSize: 20, query: '', total: 0, panelSearch: '', allUsers: [] };
   loadUsers();
+  loadPanelUsers();
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
@@ -13,6 +14,61 @@ export function renderUsers(render, navigate, user, api) {
       renderTable(res.data || []);
     } catch { state.total = 0; renderTable([]); }
   }
+
+  async function loadPanelUsers() {
+    const all = [];
+    try {
+      for (let page = 1; page <= 50; page++) {
+        const res = await api.users({ page, page_size: 100 });
+        const data = res.data || [];
+        const total = res.meta?.total || 0;
+        all.push(...data);
+        if (all.length >= total) break;
+      }
+    } catch {}
+    state.allUsers = all;
+    renderPanel();
+  }
+
+  function renderPanel() {
+    const q = state.panelSearch.trim().toLowerCase();
+    const filtered = state.allUsers.filter(u =>
+      !q ||
+      (u.username || '').toLowerCase().includes(q) ||
+      (u.display_name || '').toLowerCase().includes(q)
+    );
+    const items = filtered.map(u => `
+      <li class="panel-item" data-panel-user="${u.id}" title="${esc(u.username)}">
+        <span class="role-badge role-${esc(u.role)}" style="flex-shrink:0">${esc(u.role)}</span>
+        <span class="group-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.display_name || u.username)}</span>
+      </li>`).join('');
+    const html = `
+      <li style="padding:6px 10px">
+        <input type="text" id="panel-user-search" placeholder="搜索用户…" aria-label="搜索用户" value="${esc(state.panelSearch)}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);font-size:12px;outline:none">
+      </li>
+      ${items || '<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">无匹配用户</li>'}
+    `;
+    shell.setPanelContent(html);
+    document.getElementById('panel-user-search')?.addEventListener('input', (e) => {
+      clearTimeout(panelSearchTimer);
+      panelSearchTimer = setTimeout(() => {
+        state.panelSearch = e.target.value;
+        renderPanel();
+      }, 100);
+    });
+    document.querySelectorAll('#panelList [data-panel-user]').forEach(el => {
+      el.addEventListener('click', () => {
+        const username = state.allUsers.find(u => u.id == el.dataset.panelUser)?.username;
+        if (!username) return;
+        state.query = username;
+        state.page = 1;
+        const mainSearch = document.getElementById('user-search-input');
+        if (mainSearch) mainSearch.value = username;
+        loadUsers();
+      });
+    });
+  }
+  let panelSearchTimer = null;
 
   function renderTable(users) {
     const list = document.getElementById('users-list');

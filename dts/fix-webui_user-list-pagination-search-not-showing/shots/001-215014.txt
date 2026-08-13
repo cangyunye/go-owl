@@ -1,0 +1,7 @@
+[浏览器 /users,运行中 8080]
+PAGE_INFO: 共 13 条 · 第 1/1 页
+ROWS_PAGE1: 13
+搜索 "admin" → SEARCH_INFO: 共 1 条 · 第 1/1 页
+截图: /tmp/owl-users-8080.png
+[后端 API]
+GET /users?page=1&page_size=5 → meta:{page:1,page_size:5,total:13} count:5

@@ -262,6 +262,7 @@ export function renderSettings(render, navigate, user, api) {
 
   // ---- Render ----
   render(`
+    <div id="settings-kv-card">
     <div class="card">
       <table>
         <thead><tr><th>Key</th><th>Description</th><th>Value</th><th>Actions</th></tr></thead>
@@ -270,6 +271,7 @@ export function renderSettings(render, navigate, user, api) {
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary btn-sm" id="add-setting-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 添加配置</button>
+    </div>
     </div>
 
     <div class="modal-overlay" id="settings-modal">
@@ -302,7 +304,9 @@ export function renderSettings(render, navigate, user, api) {
       </div>
     </div>
 
+    <div id="settings-ai-card">
     ${buildAiConfigHtml()}
+    </div>
   `, () => {
     // ================================================================
     // AI Provider Config Logic
@@ -692,5 +696,26 @@ export function renderSettings(render, navigate, user, api) {
         loadSettings();
       } catch (e) { document.getElementById('add-setting-error').textContent = e.message; }
     });
+
+    // ---- Section visibility controlled by left-panel toggles ----
+    function readSections() {
+      try {
+        const s = JSON.parse(localStorage.getItem('owl-settings-sections') || '{}');
+        return { ai: s.ai !== false, kv: s.kv !== false };
+      } catch { return { ai: true, kv: true }; }
+    }
+
+    function applySections() {
+      const st = readSections();
+      const kv = document.getElementById('settings-kv-card');
+      const ai = document.getElementById('settings-ai-card');
+      if (kv) kv.style.display = st.kv ? '' : 'none';
+      if (ai) ai.style.display = st.ai ? '' : 'none';
+    }
+
+    const onSectionsChange = () => applySections();
+    document.addEventListener('owl:settings-sections', onSectionsChange);
+    applySections();
+    return () => document.removeEventListener('owl:settings-sections', onSectionsChange);
   });
 }

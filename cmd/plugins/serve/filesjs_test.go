@@ -83,6 +83,17 @@ func TestUsersJS_PaginationAndSearch(t *testing.T) {
 		"users.js must render a next page button")
 }
 
+func TestUsersJS_RolePanel(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/users.js")
+
+	assert.True(t, strings.Contains(src, "setPanelContent"),
+		"users.js must populate the left 用户角色 panel via shell.setPanelContent")
+	assert.True(t, strings.Contains(src, "panel-user-search"),
+		"users.js must render a search box inside the role panel")
+	assert.True(t, strings.Contains(src, "role-badge"),
+		"users.js must render role badges inside the role panel")
+}
+
 func TestExecJS_SafetyConfirmations(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

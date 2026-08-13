@@ -1,6 +1,15 @@
 # dts 问题档案索引
 
-共 23 条 · 未解决 0 · 已解决 23 · 更新于 2026-08-12T19:55:28+08:00
+共 24 条 · 未解决 0 · 已解决 24 · 更新于 2026-08-13T22:11:39+08:00
+
+## fix-webui
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-webui_user-list-pagination-search-not-showing](fix-webui_user-list-pagination-search-not-showing/dts.md) | 2026-08-13 | 前端用户管理的用户列表还是没有分页和搜索功能 | resolved |
+| [fix-webui_ui-alignment-and-playbook-files-redesign](fix-webui_ui-alignment-and-playbook-files-redesign/dts.md) | 2026-08-11 | 1.节点管理搜索框和筛选状态按钮要对齐高度;2.剧本管理路径输入框不要中间圆角(嵌套感),刷新按钮点击闪现Refresh变宽;3.文件传输传输记录/任务详情及命 | resolved |
+| [fix-webui_files-upload-btn-gray-and-double-click](fix-webui_files-upload-btn-gray-and-double-click/dts.md) | 2026-08-11 | 1.文件传输的上传按钮字体颜色为什么一直是灰色的失效感觉,2.文件传输的上传按钮还是要点两次 | resolved |
+| [fix-webui_file-transfer-stuck-in-progress](fix-webui_file-transfer-stuck-in-progress/dts.md) | 2026-08-10 | owl-serve 界面文件传输在大批节点任务时执行任务卡在"进行中"不刷新,是否因获取状态太快且一次性,刷新无反应;历史里显示所有节点已处理完成 | resolved |
 
 ## fix-exec
 
@@ -39,14 +48,6 @@
 | id | 日期 | 摘要 | 状态 |
 |----|------|------|------|
 | [feat-ai-session_ai-session-user-isolation](feat-ai-session_ai-session-user-isolation/dts.md) | 2026-08-12 | AI助手会话与前端对话历史未按用户区分:前端 IndexedDB 固定库名所有用户共享,服务端 Session 内存键仅 sessionID 不绑 user_i | resolved |
-
-## fix-webui
-
-| id | 日期 | 摘要 | 状态 |
-|----|------|------|------|
-| [fix-webui_ui-alignment-and-playbook-files-redesign](fix-webui_ui-alignment-and-playbook-files-redesign/dts.md) | 2026-08-11 | 1.节点管理搜索框和筛选状态按钮要对齐高度;2.剧本管理路径输入框不要中间圆角(嵌套感),刷新按钮点击闪现Refresh变宽;3.文件传输传输记录/任务详情及命 | resolved |
-| [fix-webui_files-upload-btn-gray-and-double-click](fix-webui_files-upload-btn-gray-and-double-click/dts.md) | 2026-08-11 | 1.文件传输的上传按钮字体颜色为什么一直是灰色的失效感觉,2.文件传输的上传按钮还是要点两次 | resolved |
-| [fix-webui_file-transfer-stuck-in-progress](fix-webui_file-transfer-stuck-in-progress/dts.md) | 2026-08-10 | owl-serve 界面文件传输在大批节点任务时执行任务卡在"进行中"不刷新,是否因获取状态太快且一次性,刷新无反应;历史里显示所有节点已处理完成 | resolved |
 
 ## fix-tui
 
