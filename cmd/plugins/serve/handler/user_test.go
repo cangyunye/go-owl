@@ -94,6 +94,46 @@ func TestUserList_PaginationAndSearch(t *testing.T) {
 	assert.Contains(t, names, "charlie")
 }
 
+func TestUserList_RoleFilter(t *testing.T) {
+	us, r := userTestSetup(t)
+	ctx := context.Background()
+	require.NoError(t, us.Create(ctx, &model.User{Username: "admin1", Role: model.RoleAdmin}))
+	require.NoError(t, us.Create(ctx, &model.User{Username: "viewer1", Role: model.RoleViewer}))
+	require.NoError(t, us.Create(ctx, &model.User{Username: "viewer2", Role: model.RoleViewer}))
+
+	w := userGET(t, r, "/api/v1/users?role=viewer")
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp userListResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, 2, resp.Meta.Total)
+	assert.Len(t, resp.Data, 2)
+
+	w = userGET(t, r, "/api/v1/users?role=admin")
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, 1, resp.Meta.Total)
+	assert.Equal(t, "admin1", resp.Data[0].Username)
+
+	// meta 需携带各角色用户数
+	var meta struct {
+		Total      int            `json:"total"`
+		RoleCounts map[string]int `json:"role_counts"`
+	}
+	w = userGET(t, r, "/api/v1/users")
+	var raw struct {
+		Meta json.RawMessage `json:"meta"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &raw))
+	require.NoError(t, json.Unmarshal(raw.Meta, &meta))
+	assert.Equal(t, 2, meta.RoleCounts["viewer"])
+	assert.Equal(t, 1, meta.RoleCounts["admin"])
+	assert.Equal(t, 0, meta.RoleCounts["operator"])
+	assert.Equal(t, 0, meta.RoleCounts["editor"])
+
+	// 非法 role 参数返回 400
+	w = userGET(t, r, "/api/v1/users?role=superuser")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestUserList_DefaultsAndRBAC(t *testing.T) {
 	us, r := userTestSetup(t)
 	ctx := context.Background()

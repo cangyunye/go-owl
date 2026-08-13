@@ -88,10 +88,14 @@ func TestUsersJS_RolePanel(t *testing.T) {
 
 	assert.True(t, strings.Contains(src, "setPanelContent"),
 		"users.js must populate the left 用户角色 panel via shell.setPanelContent")
-	assert.True(t, strings.Contains(src, "panel-user-search"),
-		"users.js must render a search box inside the role panel")
-	assert.True(t, strings.Contains(src, "role-badge"),
-		"users.js must render role badges inside the role panel")
+	assert.True(t, strings.Contains(src, "role_counts"),
+		"users.js must read per-role counts from the users API meta")
+	assert.True(t, strings.Contains(src, "data-panel-role"),
+		"users.js must render one panel item per role, filterable by role")
+	assert.True(t, strings.Contains(src, "state.role"),
+		"users.js must keep a role filter state")
+	assert.False(t, strings.Contains(src, "panel-user-search"),
+		"users.js must not render a per-user search box in the role panel anymore")
 }
 
 func TestExecJS_SafetyConfirmations(t *testing.T) {

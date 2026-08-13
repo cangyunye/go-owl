@@ -69,8 +69,18 @@ func (h *UserHandler) List(c *gin.Context) {
 		pageSize = 20
 	}
 	keyword := strings.TrimSpace(c.Query("q"))
+	role := strings.TrimSpace(c.Query("role"))
+	if role != "" && !validRoles[model.Role(role)] {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid role"})
+		return
+	}
 
-	users, total, err := h.users.ListPaged(c.Request.Context(), keyword, page, pageSize)
+	users, total, err := h.users.ListPaged(c.Request.Context(), keyword, role, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
+		return
+	}
+	roleCounts, err := h.users.CountByRole(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
 		return
@@ -82,9 +92,10 @@ func (h *UserHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"data": resp,
 		"meta": gin.H{
-			"total":     total,
-			"page":      page,
-			"page_size": pageSize,
+			"total":       total,
+			"page":        page,
+			"page_size":   pageSize,
+			"role_counts": roleCounts,
 		},
 	})
 }

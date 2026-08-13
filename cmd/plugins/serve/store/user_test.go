@@ -81,19 +81,19 @@ func TestUserStore_ListPaged(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 6, total)
 
-	users, total, err := store.ListPaged(context.Background(), "", 1, 2)
+	users, total, err := store.ListPaged(context.Background(), "", "", 1, 2)
 	require.NoError(t, err)
 	assert.Equal(t, 6, total, "total must reflect all users regardless of page size")
 	assert.Len(t, users, 2, "page of size 2 must return 2 users")
 	assert.Equal(t, "alice", users[0].Username)
 	assert.Equal(t, "bob", users[1].Username)
 
-	users, total, err = store.ListPaged(context.Background(), "", 3, 2)
+	users, total, err = store.ListPaged(context.Background(), "", "", 3, 2)
 	require.NoError(t, err)
 	assert.Equal(t, 6, total)
 	assert.Len(t, users, 2, "last page holds the remainder")
 
-	users, total, err = store.ListPaged(context.Background(), "ar", 1, 10)
+	users, total, err = store.ListPaged(context.Background(), "ar", "", 1, 10)
 	require.NoError(t, err)
 	assert.Equal(t, 2, total, "search must match both username and display_name")
 	names := []string{}
@@ -103,10 +103,46 @@ func TestUserStore_ListPaged(t *testing.T) {
 	assert.Contains(t, names, "carol")
 	assert.Contains(t, names, "charlie")
 
-	users, total, err = store.ListPaged(context.Background(), "zzz", 1, 10)
+	users, total, err = store.ListPaged(context.Background(), "zzz", "", 1, 10)
 	require.NoError(t, err)
 	assert.Equal(t, 0, total)
 	assert.Empty(t, users)
+
+	store.Create(context.Background(), &model.User{Username: "root", Role: model.RoleAdmin})
+	store.Create(context.Background(), &model.User{Username: "op", Role: model.RoleOperator})
+
+	users, total, err = store.ListPaged(context.Background(), "", "admin", 1, 10)
+	require.NoError(t, err)
+	assert.Equal(t, 1, total, "role filter must match only users with that role")
+	assert.Len(t, users, 1)
+	assert.Equal(t, "root", users[0].Username)
+
+	users, total, err = store.ListPaged(context.Background(), "", "viewer", 1, 10)
+	require.NoError(t, err)
+	assert.Equal(t, 6, total, "viewer count must include the six seeded viewers")
+	assert.Len(t, users, 6)
+
+	users, total, err = store.ListPaged(context.Background(), "ar", "viewer", 1, 10)
+	require.NoError(t, err)
+	assert.Equal(t, 2, total, "keyword and role filters must compose")
+}
+
+func TestUserStore_CountByRole(t *testing.T) {
+	db := openTestDB(t)
+	store := NewUserStore(db)
+	require.NoError(t, store.Init(context.Background()))
+
+	store.Create(context.Background(), &model.User{Username: "a1", Role: model.RoleAdmin})
+	store.Create(context.Background(), &model.User{Username: "v1", Role: model.RoleViewer})
+	store.Create(context.Background(), &model.User{Username: "v2", Role: model.RoleViewer})
+	store.Create(context.Background(), &model.User{Username: "e1", Role: model.RoleEditor})
+
+	counts, err := store.CountByRole(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 1, counts[model.RoleAdmin])
+	assert.Equal(t, 2, counts[model.RoleViewer])
+	assert.Equal(t, 1, counts[model.RoleEditor])
+	assert.Equal(t, 0, counts[model.RoleOperator], "roles with no users should default to 0")
 }
 
 func TestUserStore_Update(t *testing.T) {

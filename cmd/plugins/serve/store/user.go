@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 )
@@ -88,13 +89,21 @@ func (s *UserStore) List(ctx context.Context) ([]*model.User, error) {
 	return users, rows.Err()
 }
 
-func (s *UserStore) ListPaged(ctx context.Context, keyword string, page, pageSize int) ([]*model.User, int, error) {
-	where := ""
+func (s *UserStore) ListPaged(ctx context.Context, keyword, role string, page, pageSize int) ([]*model.User, int, error) {
+	clauses := []string{}
 	args := []interface{}{}
 	if keyword != "" {
 		like := "%" + keyword + "%"
-		where = " WHERE username LIKE ? OR display_name LIKE ?"
+		clauses = append(clauses, "(username LIKE ? OR display_name LIKE ?)")
 		args = append(args, like, like)
+	}
+	if role != "" {
+		clauses = append(clauses, "role = ?")
+		args = append(args, role)
+	}
+	where := ""
+	if len(clauses) > 0 {
+		where = " WHERE " + strings.Join(clauses, " AND ")
 	}
 
 	var total int
@@ -146,4 +155,26 @@ func (s *UserStore) Count(ctx context.Context) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM web_users`).Scan(&count)
 	return count, err
+}
+
+func (s *UserStore) CountByRole(ctx context.Context) (map[model.Role]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT role, COUNT(*) FROM web_users GROUP BY role`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[model.Role]int)
+	for _, r := range []model.Role{model.RoleAdmin, model.RoleOperator, model.RoleEditor, model.RoleViewer} {
+		counts[r] = 0
+	}
+	for rows.Next() {
+		var role string
+		var n int
+		if err := rows.Scan(&role, &n); err != nil {
+			return nil, err
+		}
+		counts[model.Role(role)] = n
+	}
+	return counts, rows.Err()
 }
