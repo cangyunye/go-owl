@@ -215,6 +215,18 @@ func TestApplyFilter_Search(t *testing.T) {
 	}
 }
 
+func TestApplyFilter_Search_MultipleTermsAND(t *testing.T) {
+	nodes := []*common.NodeInfo{
+		{ID: "web-1", Name: "cache-srv", Address: "10.0.0.1"},
+		{ID: "web-2", Name: "web-2", Address: "10.0.0.2"},
+	}
+	// "web" 命中 ID,"cache" 命中 Name,两词分处不同字段也应 AND 匹配
+	got := applyFilter(nodes, ParseFilterQuery("web cache"))
+	if len(got) != 1 || got[0].ID != "web-1" {
+		t.Fatalf("expected AND per-term match, got: %+v", got)
+	}
+}
+
 func TestApplyFilter_Empty_ReturnsAll(t *testing.T) {
 	nodes := []*common.NodeInfo{{ID: "n1"}, {ID: "n2"}}
 	if got := applyFilter(nodes, FilterQuery{}); len(got) != 2 {
@@ -314,8 +326,11 @@ func matchFilter(n *common.NodeInfo, fq FilterQuery) bool {
 	}
 	if fq.Search != "" {
 		hay := strings.ToLower(n.ID + " " + n.Name + " " + n.Address)
-		if !strings.Contains(hay, strings.ToLower(fq.Search)) {
-			return false
+		// 多个裸词 = AND 逐词匹配(用户 2026-08-14 拍板,原短语匹配已修正)
+		for _, term := range strings.Fields(fq.Search) {
+			if !strings.Contains(hay, strings.ToLower(term)) {
+				return false
+			}
 		}
 	}
 	return true
