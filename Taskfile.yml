@@ -9,15 +9,18 @@
 #   - 所有命令由 Task 内嵌的 Go sh/bash 解释器解析（mvdan/sh），Windows 上同样
 #     使用 Bash 语法；mkdir/rm/cp/chmod 等文件命令在 Windows 由 Task 内置的
 #     core utils 提供，无需安装 Git Bash。
-#   - 仅需要外部工具: go、git（tui/gscp 克隆、COMMIT_ID 获取）。
+#   - 仅需要外部工具: go、git（gscp 克隆、COMMIT_ID 获取）。
+#   - tui 为原生子命令,经构建标签门控: task build 纯净模式不含 owl tui;
+#     task build WITH=tui 或 task build-tui 以 -tags tui 编入。
 #   - test-bash 系列脚本面向类 Unix 测试节点，请在有节点的环境下运行。
 #
 # 常用:
-#   task                      # 等价 make build（编译当前平台 owl CLI）
+#   task                      # 等价 make build（编译当前平台 owl CLI，纯净，不含 tui）
 #   task build WITH=serve,metrics,tui,gscp   # 追加组件
 #   task build PLATFORMS="linux/amd64 windows/amd64"
 #   task build-all            # 全平台 × 全组件
-#   task install              # 安装到 ~/.local/bin
+#   task build-tui            # 编译带 owl tui 子命令的 owl CLI
+#   task install              # 安装到 ~/.local/bin（task install WITH=tui 装带 tui 版）
 #   task --list               # 查看全部任务（等价 make help）
 
 version: '3'
@@ -43,13 +46,10 @@ vars:
   ALL_PLATFORMS: 'linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64'
   WITH: ''
 
-  # 外部源码: gscp（自动克隆）/ tui（优先本地兄弟目录）
+  # 外部源码: gscp（自动克隆）
   GSCP_REPO: https://github.com/cangyunye/gscp.git
   GSCP_REF: main
   GSCP_SRC: '{{.BUILD_DIR}}/.gscp-src'
-  TUI_SRC: ../go-owl-tui
-  TUI_REPO: https://github.com/cangyunye/go-owl-tui.git
-  TUI_CLONE: '{{.BUILD_DIR}}/.tui-src'
   # metrics 为可选插件：不写入 go.mod，仅在显式启用时经 metrics.work 引入兄弟目录源码
   METRICS_SRC: ../go-owl-metrics
   METRICS_WORK: '{{.ROOT_DIR | toSlash}}/metrics.work'
@@ -63,7 +63,7 @@ tasks:
   # ---------------------------------------------------------------- 构建
 
   build:
-    desc: 编译 owl CLI（纯核心）；WITH=serve,metrics,tui,gscp 追加组件
+    desc: 编译 owl CLI（纯核心，不含 tui）；WITH=serve,metrics,tui,gscp 追加组件
     vars:
       PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
     cmds:
@@ -75,10 +75,6 @@ tasks:
         vars:
           PLATFORMS: '{{.PLATFORMS}}'
         if: '{{has "serve" (splitList "," .WITH)}}'
-      - task: _build-tui
-        vars:
-          PLATFORMS: '{{.PLATFORMS}}'
-        if: '{{has "tui" (splitList "," .WITH)}}'
       - task: _build-gscp
         vars:
           PLATFORMS: '{{.PLATFORMS}}'
@@ -103,9 +99,9 @@ tasks:
       - task: _build-owl-metrics
 
   build-tui:
-    desc: 编译 owl-tui（默认源码 ../go-owl-tui，可 TUI_SRC= 覆盖；缺失时克隆 TUI_REPO）
+    desc: 编译带 owl tui 子命令的 owl CLI（原生 TUI，-tags tui）
     cmds:
-      - task: _build-tui
+      - task: _build-owl-tui
 
   build-gscp:
     desc: 克隆并跨平台编译 gscp
@@ -136,7 +132,7 @@ tasks:
   # ---------------------------------------------------------------- 安装
 
   install:
-    desc: 安装当前平台产物（owl 及已追加组件）到 ~/.local/bin
+    desc: 安装当前平台产物（owl 及已追加组件）到 ~/.local/bin；task install WITH=tui 装带 tui 版
     cmds:
       - task: build
         vars:
@@ -144,7 +140,7 @@ tasks:
       - |
         set -e
         mkdir -p ~/.local/bin
-        for b in owl owl-serve owl-tui; do
+        for b in owl owl-serve; do
           f={{.ROOT_DIR}}/{{.BUILD_DIR}}/{{OS}}-{{ARCH}}/$b{{if eq OS "windows"}}.exe{{end}}
           if [ -f "$f" ]; then
             cp "$f" ~/.local/bin/
@@ -175,7 +171,7 @@ tasks:
     desc: 清理构建产物
     cmds:
       - rm -rf {{.BUILD_DIR}} coverage.out coverage.html
-      - rm -f owl owl.exe cli cli.exe owl-serve owl-serve.exe owl-tui owl-tui.exe owl-duckdb owl-sqlite3
+      - rm -f owl owl.exe cli cli.exe owl-serve owl-serve.exe owl-duckdb owl-sqlite3
 
   # ---------------------------------------------------------------- 测试
   # 注：原 tests/Makefile 中 `cd .. && go test ./integration/...` 的包路径
@@ -396,7 +392,7 @@ tasks:
           mkdir -p {{.BUILD_DIR}}/{{$os}}-{{$arch}}
           CGO_ENABLED=0 {{if .GOWORK}}GOWORK={{.GOWORK}} {{end}}GOOS={{$os}} GOARCH={{$arch}} {{.GO}} build {{.LDFLAGS}} -o {{.BUILD_DIR}}/{{$os}}-{{$arch}}/{{.BIN}}{{if eq $os "windows"}}.exe{{end}} {{.MAIN}}
 
-  # owl CLI 编译：WITH 含 metrics 时走 metrics.work + tags，否则纯核心
+  # owl CLI 编译：WITH 含 metrics 时走 metrics.work + tags；含 tui 时加 -tags tui
   _build-owl:
     internal: true
     vars:
@@ -406,13 +402,25 @@ tasks:
         vars:
           BIN: owl
           MAIN: '{{.CLI_MAIN}}'
-          LDFLAGS: '{{.LDFLAGS}}'
+          LDFLAGS: '{{if has "tui" (splitList "," .WITH)}}-tags tui {{end}}{{.LDFLAGS}}'
           PLATFORMS: '{{.PLATFORMS}}'
         if: '{{not (has "metrics" (splitList "," .WITH))}}'
       - task: _build-owl-metrics
         vars:
           PLATFORMS: '{{.PLATFORMS}}'
         if: '{{has "metrics" (splitList "," .WITH)}}'
+
+  _build-owl-tui:
+    internal: true
+    vars:
+      PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
+    cmds:
+      - task: _cross-build
+        vars:
+          BIN: owl
+          MAIN: '{{.CLI_MAIN}}'
+          LDFLAGS: '-tags tui {{.LDFLAGS}}'
+          PLATFORMS: '{{.PLATFORMS}}'
 
   _build-owl-metrics:
     internal: true
@@ -426,7 +434,7 @@ tasks:
         vars:
           BIN: owl
           MAIN: '{{.CLI_MAIN}}'
-          LDFLAGS: '-tags metrics {{.LDFLAGS}}'
+          LDFLAGS: '-tags {{if has "tui" (splitList "," .WITH)}}metrics tui{{else}}metrics{{end}} {{.LDFLAGS}}'
           GOWORK: '{{.METRICS_WORK}}'
           PLATFORMS: '{{.PLATFORMS}}'
 
@@ -440,30 +448,6 @@ tasks:
           BIN: owl-serve
           MAIN: '{{.SERVE_MAIN}}'
           PLATFORMS: '{{.PLATFORMS}}'
-
-  # owl-tui：默认源码 ../go-owl-tui，可 TUI_SRC= 覆盖；缺失时克隆 TUI_REPO
-  _build-tui:
-    internal: true
-    vars:
-      PLATFORMS: '{{default .HOST_PLATFORM .PLATFORMS}}'
-    cmds:
-      - |
-        set -e
-        src="{{.TUI_SRC}}"
-        if [ ! -d "$src" ]; then
-          echo '==> clone owl-tui: {{.TUI_REPO}}'
-          rm -rf {{.TUI_CLONE}}
-          git clone --depth 1 {{.TUI_REPO}} {{.TUI_CLONE}}
-          src="{{.TUI_CLONE}}"
-        fi
-        for p in {{.PLATFORMS}}; do
-          os=${p%/*}; arch=${p#*/}; ext=
-          if [ "$os" = "windows" ]; then ext=.exe; fi
-          out={{.ROOT_DIR}}/{{.BUILD_DIR}}/$os-$arch
-          mkdir -p "$out"
-          echo "==> owl-tui $os/$arch"
-          (cd "$src" && GOWORK=off CGO_ENABLED=0 GOOS=$os GOARCH=$arch {{.GO}} build -o "$out/owl-tui$ext" .)
-        done
 
   # gscp：克隆（或复用已有 clone）并跨平台编译
   _build-gscp:

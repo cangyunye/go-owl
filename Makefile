@@ -4,24 +4,27 @@
 # 不需要网络），离线仓库可直接编译。全部目标均为纯 Go（CGO_ENABLED=0），
 # 任意平台可交叉编译。
 #
-# serve / metrics / tui / gscp 均为可选插件，仅通过 WITH= 或专用目标显式编译：
+# serve / metrics / tui / gscp 均为可选组件，仅通过 WITH= 或专用目标显式编译：
 #   serve   无附加要求（仓库内 cmd/owl-serve）
 #   metrics 需兄弟目录 ../go-owl-metrics（经 metrics.work 引入，不写入 go.mod）
-#   tui     需兄弟目录 ../go-owl-tui（可 TUI_SRC= 指定，否则克隆 TUI_REPO）
+#   tui     原生子命令，经构建标签门控：make build 纯净模式不含 owl tui；
+#           make build WITH=tui 或 make build-tui 以 -tags tui 编入
 #   gscp    克隆 GSCP_REPO（或 build/local-gscp GSCP_LOCAL= 指定本地源码）
 #
 # 常用:
-#   make build                                   # 当前平台 owl CLI
+#   make build                                   # 当前平台 owl CLI（纯净，不含 tui）
 #   make build WITH=serve,metrics,tui,gscp       # 追加组件
 #   make build PLATFORMS="linux/amd64 windows/amd64"
 #   make build/all                               # 全平台 × 全组件
-#   make install                                 # 安装到 ~/.local/bin
+#   make install                                 # 安装到 ~/.local/bin（make install WITH=tui 装带 tui 版）
+#   make build-tui                               # 编译带 owl tui 子命令的 owl CLI
 
 SHELL       := /bin/sh
 GO          ?= go
 BUILD_DIR   := build
 # 自动跟随最近 git tag（如 v1.0.0 → 1.0.0）；无 git/无 tag 时回退 0.16.0；可用 make VERSION=x 覆盖
-VERSION     ?= $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null || echo 0.16.0); echo $${v#v})
+# 注意: $${v\#v} 中 \# 转义,否则 GNU make 把 # 当注释起点吞掉 $(shell) 右括号
+VERSION     ?= $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null || echo 0.16.0); echo $${v\#v})
 
 CLI_MAIN    := ./cmd/cli
 SERVE_MAIN  := ./cmd/owl-serve
@@ -39,13 +42,10 @@ WITH ?=
 comma := ,
 COMPS := $(subst $(comma), ,$(WITH))
 
-# 外部源码: gscp（自动克隆）/ tui（优先本地兄弟目录）
+# 外部源码: gscp（自动克隆）
 GSCP_REPO ?= https://github.com/cangyunye/gscp.git
 GSCP_REF  ?= main
 GSCP_SRC  := $(BUILD_DIR)/.gscp-src
-TUI_SRC   ?= ../go-owl-tui
-TUI_REPO  ?= https://github.com/cangyunye/go-owl-tui.git
-TUI_CLONE := $(BUILD_DIR)/.tui-src
 # metrics 为可选插件：不写入 go.mod，仅在显式启用时经 metrics.work 引入兄弟目录源码
 METRICS_SRC  ?= ../go-owl-metrics
 METRICS_WORK := $(CURDIR)/metrics.work
@@ -66,18 +66,17 @@ define cross_build
 	done
 endef
 
-build: ## 编译 owl CLI（纯核心）；WITH=serve,metrics,tui,gscp 追加组件
-ifneq (,$(filter metrics,$(COMPS)))
+build: ## 编译 owl CLI（纯核心，不含 tui）；WITH=serve,metrics,tui,gscp 追加组件
+ifeq ($(filter metrics,$(COMPS)),metrics)
 	$(metrics_check)
-	$(call cross_build,-tags metrics $(LDFLAGS),$(CLI_MAIN),owl,GOWORK=$(METRICS_WORK))
+	$(call cross_build,$(if $(filter tui,$(COMPS)),-tags "metrics tui",-tags metrics) $(LDFLAGS),$(CLI_MAIN),owl,GOWORK=$(METRICS_WORK))
+else ifeq ($(filter tui,$(COMPS)),tui)
+	$(call cross_build,-tags tui $(LDFLAGS),$(CLI_MAIN),owl)
 else
 	$(call cross_build,$(LDFLAGS),$(CLI_MAIN),owl)
 endif
 ifneq (,$(filter serve,$(COMPS)))
 	$(call cross_build,,$(SERVE_MAIN),owl-serve)
-endif
-ifneq (,$(filter tui,$(COMPS)))
-	@$(MAKE) --no-print-directory build-tui PLATFORMS='$(PLATFORMS)'
 endif
 ifneq (,$(filter gscp,$(COMPS)))
 	@$(MAKE) --no-print-directory build-gscp PLATFORMS='$(PLATFORMS)'
@@ -93,19 +92,8 @@ build-metrics: ## 编译带 metrics 功能的 owl CLI（可选插件，需兄弟
 	$(metrics_check)
 	$(call cross_build,-tags metrics $(LDFLAGS),$(CLI_MAIN),owl,GOWORK=$(METRICS_WORK))
 
-build-tui: ## 编译 owl-tui（默认源码 ../go-owl-tui，可 TUI_SRC= 覆盖；缺失时克隆 TUI_REPO）
-	@set -e; src=$(TUI_SRC); \
-	if [ ! -d "$$src" ]; then \
-		printf '==> clone owl-tui: $(TUI_REPO)\n'; \
-		rm -rf $(TUI_CLONE); git clone --depth 1 $(TUI_REPO) $(TUI_CLONE); src=./$(TUI_CLONE); \
-	fi; \
-	for p in $(PLATFORMS); do \
-		os=$${p%/*}; arch=$${p#*/}; ext=; \
-		if [ "$$os" = windows ]; then ext=.exe; fi; \
-		out=$(CURDIR)/$(BUILD_DIR)/$$os-$$arch; mkdir -p $$out; \
-		printf '==> %-10s %s\n' owl-tui "$$p"; \
-		(cd "$$src" && GOWORK=off CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -o "$$out/owl-tui$$ext" .); \
-	done
+build-tui: ## 编译带 owl tui 子命令的 owl CLI（原生 TUI，-tags tui）
+	$(call cross_build,-tags tui $(LDFLAGS),$(CLI_MAIN),owl)
 
 build-gscp: ## 克隆并跨平台编译 gscp
 	@if [ ! -d '$(GSCP_SRC)/.git' ]; then git clone --depth 1 '$(GSCP_REPO)' '$(GSCP_SRC)'; fi
@@ -127,10 +115,10 @@ define cross_build_ext
 	done
 endef
 
-install: ## 安装当前平台产物（owl 及已追加组件）到 ~/.local/bin
+install: ## 安装当前平台产物（owl 及已追加组件）到 ~/.local/bin；make install WITH=tui 装带 tui 版
 	@$(MAKE) --no-print-directory build PLATFORMS='$(HOST_PLATFORM)'
 	@mkdir -p ~/.local/bin
-	@for b in owl owl-serve owl-tui; do \
+	@for b in owl owl-serve; do \
 		f=$(BUILD_DIR)/$(HOST_PLATDIR)/$$b; \
 		if [ -f "$$f" ]; then cp "$$f" ~/.local/bin/; printf 'installed %s\n' "$$b"; fi; \
 	done
@@ -147,7 +135,7 @@ install-gscp: ## 安装 gscp（linux/darwin）到 ~/.owl/gscp/，中继传输自
 
 clean: ## 清理构建产物
 	rm -rf $(BUILD_DIR) coverage.out coverage.html
-	rm -f owl owl.exe cli cli.exe owl-serve owl-serve.exe owl-tui owl-tui.exe owl-duckdb owl-sqlite3
+	rm -f owl owl.exe cli cli.exe owl-serve owl-serve.exe owl-duckdb owl-sqlite3
 
 test: ## 运行全部测试（委托 tests/）
 	@$(MAKE) --no-print-directory -C tests test-all

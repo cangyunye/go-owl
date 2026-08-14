@@ -2,8 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo "==> 构建 owl"
-go build -o build/owl ./cmd/cli
+echo "==> 构建 owl（带 tui 子命令）"
+go build -tags tui -o build/owl ./cmd/cli
 
 TMP_HOME="$(mktemp -d)"
 mkdir -p "$TMP_HOME/.owl"

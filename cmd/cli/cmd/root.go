@@ -17,7 +17,6 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/serve"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/session"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui"
 	internalhistory "github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/cangyunye/go-owl/internal/logger"
@@ -66,8 +65,8 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(session.NewCmd())
 	rootCmd.AddCommand(async.NewAsyncCmd())
 	rootCmd.AddCommand(serve.NewServeCmd())
-	rootCmd.AddCommand(tui.NewTuiCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
+	registerTUI(rootCmd)
 
 	// 添加版本信息
 	rootCmd.SetVersionTemplate(fmt.Sprintf(`owl version: %s

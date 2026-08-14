@@ -1,132 +1,55 @@
-# owl tui 子命令集成测试文档
+# owl tui 集成测试文档
 
 ## 概述
-本文档描述了为 go-owl 添加 `owl tui` 子命令的测试内容，该命令允许用户通过 `owl tui` 直接调用 owl-tui 功能。
 
-## 测试环境
-- 操作系统: Linux
-- Go 版本: 1.25.0
-- 项目路径:
-  - go-owl: /workspace/go-owl
-  - go-owl-tui: /workspace/go-owl-tui
+`owl tui` 是 go-owl 的**原生 TUI 子命令**（bubbletea 实现，非外部二进制转发），位于 `cmd/cli/cmd/tui/`。它通过构建标签门控：
 
-## 功能说明
-新增的 `owl tui` 子命令具有以下功能：
-1. 查找已安装的 owl-tui 可执行文件
-2. 在 PATH 中搜索 owl-tui
-3. 在 owl 可执行文件的同级目录搜索
-4. 在相对路径（如与 go-owl 同级的 go-owl-tui 目录）搜索
-5. 找到后直接执行 owl-tui 并传递所有参数
+- **纯净构建**（`make build` / `task build`，无标签）：`owl tui` 子命令不注册，且 tui 包因不被 import 而整体不链接（bubbletea/bubbles/lipgloss 依赖一并裁掉）。
+- **TUI 构建**（`make build WITH=tui` / `make build-tui` / `task build-tui`，`-tags tui`）：注册并链接 `owl tui` 子命令。
 
-## 测试案例
+## 构建
 
-### 测试案例 1: 验证 owl 命令帮助信息包含 tui 子命令
-**命令**:
 ```bash
-/tmp/owl-test/owl --help
+# 纯净（不含 owl tui）
+make build
+task build
+
+# 带 owl tui 子命令
+make build-tui
+make build WITH=tui
+task build-tui
+task build WITH=tui
 ```
 
-**预期结果**:
-输出中应包含以下内容：
-```
-Available Commands:
-  ...
-  tui         启动交互式终端用户界面
-  ...
-```
+## 测试
 
-**测试结果**: ✓ 通过
+### 单元测试
 
----
+tui 包与 nodes 子包单测（`cmd/cli/cmd/tui/`）：
 
-### 测试案例 2: 验证 owl tui --help 显示正确信息
-**命令**:
 ```bash
-/tmp/owl-test/owl tui --help
+# 纯净构建下 root 命令不含 tui 子命令，root_test 断言同样通过
+go test ./cmd/cli/cmd/...
+
+# tui 标签下含 tui 子命令，root_test 断言 tui 存在
+go test -tags tui ./cmd/cli/...
 ```
 
-**预期结果**:
-应显示 tui 子命令的详细帮助信息，包括功能说明和使用示例。
+`TestRootCmdHasSubcommands` 通过 `extraRootCommands`（`tui_register.go` / `tui_register_disabled.go` 按标签提供）自适应两种构建。
 
-**测试结果**: ✓ 通过
+### pty 端到端冒烟
 
----
+`scripts/test-tui.sh` 在 pty 下喂真实按键验证：
 
-### 测试案例 3: 验证 owl 可以找到同目录下的 owl-tui
-**前置条件**:
-- owl 和 owl-tui 可执行文件在同一个目录
-- 目录: /tmp/owl-test/
+- 场景 1：干净数据下 `owl tui` 渲染 `/nodes` 面包屑、打开新增表单、`q` 干净退出。
+- 场景 2：nodes.json↔db 冲突数据下 `owl tui` 不被读路径冲突交互提示阻塞（`SetConflictPrompt(false)` 绕过）。
 
-**测试步骤**:
-1. 确认目录内容: `ls -la /tmp/owl-test/`
-2. 执行 owl tui 命令: `/tmp/owl-test/owl tui`
-
-**预期结果**:
-owl 能够找到并执行同目录下的 owl-tui。
-
-**测试结果**: ✓ 通过
-
----
-
-### 测试案例 4: 验证参数传递
-**测试步骤**:
-1. 使用任意参数调用 owl tui，例如: `/tmp/owl-test/owl tui --test`
-
-**预期结果**:
-owl-tui 应能接收到所有传递的参数。
-
-**测试结果**: ✓ 通过
-
----
-
-## 文件变更列表
-
-### 1. /workspace/go-owl/cmd/cli/cmd/tui/tui.go (新建)
-- 新建 tui 子命令包
-- 实现了 NewTuiCmd() 函数创建 tui 命令
-- 实现了 findTuiExecutable() 函数查找 owl-tui
-- 实现了 runTui() 函数执行 owl-tui
-
-### 2. /workspace/go-owl/cmd/cli/cmd/root.go (修改)
-- 导入了 tui 子命令包
-- 在 NewRootCmd() 中添加了 tui 子命令
-
-### 3. /workspace/go-owl/go.mod (更新)
-- 移除了不必要的 go-owl-tui 依赖
-- 保持了原有的依赖不变
-
----
-
-## 使用方法
-
-### 正常使用流程
-1. 构建并安装 go-owl:
-   ```bash
-   cd /workspace/go-owl && go install
-   ```
-
-2. 构建并安装 go-owl-tui:
-   ```bash
-   cd /workspace/go-owl-tui && go install
-   ```
-
-3. 现在可以直接使用:
-   ```bash
-   owl tui
-   ```
-
-### 在开发环境中使用
-如果两个可执行文件在同一目录下:
 ```bash
-# 在同一目录下构建两个项目
-cd /workspace/go-owl && go build -o ./owl ./cmd/cli/
-cd /workspace/go-owl-tui && go build -o ../go-owl/owl-tui ./
-
-# 然后就可以直接调用
-cd /workspace/go-owl && ./owl tui
+./scripts/test-tui.sh
 ```
 
----
+## 构建标签门控实现
 
-## 结论
-所有测试案例均通过，`owl tui` 子命令功能正常。用户现在可以通过 `owl tui` 命令直接启动 owl-tui 界面，而无需单独运行 `owl-tui` 命令。
+- `cmd/cli/cmd/root.go`：调用 `registerTUI(rootCmd)`，不直接 import tui 包。
+- `cmd/cli/cmd/tui_register.go`（`//go:build tui`）：注册 `tui.NewTuiCmd()` + `extraRootCommands=["tui"]`。
+- `cmd/cli/cmd/tui_register_disabled.go`（`//go:build !tui`）：空实现 + `extraRootCommands=nil`。

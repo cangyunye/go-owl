@@ -51,7 +51,7 @@ func TestRootCmdHasSubcommands(t *testing.T) {
 		names[c.Name()] = true
 	}
 
-	expected := []string{"node", "exec", "file", "playbook", "settings", "ai", "history", "session", "async", "serve", "tui", "metrics"}
+	expected := append([]string{"node", "exec", "file", "playbook", "settings", "ai", "history", "session", "async", "serve", "metrics"}, extraRootCommands...)
 	for _, name := range expected {
 		if !names[name] {
 			t.Errorf("expected subcommand %q in root command", name)
