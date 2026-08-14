@@ -61,6 +61,7 @@ func NewFormModel(mode FormMode, node *common.NodeInfo) *FormModel {
 		{"proxy_jump", "ProxyJump", false, base.ProxyJump, true},
 		{"groups", "Groups", false, strings.Join(base.Groups, ","), true},
 		{"labels", "Labels", false, sortedLabels(base.Labels), true},
+		{"status", "Status", false, base.Status, true},
 	}
 	for _, s := range specs {
 		ti := textinput.New()
@@ -134,6 +135,12 @@ func (f *FormModel) validate() string {
 				}
 			}
 		}
+		if fd.key == "status" {
+			v := strings.TrimSpace(fd.input.Value())
+			if v != "" && v != "online" && v != "offline" {
+				return "Status 必须是 online 或 offline"
+			}
+		}
 	}
 	return ""
 }
@@ -154,6 +161,13 @@ func (f *FormModel) focusFirstInvalid() {
 					f.cursor = i
 					return
 				}
+			}
+		}
+		if fd.key == "status" {
+			v := strings.TrimSpace(fd.input.Value())
+			if v != "" && v != "online" && v != "offline" {
+				f.cursor = i
+				return
 			}
 		}
 	}
@@ -194,16 +208,23 @@ func (f *FormModel) toNode() *common.NodeInfo {
 		ProxyJump: f.value("proxy_jump"),
 		Groups:    splitTrim(f.value("groups"), ","),
 		Labels:    parseLabels(f.value("labels")),
-		Status:    "offline",
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 	if f.mode == FormEdit && f.base != nil {
 		n.CreatedAt = f.base.CreatedAt
-		n.Status = f.base.Status
 		if port == 22 && f.base.Port != 22 && f.value("port") == "" {
 			n.Port = f.base.Port
 		}
+	}
+	if st := f.value("status"); st != "" {
+		n.Status = st
+	} else if f.mode == FormAdd {
+		n.Status = "offline"
+	} else if f.base != nil {
+		n.Status = f.base.Status
+	} else {
+		n.Status = "offline"
 	}
 	return n
 }

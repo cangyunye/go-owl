@@ -173,3 +173,55 @@ func TestFormAdd_Validation_PortOutOfRange_FocusJumps(t *testing.T) {
 		t.Fatalf("expected focus jump to Port(3), got %d", m.form.cursor)
 	}
 }
+
+func TestFormEdit_StatusField_Prefilled(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	nm, _ := m.Update(runeKey('e'))
+	m = nm.(Model)
+	idx := len(m.form.fields) - 1 // status 是最后一个字段
+	if m.form.fields[idx].key != "status" {
+		t.Fatalf("expected last field status, got %q", m.form.fields[idx].key)
+	}
+	if m.form.fields[idx].input.Value() != "online" {
+		t.Fatalf("expected prefilled online, got %q", m.form.fields[idx].input.Value())
+	}
+}
+
+func TestFormEdit_SaveStatusOffline(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	nm, _ := m.Update(runeKey('e'))
+	m = nm.(Model)
+	idx := len(m.form.fields) - 1
+	m.form.fields[idx].input.SetValue("offline")
+	nm, _ = m.Update(runeKey('s'))
+	m = nm.(Model)
+	if m.current() != LocList {
+		t.Fatalf("expected back to list, got %v", m.current())
+	}
+	got, _ := store.Get("n1")
+	if got.Status != "offline" {
+		t.Fatalf("expected status offline, got %q", got.Status)
+	}
+}
+
+func TestFormEdit_SaveStatusInvalid(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	nm, _ := m.Update(runeKey('e'))
+	m = nm.(Model)
+	idx := len(m.form.fields) - 1
+	m.form.fields[idx].input.SetValue("bogus")
+	nm, _ = m.Update(runeKey('s'))
+	m = nm.(Model)
+	if m.current() != LocEdit {
+		t.Fatalf("expected stay in form on invalid status")
+	}
+	if m.form.error == "" {
+		t.Fatal("expected validation error")
+	}
+}
