@@ -137,3 +137,35 @@ func TestGroupsIntersect(t *testing.T) {
 		t.Fatal("expected false")
 	}
 }
+
+func TestParseFilterQuery_Status(t *testing.T) {
+	fq := ParseFilterQuery("s:online")
+	if fq.Status != "online" {
+		t.Fatalf("unexpected status: %q", fq.Status)
+	}
+	if fq.Empty() {
+		t.Fatal("expected not empty")
+	}
+	fq = ParseFilterQuery("g:web s:offline")
+	if fq.Status != "offline" || len(fq.Groups) != 1 || fq.Groups[0] != "web" {
+		t.Fatalf("unexpected mixed: status=%q groups=%#v", fq.Status, fq.Groups)
+	}
+}
+
+func TestParseFilterQuery_Status_Empty(t *testing.T) {
+	if fq := ParseFilterQuery("s:"); !fq.Empty() {
+		t.Fatalf("s: alone should be empty, got %#v", fq)
+	}
+}
+
+func TestApplyFilter_Status(t *testing.T) {
+	nodes := []*common.NodeInfo{
+		{ID: "n1", Status: "online"},
+		{ID: "n2", Status: "offline"},
+		{ID: "n3", Status: "Online"},
+	}
+	got := applyFilter(nodes, ParseFilterQuery("s:online"))
+	if len(got) != 2 || got[0].ID != "n1" || got[1].ID != "n3" {
+		t.Fatalf("unexpected: %+v", got)
+	}
+}

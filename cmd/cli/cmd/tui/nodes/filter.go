@@ -10,6 +10,7 @@ type FilterQuery struct {
 	Groups []string
 	Labels map[string]string
 	Search string
+	Status string
 }
 
 func ParseFilterQuery(q string) FilterQuery {
@@ -34,6 +35,10 @@ func ParseFilterQuery(q string) FilterQuery {
 				for k, v := range parseLabels(tok[2:]) {
 					fq.Labels[k] = v
 				}
+			case strings.HasPrefix(tok, "s:"):
+				if v := strings.TrimSpace(tok[2:]); v != "" {
+					fq.Status = v
+				}
 			default:
 				if s := strings.TrimSpace(tok); s != "" {
 					search = append(search, s)
@@ -46,7 +51,7 @@ func ParseFilterQuery(q string) FilterQuery {
 }
 
 func (fq FilterQuery) Empty() bool {
-	return len(fq.Groups) == 0 && len(fq.Labels) == 0 && fq.Search == ""
+	return len(fq.Groups) == 0 && len(fq.Labels) == 0 && fq.Search == "" && fq.Status == ""
 }
 
 func matchFilter(n *common.NodeInfo, fq FilterQuery) bool {
@@ -60,6 +65,9 @@ func matchFilter(n *common.NodeInfo, fq FilterQuery) bool {
 		if n.Labels == nil || n.Labels[k] != v {
 			return false
 		}
+	}
+	if fq.Status != "" && !strings.EqualFold(n.Status, fq.Status) {
+		return false
 	}
 	if fq.Search != "" {
 		hay := strings.ToLower(n.ID + " " + n.Name + " " + n.Address)

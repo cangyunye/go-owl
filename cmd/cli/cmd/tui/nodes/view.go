@@ -111,6 +111,9 @@ func (m Model) statusBar() string {
 	for k, v := range m.filter.Labels {
 		chips = append(chips, "l:"+k+"="+v)
 	}
+	if m.filter.Status != "" {
+		chips = append(chips, "s:"+m.filter.Status)
+	}
 	var b strings.Builder
 	if len(chips) > 0 {
 		b.WriteString(styleSelected.Render("[" + strings.Join(chips, " ") + "]"))
