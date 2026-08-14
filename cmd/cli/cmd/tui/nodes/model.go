@@ -166,9 +166,12 @@ func (m Model) IsDirty() bool {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// 本阶段只有 LocList 可达,直接走 updateList。
-	// Task 5/6/8 扩展 switch 加入 LocColumns / LocNew+LocEdit / LocDelete 分支。
-	return m.updateList(msg)
+	switch m.current() {
+	case LocColumns:
+		return m.updateColumns(msg)
+	default:
+		return m.updateList(msg)
+	}
 }
 
 func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -198,6 +201,9 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filterInput.Focus()
 		// 每次打开从空输入开始:committed filter 只存于 filterText,live 编辑只改 filter
 		m.filterInput.Reset()
+	case "c":
+		m.push(LocColumns)
+		m.openColumns()
 	}
 	m.clampCursor()
 	return m, nil
@@ -230,7 +236,7 @@ func (m Model) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// Task 6/8/5 将分别替换 FormModel / ConfirmModel / ColumnsModel 为完整实现。
+// Task 6/8 将分别替换 FormModel / ConfirmModel 为完整实现。
 // 占位:仅保证 model.go 能编译,含一个非导出方法避免 empty-struct lint 误伤。
 type FormModel struct{ _ struct{} }
 
@@ -238,4 +244,41 @@ func (f *FormModel) IsDirty() bool { return false }
 
 type ConfirmModel struct{ _ struct{} }
 
-type ColumnsModel struct{ _ struct{} }
+func (m *Model) openColumns() {
+	m.columnsModel = NewColumnsModel(m.columns)
+}
+
+func (m Model) updateColumns(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cm := m.columnsModel
+	if cm == nil {
+		return m, nil
+	}
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch km.String() {
+	case "up":
+		cm.cursor = (cm.cursor - 1 + len(cm.order)) % len(cm.order)
+	case "down":
+		cm.cursor = (cm.cursor + 1) % len(cm.order)
+	case " ":
+		cm.toggle(cm.cursor)
+		m.columns = cm.selected()
+	case "a":
+		cm.selectAll()
+		m.columns = cm.selected()
+	case "r":
+		cm.reset()
+		m.columns = cm.selected()
+	case "enter":
+		m.pop()
+		m.columnsModel = nil
+	case "esc":
+		cm.restoreSnapshot()
+		m.columns = cm.selected()
+		m.pop()
+		m.columnsModel = nil
+	}
+	return m, nil
+}
