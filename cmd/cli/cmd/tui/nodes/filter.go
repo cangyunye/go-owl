@@ -15,29 +15,36 @@ type FilterQuery struct {
 func ParseFilterQuery(q string) FilterQuery {
 	fq := FilterQuery{Labels: map[string]string{}}
 	var search []string
-	for _, tok := range strings.Fields(q) {
-		switch {
-		case strings.HasPrefix(tok, "g:"):
-			for _, g := range strings.Split(tok[2:], ",") {
-				g = strings.TrimSpace(g)
-				if g != "" {
-					fq.Groups = append(fq.Groups, g)
-				}
+	for _, raw := range strings.Fields(q) {
+		// `&&` 是显式 AND 运算符:每个空格切出的 token 再按 `&&` 切分,语义与空格等价
+		for _, tok := range strings.Split(raw, "&&") {
+			tok = strings.TrimSpace(tok)
+			if tok == "" {
+				continue
 			}
-		case strings.HasPrefix(tok, "l:"):
-			for _, pair := range strings.Split(tok[2:], ",") {
-				parts := strings.SplitN(pair, "=", 2)
-				if len(parts) == 2 {
-					k := strings.TrimSpace(parts[0])
-					v := strings.TrimSpace(parts[1])
-					if k != "" {
-						fq.Labels[k] = v
+			switch {
+			case strings.HasPrefix(tok, "g:"):
+				for _, g := range strings.Split(tok[2:], ",") {
+					g = strings.TrimSpace(g)
+					if g != "" {
+						fq.Groups = append(fq.Groups, g)
 					}
 				}
-			}
-		default:
-			if s := strings.TrimSpace(tok); s != "" {
-				search = append(search, s)
+			case strings.HasPrefix(tok, "l:"):
+				for _, pair := range strings.Split(tok[2:], ",") {
+					parts := strings.SplitN(pair, "=", 2)
+					if len(parts) == 2 {
+						k := strings.TrimSpace(parts[0])
+						v := strings.TrimSpace(parts[1])
+						if k != "" {
+							fq.Labels[k] = v
+						}
+					}
+				}
+			default:
+				if s := strings.TrimSpace(tok); s != "" {
+					search = append(search, s)
+				}
 			}
 		}
 	}

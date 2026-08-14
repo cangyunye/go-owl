@@ -170,6 +170,42 @@ func TestTruncateCell(t *testing.T) {
 	}
 }
 
+func TestFilterEsc_RestoresAppliedFilter(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	// 先提交 g:web(Enter)
+	nm, _ := m.Update(runeKey('/'))
+	m = nm.(Model)
+	for _, r := range []rune("g:web") {
+		nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = nm.(Model)
+	}
+	nm, _ = m.Update(key(tea.KeyEnter))
+	m = nm.(Model)
+	if len(m.visible()) != 2 {
+		t.Fatalf("expected 2 after commit g:web, got %d", len(m.visible()))
+	}
+	// 再打开改成 g:db(live 1 个),然后 Esc → 恢复 g:web(2 个)
+	nm, _ = m.Update(runeKey('/'))
+	m = nm.(Model)
+	for _, r := range []rune("g:db") {
+		nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = nm.(Model)
+	}
+	if len(m.visible()) != 1 {
+		t.Fatalf("expected 1 live after typing g:db, got %d", len(m.visible()))
+	}
+	nm, _ = m.Update(key(tea.KeyEsc))
+	m = nm.(Model)
+	if len(m.visible()) != 2 {
+		t.Fatalf("expected 2 after Esc restore, got %d", len(m.visible()))
+	}
+	if m.filterText != "g:web" {
+		t.Fatalf("expected filterText restored to g:web, got %q", m.filterText)
+	}
+}
+
 func TestCellValue_VariousKeys(t *testing.T) {
 	n := &common.NodeInfo{ID: "n1", Name: "web", Address: "1.2.3.4", Port: 22, User: "root", Status: "online", Groups: []string{"web"}, Labels: map[string]string{"b": "2", "a": "1"}, LastCheckAt: "x", ProxyJump: "jump"}
 	cases := map[string]string{

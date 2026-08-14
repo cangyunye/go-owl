@@ -196,7 +196,8 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filterOpen = true
 		m.mode = ModeInsert
 		m.filterInput.Focus()
-		m.filterInput.SetValue(m.filterText)
+		// 每次打开从空输入开始:committed filter 只存于 filterText,live 编辑只改 filter
+		m.filterInput.Reset()
 	}
 	m.clampCursor()
 	return m, nil
@@ -207,20 +208,24 @@ func (m Model) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filterOpen = false
 		m.mode = ModeNormal
 		m.filterInput.Blur()
-		// 恢复上一次已应用的查询串与过滤(取消本次编辑)
+		// 取消本次编辑:恢复到上一次已提交(Enter)的查询串与过滤
 		m.filterInput.SetValue(m.filterText)
 		m.filter = ParseFilterQuery(m.filterText)
 		return m, nil
 	}
 	var cmd tea.Cmd
 	m.filterInput, cmd = m.filterInput.Update(msg)
-	m.filterText = m.filterInput.Value()
-	m.filter = ParseFilterQuery(m.filterText)
 	if km, ok := msg.(tea.KeyMsg); ok && km.String() == "enter" {
+		// 提交:filterText 只在此刻更新为已应用查询串
+		m.filterText = m.filterInput.Value()
+		m.filter = ParseFilterQuery(m.filterText)
 		m.filterOpen = false
 		m.mode = ModeNormal
 		m.filterInput.Blur()
+		return m, cmd
 	}
+	// live 过滤:只改 filter,不改 filterText(否则 Esc 无法真正取消)
+	m.filter = ParseFilterQuery(m.filterInput.Value())
 	m.clampCursor()
 	return m, cmd
 }

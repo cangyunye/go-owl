@@ -49,6 +49,24 @@ func TestParseFilterQuery_Empty(t *testing.T) {
 	}
 }
 
+func TestParseFilterQuery_ExplicitAND(t *testing.T) {
+	fq := ParseFilterQuery("web && cache")
+	if fq.Search != "web cache" {
+		t.Fatalf("search (spaced &&): %q", fq.Search)
+	}
+	fq = ParseFilterQuery("web&&cache")
+	if fq.Search != "web cache" {
+		t.Fatalf("search (tight &&): %q", fq.Search)
+	}
+	fq = ParseFilterQuery("g:web && l:env=prod")
+	if len(fq.Groups) != 1 || fq.Groups[0] != "web" || fq.Labels["env"] != "prod" {
+		t.Fatalf("mixed &&: groups=%#v labels=%#v", fq.Groups, fq.Labels)
+	}
+	if fq.Empty() {
+		t.Fatal("expected not empty")
+	}
+}
+
 func TestApplyFilter_Groups(t *testing.T) {
 	nodes := []*common.NodeInfo{
 		{ID: "n1", Groups: []string{"web"}},
