@@ -18,6 +18,7 @@ trap cleanup EXIT
 # run_tui <home> <outfile> — 在隔离 HOME 下经 pty 启动 owl tui,喂按键,等退出。
 # TERM=dumb:script 下的 pty 没有终端模拟器应答 OSC11/CSI6n 查询,bubbletea 会阻塞
 # 等背景色/光标位置响应;TERM=dumb 走 NoTTY 路径,跳过查询。
+# 兼容 util-linux 2.33+:用 -c 传命令;老版本同样支持 -c。
 # watchdog 兜底防挂死(macOS 无 GNU timeout);set -e 下先取 RC 再判(默认 0)。
 run_tui() {
   local home="$1" out="$2"
@@ -26,8 +27,28 @@ run_tui() {
     sleep 0.6
     printf '\033' # Esc 返回列表
     sleep 0.6
+    printf 'p'    # Ping 视图
+    sleep 0.6
+    printf '\033' # Esc 返回
+    sleep 0.6
+    printf 'k'    # SSH 检查视图
+    sleep 0.6
+    printf '\033' # Esc 返回
+    sleep 0.6
+    printf 'i'    # 导入/导出视图
+    sleep 0.6
+    printf '\033' # Esc 返回
+    sleep 0.6
+    printf 'o'    # 分组视图
+    sleep 0.6
+    printf '\033' # Esc 返回
+    sleep 0.6
+    printf 'l'    # 标签视图
+    sleep 0.6
+    printf '\033' # Esc 返回
+    sleep 0.6
     printf 'q'    # 退出
-  ) | TERM=dumb HOME="$home" script -q "$out" ./build/owl tui >/dev/null 2>&1 &
+  ) | TERM=dumb HOME="$home" script -q "$out" -c "./build/owl tui" >/dev/null 2>&1 &
   local pipid=$!
   ( sleep 20 && kill "$pipid" 2>/dev/null ) &
   local timer=$!
