@@ -29,6 +29,7 @@ const (
 	LocCheck
 	LocImportExport
 	LocGroups
+	LocLabels
 )
 
 type pane int
@@ -61,6 +62,7 @@ type Model struct {
 	check        *CheckModel
 	importExport *ImportExportModel
 	groups       *GroupsModel
+	labels       *LabelsModel
 
 	status string
 }
@@ -167,6 +169,8 @@ func (m Model) Path() []string {
 		return []string{"nodes", "import"}
 	case LocGroups:
 		return []string{"nodes", m.selectedID(), "groups"}
+	case LocLabels:
+		return []string{"nodes", m.selectedID(), "labels"}
 	default:
 		return []string{"nodes"}
 	}
@@ -201,6 +205,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateImportExport(msg)
 	case LocGroups:
 		return m.updateGroups(msg)
+	case LocLabels:
+		return m.updateLabels(msg)
 	default:
 		return m.updateList(msg)
 	}
@@ -265,6 +271,12 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if n := m.selectedNode(); n != nil {
 			m.push(LocGroups)
 			m.groups = NewGroupsModel(m.store, n.ID)
+			return m, nil
+		}
+	case "l":
+		if n := m.selectedNode(); n != nil {
+			m.push(LocLabels)
+			m.labels = NewLabelsModel(m.store, n.ID)
 			return m, nil
 		}
 	}
@@ -629,6 +641,64 @@ func (m Model) updateGroups(msg tea.Msg) (tea.Model, tea.Cmd) {
 				g.error = err.Error()
 			} else {
 				g.error = ""
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m Model) updateLabels(msg tea.Msg) (tea.Model, tea.Cmd) {
+	l := m.labels
+	if l == nil {
+		return m, nil
+	}
+	if l.adding {
+		if km, ok := msg.(tea.KeyMsg); ok {
+			switch km.String() {
+			case "esc":
+				l.adding = false
+				l.input.Blur()
+				return m, nil
+			case "enter":
+				if err := l.setLabel(l.input.Value()); err != nil {
+					l.error = err.Error()
+				} else {
+					l.error = ""
+				}
+				l.adding = false
+				l.input.Blur()
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		l.input, cmd = l.input.Update(msg)
+		return m, cmd
+	}
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch km.String() {
+	case "esc":
+		m.pop()
+		m.labels = nil
+	case "up":
+		if l.cursor > 0 {
+			l.cursor--
+		}
+	case "down":
+		if l.cursor < len(l.keys)-1 {
+			l.cursor++
+		}
+	case "a":
+		l.adding = true
+		l.input.Focus()
+	case "d":
+		if l.cursor >= 0 && l.cursor < len(l.keys) {
+			if err := l.removeLabel(l.keys[l.cursor]); err != nil {
+				l.error = err.Error()
+			} else {
+				l.error = ""
 			}
 		}
 	}

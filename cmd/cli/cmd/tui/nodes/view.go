@@ -42,6 +42,8 @@ func (m Model) View() string {
 		return m.listPane() + "\n\n" + m.importExportView()
 	case LocGroups:
 		return m.listPane() + "\n\n" + m.groupsView()
+	case LocLabels:
+		return m.listPane() + "\n\n" + m.labelsView()
 	default:
 		return m.listPane() + m.statusBar()
 	}
@@ -344,6 +346,43 @@ func (m Model) groupsView() string {
 	}
 	if g.error != "" {
 		b.WriteString(styleError.Render("  "+g.error) + "\n")
+	}
+	b.WriteString("└─")
+	return b.String()
+}
+
+func (m Model) labelsView() string {
+	l := m.labels
+	if l == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("┌─ 标签管理 ──────────────\n")
+	b.WriteString("  节点: " + styleSelected.Render(l.nodeID) + "\n")
+	if l.adding {
+		b.WriteString("  新增标签: " + l.input.View() + styleDim.Render("  Enter 确认  Esc 取消") + "\n")
+	} else {
+		if len(l.keys) == 0 {
+			b.WriteString("  " + styleDim.Render("(无标签,按 a 添加)") + "\n")
+		}
+		node, _ := l.store.Get(l.nodeID)
+		for i, k := range l.keys {
+			val := "-"
+			if node != nil {
+				if v, ok := node.Labels[k]; ok {
+					val = v
+				}
+			}
+			line := "  " + k + "=" + val + "\n"
+			if i == l.cursor {
+				line = styleSelected.Render("> " + k + "=" + val) + "\n"
+			}
+			b.WriteString(line)
+		}
+		b.WriteString(styleDim.Render("  a 添加  d 删除  Esc 返回") + "\n")
+	}
+	if l.error != "" {
+		b.WriteString(styleError.Render("  "+l.error) + "\n")
 	}
 	b.WriteString("└─")
 	return b.String()
