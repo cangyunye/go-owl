@@ -172,6 +172,25 @@ func TestParseFilterQuery_Mixed(t *testing.T) {
 	}
 }
 
+func TestParseFilterQuery_ExplicitAND(t *testing.T) {
+	// `&&` 是显式 AND 运算符,与空格等价
+	fq := ParseFilterQuery("web && cache")
+	if fq.Search != "web cache" {
+		t.Fatalf("search (spaced &&): %q", fq.Search)
+	}
+	fq = ParseFilterQuery("web&&cache")
+	if fq.Search != "web cache" {
+		t.Fatalf("search (tight &&): %q", fq.Search)
+	}
+	fq = ParseFilterQuery("g:web && l:env=prod")
+	if len(fq.Groups) != 1 || fq.Groups[0] != "web" || fq.Labels["env"] != "prod" {
+		t.Fatalf("mixed && : groups=%#v labels=%#v", fq.Groups, fq.Labels)
+	}
+	if !fq.Empty() {
+		t.Fatal("expected not empty")
+	}
+}
+
 func TestParseFilterQuery_Empty(t *testing.T) {
 	if !ParseFilterQuery("").Empty() {
 		t.Fatal("empty query should be Empty")
@@ -278,29 +297,36 @@ type FilterQuery struct {
 func ParseFilterQuery(q string) FilterQuery {
 	fq := FilterQuery{Labels: map[string]string{}}
 	var search []string
-	for _, tok := range strings.Fields(q) {
-		switch {
-		case strings.HasPrefix(tok, "g:"):
-			for _, g := range strings.Split(tok[2:], ",") {
-				g = strings.TrimSpace(g)
-				if g != "" {
-					fq.Groups = append(fq.Groups, g)
-				}
+	for _, raw := range strings.Fields(q) {
+		// `&&` 是显式 AND 运算符:每个空格切出的 token 再按 `&&` 切分,语义与空格等价
+		for _, tok := range strings.Split(raw, "&&") {
+			tok = strings.TrimSpace(tok)
+			if tok == "" {
+				continue
 			}
-		case strings.HasPrefix(tok, "l:"):
-			for _, pair := range strings.Split(tok[2:], ",") {
-				parts := strings.SplitN(pair, "=", 2)
-				if len(parts) == 2 {
-					k := strings.TrimSpace(parts[0])
-					v := strings.TrimSpace(parts[1])
-					if k != "" {
-						fq.Labels[k] = v
+			switch {
+			case strings.HasPrefix(tok, "g:"):
+				for _, g := range strings.Split(tok[2:], ",") {
+					g = strings.TrimSpace(g)
+					if g != "" {
+						fq.Groups = append(fq.Groups, g)
 					}
 				}
-			}
-		default:
-			if s := strings.TrimSpace(tok); s != "" {
-				search = append(search, s)
+			case strings.HasPrefix(tok, "l:"):
+				for _, pair := range strings.Split(tok[2:], ",") {
+					parts := strings.SplitN(pair, "=", 2)
+					if len(parts) == 2 {
+						k := strings.TrimSpace(parts[0])
+						v := strings.TrimSpace(parts[1])
+						if k != "" {
+							fq.Labels[k] = v
+						}
+					}
+				}
+			default:
+				if s := strings.TrimSpace(tok); s != "" {
+					search = append(search, s)
+				}
 			}
 		}
 	}
@@ -945,20 +971,24 @@ func (m Model) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filterOpen = false
 		m.mode = ModeNormal
 		m.filterInput.Blur()
-		// 恢复上一次已应用的查询串与过滤(取消本次编辑)
+		// 取消本次编辑:恢复到上一次已提交(Enter)的查询串与过滤
 		m.filterInput.SetValue(m.filterText)
 		m.filter = ParseFilterQuery(m.filterText)
 		return m, nil
 	}
 	var cmd tea.Cmd
 	m.filterInput, cmd = m.filterInput.Update(msg)
-	m.filterText = m.filterInput.Value()
-	m.filter = ParseFilterQuery(m.filterText)
 	if km, ok := msg.(tea.KeyMsg); ok && km.String() == "enter" {
+		// 提交:filterText 只在此刻更新为已应用查询串
+		m.filterText = m.filterInput.Value()
+		m.filter = ParseFilterQuery(m.filterText)
 		m.filterOpen = false
 		m.mode = ModeNormal
 		m.filterInput.Blur()
+		return m, cmd
 	}
+	// live 过滤:只改 filter,不改 filterText(否则 Esc 无法真正取消)
+	m.filter = ParseFilterQuery(m.filterInput.Value())
 	m.clampCursor()
 	return m, cmd
 }
