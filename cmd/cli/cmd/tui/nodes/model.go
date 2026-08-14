@@ -167,6 +167,8 @@ func (m Model) IsDirty() bool {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.current() {
+	case LocNew, LocEdit:
+		return m.updateForm(msg)
 	case LocColumns:
 		return m.updateColumns(msg)
 	default:
@@ -204,6 +206,9 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "c":
 		m.push(LocColumns)
 		m.openColumns()
+	case "a":
+		m.push(LocNew)
+		m.openForm(FormAdd, nil)
 	}
 	m.clampCursor()
 	return m, nil
@@ -236,11 +241,94 @@ func (m Model) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// Task 6/8 将分别替换 FormModel / ConfirmModel 为完整实现。
-// 占位:仅保证 model.go 能编译,含一个非导出方法避免 empty-struct lint 误伤。
-type FormModel struct{ _ struct{} }
+func (m *Model) openForm(mode FormMode, node *common.NodeInfo) {
+	m.form = NewFormModel(mode, node)
+	m.mode = ModeNormal
+}
 
-func (f *FormModel) IsDirty() bool { return false }
+func (m Model) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
+	f := m.form
+	if f == nil {
+		return m, nil
+	}
+	if f.confirmDiscard {
+		if km, ok := msg.(tea.KeyMsg); ok {
+			switch km.String() {
+			case "y", "enter":
+				m.pop()
+				m.form = nil
+				m.reload()
+			case "n", "esc":
+				f.confirmDiscard = false
+			}
+		}
+		return m, nil
+	}
+	if m.mode == ModeInsert {
+		if km, ok := msg.(tea.KeyMsg); ok && km.String() == "esc" {
+			m.mode = ModeNormal
+			f.fields[f.cursor].input.Blur()
+			return m, nil
+		}
+		var cmd tea.Cmd
+		f.fields[f.cursor].input, cmd = f.fields[f.cursor].input.Update(msg)
+		return m, cmd
+	}
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch km.String() {
+	case "up":
+		f.move(-1)
+	case "down":
+		f.move(1)
+	case "enter":
+		m.mode = ModeInsert
+		f.fields[f.cursor].input.Focus()
+	case "s":
+		return m.saveForm()
+	case "esc":
+		if f.IsDirty() {
+			f.confirmDiscard = true
+		} else {
+			m.pop()
+			m.form = nil
+			m.reload()
+		}
+	}
+	return m, nil
+}
+
+func (m Model) saveForm() (tea.Model, tea.Cmd) {
+	f := m.form
+	if err := f.validate(); err != "" {
+		f.error = err
+		f.focusFirstInvalid()
+		return m, nil
+	}
+	f.error = ""
+	node := f.toNode()
+	var err error
+	if f.mode == FormAdd {
+		err = m.store.Add(node)
+	} else {
+		err = m.store.Update(node)
+	}
+	if err != nil {
+		f.error = "保存失败: " + err.Error()
+		return m, nil
+	}
+	if err := m.store.Save(); err != nil {
+		f.error = "保存失败: " + err.Error()
+		return m, nil
+	}
+	m.pop()
+	m.form = nil
+	m.reload()
+	m.status = "已保存节点 " + node.ID
+	return m, nil
+}
 
 type ConfirmModel struct{ _ struct{} }
 
