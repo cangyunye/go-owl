@@ -163,6 +163,12 @@ func (m Model) IsDirty() bool {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		if ws.Width > 0 {
+			m.width = ws.Width
+		}
+		return m, nil
+	}
 	switch m.current() {
 	case LocNew, LocEdit:
 		return m.updateForm(msg)
@@ -366,7 +372,10 @@ func (m Model) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 				c.error = "删除失败: " + err.Error()
 				return m, nil
 			}
-			m.store.Save()
+			if err := m.store.Save(); err != nil {
+				c.error = "删除失败: " + err.Error()
+				return m, nil
+			}
 			m.pop()
 			m.confirm = nil
 			m.reload()
@@ -400,10 +409,10 @@ func (m Model) updateColumns(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case " ":
 		cm.toggle(cm.cursor)
 		m.columns = cm.selected()
-	case "a":
+	case "a", "A":
 		cm.selectAll()
 		m.columns = cm.selected()
-	case "r":
+	case "r", "R":
 		cm.reset()
 		m.columns = cm.selected()
 	case "enter":

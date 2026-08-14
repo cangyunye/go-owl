@@ -3,8 +3,8 @@ package tui_test
 import (
 	"testing"
 
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/testutil"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui"
 )
 
 func TestTuiCmdExists(t *testing.T) {

@@ -207,14 +207,26 @@ func TestFilterEsc_RestoresAppliedFilter(t *testing.T) {
 }
 
 func TestCellValue_VariousKeys(t *testing.T) {
-	n := &common.NodeInfo{ID: "n1", Name: "web", Address: "1.2.3.4", Port: 22, User: "root", Status: "online", Groups: []string{"web"}, Labels: map[string]string{"b": "2", "a": "1"}, LastCheckAt: "x", ProxyJump: "jump"}
+	n := &common.NodeInfo{ID: "n1", Name: "web", Address: "1.2.3.4", Port: 22, User: "root", Status: "online", Groups: []string{"web"}, Labels: map[string]string{"b": "2", "a": "1"}, LastCheckAt: "x"}
 	cases := map[string]string{
 		"id": "n1", "name": "web", "address": "1.2.3.4", "port": "22", "user": "root",
-		"status": "online", "groups": "web", "labels": "a=1,b=2", "last_check": "x", "metadata": "jump",
+		"status": "online", "groups": "web", "labels": "a=1,b=2", "last_check": "x",
 	}
 	for k, want := range cases {
 		if got := cellValue(n, k); got != want {
 			t.Fatalf("cellValue(%s) = %q, want %q", k, got, want)
 		}
+	}
+}
+
+func TestWindowSizeMsg_UpdatesWidth(t *testing.T) {
+	m := NewModel(newTestStore(t))
+	if m.width != 120 {
+		t.Fatalf("expected default width 120, got %d", m.width)
+	}
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = nm.(Model)
+	if m.width != 100 {
+		t.Fatalf("expected width 100, got %d", m.width)
 	}
 }

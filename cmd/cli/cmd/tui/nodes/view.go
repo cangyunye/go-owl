@@ -175,7 +175,7 @@ func (m Model) confirmView() string {
 		b.WriteString("   [Delete]  " + styleSelected.Render("[Cancel]") + "\n")
 	}
 	if c.error != "" {
-		b.WriteString(styleError.Render("  " + c.error) + "\n")
+		b.WriteString(styleError.Render("  "+c.error) + "\n")
 	}
 	b.WriteString(styleDim.Render("  ←→选择 Enter执行 Esc返回"))
 	b.WriteString("\n└─")

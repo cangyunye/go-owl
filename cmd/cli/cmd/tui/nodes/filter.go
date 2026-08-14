@@ -31,15 +31,8 @@ func ParseFilterQuery(q string) FilterQuery {
 					}
 				}
 			case strings.HasPrefix(tok, "l:"):
-				for _, pair := range strings.Split(tok[2:], ",") {
-					parts := strings.SplitN(pair, "=", 2)
-					if len(parts) == 2 {
-						k := strings.TrimSpace(parts[0])
-						v := strings.TrimSpace(parts[1])
-						if k != "" {
-							fq.Labels[k] = v
-						}
-					}
+				for k, v := range parseLabels(tok[2:]) {
+					fq.Labels[k] = v
 				}
 			default:
 				if s := strings.TrimSpace(tok); s != "" {

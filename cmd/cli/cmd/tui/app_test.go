@@ -131,12 +131,16 @@ func TestApp_InsertModeBypassesAppKeys(t *testing.T) {
 
 func TestApp_NodeCRUDFlow(t *testing.T) {
 	a := tui.NewApp(newStore(t))
-	// add: 打开表单,填 ID/Name/Address,保存
+	// 打开新增表单
 	m, _ := a.Update(runeKey('a'))
 	a = m.(*tui.App)
-	for _, r := range []rune("new-1") {
-		m, _ = a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-		a = m.(*tui.App)
+	if a.Nodes.Mode() != nodes.ModeNormal {
+		t.Fatal("expected Normal navigate mode in form")
 	}
-	_ = m
+	if !strings.Contains(a.View(), "添加节点") {
+		t.Fatal("expected add-form title in view")
+	}
+	if !strings.Contains(a.View(), "/nodes/new") {
+		t.Fatal("expected /nodes/new breadcrumb in view")
+	}
 }

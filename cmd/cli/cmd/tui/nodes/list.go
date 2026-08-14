@@ -24,7 +24,6 @@ var columnDefs = []Column{
 	{"groups", "Groups", 18},
 	{"labels", "Labels", 24},
 	{"last_check", "Last Check", 16},
-	{"metadata", "Metadata", 20},
 }
 
 var defaultColumnKeys = []string{"id", "name", "address", "status"}
@@ -58,8 +57,6 @@ func cellValue(n *common.NodeInfo, key string) string {
 		return sortedLabels(n.Labels)
 	case "last_check":
 		return n.LastCheckAt
-	case "metadata":
-		return n.ProxyJump
 	}
 	return ""
 }
