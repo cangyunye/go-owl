@@ -1639,6 +1639,11 @@ func NewFormModel(mode FormMode, node *common.NodeInfo) *FormModel {
 	if node != nil {
 		base = *node
 	}
+	// Port 初始值:<=0 时为空(空 = 默认 22),避免"0"在 validate 里被当成越界
+	portVal := ""
+	if base.Port > 0 {
+		portVal = strconv.Itoa(base.Port)
+	}
 	specs := []struct {
 		key, label string
 		req        bool
@@ -1744,7 +1749,7 @@ func (f *FormModel) focusFirstInvalid() {
 		if fd.key == "port" {
 			v := strings.TrimSpace(fd.input.Value())
 			if v != "" {
-				if _, err := strconv.Atoi(v); err != nil {
+				if p, err := strconv.Atoi(v); err != nil || p < 1 || p > 65535 {
 					f.cursor = i
 					return
 				}
