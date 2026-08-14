@@ -24,6 +24,7 @@ const (
 	LocEdit
 	LocDelete
 	LocColumns
+	LocPing
 )
 
 type pane int
@@ -52,6 +53,7 @@ type Model struct {
 	form         *FormModel
 	confirm      *ConfirmModel
 	columnsModel *ColumnsModel
+	ping         *PingModel
 
 	status string
 }
@@ -150,6 +152,8 @@ func (m Model) Path() []string {
 		return []string{"nodes", id, "delete"}
 	case LocColumns:
 		return []string{"nodes", "columns"}
+	case LocPing:
+		return []string{"nodes", "ping"}
 	default:
 		return []string{"nodes"}
 	}
@@ -176,6 +180,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateConfirm(msg)
 	case LocColumns:
 		return m.updateColumns(msg)
+	case LocPing:
+		return m.updatePing(msg)
 	default:
 		return m.updateList(msg)
 	}
@@ -224,6 +230,10 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "a":
 		m.push(LocNew)
 		m.openForm(FormAdd, nil)
+	case "p":
+		m.push(LocPing)
+		m.ping = NewPingModel(m.visible())
+		return m, m.ping.Start()
 	}
 	m.clampCursor()
 	return m, nil
@@ -423,6 +433,24 @@ func (m Model) updateColumns(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.columns = cm.selected()
 		m.pop()
 		m.columnsModel = nil
+	}
+	return m, nil
+}
+
+func (m Model) updatePing(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case PingDoneMsg:
+		if m.ping != nil {
+			m.ping.results = msg.Results
+			m.ping.loading = false
+		}
+		return m, nil
+	case tea.KeyMsg:
+		if msg.String() == "esc" || msg.String() == "enter" {
+			m.pop()
+			m.ping = nil
+			return m, nil
+		}
 	}
 	return m, nil
 }

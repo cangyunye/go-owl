@@ -3,6 +3,7 @@ package nodes
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -33,6 +34,8 @@ func (m Model) View() string {
 		return m.listPane() + "\n\n" + m.confirmView()
 	case LocColumns:
 		return m.listPane() + "\n\n" + m.columnsView()
+	case LocPing:
+		return m.listPane() + "\n\n" + m.pingView()
 	default:
 		return m.listPane() + m.statusBar()
 	}
@@ -205,6 +208,37 @@ func (m Model) columnsView() string {
 	}
 	b.WriteString(styleDim.Render("  ↑↓移动 Space切换 A全选 R重置 Enter应用 Esc取消"))
 	b.WriteString("\n└─")
+	return b.String()
+}
+
+func (m Model) pingView() string {
+	p := m.ping
+	if p == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("┌─ Ping 检查 ──────────────\n")
+	if p.loading {
+		b.WriteString("  " + styleDim.Render("正在检查 "+fmt.Sprintf("%d", len(p.nodes))+" 个节点…") + "\n")
+	} else {
+		reachable := 0
+		for _, r := range p.results {
+			mark := "✗"
+			if r.Success {
+				mark = "✓"
+				reachable++
+			}
+			line := fmt.Sprintf("  %s %s (%s:%d) %s\n",
+				mark, r.Node.ID, r.Node.Address, r.Node.Port, r.Latency.Round(time.Millisecond))
+			if r.Success {
+				line = styleSelected.Render(line)
+			}
+			b.WriteString(line)
+		}
+		b.WriteString(styleDim.Render(fmt.Sprintf("  可达 %d/%d", reachable, len(p.results))) + "\n")
+	}
+	b.WriteString(styleDim.Render("  Enter/Esc 返回") + "\n")
+	b.WriteString("└─")
 	return b.String()
 }
 
