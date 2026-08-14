@@ -36,6 +36,8 @@ func (m Model) View() string {
 		return m.listPane() + "\n\n" + m.columnsView()
 	case LocPing:
 		return m.listPane() + "\n\n" + m.pingView()
+	case LocCheck:
+		return m.listPane() + "\n\n" + m.checkView()
 	default:
 		return m.listPane() + m.statusBar()
 	}
@@ -248,4 +250,38 @@ func sum(ns []int) int {
 		total += n
 	}
 	return total
+}
+
+func (m Model) checkView() string {
+	c := m.check
+	if c == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("┌─ SSH Check ──────────────\n")
+	if c.loading {
+		b.WriteString("  " + styleDim.Render("正在检查 "+fmt.Sprintf("%d", len(c.nodes))+" 个节点…") + "\n")
+	} else {
+		online := 0
+		for _, r := range c.results {
+			mark := "✗"
+			if r.Success {
+				mark = "✓"
+				online++
+			}
+			method := r.Method
+			if method == "" {
+				method = "-"
+			}
+			line := fmt.Sprintf("  %s %s (%s:%d) %s\n", mark, r.Node.ID, r.Node.Address, r.Node.Port, method)
+			if r.Success {
+				line = styleSelected.Render(line)
+			}
+			b.WriteString(line)
+		}
+		b.WriteString(styleDim.Render(fmt.Sprintf("  在线 %d/%d", online, len(c.results))) + "\n")
+	}
+	b.WriteString(styleDim.Render("  Esc 返回") + "\n")
+	b.WriteString("└─")
+	return b.String()
 }

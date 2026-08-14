@@ -2,6 +2,7 @@ package nodes
 
 import (
 	"sort"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,6 +26,7 @@ const (
 	LocDelete
 	LocColumns
 	LocPing
+	LocCheck
 )
 
 type pane int
@@ -54,6 +56,7 @@ type Model struct {
 	confirm      *ConfirmModel
 	columnsModel *ColumnsModel
 	ping         *PingModel
+	check        *CheckModel
 
 	status string
 }
@@ -154,6 +157,8 @@ func (m Model) Path() []string {
 		return []string{"nodes", "columns"}
 	case LocPing:
 		return []string{"nodes", "ping"}
+	case LocCheck:
+		return []string{"nodes", "check"}
 	default:
 		return []string{"nodes"}
 	}
@@ -182,6 +187,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateColumns(msg)
 	case LocPing:
 		return m.updatePing(msg)
+	case LocCheck:
+		return m.updateCheck(msg)
 	default:
 		return m.updateList(msg)
 	}
@@ -234,6 +241,10 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.push(LocPing)
 		m.ping = NewPingModel(m.visible())
 		return m, m.ping.Start()
+	case "k":
+		m.push(LocCheck)
+		m.check = NewCheckModel(m.visible())
+		return m, m.check.Start()
 	}
 	m.clampCursor()
 	return m, nil
@@ -449,6 +460,44 @@ func (m Model) updatePing(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "esc" || msg.String() == "enter" {
 			m.pop()
 			m.ping = nil
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+func (m Model) updateCheck(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case CheckDoneMsg:
+		if m.check != nil {
+			m.check.results = msg.Results
+			m.check.loading = false
+		}
+		// 回写 status/last_check 到 store
+		now := time.Now().Format("2006-01-02 15:04:05")
+		for _, r := range msg.Results {
+			node, err := m.store.Get(r.Node.ID)
+			if err != nil {
+				continue
+			}
+			if r.Success {
+				node.Status = "online"
+			} else {
+				node.Status = "offline"
+			}
+			node.LastCheckAt = now
+			node.UpdatedAt = now
+			_ = m.store.Update(node)
+		}
+		_ = m.store.Save()
+		m.pop()
+		m.check = nil
+		m.reload()
+		return m, nil
+	case tea.KeyMsg:
+		if msg.String() == "esc" {
+			m.pop()
+			m.check = nil
 			return m, nil
 		}
 	}
