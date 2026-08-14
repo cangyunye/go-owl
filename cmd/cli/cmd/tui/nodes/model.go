@@ -169,6 +169,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.current() {
 	case LocNew, LocEdit:
 		return m.updateForm(msg)
+	case LocDelete:
+		return m.updateConfirm(msg)
 	case LocColumns:
 		return m.updateColumns(msg)
 	default:
@@ -206,6 +208,16 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "c":
 		m.push(LocColumns)
 		m.openColumns()
+	case "e":
+		if n := m.selectedNode(); n != nil {
+			m.push(LocEdit)
+			m.openForm(FormEdit, n)
+		}
+	case "d":
+		if n := m.selectedNode(); n != nil {
+			m.push(LocDelete)
+			m.openConfirm(n)
+		}
 	case "a":
 		m.push(LocNew)
 		m.openForm(FormAdd, nil)
@@ -330,7 +342,45 @@ func (m Model) saveForm() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-type ConfirmModel struct{ _ struct{} }
+func (m *Model) openConfirm(n *common.NodeInfo) {
+	m.confirm = NewConfirmModel(n)
+}
+
+func (m Model) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
+	c := m.confirm
+	if c == nil {
+		return m, nil
+	}
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch km.String() {
+	case "left":
+		c.cursor = 0
+	case "right":
+		c.cursor = 1
+	case "esc":
+		m.pop()
+		m.confirm = nil
+	case "enter":
+		if c.cursor == 0 {
+			if err := m.store.Remove(c.node.ID); err != nil {
+				c.error = "删除失败: " + err.Error()
+				return m, nil
+			}
+			m.store.Save()
+			m.pop()
+			m.confirm = nil
+			m.reload()
+			m.status = "已删除节点 " + c.node.ID
+		} else {
+			m.pop()
+			m.confirm = nil
+		}
+	}
+	return m, nil
+}
 
 func (m *Model) openColumns() {
 	m.columnsModel = NewColumnsModel(m.columns)
