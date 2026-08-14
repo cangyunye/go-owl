@@ -79,9 +79,6 @@ func newInput(placeholder string, width int) textinput.Model {
 
 func (m Model) Init() tea.Cmd { return nil }
 
-// View 最小桩实现:保证 Model 满足 tea.Model 接口(Task 9 替换为完整渲染)
-func (m Model) View() string { return "" }
-
 func (m Model) current() Location { return m.stack[len(m.stack)-1] }
 
 func (m *Model) push(l Location) { m.stack = append(m.stack, l) }

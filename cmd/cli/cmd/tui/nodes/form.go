@@ -159,6 +159,13 @@ func (f *FormModel) focusFirstInvalid() {
 	}
 }
 
+func (f *FormModel) nodeID() string {
+	if f.base != nil {
+		return f.base.ID
+	}
+	return f.value("id")
+}
+
 func (f *FormModel) value(key string) string {
 	for _, fd := range f.fields {
 		if fd.key == key {
