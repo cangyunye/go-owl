@@ -95,3 +95,56 @@ func TestModel_Labels_RemoveFlow(t *testing.T) {
 		t.Fatalf("expected env removed, got %#v", node.Labels)
 	}
 }
+
+func TestLabels_AddModeInsertIsolatesKeys(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	nm, _ := m.Update(runeKey('l'))
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey('a'))
+	m = nm.(Model)
+	if m.Mode() != ModeInsert {
+		t.Fatalf("expected ModeInsert after a, got %v", m.Mode())
+	}
+	// q/? 应被输入,而不是被 App 劫持为退出/帮助
+	for _, r := range []rune("q?") {
+		nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = nm.(Model)
+	}
+	if m.Mode() != ModeInsert {
+		t.Fatalf("expected still ModeInsert, got %v", m.Mode())
+	}
+	if v := m.labels.input.Value(); v != "q?" {
+		t.Fatalf("expected input value %q, got %q", "q?", v)
+	}
+	if m.current() != LocLabels {
+		t.Fatalf("expected LocLabels, got %v", m.current())
+	}
+}
+
+func TestLabels_AddEnterReturnsNormal(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	nm, _ := m.Update(runeKey('l'))
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey('a'))
+	m = nm.(Model)
+	for _, r := range []rune("tier=worker") {
+		nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = nm.(Model)
+	}
+	nm, _ = m.Update(key(tea.KeyEnter))
+	m = nm.(Model)
+	if m.labels.adding {
+		t.Fatal("expected adding closed")
+	}
+	if m.Mode() != ModeNormal {
+		t.Fatalf("expected ModeNormal after Enter, got %v", m.Mode())
+	}
+	node, _ := store.Get("n1")
+	if node.Labels["tier"] != "worker" {
+		t.Fatalf("expected n1 tier=worker, got %#v", node.Labels)
+	}
+}

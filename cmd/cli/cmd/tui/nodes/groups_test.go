@@ -100,3 +100,56 @@ func TestGroupsModel_AddInputParsing(t *testing.T) {
 		t.Fatalf("unexpected name: %q", name)
 	}
 }
+
+func TestGroups_AddModeInsertIsolatesKeys(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	nm, _ := m.Update(runeKey('o'))
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey('a'))
+	m = nm.(Model)
+	if m.Mode() != ModeInsert {
+		t.Fatalf("expected ModeInsert after a, got %v", m.Mode())
+	}
+	// q/? 应被输入,而不是被 App 劫持为退出/帮助
+	for _, r := range []rune("q?") {
+		nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = nm.(Model)
+	}
+	if m.Mode() != ModeInsert {
+		t.Fatalf("expected still ModeInsert, got %v", m.Mode())
+	}
+	if v := m.groups.input.Value(); v != "q?" {
+		t.Fatalf("expected input value %q, got %q", "q?", v)
+	}
+	if m.current() != LocGroups {
+		t.Fatalf("expected LocGroups, got %v", m.current())
+	}
+}
+
+func TestGroups_AddEnterReturnsNormal(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	nm, _ := m.Update(runeKey('o'))
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey('a'))
+	m = nm.(Model)
+	for _, r := range []rune("prod") {
+		nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = nm.(Model)
+	}
+	nm, _ = m.Update(key(tea.KeyEnter))
+	m = nm.(Model)
+	if m.groups.adding {
+		t.Fatal("expected adding closed")
+	}
+	if m.Mode() != ModeNormal {
+		t.Fatalf("expected ModeNormal after Enter, got %v", m.Mode())
+	}
+	node, _ := store.Get("n1")
+	if !containsStr(node.Groups, "prod") {
+		t.Fatalf("expected n1 group prod, got %#v", node.Groups)
+	}
+}

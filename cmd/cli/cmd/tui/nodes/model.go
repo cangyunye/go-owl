@@ -266,6 +266,7 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "i":
 		m.push(LocImportExport)
 		m.importExport = NewImportExportModel()
+		m.mode = ModeInsert
 		return m, textinput.Blink
 	case "o":
 		if n := m.selectedNode(); n != nil {
@@ -543,50 +544,76 @@ func (m Model) updateImportExport(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if ie == nil {
 		return m, nil
 	}
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "left", "right":
-			if ie.op == "export" {
-				ie.op = "import"
-			} else {
-				ie.op = "export"
-			}
-			return m, nil
-		case "f":
-			if ie.format == "yaml" {
-				ie.format = "json"
-			} else {
-				ie.format = "yaml"
-			}
-			return m, nil
-		case "o":
-			ie.overwrite = !ie.overwrite
-			return m, nil
-		case "esc":
-			m.pop()
-			m.importExport = nil
-			return m, nil
-		case "enter":
-			var err error
-			if ie.op == "export" {
-				err = m.doExport(ie.path.Value(), ie.format)
-			} else {
-				err = m.doImport(ie.path.Value(), ie.overwrite)
-			}
-			if err != nil {
-				ie.error = err.Error()
+	if m.mode == ModeInsert {
+		if km, ok := msg.(tea.KeyMsg); ok {
+			switch km.String() {
+			case "esc":
+				m.mode = ModeNormal
+				ie.path.Blur()
+				return m, nil
+			case "enter":
+				var err error
+				if ie.op == "export" {
+					err = m.doExport(ie.path.Value(), ie.format)
+				} else {
+					err = m.doImport(ie.path.Value(), ie.overwrite)
+				}
+				if err != nil {
+					ie.error = err.Error()
+					return m, nil
+				}
+				m.pop()
+				m.importExport = nil
+				m.status = "导入导出完成"
 				return m, nil
 			}
-			m.pop()
-			m.importExport = nil
-			m.status = "导入导出完成"
+		}
+		var cmd tea.Cmd
+		ie.path, cmd = ie.path.Update(msg)
+		return m, cmd
+	}
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch km.String() {
+	case "left", "right":
+		if ie.op == "export" {
+			ie.op = "import"
+		} else {
+			ie.op = "export"
+		}
+	case "f":
+		if ie.format == "yaml" {
+			ie.format = "json"
+		} else {
+			ie.format = "yaml"
+		}
+	case "o":
+		ie.overwrite = !ie.overwrite
+	case "e":
+		m.mode = ModeInsert
+		ie.path.Focus()
+	case "esc":
+		m.pop()
+		m.importExport = nil
+	case "enter":
+		var err error
+		if ie.op == "export" {
+			err = m.doExport(ie.path.Value(), ie.format)
+		} else {
+			err = m.doImport(ie.path.Value(), ie.overwrite)
+		}
+		if err != nil {
+			ie.error = err.Error()
 			return m, nil
 		}
+		m.pop()
+		m.importExport = nil
+		m.status = "导入导出完成"
+		return m, nil
 	}
-	var cmd tea.Cmd
-	ie.path, cmd = ie.path.Update(msg)
-	return m, cmd
+	return m, nil
 }
 
 func (m Model) updateGroups(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -600,6 +627,7 @@ func (m Model) updateGroups(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				g.adding = false
 				g.input.Blur()
+				m.mode = ModeNormal
 				return m, nil
 			case "enter":
 				if err := g.addGroup(g.input.Value()); err != nil {
@@ -609,6 +637,7 @@ func (m Model) updateGroups(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				g.adding = false
 				g.input.Blur()
+				m.mode = ModeNormal
 				return m, nil
 			}
 		}
@@ -635,6 +664,7 @@ func (m Model) updateGroups(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "a":
 		g.adding = true
 		g.input.Focus()
+		m.mode = ModeInsert
 	case "d":
 		if g.cursor >= 0 && g.cursor < len(g.groups) {
 			if err := g.removeGroup(g.groups[g.cursor]); err != nil {
@@ -658,6 +688,7 @@ func (m Model) updateLabels(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				l.adding = false
 				l.input.Blur()
+				m.mode = ModeNormal
 				return m, nil
 			case "enter":
 				if err := l.setLabel(l.input.Value()); err != nil {
@@ -667,6 +698,7 @@ func (m Model) updateLabels(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				l.adding = false
 				l.input.Blur()
+				m.mode = ModeNormal
 				return m, nil
 			}
 		}
@@ -693,6 +725,7 @@ func (m Model) updateLabels(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "a":
 		l.adding = true
 		l.input.Focus()
+		m.mode = ModeInsert
 	case "d":
 		if l.cursor >= 0 && l.cursor < len(l.keys) {
 			if err := l.removeLabel(l.keys[l.cursor]); err != nil {
