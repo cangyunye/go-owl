@@ -116,12 +116,24 @@ define cross_build_ext
 endef
 
 install: ## 安装当前平台产物（owl 及已追加组件）到 ~/.local/bin；make install WITH=tui 装带 tui 版
-	@$(MAKE) --no-print-directory build PLATFORMS='$(HOST_PLATFORM)'
+	@$(MAKE) --no-print-directory build PLATFORMS='$(HOST_PLATFORM)' WITH='$(WITH)'
 	@mkdir -p ~/.local/bin
 	@for b in owl owl-serve; do \
 		f=$(BUILD_DIR)/$(HOST_PLATDIR)/$$b; \
 		if [ -f "$$f" ]; then cp "$$f" ~/.local/bin/; printf 'installed %s\n' "$$b"; fi; \
 	done
+# macOS 上重签名: Go 二进制 adhoc 签名在复制后偶发失效,执行时被 SIGKILL(rc=137)
+ifeq ($(shell uname -s),Darwin)
+	@for b in owl owl-serve; do \
+		t=~/.local/bin/$$b; \
+		if [ -f "$$t" ]; then codesign --force --sign - "$$t" 2>/dev/null || true; fi; \
+	done
+endif
+ifeq ($(filter tui,$(COMPS)),tui)
+	@echo '提示: owl 已含 tui 子命令'
+else
+	@echo '提示: owl 为纯净版(不含 tui 子命令);装带 tui 版请运行: make install WITH=tui'
+endif
 
 install-gscp: ## 安装 gscp（linux/darwin）到 ~/.owl/gscp/，中继传输自动发现
 	@$(MAKE) --no-print-directory build-gscp PLATFORMS='linux/amd64 linux/arm64 darwin/amd64 darwin/arm64'

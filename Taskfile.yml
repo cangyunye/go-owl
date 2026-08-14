@@ -137,6 +137,7 @@ tasks:
       - task: build
         vars:
           PLATFORMS: '{{OS}}/{{ARCH}}'
+          WITH: '{{.WITH}}'
       - |
         set -e
         mkdir -p ~/.local/bin
@@ -147,6 +148,15 @@ tasks:
             echo "installed $b"
           fi
         done
+        # macOS 上重签名: Go 二进制 adhoc 签名在复制后偶发失效,执行时被 SIGKILL(rc=137)。
+        if [ "$(uname -s)" = "Darwin" ]; then
+          for b in owl owl-serve; do
+            t=~/.local/bin/$b
+            [ -f "$t" ] && codesign --force --sign - "$t" >/dev/null 2>&1 || true
+          done
+        fi
+        {{if has "tui" (splitList "," .WITH)}}echo "提示: owl 已含 tui 子命令"
+        {{else}}echo "提示: owl 为纯净版(不含 tui 子命令);装带 tui 版请运行: task install WITH=tui"{{end}}
 
   install-gscp:
     desc: 安装 gscp（linux/darwin）到 ~/.owl/gscp/，中继传输自动发现
