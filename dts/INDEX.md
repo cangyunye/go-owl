@@ -1,6 +1,13 @@
 # dts 问题档案索引
 
-共 24 条 · 未解决 0 · 已解决 24 · 更新于 2026-08-13T22:11:39+08:00
+共 25 条 · 未解决 0 · 已解决 25 · 更新于 2026-08-14T21:33:31+08:00
+
+## fix-tui
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-tui_tui-blocked-by-conflict-prompt](fix-tui_tui-blocked-by-conflict-prompt/dts.md) | 2026-08-14 | 用户在 ~/.owl 有 nodes.json↔db 重复节点时,owl tui 会被启动前的节点冲突交互提示阻塞,吞掉按键、TUI 起不来。需要让 owl t | resolved |
+| [fix-tui_file-upload-button-double-click](fix-tui_file-upload-button-double-click/dts.md) | 2026-08-10 | 为什么界面版本的文件传输上传按钮要双击? | resolved |
 
 ## fix-webui
 
@@ -48,12 +55,6 @@
 | id | 日期 | 摘要 | 状态 |
 |----|------|------|------|
 | [feat-ai-session_ai-session-user-isolation](feat-ai-session_ai-session-user-isolation/dts.md) | 2026-08-12 | AI助手会话与前端对话历史未按用户区分:前端 IndexedDB 固定库名所有用户共享,服务端 Session 内存键仅 sessionID 不绑 user_i | resolved |
-
-## fix-tui
-
-| id | 日期 | 摘要 | 状态 |
-|----|------|------|------|
-| [fix-tui_file-upload-button-double-click](fix-tui_file-upload-button-double-click/dts.md) | 2026-08-10 | 为什么界面版本的文件传输上传按钮要双击? | resolved |
 
 ## fix-ai
 

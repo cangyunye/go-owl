@@ -2,6 +2,7 @@ package common
 
 import (
 	"database/sql"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -377,5 +378,48 @@ func TestNodeStoreDB_Constructor(t *testing.T) {
 	}
 	if store.db != db {
 		t.Error("expected same db connection")
+	}
+}
+
+func TestNodeStoreDB_SetConflictPrompt(t *testing.T) {
+	store := setupTestDB(t)
+	if !store.conflictPrompt {
+		t.Fatal("expected conflict prompt enabled by default")
+	}
+	store.SetConflictPrompt(false)
+	if store.conflictPrompt {
+		t.Fatal("expected conflict prompt disabled after SetConflictPrompt(false)")
+	}
+	store.SetConflictPrompt(true)
+	if !store.conflictPrompt {
+		t.Fatal("expected conflict prompt re-enabled")
+	}
+}
+
+func TestNodeStoreDB_ListWithConflicts_PromptDisabled(t *testing.T) {
+	store := setupTestDB(t)
+	node := &NodeInfo{ID: "n1", Name: "web", Address: "1.2.3.4", Port: 22, User: "root", Status: "online"}
+	if err := store.Add(node); err != nil {
+		t.Fatalf("seed add: %v", err)
+	}
+
+	// 写一个与 DB 冲突的 nodes.json(同 ID 不同字段 → cross_source_id_fields 冲突)
+	jsonPath := filepath.Join(t.TempDir(), "nodes.json")
+	if err := writeNodesJSON(jsonPath, []*NodeInfo{
+		{ID: "n1", Name: "web", Address: "9.9.9.9", Port: 22, User: "root", Status: "offline"},
+	}); err != nil {
+		t.Fatalf("write nodes.json: %v", err)
+	}
+	old := NodeJSONPath
+	NodeJSONPath = func() string { return jsonPath }
+	t.Cleanup(func() { NodeJSONPath = old })
+
+	store.SetConflictPrompt(false)
+	nodes, err := store.List()
+	if err != nil {
+		t.Fatalf("List error: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].ID != "n1" {
+		t.Fatalf("expected 1 node n1, got %+v", nodes)
 	}
 }

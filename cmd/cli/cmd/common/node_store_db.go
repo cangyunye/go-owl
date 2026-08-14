@@ -16,10 +16,19 @@ var _ NodeStore = (*NodeStoreDB)(nil)
 type NodeStoreDB struct {
 	db        *sql.DB
 	checkOnce sync.Once
+	// conflictPrompt 控制 ensureConsistent 是否交互式解决节点冲突。
+	// 默认开启(保持原有行为);TUI 等读路径不应被交互提示阻塞的场景可关闭。
+	conflictPrompt bool
 }
 
 func NewNodeStoreDB(db *sql.DB) *NodeStoreDB {
-	return &NodeStoreDB{db: db}
+	return &NodeStoreDB{db: db, conflictPrompt: true}
+}
+
+// SetConflictPrompt 开关 ensureConsistent 的交互式冲突提示。
+// 关闭后冲突检测仅记录警告,不弹交互提示、不阻塞读路径。
+func (s *NodeStoreDB) SetConflictPrompt(enabled bool) {
+	s.conflictPrompt = enabled
 }
 
 func (s *NodeStoreDB) ensureConsistent() {
@@ -30,6 +39,14 @@ func (s *NodeStoreDB) ensureConsistent() {
 		}
 		jsonNodes, err := ReadNodesFromJSON(NodeJSONPath())
 		if err != nil || jsonNodes == nil {
+			return
+		}
+		if !s.conflictPrompt {
+			// 非交互:仅检测并告警,不弹交互提示、不阻塞读路径(TUI 等场景)
+			if conflicts := DetectConflicts(dbNodes, jsonNodes); len(conflicts) > 0 {
+				logger.Warn("node data inconsistency detected; reconcile via conflict resolution before exec commands",
+					logger.WithField("conflicts", len(conflicts)))
+			}
 			return
 		}
 		if err := resolveNodeConflicts(s.db, dbNodes, jsonNodes); err != nil {

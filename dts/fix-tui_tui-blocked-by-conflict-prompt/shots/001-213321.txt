@@ -1,0 +1,19 @@
+$ ./scripts/test-tui.sh
+==> 构建 owl
+==> E2E 场景 1: 干净数据下 owl tui 渲染列表/开表单/退出
+PASS: 场景 1 干净退出(rc=0)
+PASS: 场景 1 面包屑 /nodes 渲染
+PASS: 场景 1 新增表单弹出
+==> E2E 场景 2: nodes.json↔db 冲突数据下 owl tui 不被交互提示阻塞
+PASS: 场景 2 冲突数据下 owl tui 启动并渲染 /nodes
+==> TUI E2E 冒烟通过
+
+# 真实 ~/.owl(57 DB 节点 + 1 json 节点,4 个冲突)手动验证:
+$ (sleep 2; printf 'q') | TERM=dumb script -q OUT ./build/owl tui   # 此前挂死 120s+
+rc=0  # 现在正常渲染 57 节点列表并退出
+
+# 回归确认:owl node list 在 pty 下仍弹冲突提示(方案A不改其他命令):
+$ (sleep 2; printf '3\n3\n3\n3\n3\n') | TERM=dumb script -q OUT ./build/owl node list --no-color
+检测到节点数据冲突!  # 提示保留,5 处横幅/选择串
+
+$ go test ./cmd/cli/... ./internal/...  # 全量回归无 FAIL

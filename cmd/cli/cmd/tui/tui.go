@@ -29,7 +29,14 @@ func runTui(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	app := NewApp(common.GetNodeStore())
+	// 冲突交互提示会阻塞读路径(TTY 下逐个 Scanln),TUI 需要独占终端。
+	// 关闭后冲突检测仅记录警告,数据仍以数据库主源为准,不阻塞 TUI 启动。
+	store := common.GetNodeStore()
+	if dbs, ok := store.(*common.NodeStoreDB); ok {
+		dbs.SetConflictPrompt(false)
+	}
+
+	app := NewApp(store)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "错误: owl tui 异常:", err)
