@@ -558,8 +558,10 @@ func (m Model) updateImportExport(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					err = m.doImport(ie.path.Value(), ie.overwrite)
 				}
+				m.mode = ModeNormal
 				if err != nil {
 					ie.error = err.Error()
+					ie.path.Blur()
 					return m, nil
 				}
 				m.pop()

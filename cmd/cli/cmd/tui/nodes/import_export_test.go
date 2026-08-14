@@ -183,3 +183,23 @@ func TestImportExport_EscExitsInsertThenToggles(t *testing.T) {
 		t.Fatal("expected path focused after e")
 	}
 }
+
+func TestImportExport_EnterExecuteReturnsToNormalMode(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	nm, _ := m.Update(runeKey('i'))
+	m = nm.(Model)
+	if m.Mode() != ModeInsert {
+		t.Fatalf("expected ModeInsert on open, got %v", m.Mode())
+	}
+	m.importExport.path.SetValue(filepath.Join(t.TempDir(), "out.yaml"))
+	nm, _ = m.Update(key(tea.KeyEnter))
+	m = nm.(Model)
+	if m.current() != LocList {
+		t.Fatalf("expected LocList after enter execute, got %v", m.current())
+	}
+	if m.Mode() != ModeNormal {
+		t.Fatalf("expected ModeNormal after enter execute, got %v", m.Mode())
+	}
+}
