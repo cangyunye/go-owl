@@ -41,6 +41,10 @@ func NewFormModel(mode FormMode, node *common.NodeInfo) *FormModel {
 	if node != nil {
 		base = *node
 	}
+	portVal := ""
+	if base.Port > 0 {
+		portVal = strconv.Itoa(base.Port)
+	}
 	specs := []struct {
 		key, label string
 		req        bool
@@ -50,7 +54,7 @@ func NewFormModel(mode FormMode, node *common.NodeInfo) *FormModel {
 		{"id", "ID", mode == FormAdd, base.ID, mode == FormAdd},
 		{"name", "Name", true, base.Name, true},
 		{"address", "Address", true, base.Address, true},
-		{"port", "Port", false, strconv.Itoa(base.Port), true},
+		{"port", "Port", false, portVal, true},
 		{"user", "User", false, base.User, true},
 		{"password", "Password", false, base.Password, true},
 		{"ssh_key", "SSHKey", false, base.SSHKey, true},
@@ -146,7 +150,7 @@ func (f *FormModel) focusFirstInvalid() {
 		if fd.key == "port" {
 			v := strings.TrimSpace(fd.input.Value())
 			if v != "" {
-				if _, err := strconv.Atoi(v); err != nil {
+				if p, err := strconv.Atoi(v); err != nil || p < 1 || p > 65535 {
 					f.cursor = i
 					return
 				}
