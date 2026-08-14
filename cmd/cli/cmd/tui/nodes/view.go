@@ -40,6 +40,8 @@ func (m Model) View() string {
 		return m.listPane() + "\n\n" + m.checkView()
 	case LocImportExport:
 		return m.listPane() + "\n\n" + m.importExportView()
+	case LocGroups:
+		return m.listPane() + "\n\n" + m.groupsView()
 	default:
 		return m.listPane() + m.statusBar()
 	}
@@ -313,6 +315,36 @@ func (m Model) importExportView() string {
 		b.WriteString(styleError.Render("  "+ie.error) + "\n")
 	}
 	b.WriteString(styleDim.Render("  Enter 执行  Esc 返回") + "\n")
+	b.WriteString("└─")
+	return b.String()
+}
+
+func (m Model) groupsView() string {
+	g := m.groups
+	if g == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("┌─ 分组管理 ──────────────\n")
+	b.WriteString("  节点: " + styleSelected.Render(g.nodeID) + "\n")
+	if g.adding {
+		b.WriteString("  新增分组: " + g.input.View() + styleDim.Render("  Enter 确认  Esc 取消") + "\n")
+	} else {
+		if len(g.groups) == 0 {
+			b.WriteString("  " + styleDim.Render("(无分组,按 a 添加)") + "\n")
+		}
+		for i, name := range g.groups {
+			line := "  " + name + "\n"
+			if i == g.cursor {
+				line = styleSelected.Render("> " + name) + "\n"
+			}
+			b.WriteString(line)
+		}
+		b.WriteString(styleDim.Render("  a 添加  d 删除  Esc 返回") + "\n")
+	}
+	if g.error != "" {
+		b.WriteString(styleError.Render("  "+g.error) + "\n")
+	}
 	b.WriteString("└─")
 	return b.String()
 }

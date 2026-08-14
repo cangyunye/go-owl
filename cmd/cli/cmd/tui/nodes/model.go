@@ -28,6 +28,7 @@ const (
 	LocPing
 	LocCheck
 	LocImportExport
+	LocGroups
 )
 
 type pane int
@@ -59,6 +60,7 @@ type Model struct {
 	ping         *PingModel
 	check        *CheckModel
 	importExport *ImportExportModel
+	groups       *GroupsModel
 
 	status string
 }
@@ -163,6 +165,8 @@ func (m Model) Path() []string {
 		return []string{"nodes", "check"}
 	case LocImportExport:
 		return []string{"nodes", "import"}
+	case LocGroups:
+		return []string{"nodes", m.selectedID(), "groups"}
 	default:
 		return []string{"nodes"}
 	}
@@ -195,6 +199,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateCheck(msg)
 	case LocImportExport:
 		return m.updateImportExport(msg)
+	case LocGroups:
+		return m.updateGroups(msg)
 	default:
 		return m.updateList(msg)
 	}
@@ -255,6 +261,12 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.push(LocImportExport)
 		m.importExport = NewImportExportModel()
 		return m, textinput.Blink
+	case "o":
+		if n := m.selectedNode(); n != nil {
+			m.push(LocGroups)
+			m.groups = NewGroupsModel(m.store, n.ID)
+			return m, nil
+		}
 	}
 	m.clampCursor()
 	return m, nil
@@ -563,4 +575,62 @@ func (m Model) updateImportExport(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	ie.path, cmd = ie.path.Update(msg)
 	return m, cmd
+}
+
+func (m Model) updateGroups(msg tea.Msg) (tea.Model, tea.Cmd) {
+	g := m.groups
+	if g == nil {
+		return m, nil
+	}
+	if g.adding {
+		if km, ok := msg.(tea.KeyMsg); ok {
+			switch km.String() {
+			case "esc":
+				g.adding = false
+				g.input.Blur()
+				return m, nil
+			case "enter":
+				if err := g.addGroup(g.input.Value()); err != nil {
+					g.error = err.Error()
+				} else {
+					g.error = ""
+				}
+				g.adding = false
+				g.input.Blur()
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		g.input, cmd = g.input.Update(msg)
+		return m, cmd
+	}
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch km.String() {
+	case "esc":
+		m.pop()
+		m.groups = nil
+	case "up":
+		if g.cursor > 0 {
+			g.cursor--
+		}
+	case "down":
+		if g.cursor < len(g.groups)-1 {
+			g.cursor++
+		}
+	case "a":
+		g.adding = true
+		g.input.Focus()
+	case "d":
+		if g.cursor >= 0 && g.cursor < len(g.groups) {
+			if err := g.removeGroup(g.groups[g.cursor]); err != nil {
+				g.error = err.Error()
+			} else {
+				g.error = ""
+			}
+		}
+	}
+	return m, nil
 }
