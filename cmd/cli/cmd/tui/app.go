@@ -11,54 +11,54 @@ import (
 )
 
 type App struct {
-	nodes       nodes.Model
-	help        bool
-	quitConfirm bool
+	Nodes       nodes.Model
+	Help        bool
+	QuitConfirm bool
 }
 
 func NewApp(store common.NodeStore) *App {
-	return &App{nodes: nodes.NewModel(store)}
+	return &App{Nodes: nodes.NewModel(store)}
 }
 
 func (m *App) Init() tea.Cmd { return nil }
 
 func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.quitConfirm {
+	if m.QuitConfirm {
 		if km, ok := msg.(tea.KeyMsg); ok {
 			switch km.String() {
 			case "y", "enter":
 				return m, tea.Quit
 			case "n", "esc":
-				m.quitConfirm = false
+				m.QuitConfirm = false
 			}
 		}
 		return m, nil
 	}
-	if m.help {
+	if m.Help {
 		if km, ok := msg.(tea.KeyMsg); ok {
 			if km.String() == "esc" || km.String() == "?" {
-				m.help = false
+				m.Help = false
 			}
 		}
 		return m, nil
 	}
-	if m.nodes.Mode() != nodes.ModeNormal {
-		// Insert 态隔离:键仅转发给 nodes 更新状态,不冒泡子模型 cmd(如 textinput 光标 blink)
-		_, _ = m.forward(msg)
-		return m, nil
+	if m.Nodes.Mode() != nodes.ModeNormal {
+		// Insert 态隔离:按键仅转发给 nodes(不过任何 keymap),但 cmd 必须冒泡
+		// (textinput 的 blink tick 依赖它,否则光标不闪烁)
+		return m.forward(msg)
 	}
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
 		case "q":
-			if m.nodes.IsDirty() {
-				m.quitConfirm = true
+			if m.Nodes.IsDirty() {
+				m.QuitConfirm = true
 				return m, nil
 			}
 			return m, tea.Quit
 		case "ctrl+c":
 			return m, tea.Quit
 		case "?":
-			m.help = true
+			m.Help = true
 			return m, nil
 		}
 	}
@@ -66,25 +66,25 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *App) forward(msg tea.Msg) (tea.Model, tea.Cmd) {
-	nm, cmd := m.nodes.Update(msg)
-	m.nodes = nm.(nodes.Model)
+	nm, cmd := m.Nodes.Update(msg)
+	m.Nodes = nm.(nodes.Model)
 	return m, cmd
 }
 
 func (m *App) View() string {
 	var b strings.Builder
-	path := "/" + strings.Join(m.nodes.Path(), "/")
+	path := "/" + strings.Join(m.Nodes.Path(), "/")
 	mode := "Normal"
-	if m.nodes.Mode() == nodes.ModeInsert {
+	if m.Nodes.Mode() == nodes.ModeInsert {
 		mode = "Insert"
 	}
 	b.WriteString(fmt.Sprintf("%s   Mode:%s\n", path, mode))
 	b.WriteString(strings.Repeat("─", 60) + "\n")
-	b.WriteString(m.nodes.View())
-	if m.help {
+	b.WriteString(m.Nodes.View())
+	if m.Help {
 		b.WriteString("\n\n" + helpView())
 	}
-	if m.quitConfirm {
+	if m.QuitConfirm {
 		b.WriteString("\n\n退出并丢弃未保存修改? y/n")
 	}
 	return b.String()

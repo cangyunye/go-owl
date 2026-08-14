@@ -9,6 +9,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/nodes"
 )
 
 func newStore(t *testing.T) common.NodeStore {
@@ -56,15 +57,24 @@ func TestApp_QuitInNormalMode(t *testing.T) {
 
 func TestApp_QuitBlockedInInsertMode(t *testing.T) {
 	a := tui.NewApp(newStore(t))
-	// 打开过滤输入(进入 Insert)
 	m, _ := a.Update(runeKey('/'))
 	a = m.(*tui.App)
-	// Insert 态按 q 不得退出
 	m, cmd := a.Update(runeKey('q'))
-	if cmd != nil {
-		t.Fatalf("expected no quit in insert mode, got %T", cmd)
+	a = m.(*tui.App)
+	if a.Nodes.Mode() != nodes.ModeInsert {
+		t.Fatal("expected still Insert after q")
 	}
-	_ = m
+	if a.QuitConfirm {
+		t.Fatal("expected no quit confirm in insert mode")
+	}
+	// cmd 可能是 textinput 的 blink tick,但绝不能是 QuitMsg
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			if _, isQuit := msg.(tea.QuitMsg); isQuit {
+				t.Fatal("expected no quit in insert mode")
+			}
+		}
+	}
 }
 
 func TestApp_HelpOverlay(t *testing.T) {
@@ -109,9 +119,13 @@ func TestApp_InsertModeBypassesAppKeys(t *testing.T) {
 	m, _ := a.Update(runeKey('/'))
 	a = m.(*tui.App)
 	// Insert 态 '?' 不应开帮助
-	_, cmd := a.Update(runeKey('?'))
-	if cmd != nil {
+	m, _ = a.Update(runeKey('?'))
+	a = m.(*tui.App)
+	if a.Help {
 		t.Fatal("expected no help toggle in insert mode")
+	}
+	if a.Nodes.Mode() != nodes.ModeInsert {
+		t.Fatal("expected still Insert")
 	}
 }
 

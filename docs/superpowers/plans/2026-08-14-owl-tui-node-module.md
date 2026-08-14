@@ -2853,10 +2853,21 @@ func TestApp_QuitBlockedInInsertMode(t *testing.T) {
 	a = m.(*tui.App)
 	// Insert 态按 q 不得退出
 	m, cmd := a.Update(runeKey('q'))
-	if cmd != nil {
-		t.Fatalf("expected no quit in insert mode, got %T", cmd)
+	a = m.(*tui.App)
+	if a.nodes.Mode() != nodes.ModeInsert {
+		t.Fatal("expected still Insert after q")
 	}
-	_ = m
+	if a.quitConfirm {
+		t.Fatal("expected no quit confirm in insert mode")
+	}
+	// cmd 可能是 textinput 的 blink tick,但绝不能是 QuitMsg
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			if _, isQuit := msg.(tea.QuitMsg); isQuit {
+				t.Fatal("expected no quit in insert mode")
+			}
+		}
+	}
 }
 
 func TestApp_HelpOverlay(t *testing.T) {
@@ -2901,9 +2912,13 @@ func TestApp_InsertModeBypassesAppKeys(t *testing.T) {
 	m, _ := a.Update(runeKey('/'))
 	a = m.(*tui.App)
 	// Insert 态 '?' 不应开帮助
-	_, cmd := a.Update(runeKey('?'))
-	if cmd != nil {
+	m, _ = a.Update(runeKey('?'))
+	a = m.(*tui.App)
+	if a.help {
 		t.Fatal("expected no help toggle in insert mode")
+	}
+	if a.nodes.Mode() != nodes.ModeInsert {
+		t.Fatal("expected still Insert")
 	}
 }
 
@@ -2977,6 +2992,8 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.nodes.Mode() != nodes.ModeNormal {
+		// Insert 态隔离:按键仅转发给 nodes(不过任何 keymap),但 cmd 必须冒泡
+		// (textinput 的 blink tick 依赖它,否则光标不闪烁)
 		return m.forward(msg)
 	}
 	if km, ok := msg.(tea.KeyMsg); ok {
