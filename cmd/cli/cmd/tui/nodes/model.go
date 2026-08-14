@@ -27,6 +27,7 @@ const (
 	LocColumns
 	LocPing
 	LocCheck
+	LocImportExport
 )
 
 type pane int
@@ -57,6 +58,7 @@ type Model struct {
 	columnsModel *ColumnsModel
 	ping         *PingModel
 	check        *CheckModel
+	importExport *ImportExportModel
 
 	status string
 }
@@ -159,6 +161,8 @@ func (m Model) Path() []string {
 		return []string{"nodes", "ping"}
 	case LocCheck:
 		return []string{"nodes", "check"}
+	case LocImportExport:
+		return []string{"nodes", "import"}
 	default:
 		return []string{"nodes"}
 	}
@@ -189,6 +193,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updatePing(msg)
 	case LocCheck:
 		return m.updateCheck(msg)
+	case LocImportExport:
+		return m.updateImportExport(msg)
 	default:
 		return m.updateList(msg)
 	}
@@ -245,6 +251,10 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.push(LocCheck)
 		m.check = NewCheckModel(m.visible())
 		return m, m.check.Start()
+	case "i":
+		m.push(LocImportExport)
+		m.importExport = NewImportExportModel()
+		return m, textinput.Blink
 	}
 	m.clampCursor()
 	return m, nil
@@ -502,4 +512,55 @@ func (m Model) updateCheck(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m Model) updateImportExport(msg tea.Msg) (tea.Model, tea.Cmd) {
+	ie := m.importExport
+	if ie == nil {
+		return m, nil
+	}
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "left", "right":
+			if ie.op == "export" {
+				ie.op = "import"
+			} else {
+				ie.op = "export"
+			}
+			return m, nil
+		case "f":
+			if ie.format == "yaml" {
+				ie.format = "json"
+			} else {
+				ie.format = "yaml"
+			}
+			return m, nil
+		case "o":
+			ie.overwrite = !ie.overwrite
+			return m, nil
+		case "esc":
+			m.pop()
+			m.importExport = nil
+			return m, nil
+		case "enter":
+			var err error
+			if ie.op == "export" {
+				err = m.doExport(ie.path.Value(), ie.format)
+			} else {
+				err = m.doImport(ie.path.Value(), ie.overwrite)
+			}
+			if err != nil {
+				ie.error = err.Error()
+				return m, nil
+			}
+			m.pop()
+			m.importExport = nil
+			m.status = "导入导出完成"
+			return m, nil
+		}
+	}
+	var cmd tea.Cmd
+	ie.path, cmd = ie.path.Update(msg)
+	return m, cmd
 }

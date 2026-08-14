@@ -38,6 +38,8 @@ func (m Model) View() string {
 		return m.listPane() + "\n\n" + m.pingView()
 	case LocCheck:
 		return m.listPane() + "\n\n" + m.checkView()
+	case LocImportExport:
+		return m.listPane() + "\n\n" + m.importExportView()
 	default:
 		return m.listPane() + m.statusBar()
 	}
@@ -282,6 +284,35 @@ func (m Model) checkView() string {
 		b.WriteString(styleDim.Render(fmt.Sprintf("  在线 %d/%d", online, len(c.results))) + "\n")
 	}
 	b.WriteString(styleDim.Render("  Esc 返回") + "\n")
+	b.WriteString("└─")
+	return b.String()
+}
+
+func (m Model) importExportView() string {
+	ie := m.importExport
+	if ie == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("┌─ 导入/导出 ──────────────\n")
+	op := "导出"
+	if ie.op == "import" {
+		op = "导入"
+	}
+	b.WriteString("  操作: " + styleSelected.Render(op) + styleDim.Render("  ←→ 切换") + "\n")
+	b.WriteString("  格式: " + styleSelected.Render(ie.format) + styleDim.Render("  f 切换") + "\n")
+	b.WriteString("  路径: " + ie.path.View() + "\n")
+	if ie.op == "import" {
+		mark := "[ ]"
+		if ie.overwrite {
+			mark = "[x]"
+		}
+		b.WriteString("  " + mark + " 覆盖已存在节点  o 切换\n")
+	}
+	if ie.error != "" {
+		b.WriteString(styleError.Render("  "+ie.error) + "\n")
+	}
+	b.WriteString(styleDim.Render("  Enter 执行  Esc 返回") + "\n")
 	b.WriteString("└─")
 	return b.String()
 }
