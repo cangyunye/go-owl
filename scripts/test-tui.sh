@@ -30,8 +30,9 @@ echo "==> E2E: 启动 owl tui,进入 /nodes 渲染列表,开表单,返回,退出
 PIPID=$!
 ( sleep 20 && kill "$PIPID" 2>/dev/null ) &
 TIMER=$!
-wait "$PIPID"
-RC=$?
+# set -e 下 wait 非零会直接退出,先取 RC 再判(默认 0)
+RC=0
+wait "$PIPID" || RC=$?
 kill "$TIMER" 2>/dev/null || true
 
 if [ "$RC" -ne 0 ]; then
