@@ -1,0 +1,98 @@
+package theme
+
+var presets = map[Name]Theme{
+	"default": {
+		Name: "default",
+		Slots: map[SlotKey]Slot{
+			SlotSelected:    {Light: CompleteColor{TrueColor: "#1A6DA6", ANSI: "6"}, Dark: CompleteColor{TrueColor: "#5FD4FF", ANSI: "14"}},
+			SlotDim:         {Light: CompleteColor{TrueColor: "#6A6A6A", ANSI: "8"}, Dark: CompleteColor{TrueColor: "#6A6A6A", ANSI: "8"}},
+			SlotError:       {Light: CompleteColor{TrueColor: "#C5002B", ANSI: "9"}, Dark: CompleteColor{TrueColor: "#FF5C5C", ANSI: "9"}},
+			SlotUser:        {Light: CompleteColor{TrueColor: "#1A7F37", ANSI: "2"}, Dark: CompleteColor{TrueColor: "#5AF78E", ANSI: "10"}},
+			SlotAI:          {Light: CompleteColor{TrueColor: "#6A35D6", ANSI: "5"}, Dark: CompleteColor{TrueColor: "#8A6CF8", ANSI: "13"}},
+			SlotHighlightFg: {Light: CompleteColor{TrueColor: "#FFFFFF", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#101014", ANSI: "0"}},
+			SlotHighlightBg: {Light: CompleteColor{TrueColor: "#1A6DA6", ANSI: "6"}, Dark: CompleteColor{TrueColor: "#5FD4FF", ANSI: "14"}},
+			SlotSuccess:     {Light: CompleteColor{TrueColor: "#1A7F37", ANSI: "2"}, Dark: CompleteColor{TrueColor: "#5AF78E", ANSI: "10"}},
+			SlotWarning:     {Light: CompleteColor{TrueColor: "#B58A00", ANSI: "3"}, Dark: CompleteColor{TrueColor: "#F3F99D", ANSI: "11"}},
+			SlotBorder:      {Light: CompleteColor{TrueColor: "#6A6A6A", ANSI: "8"}, Dark: CompleteColor{TrueColor: "#3D3D3D", ANSI: "8"}},
+			SlotTitle:       {Light: CompleteColor{TrueColor: "#1A6DA6", ANSI: "6"}, Dark: CompleteColor{TrueColor: "#5FD4FF", ANSI: "14"}},
+			SlotAccent:      {Light: CompleteColor{TrueColor: "#1A6DA6", ANSI: "6"}, Dark: CompleteColor{TrueColor: "#5FD4FF", ANSI: "14"}},
+			SlotMuted:       {Light: CompleteColor{TrueColor: "#9A9A9A", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#4A4A4A", ANSI: "8"}},
+		},
+	},
+	"catppuccin": {
+		Name: "catppuccin",
+		Slots: map[SlotKey]Slot{
+			SlotSelected:    {Light: CompleteColor{TrueColor: "#8839EF", ANSI: "5"}, Dark: CompleteColor{TrueColor: "#CBA6F7", ANSI: "13"}},
+			SlotDim:         {Light: CompleteColor{TrueColor: "#6C6F85", ANSI: "8"}, Dark: CompleteColor{TrueColor: "#6C7086", ANSI: "8"}},
+			SlotError:       {Light: CompleteColor{TrueColor: "#D20F39", ANSI: "1"}, Dark: CompleteColor{TrueColor: "#F38BA8", ANSI: "9"}},
+			SlotUser:        {Light: CompleteColor{TrueColor: "#40A02B", ANSI: "2"}, Dark: CompleteColor{TrueColor: "#A6E3A1", ANSI: "10"}},
+			SlotAI:          {Light: CompleteColor{TrueColor: "#8839EF", ANSI: "5"}, Dark: CompleteColor{TrueColor: "#CBA6F7", ANSI: "13"}},
+			SlotHighlightFg: {Light: CompleteColor{TrueColor: "#FFFFFF", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#1E1E2E", ANSI: "0"}},
+			SlotHighlightBg: {Light: CompleteColor{TrueColor: "#8839EF", ANSI: "5"}, Dark: CompleteColor{TrueColor: "#CBA6F7", ANSI: "13"}},
+			SlotSuccess:     {Light: CompleteColor{TrueColor: "#40A02B", ANSI: "2"}, Dark: CompleteColor{TrueColor: "#A6E3A1", ANSI: "10"}},
+			SlotWarning:     {Light: CompleteColor{TrueColor: "#DF8E1D", ANSI: "3"}, Dark: CompleteColor{TrueColor: "#FAE3B0", ANSI: "11"}},
+			SlotBorder:      {Light: CompleteColor{TrueColor: "#BCC0CC", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#45475A", ANSI: "8"}},
+			SlotTitle:       {Light: CompleteColor{TrueColor: "#8839EF", ANSI: "5"}, Dark: CompleteColor{TrueColor: "#CBA6F7", ANSI: "13"}},
+			SlotAccent:      {Light: CompleteColor{TrueColor: "#04A5E5", ANSI: "6"}, Dark: CompleteColor{TrueColor: "#89DCEB", ANSI: "14"}},
+			SlotMuted:       {Light: CompleteColor{TrueColor: "#8C8FA1", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#585B70", ANSI: "8"}},
+		},
+	},
+	"nord": {
+		Name: "nord",
+		Slots: map[SlotKey]Slot{
+			SlotSelected:    {Light: CompleteColor{TrueColor: "#5E81AC", ANSI: "4"}, Dark: CompleteColor{TrueColor: "#88C0D0", ANSI: "14"}},
+			SlotDim:         {Light: CompleteColor{TrueColor: "#6A7A8C", ANSI: "8"}, Dark: CompleteColor{TrueColor: "#4C566A", ANSI: "8"}},
+			SlotError:       {Light: CompleteColor{TrueColor: "#BF616A", ANSI: "1"}, Dark: CompleteColor{TrueColor: "#BF616A", ANSI: "9"}},
+			SlotUser:        {Light: CompleteColor{TrueColor: "#A3BE8C", ANSI: "2"}, Dark: CompleteColor{TrueColor: "#A3BE8C", ANSI: "10"}},
+			SlotAI:          {Light: CompleteColor{TrueColor: "#B48EAD", ANSI: "5"}, Dark: CompleteColor{TrueColor: "#B48EAD", ANSI: "13"}},
+			SlotHighlightFg: {Light: CompleteColor{TrueColor: "#FFFFFF", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#2E3440", ANSI: "0"}},
+			SlotHighlightBg: {Light: CompleteColor{TrueColor: "#5E81AC", ANSI: "4"}, Dark: CompleteColor{TrueColor: "#88C0D0", ANSI: "14"}},
+			SlotSuccess:     {Light: CompleteColor{TrueColor: "#A3BE8C", ANSI: "2"}, Dark: CompleteColor{TrueColor: "#A3BE8C", ANSI: "10"}},
+			SlotWarning:     {Light: CompleteColor{TrueColor: "#EBCB8B", ANSI: "3"}, Dark: CompleteColor{TrueColor: "#EBCB8B", ANSI: "11"}},
+			SlotBorder:      {Light: CompleteColor{TrueColor: "#D8DEE9", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#4C566A", ANSI: "8"}},
+			SlotTitle:       {Light: CompleteColor{TrueColor: "#5E81AC", ANSI: "4"}, Dark: CompleteColor{TrueColor: "#88C0D0", ANSI: "14"}},
+			SlotAccent:      {Light: CompleteColor{TrueColor: "#88C0D0", ANSI: "6"}, Dark: CompleteColor{TrueColor: "#88C0D0", ANSI: "14"}},
+			SlotMuted:       {Light: CompleteColor{TrueColor: "#8A9BB0", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#3B4252", ANSI: "8"}},
+		},
+	},
+	"dracula": {
+		Name: "dracula",
+		Slots: map[SlotKey]Slot{
+			SlotSelected:    {Light: CompleteColor{TrueColor: "#6272A4", ANSI: "4"}, Dark: CompleteColor{TrueColor: "#BD93F9", ANSI: "13"}},
+			SlotDim:         {Light: CompleteColor{TrueColor: "#6A6A72", ANSI: "8"}, Dark: CompleteColor{TrueColor: "#44475A", ANSI: "8"}},
+			SlotError:       {Light: CompleteColor{TrueColor: "#FF5555", ANSI: "1"}, Dark: CompleteColor{TrueColor: "#FF5555", ANSI: "9"}},
+			SlotUser:        {Light: CompleteColor{TrueColor: "#50FA7B", ANSI: "2"}, Dark: CompleteColor{TrueColor: "#50FA7B", ANSI: "10"}},
+			SlotAI:          {Light: CompleteColor{TrueColor: "#BD93F9", ANSI: "5"}, Dark: CompleteColor{TrueColor: "#BD93F9", ANSI: "13"}},
+			SlotHighlightFg: {Light: CompleteColor{TrueColor: "#FFFFFF", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#282A36", ANSI: "0"}},
+			SlotHighlightBg: {Light: CompleteColor{TrueColor: "#6272A4", ANSI: "4"}, Dark: CompleteColor{TrueColor: "#BD93F9", ANSI: "13"}},
+			SlotSuccess:     {Light: CompleteColor{TrueColor: "#50FA7B", ANSI: "2"}, Dark: CompleteColor{TrueColor: "#50FA7B", ANSI: "10"}},
+			SlotWarning:     {Light: CompleteColor{TrueColor: "#F1FA8C", ANSI: "3"}, Dark: CompleteColor{TrueColor: "#F1FA8C", ANSI: "11"}},
+			SlotBorder:      {Light: CompleteColor{TrueColor: "#BDBDBD", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#44475A", ANSI: "8"}},
+			SlotTitle:       {Light: CompleteColor{TrueColor: "#6272A4", ANSI: "4"}, Dark: CompleteColor{TrueColor: "#BD93F9", ANSI: "13"}},
+			SlotAccent:      {Light: CompleteColor{TrueColor: "#8BE9FD", ANSI: "6"}, Dark: CompleteColor{TrueColor: "#8BE9FD", ANSI: "14"}},
+			SlotMuted:       {Light: CompleteColor{TrueColor: "#8A8A96", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#6272A4", ANSI: "8"}},
+		},
+	},
+	"solarized": {
+		Name: "solarized",
+		Slots: map[SlotKey]Slot{
+			SlotSelected:    {Light: CompleteColor{TrueColor: "#268BD2", ANSI: "4"}, Dark: CompleteColor{TrueColor: "#268BD2", ANSI: "14"}},
+			SlotDim:         {Light: CompleteColor{TrueColor: "#93A1A1", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#586E75", ANSI: "8"}},
+			SlotError:       {Light: CompleteColor{TrueColor: "#DC322F", ANSI: "1"}, Dark: CompleteColor{TrueColor: "#DC322F", ANSI: "9"}},
+			SlotUser:        {Light: CompleteColor{TrueColor: "#859900", ANSI: "2"}, Dark: CompleteColor{TrueColor: "#859900", ANSI: "10"}},
+			SlotAI:          {Light: CompleteColor{TrueColor: "#6C71C4", ANSI: "5"}, Dark: CompleteColor{TrueColor: "#6C71C4", ANSI: "13"}},
+			SlotHighlightFg: {Light: CompleteColor{TrueColor: "#FFFFFF", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#073642", ANSI: "0"}},
+			SlotHighlightBg: {Light: CompleteColor{TrueColor: "#268BD2", ANSI: "4"}, Dark: CompleteColor{TrueColor: "#268BD2", ANSI: "14"}},
+			SlotSuccess:     {Light: CompleteColor{TrueColor: "#859900", ANSI: "2"}, Dark: CompleteColor{TrueColor: "#859900", ANSI: "10"}},
+			SlotWarning:     {Light: CompleteColor{TrueColor: "#B58900", ANSI: "3"}, Dark: CompleteColor{TrueColor: "#B58900", ANSI: "11"}},
+			SlotBorder:      {Light: CompleteColor{TrueColor: "#839496", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#586E75", ANSI: "8"}},
+			SlotTitle:       {Light: CompleteColor{TrueColor: "#268BD2", ANSI: "4"}, Dark: CompleteColor{TrueColor: "#268BD2", ANSI: "14"}},
+			SlotAccent:      {Light: CompleteColor{TrueColor: "#2AA198", ANSI: "6"}, Dark: CompleteColor{TrueColor: "#2AA198", ANSI: "14"}},
+			SlotMuted:       {Light: CompleteColor{TrueColor: "#A0A9A9", ANSI: "7"}, Dark: CompleteColor{TrueColor: "#657B83", ANSI: "8"}},
+		},
+	},
+}
+
+func themeNames() []Name {
+	return []Name{"default", "catppuccin", "nord", "dracula", "solarized"}
+}
