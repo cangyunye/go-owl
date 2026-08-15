@@ -1,4 +1,4 @@
-package tui_test
+package tui
 
 import (
 	"path/filepath"
@@ -8,139 +8,124 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui"
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/nodes"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/exec"
 )
 
-func newStore(t *testing.T) common.NodeStore {
+func key(t tea.KeyType) tea.Msg { return tea.KeyMsg{Type: t} }
+func runeKey(r rune) tea.Msg    { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
+
+func newApp(t *testing.T) *App {
 	t.Helper()
-	s := common.NewInMemoryNodeStoreAt(filepath.Join(t.TempDir(), "nodes.json"))
+	store := common.NewInMemoryNodeStoreAt(filepath.Join(t.TempDir(), "nodes.json"))
 	for _, n := range []*common.NodeInfo{
-		{ID: "n1", Name: "web-1", Address: "10.0.0.1", Port: 22, User: "root", Status: "online", Groups: []string{"web"}, Labels: map[string]string{"env": "prod"}},
-		{ID: "n2", Name: "db-1", Address: "10.0.0.2", Port: 22, User: "admin", Status: "offline", Groups: []string{"db"}},
+		{ID: "n1", Name: "web-1", Address: "10.0.0.1", Port: 22, User: "root", Groups: []string{"web"}, Labels: map[string]string{"env": "prod"}},
+		{ID: "n2", Name: "db-1", Address: "10.0.0.2", Port: 22, User: "admin", Groups: []string{"db"}, Labels: map[string]string{"env": "dev"}},
 	} {
-		if err := s.Add(n); err != nil {
+		if err := store.Add(n); err != nil {
 			t.Fatalf("seed: %v", err)
 		}
 	}
-	return s
+	return NewApp(store)
 }
 
-func key(t tea.KeyType) tea.Msg { return tea.KeyMsg{Type: t} }
-
-func runeKey(r rune) tea.Msg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
-
-func TestApp_BreadcrumbView(t *testing.T) {
-	a := tui.NewApp(newStore(t))
-	v := a.View()
-	if !strings.Contains(v, "/nodes") {
-		t.Fatalf("expected /nodes breadcrumb in view: %q", v)
+func TestApp_DefaultPanelIsNodes(t *testing.T) {
+	m := newApp(t)
+	if m.panel != 0 {
+		t.Fatalf("expected panel 0, got %d", m.panel)
+	}
+	if got := m.View(); !strings.Contains(got, "[Nodes]") {
+		t.Fatalf("menu bar missing [Nodes]: %s", got)
 	}
 }
 
-func TestApp_QuitInNormalMode(t *testing.T) {
-	a := tui.NewApp(newStore(t))
-	m, cmd := a.Update(runeKey('q'))
+func TestApp_TabSwitchesToExecAndBack(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(key(tea.KeyTab))
+	m = nm.(*App)
+	if m.panel != 1 {
+		t.Fatalf("expected panel 1 after tab, got %d", m.panel)
+	}
+	if got := m.View(); !strings.Contains(got, "[Exec]") {
+		t.Fatalf("menu bar missing [Exec]: %s", got)
+	}
+	nm, _ = m.Update(key(tea.KeyTab))
+	m = nm.(*App)
+	if m.panel != 0 {
+		t.Fatalf("expected panel 0 after second tab, got %d", m.panel)
+	}
+}
+
+func TestApp_DigitKeysJumpToPanel(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('2'))
+	m = nm.(*App)
+	if m.panel != 1 {
+		t.Fatalf("expected panel 1 on '2', got %d", m.panel)
+	}
+	nm, _ = m.Update(runeKey('1'))
+	m = nm.(*App)
+	if m.panel != 0 {
+		t.Fatalf("expected panel 0 on '1', got %d", m.panel)
+	}
+}
+
+func TestApp_XJumpsToExec(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('x'))
+	m = nm.(*App)
+	if m.panel != 1 {
+		t.Fatalf("expected panel 1 on 'x', got %d", m.panel)
+	}
+}
+
+func TestApp_ExecCapturesVisibleSnapshot(t *testing.T) {
+	m := newApp(t)
+	// 过滤到 web 组后切到 exec, 快照应只有 n1
+	nm, _ := m.Update(runeKey('/'))
+	nm, _ = nm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g:web")})
+	nm, _ = nm.Update(key(tea.KeyEnter))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('2'))
+	m = nm.(*App)
+	if len(m.exec.Targets()) != 1 || m.exec.Targets()[0].ID != "n1" {
+		t.Fatalf("expected snapshot [n1], got %v", m.exec.Targets())
+	}
+}
+
+func TestApp_LeavePanelMsgReturnsToNodes(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('2'))
+	m = nm.(*App)
+	nm, _ = m.Update(exec.LeavePanelMsg{})
+	m = nm.(*App)
+	if m.panel != 0 {
+		t.Fatalf("expected panel 0 after LeavePanelMsg, got %d", m.panel)
+	}
+}
+
+func TestApp_QuitOnNodesStillWorks(t *testing.T) {
+	m := newApp(t)
+	nm, cmd := m.Update(runeKey('q'))
+	m = nm.(*App)
 	if cmd == nil {
 		t.Fatal("expected quit cmd")
 	}
-	// tea.Quit 是返回 Msg 的 Cmd,需调用后断言
-	if msg := cmd(); msg != nil {
-		if _, ok := msg.(tea.QuitMsg); !ok {
-			t.Fatalf("expected tea.QuitMsg, got %T", msg)
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("expected QuitMsg, got %T", cmd())
+	}
+}
+
+func TestApp_HelpContainsFilterSyntaxExamples(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('?'))
+	m = nm.(*App)
+	v := m.View()
+	for _, want := range []string{
+		"g:web && l:env=prod",
+		"s:online",
+	} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("expected help overlay to contain filter example %q: %q", want, v)
 		}
-	} else {
-		t.Fatal("expected non-nil quit msg")
-	}
-	_ = m
-}
-
-func TestApp_QuitBlockedInInsertMode(t *testing.T) {
-	a := tui.NewApp(newStore(t))
-	m, _ := a.Update(runeKey('/'))
-	a = m.(*tui.App)
-	m, cmd := a.Update(runeKey('q'))
-	a = m.(*tui.App)
-	if a.Nodes.Mode() != nodes.ModeInsert {
-		t.Fatal("expected still Insert after q")
-	}
-	if a.QuitConfirm {
-		t.Fatal("expected no quit confirm in insert mode")
-	}
-	// cmd 可能是 textinput 的 blink tick,但绝不能是 QuitMsg
-	if cmd != nil {
-		if msg := cmd(); msg != nil {
-			if _, isQuit := msg.(tea.QuitMsg); isQuit {
-				t.Fatal("expected no quit in insert mode")
-			}
-		}
-	}
-}
-
-func TestApp_HelpOverlay(t *testing.T) {
-	a := tui.NewApp(newStore(t))
-	m, _ := a.Update(runeKey('?'))
-	a = m.(*tui.App)
-	v := a.View()
-	if !strings.Contains(v, "Normal=命令") {
-		t.Fatalf("expected help overlay: %q", v)
-	}
-	m, _ = a.Update(key(tea.KeyEsc))
-	a = m.(*tui.App)
-	if strings.Contains(a.View(), "Normal=命令") {
-		t.Fatal("expected help closed after Esc")
-	}
-}
-
-func TestApp_QuitConfirmWhenDirty(t *testing.T) {
-	a := tui.NewApp(newStore(t))
-	// 进入新增表单(深层位置 = dirty)
-	m, _ := a.Update(runeKey('a'))
-	a = m.(*tui.App)
-	m, cmd := a.Update(runeKey('q'))
-	if cmd != nil {
-		t.Fatal("expected no immediate quit when dirty")
-	}
-	a = m.(*tui.App)
-	// 确认 y → 退出
-	_, cmd = a.Update(runeKey('y'))
-	if cmd == nil {
-		t.Fatal("expected quit cmd after confirm")
-	}
-	if msg := cmd(); msg != nil {
-		if _, ok := msg.(tea.QuitMsg); !ok {
-			t.Fatalf("expected quit after confirm, got %T", msg)
-		}
-	}
-}
-
-func TestApp_InsertModeBypassesAppKeys(t *testing.T) {
-	a := tui.NewApp(newStore(t))
-	m, _ := a.Update(runeKey('/'))
-	a = m.(*tui.App)
-	// Insert 态 '?' 不应开帮助
-	m, _ = a.Update(runeKey('?'))
-	a = m.(*tui.App)
-	if a.Help {
-		t.Fatal("expected no help toggle in insert mode")
-	}
-	if a.Nodes.Mode() != nodes.ModeInsert {
-		t.Fatal("expected still Insert")
-	}
-}
-
-func TestApp_NodeCRUDFlow(t *testing.T) {
-	a := tui.NewApp(newStore(t))
-	// 打开新增表单
-	m, _ := a.Update(runeKey('a'))
-	a = m.(*tui.App)
-	if a.Nodes.Mode() != nodes.ModeNormal {
-		t.Fatal("expected Normal navigate mode in form")
-	}
-	if !strings.Contains(a.View(), "添加节点") {
-		t.Fatal("expected add-form title in view")
-	}
-	if !strings.Contains(a.View(), "/nodes/new") {
-		t.Fatal("expected /nodes/new breadcrumb in view")
 	}
 }

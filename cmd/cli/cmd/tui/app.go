@@ -4,25 +4,65 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/exec"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/nodes"
 )
 
+// Panel 顶层面板: 节点管理 / 命令执行
+type Panel interface {
+	Update(msg tea.Msg) (tea.Model, tea.Cmd)
+	View() string
+	InsertMode() bool
+	Path() []string
+	IsDirty() bool
+}
+
 type App struct {
-	Nodes       nodes.Model
+	nodes nodes.Model
+	exec  exec.ExecModel
+	panel int // 0=Nodes 1=Exec
+
 	Help        bool
 	QuitConfirm bool
 }
 
+var panelNames = []string{"Nodes", "Exec"}
+
 func NewApp(store common.NodeStore) *App {
-	return &App{Nodes: nodes.NewModel(store)}
+	m := &App{nodes: nodes.NewModel(store)}
+	m.exec = exec.NewModel(store)
+	m.exec.CaptureTargets(m.nodes.Visible())
+	return m
 }
 
 func (m *App) Init() tea.Cmd { return nil }
 
+func (m *App) currentPanel() Panel {
+	if m.panel == 1 {
+		return &m.exec
+	}
+	return &m.nodes
+}
+
+func (m *App) switchPanel(i int) {
+	if i < 0 || i >= len(panelNames) || i == m.panel {
+		return
+	}
+	m.panel = i
+	if m.panel == 1 {
+		m.exec.CaptureTargets(m.nodes.Visible())
+	}
+}
+
 func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if _, ok := msg.(exec.LeavePanelMsg); ok {
+		m.switchPanel(0)
+		return m, nil
+	}
 	if m.QuitConfirm {
 		if km, ok := msg.(tea.KeyMsg); ok {
 			switch km.String() {
@@ -42,15 +82,13 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	if m.Nodes.Mode() != nodes.ModeNormal {
-		// Insert 态隔离:按键仅转发给 nodes(不过任何 keymap),但 cmd 必须冒泡
-		// (textinput 的 blink tick 依赖它,否则光标不闪烁)
+	if m.currentPanel().InsertMode() {
 		return m.forward(msg)
 	}
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
 		case "q":
-			if m.Nodes.IsDirty() {
+			if m.panel == 0 && m.nodes.IsDirty() {
 				m.QuitConfirm = true
 				return m, nil
 			}
@@ -60,27 +98,46 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "?":
 			m.Help = true
 			return m, nil
+		case "tab":
+			m.switchPanel((m.panel + 1) % 2)
+			return m, nil
+		case "1":
+			m.switchPanel(0)
+			return m, nil
+		case "2":
+			m.switchPanel(1)
+			return m, nil
+		case "x":
+			if m.panel == 0 {
+				m.switchPanel(1)
+				return m, nil
+			}
 		}
 	}
 	return m.forward(msg)
 }
 
 func (m *App) forward(msg tea.Msg) (tea.Model, tea.Cmd) {
-	nm, cmd := m.Nodes.Update(msg)
-	m.Nodes = nm.(nodes.Model)
+	pm, cmd := m.currentPanel().Update(msg)
+	if m.panel == 1 {
+		m.exec = pm.(exec.ExecModel)
+	} else {
+		m.nodes = pm.(nodes.Model)
+	}
 	return m, cmd
 }
 
 func (m *App) View() string {
 	var b strings.Builder
-	path := "/" + strings.Join(m.Nodes.Path(), "/")
+	p := m.currentPanel()
 	mode := "Normal"
-	if m.Nodes.Mode() == nodes.ModeInsert {
+	if p.InsertMode() {
 		mode = "Insert"
 	}
-	b.WriteString(fmt.Sprintf("%s   Mode:%s\n", path, mode))
+	b.WriteString(menuBar(m.panel) + "\n")
+	b.WriteString(fmt.Sprintf("/%s   Mode:%s\n", strings.Join(p.Path(), "/"), mode))
 	b.WriteString(strings.Repeat("─", 60) + "\n")
-	b.WriteString(m.Nodes.View())
+	b.WriteString(p.View())
 	if m.Help {
 		b.WriteString("\n\n" + helpView())
 	}
@@ -90,13 +147,30 @@ func (m *App) View() string {
 	return b.String()
 }
 
+func menuBar(active int) string {
+	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	var parts []string
+	for i, name := range panelNames {
+		if i == active {
+			parts = append(parts, activeStyle.Render("["+name+"]"))
+		} else {
+			parts = append(parts, "["+name+"]")
+		}
+	}
+	return strings.Join(parts, " ") + dim.Render("  Tab 切换  1/2 直达")
+}
+
 func helpView() string {
 	return strings.Join([]string{
 		"┌─ 帮助 ─────────────────────────────",
+		"  菜单:  Tab 切换  1/2 直达  x 快捷执行",
 		"  列表:  ↑↓ 选择  ←→ 切栏  g/G 首尾",
 		"        a 添加  e 编辑  d 删除  c 列配置",
 		"        p ping  k SSH检查  i 导入导出  o 分组  l 标签",
-		"        / 过滤(g:组 l:标签 或搜索)  ? 帮助  q 退出",
+		"        / 过滤: 关键词 | g:组 l:k=v s:状态(空格或&&=AND)",
+		"        例: g:web && l:env=prod  → 组含web且env=prod的节点",
+		"        例: s:online  → 状态为在线的节点  ? 帮助  q 退出",
 		"  表单:  ↑↓ 移动字段(首尾回卷)  Enter 编辑",
 		"        s 保存  Esc 返回/退出输入  ? 帮助",
 		"  模式:  Normal=命令   Insert=输入(Esc 退出)",

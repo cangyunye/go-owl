@@ -150,6 +150,10 @@ func (m Model) selectedID() string {
 
 func (m Model) Mode() Mode { return m.mode }
 
+func (m Model) Visible() []*common.NodeInfo { return m.visible() }
+
+func (m Model) InsertMode() bool { return m.mode != ModeNormal }
+
 func (m Model) Path() []string {
 	id := m.selectedID()
 	switch m.current() {
