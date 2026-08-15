@@ -3,6 +3,7 @@ package exec
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -198,4 +199,141 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestAdvanced_Defaults(t *testing.T) {
+	f := newAdvancedForm()
+	if len(f.fields) != 20 {
+		t.Fatalf("expected 20 fields, got %d", len(f.fields))
+	}
+	if got := f.value("timeout"); got != "60s" {
+		t.Fatalf("expected timeout 60s, got %q", got)
+	}
+	if !f.isOn("parallel") || f.isOn("serial") {
+		t.Fatal("expected parallel on, serial off")
+	}
+}
+
+func TestAdvanced_ToggleBoolWithSpace(t *testing.T) {
+	m := newTestModel(t)
+	m.advanced = newAdvancedForm()
+	m.push(LocAdvanced)
+	// 下移到 parallel 行 (索引 3)
+	for i := 0; i < 3; i++ {
+		nm, _ := m.Update(key(tea.KeyDown))
+		m = nm.(ExecModel)
+	}
+	nm, _ := m.Update(runeKey(' '))
+	m = nm.(ExecModel)
+	if m.advanced.isOn("parallel") {
+		t.Fatal("space should toggle parallel off")
+	}
+	if m.advanced.isOn("serial") {
+		t.Fatal("serial should stay off")
+	}
+}
+
+func TestAdvanced_SpaceIgnoredOnTextField(t *testing.T) {
+	m := newTestModel(t)
+	m.advanced = newAdvancedForm()
+	m.push(LocAdvanced)
+	// 光标在 timeout (索引 0, KindText), 空格应被忽略
+	nm, _ := m.Update(runeKey(' '))
+	m = nm.(ExecModel)
+	if !m.advanced.isOn("parallel") {
+		t.Fatal("space on text field should be ignored")
+	}
+}
+
+func TestAdvanced_EditTextField(t *testing.T) {
+	m := newTestModel(t)
+	m.advanced = newAdvancedForm()
+	m.push(LocAdvanced)
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(ExecModel)
+	if m.mode != ModeInsert {
+		t.Fatal("expected ModeInsert on enter")
+	}
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("120s")})
+	m = nm.(ExecModel)
+	nm, _ = m.Update(key(tea.KeyEsc))
+	m = nm.(ExecModel)
+	if got := m.advanced.value("timeout"); got != "120s" {
+		t.Fatalf("expected timeout 120s, got %q", got)
+	}
+}
+
+func TestAdvanced_SaveReturnsToRun(t *testing.T) {
+	m := newTestModel(t)
+	m.advanced = newAdvancedForm()
+	m.push(LocAdvanced)
+	nm, _ := m.Update(runeKey('s'))
+	m = nm.(ExecModel)
+	if m.current() != LocRun {
+		t.Fatalf("expected LocRun after save, got %v", m.current())
+	}
+	if m.advanced != nil {
+		t.Fatal("expected advanced cleared")
+	}
+}
+
+func TestAdvanced_BuildOpts_Defaults(t *testing.T) {
+	f := newAdvancedForm()
+	opts, err := f.buildOpts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.Parallel {
+		t.Fatal("expected parallel")
+	}
+	if opts.TimeoutConfig == nil || opts.TimeoutConfig.ConnectTimeout != 10*time.Second || opts.TimeoutConfig.CommandTimeout != 30*time.Second {
+		t.Fatalf("unexpected timeout config: %+v", opts.TimeoutConfig)
+	}
+	if opts.RetryConfig == nil || opts.RetryConfig.MaxRetries != 3 {
+		t.Fatalf("unexpected retry config: %+v", opts.RetryConfig)
+	}
+}
+
+func TestAdvanced_BuildOpts_SerialOverrides(t *testing.T) {
+	f := newAdvancedForm()
+	f.toggle(4) // serial 行
+	opts, err := f.buildOpts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Parallel {
+		t.Fatal("expected serial mode")
+	}
+}
+
+func TestAdvanced_BuildOpts_NoRetryDisables(t *testing.T) {
+	f := newAdvancedForm()
+	f.toggle(8) // no-retry 行
+	opts, err := f.buildOpts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.RetryConfig != nil {
+		t.Fatalf("expected no retry config, got %+v", opts.RetryConfig)
+	}
+}
+
+func TestAdvanced_BuildOpts_InvalidDuration(t *testing.T) {
+	f := newAdvancedForm()
+	f.fields[0].input.SetValue("abc")
+	if _, err := f.buildOpts(); err == nil {
+		t.Fatal("expected error for invalid duration")
+	}
+}
+
+func TestAdvanced_ViewShowsCheckboxes(t *testing.T) {
+	m := newTestModel(t)
+	m.advanced = newAdvancedForm()
+	m.push(LocAdvanced)
+	got := m.View()
+	for _, want := range []string{"高级选项", "parallel", "[x]", "[ ]"} {
+		if !contains(got, want) {
+			t.Fatalf("view missing %q:\n%s", want, got)
+		}
+	}
 }

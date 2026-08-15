@@ -44,6 +44,8 @@ type ExecModel struct {
 	format      string
 	formatIdx   int
 
+	advanced *AdvancedForm
+
 	targets []*common.NodeInfo
 	error   string
 }
@@ -159,13 +161,55 @@ func (m ExecModel) updateRun(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "f":
 		m.formatIdx = (m.formatIdx + 1) % len(formats)
 		m.format = formats[m.formatIdx]
+	case "a":
+		m.advanced = newAdvancedForm()
+		m.push(LocAdvanced)
 	case "esc":
 		return m, func() tea.Msg { return LeavePanelMsg{} }
 	}
 	return m, nil
 }
 
-func (m ExecModel) updateAdvanced(msg tea.Msg) (tea.Model, tea.Cmd) { return m, nil }
+func (m ExecModel) updateAdvanced(msg tea.Msg) (tea.Model, tea.Cmd) {
+	f := m.advanced
+	if f == nil {
+		return m, nil
+	}
+	if m.mode == ModeInsert {
+		if km, ok := msg.(tea.KeyMsg); ok && km.String() == "esc" {
+			m.mode = ModeNormal
+			f.fields[f.cursor].input.Blur()
+			return m, nil
+		}
+		var cmd tea.Cmd
+		f.fields[f.cursor].input, cmd = f.fields[f.cursor].input.Update(msg)
+		return m, cmd
+	}
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch km.String() {
+	case "up":
+		f.move(-1)
+	case "down":
+		f.move(1)
+	case "enter":
+		if f.fields[f.cursor].kind == KindText {
+			m.mode = ModeInsert
+			f.fields[f.cursor].input.SetValue("")
+			f.fields[f.cursor].input.Focus()
+		}
+	case " ":
+		if f.fields[f.cursor].kind == KindBool {
+			f.toggle(f.cursor)
+		}
+	case "s", "esc":
+		m.pop()
+		m.advanced = nil
+	}
+	return m, nil
+}
 func (m ExecModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd)   { return m, nil }
 func (m ExecModel) updateDanger(msg tea.Msg) (tea.Model, tea.Cmd)   { return m, nil }
 

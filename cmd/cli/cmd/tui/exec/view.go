@@ -38,6 +38,9 @@ func (m ExecModel) runView() string {
 		b.WriteString(fmt.Sprintf("%s %s%-4s %s\n", marker, " ", labels[i], m.fieldAt(i).View()))
 	}
 	b.WriteString("  格式  " + styleSelected.Render(m.format) + styleDim.Render("  f 切换") + "\n")
+	if m.advanced != nil {
+		b.WriteString(styleDim.Render("  高级  "+advancedSummary(m.advanced)) + "\n")
+	}
 	if nodes, err := m.resolveTargets(); err == nil {
 		b.WriteString(styleDim.Render(fmt.Sprintf("  目标  %d 台", len(nodes))) + "\n")
 	}
@@ -49,6 +52,39 @@ func (m ExecModel) runView() string {
 	return b.String()
 }
 
-func (m ExecModel) advancedView() string { return "" }
-func (m ExecModel) resultView() string   { return "" }
-func (m ExecModel) dangerView() string   { return "" }
+func (m ExecModel) advancedView() string {
+	f := m.advanced
+	if f == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("┌─ 高级选项 ─────────────────────────\n")
+	for i, fd := range f.fields {
+		marker := " "
+		if i == f.cursor && m.mode == ModeNormal {
+			marker = ">"
+		}
+		line := ""
+		if fd.kind == KindBool {
+			box := "[ ]"
+			if fd.checked {
+				box = "[x]"
+			}
+			line = fmt.Sprintf("%s %s %-18s Space 切换\n", marker, box, fd.label)
+		} else {
+			line = fmt.Sprintf("%s %-18s %s\n", marker, fd.label, fd.input.View())
+		}
+		if i == f.cursor && m.mode == ModeNormal {
+			line = styleSelected.Render(strings.TrimRight(line, "\n")) + "\n"
+		}
+		b.WriteString("  " + line)
+	}
+	if f.error != "" {
+		b.WriteString(styleError.Render("  "+f.error) + "\n")
+	}
+	b.WriteString(styleDim.Render("  ↑↓移动 Enter编辑 Space切换bool s保存 Esc返回") + "\n")
+	b.WriteString("└─")
+	return b.String()
+}
+func (m ExecModel) resultView() string { return "" }
+func (m ExecModel) dangerView() string { return "" }
