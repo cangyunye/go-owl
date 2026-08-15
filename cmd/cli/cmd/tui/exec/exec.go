@@ -95,6 +95,45 @@ func (m *ExecModel) CaptureTargets(nodes []*common.NodeInfo) {
 	m.targets = append([]*common.NodeInfo(nil), nodes...)
 }
 
+// CaptureAllTargets 快照回退: 以 store 全量节点为目标(搜索/状态过滤无法翻译为组/标签条件时的兜底)
+func (m *ExecModel) CaptureAllTargets() {
+	all, err := m.store.List()
+	if err != nil {
+		m.targets = nil
+		return
+	}
+	m.targets = append([]*common.NodeInfo(nil), all...)
+}
+
+// FillNodes 填显式节点列表并清空组/标签条件
+func (m *ExecModel) FillNodes(ids []string) {
+	m.nodesInput.SetValue(strings.Join(ids, ","))
+	m.groupsInput.SetValue("")
+	m.labelsInput.SetValue("")
+}
+
+// FillConditions 填分组/标签条件并清空显式节点列表(组/标签为空即清空)
+func (m *ExecModel) FillConditions(groups []string, labels map[string]string) {
+	m.nodesInput.SetValue("")
+	m.groupsInput.SetValue(strings.Join(groups, ","))
+	var pairs []string
+	for k, v := range labels {
+		if v != "" {
+			pairs = append(pairs, k+"="+v)
+		} else {
+			pairs = append(pairs, k)
+		}
+	}
+	sort.Strings(pairs)
+	m.labelsInput.SetValue(strings.Join(pairs, ","))
+}
+
+func (m ExecModel) NodesValue() string  { return m.nodesInput.Value() }
+func (m ExecModel) GroupsValue() string { return m.groupsInput.Value() }
+
+// ResolveForTest 导出目标解析(测试断言快照回退)
+func (m ExecModel) ResolveForTest() ([]*common.NodeInfo, error) { return m.resolveTargets() }
+
 func (m ExecModel) current() Loc { return m.stack[len(m.stack)-1] }
 
 func (m *ExecModel) push(l Loc) { m.stack = append(m.stack, l) }

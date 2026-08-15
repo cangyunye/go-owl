@@ -61,7 +61,15 @@ func (m *App) currentPanel() Panel {
 	}
 }
 
-func (m *App) switchPanel(i int) {
+// Entry 进入面板的方式
+type Entry int
+
+const (
+	EntryNeutral Entry = iota // Tab/数字/f: 不动表单, 仅刷新快照
+	EntryBySelection          // x: 勾选优先, 否则纯组/标签过滤条件
+)
+
+func (m *App) switchPanel(i int, entry Entry) {
 	if i < 0 || i >= len(panelNames) || i == m.panel {
 		return
 	}
@@ -71,23 +79,42 @@ func (m *App) switchPanel(i int) {
 	m.panel = i
 	if m.panel == 1 {
 		m.exec.CaptureTargets(m.nodes.Visible())
+		if entry == EntryBySelection {
+			m.applySelectionEntry()
+		}
 	}
 	if m.panel == 2 {
 		m.file.CaptureTargets(m.nodes.Visible())
 	}
 }
 
+// applySelectionEntry 按 x 语义填充 Exec 表单: 勾选优先, 否则纯组/标签过滤; 含搜索/状态回退快照
+func (m *App) applySelectionEntry() {
+	if ids := m.nodes.MarkedIDs(); len(ids) > 0 {
+		m.exec.FillNodes(ids)
+		return
+	}
+	fq := m.nodes.Filter()
+	if fq.Search == "" && fq.Status == "" {
+		m.exec.FillConditions(fq.Groups, fq.Labels)
+		return
+	}
+	// 搜索/状态过滤无法翻译为组/标签条件: 表单清空, 快照兜底为全量节点
+	m.exec.CaptureAllTargets()
+	m.exec.FillConditions(nil, nil)
+}
+
 func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := msg.(exec.LeavePanelMsg); ok {
-		m.switchPanel(0)
+		m.switchPanel(0, EntryNeutral)
 		return m, nil
 	}
 	if _, ok := msg.(file.LeavePanelMsg); ok {
-		m.switchPanel(0)
+		m.switchPanel(0, EntryNeutral)
 		return m, nil
 	}
 	if _, ok := msg.(tuiai.LeavePanelMsg); ok {
-		m.switchPanel(0)
+		m.switchPanel(0, EntryNeutral)
 		return m, nil
 	}
 	switch msg.(type) {
@@ -138,28 +165,28 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Help = true
 			return m, nil
 		case "tab":
-			m.switchPanel((m.panel + 1) % 4)
+			m.switchPanel((m.panel+1)%4, EntryNeutral)
 			return m, nil
 		case "1":
-			m.switchPanel(0)
+			m.switchPanel(0, EntryNeutral)
 			return m, nil
 		case "2":
-			m.switchPanel(1)
+			m.switchPanel(1, EntryNeutral)
 			return m, nil
 		case "3":
-			m.switchPanel(2)
+			m.switchPanel(2, EntryNeutral)
 			return m, nil
 		case "4":
-			m.switchPanel(3)
+			m.switchPanel(3, EntryNeutral)
 			return m, nil
 		case "f":
 			if m.panel == 0 && m.nodes.AtList() {
-				m.switchPanel(2)
+				m.switchPanel(2, EntryNeutral)
 				return m, nil
 			}
 		case "x":
 			if m.panel == 0 {
-				m.switchPanel(1)
+				m.switchPanel(1, EntryBySelection)
 				return m, nil
 			}
 		}

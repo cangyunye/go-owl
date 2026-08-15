@@ -759,3 +759,42 @@ func TestForce_SkipsBlacklist(t *testing.T) {
 		t.Fatalf("expected ExecStreamMsg, got %T", cmd())
 	}
 }
+
+func TestFillNodes_SetsAndClearsConditions(t *testing.T) {
+	m := newTestModel(t)
+	m.groupsInput.SetValue("web")
+	m.labelsInput.SetValue("env=prod")
+	m.FillNodes([]string{"n1", "n3"})
+	if got := m.nodesInput.Value(); got != "n1,n3" {
+		t.Fatalf("expected nodes n1,n3, got %q", got)
+	}
+	if m.groupsInput.Value() != "" || m.labelsInput.Value() != "" {
+		t.Fatal("expected conditions cleared")
+	}
+}
+
+func TestFillConditions_FillsSortedPairs(t *testing.T) {
+	m := newTestModel(t)
+	m.nodesInput.SetValue("n1")
+	m.FillConditions([]string{"web", "db"}, map[string]string{"env": "prod", "zone": ""})
+	if m.nodesInput.Value() != "" {
+		t.Fatal("expected nodes cleared")
+	}
+	if got := m.groupsInput.Value(); got != "web,db" {
+		t.Fatalf("expected groups web,db, got %q", got)
+	}
+	if got := m.labelsInput.Value(); got != "env=prod,zone" {
+		t.Fatalf("expected labels env=prod,zone, got %q", got)
+	}
+}
+
+func TestFillConditions_ClearsWhenNil(t *testing.T) {
+	m := newTestModel(t)
+	m.nodesInput.SetValue("n1")
+	m.groupsInput.SetValue("web")
+	m.labelsInput.SetValue("env=prod")
+	m.FillConditions(nil, nil)
+	if m.nodesInput.Value() != "" || m.groupsInput.Value() != "" || m.labelsInput.Value() != "" {
+		t.Fatal("expected all fields cleared")
+	}
+}

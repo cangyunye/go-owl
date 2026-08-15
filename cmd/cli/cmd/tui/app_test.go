@@ -264,3 +264,89 @@ func TestApp_AIEscReturnsToNodes(t *testing.T) {
 		t.Fatalf("expected panel 0 after AI esc, got %d", m.panel)
 	}
 }
+
+func TestApp_XWithMarksFillsNodes(t *testing.T) {
+	m := newApp(t)
+	// 勾选 n1, n2 (seed: n1/n2)
+	nm, _ := m.Update(runeKey(' ')) // 光标 n1
+	m = nm.(*App)
+	nm, _ = m.Update(key(tea.KeyDown))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey(' ')) // n2
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('x'))
+	m = nm.(*App)
+	if m.panel != 1 {
+		t.Fatalf("expected panel 1, got %d", m.panel)
+	}
+	if got := m.exec.NodesValue(); got != "n1,n2" {
+		t.Fatalf("expected nodes n1,n2, got %q", got)
+	}
+}
+
+func TestApp_XNoMarksFillsFilterConditions(t *testing.T) {
+	m := newApp(t)
+	// 过滤 g:web
+	nm, _ := m.Update(runeKey('/'))
+	nm, _ = nm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g:web")})
+	nm, _ = nm.Update(key(tea.KeyEnter))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('x'))
+	m = nm.(*App)
+	if m.panel != 1 {
+		t.Fatalf("expected panel 1, got %d", m.panel)
+	}
+	if got := m.exec.GroupsValue(); got != "web" {
+		t.Fatalf("expected groups web, got %q", got)
+	}
+	if got := m.exec.NodesValue(); got != "" {
+		t.Fatalf("expected nodes cleared, got %q", got)
+	}
+}
+
+func TestApp_XSearchFilterFallsBackToSnapshot(t *testing.T) {
+	m := newApp(t)
+	// 过滤搜索词 foo (seed 无匹配)
+	nm, _ := m.Update(runeKey('/'))
+	nm, _ = nm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("foo")})
+	nm, _ = nm.Update(key(tea.KeyEnter))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('x'))
+	m = nm.(*App)
+	if m.panel != 1 {
+		t.Fatalf("expected panel 1, got %d", m.panel)
+	}
+	if got := m.exec.GroupsValue(); got != "" {
+		t.Fatalf("search filter must not fill groups, got %q", got)
+	}
+	if got := m.exec.NodesValue(); got != "" {
+		t.Fatalf("expected nodes cleared, got %q", got)
+	}
+	// 快照兜底: 目标仍为全部可见节点
+	nodes, err := m.exec.ResolveForTest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("expected snapshot fallback of 2 nodes, got %d", len(nodes))
+	}
+}
+
+func TestApp_TabNeutralKeepsFormState(t *testing.T) {
+	m := newApp(t)
+	// 进 Exec 手填 nodes
+	nm, _ := m.Update(runeKey('2'))
+	m = nm.(*App)
+	m.exec.FillNodes([]string{"n1"})
+	// Tab 绕一圈(4 面板)再回 Exec: 字段保留
+	for i := 0; i < 4; i++ {
+		nm, _ = m.Update(key(tea.KeyTab))
+		m = nm.(*App)
+	}
+	if m.panel != 1 {
+		t.Fatalf("expected panel 1 after 4 tabs, got %d", m.panel)
+	}
+	if got := m.exec.NodesValue(); got != "n1" {
+		t.Fatalf("tab must be neutral, expected nodes n1, got %q", got)
+	}
+}
