@@ -139,12 +139,9 @@ func coloredValue(key, val string) string {
 		return styleForStatus(val).Render(val)
 	case "Labels":
 		return rainbowLabelsFull(val)
-	case "Address":
-		return theme.Style(theme.SlotAccent).Render(val)
-	case "User":
-		return theme.Style(theme.SlotUser).Render(val)
-	case "Groups":
-		return theme.Style(theme.SlotTitle).Render(val)
+	}
+	if slot, ok := fieldSlot(key); ok {
+		return theme.Style(slot).Render(val)
 	}
 	return val
 }

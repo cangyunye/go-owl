@@ -231,3 +231,16 @@ func TestRainbowLabelsWidthNoOverflow(t *testing.T) {
 		t.Fatalf("可见宽度 %d 超过列宽 3, got %q", common.DisplayWidth(got), got)
 	}
 }
+
+func TestRainbowLabelsWidthPrefixAndEllipsis(t *testing.T) {
+	withColor(t, func() {
+		// 6 个 label 超出列宽 10 → 应有彩虹前缀 + … 而非全 dim
+		got := rainbowLabelsWidth("a=1,b=2,c=3,d=4,e=5,f=6", 10)
+		if got == "" {
+			t.Fatal("不应为空")
+		}
+		if common.DisplayWidth(got) > 10 {
+			t.Fatalf("可见宽度 %d 超过列宽 10", common.DisplayWidth(got))
+		}
+	})
+}

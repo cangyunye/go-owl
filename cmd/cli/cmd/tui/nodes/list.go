@@ -149,24 +149,32 @@ func truncateCell(s string, width int) string {
 	return res
 }
 
+func fieldSlot(key string) (theme.SlotKey, bool) {
+	switch strings.ToLower(key) {
+	case "user":
+		return theme.SlotUser, true
+	case "address":
+		return theme.SlotAccent, true
+	case "groups":
+		return theme.SlotTitle, true
+	}
+	return "", false
+}
+
 func renderCell(n *common.NodeInfo, key string, width int, selected bool) string {
-	raw := truncateCell(cellValue(n, key), width)
 	if selected {
-		return styleSelected.Render(raw)
+		return styleSelected.Render(truncateCell(cellValue(n, key), width))
 	}
 	switch key {
 	case "status":
-		return styleForStatus(n.Status).Render(raw)
+		return styleForStatus(n.Status).Render(truncateCell(cellValue(n, key), width))
 	case "labels":
-		return rainbowLabelsWidth(raw, width)
-	case "user":
-		return theme.Style(theme.SlotUser).Render(raw)
-	case "address":
-		return theme.Style(theme.SlotAccent).Render(raw)
-	case "groups":
-		return theme.Style(theme.SlotTitle).Render(raw)
+		return rainbowLabelsWidth(cellValue(n, key), width)
 	}
-	return raw
+	if slot, ok := fieldSlot(key); ok {
+		return theme.Style(slot).Render(truncateCell(cellValue(n, key), width))
+	}
+	return truncateCell(cellValue(n, key), width)
 }
 
 func rainbowLabelsWidth(raw string, width int) string {
@@ -192,11 +200,7 @@ func rainbowLabelsWidth(raw string, width int) string {
 			remaining -= sw
 			continue
 		}
-		if b.Len() == 0 {
-			if remaining >= 1 {
-				b.WriteString("…")
-			}
-		} else if remaining >= 1 {
+		if remaining >= 1 {
 			b.WriteString("…")
 		}
 		break
