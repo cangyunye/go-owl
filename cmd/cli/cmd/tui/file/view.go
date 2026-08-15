@@ -19,9 +19,50 @@ func (m FileModel) View() string {
 		return m.advancedView()
 	case LocResult:
 		return m.resultView()
+	case LocBrowser:
+		return m.browserView()
 	default:
 		return m.fileView()
 	}
+}
+
+func (m FileModel) browserView() string {
+	b := m.browser
+	if b == nil {
+		return ""
+	}
+	var b2 strings.Builder
+	b2.WriteString("┌─ 本地文件浏览器 ─────────────────\n")
+	b2.WriteString("  目录: " + styleSelected.Render(b.dir) + "\n")
+	if b.inputOpen {
+		b2.WriteString("  路径: " + b.input.View() + styleDim.Render("  Enter 跳转  Esc 取消") + "\n")
+	} else {
+		b2.WriteString("  路径: " + b.input.View() + styleDim.Render("  / 输入") + "\n")
+	}
+	for i, e := range b.entries {
+		marker := " "
+		if i == b.cursor {
+			marker = ">"
+		}
+		name := e.Name
+		if e.IsDir {
+			name += "/"
+		}
+		line := fmt.Sprintf("  %s %s\n", marker, name)
+		if i == b.cursor {
+			line = styleSelected.Render(line)
+		}
+		b2.WriteString(line)
+	}
+	if len(b.entries) == 0 {
+		b2.WriteString(styleDim.Render("  (空目录)") + "\n")
+	}
+	if b.err != "" {
+		b2.WriteString(styleError.Render("  "+b.err) + "\n")
+	}
+	b2.WriteString(styleDim.Render("  ↑↓选择 Enter进入/选中 ←上级 /输入路径 h隐藏 Esc返回") + "\n")
+	b2.WriteString("└─")
+	return b2.String()
 }
 
 func (m FileModel) fileView() string {

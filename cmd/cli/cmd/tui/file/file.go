@@ -17,6 +17,7 @@ const (
 	LocFile Loc = iota
 	LocAdvanced
 	LocResult
+	LocBrowser
 )
 
 type Mode int
@@ -55,6 +56,7 @@ type FileModel struct {
 
 	targets  []*common.NodeInfo
 	advanced *AdvancedForm
+	browser  *FileBrowser
 	error    string
 
 	lastUpload   *uploadRunState
@@ -126,6 +128,8 @@ func (m FileModel) Path() []string {
 		return []string{"file", sub, "advanced"}
 	case LocResult:
 		return []string{"file", sub, "result"}
+	case LocBrowser:
+		return []string{"file", sub, "browser"}
 	default:
 		return []string{"file", sub}
 	}
@@ -168,6 +172,8 @@ func (m FileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAdvanced(msg)
 	case LocResult:
 		return m.updateResult(msg)
+	case LocBrowser:
+		return m.updateBrowser(msg)
 	default:
 		return m.updateFile(msg)
 	}
@@ -195,6 +201,12 @@ func (m FileModel) updateFile(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "down":
 		m.cursor = (m.cursor + 1) % 5
 	case "enter":
+		if m.cursor == 0 && m.op != OpDownload {
+			// 本地文件字段: 弹出文件浏览器(起点为启动工作目录)
+			m.browser = NewFileBrowser("")
+			m.push(LocBrowser)
+			return m, nil
+		}
 		m.mode = ModeInsert
 		m.fieldAt(m.cursor).Focus()
 	case "left":
@@ -224,6 +236,75 @@ func (m FileModel) updateFile(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "esc":
 		return m, func() tea.Msg { return LeavePanelMsg{} }
+	}
+	return m, nil
+}
+
+// updateBrowser 文件浏览器按键处理; 路径输入用 / 打开(同 nodes filter 范式)
+func (m FileModel) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
+	b := m.browser
+	if b == nil {
+		return m, nil
+	}
+	if b.inputOpen {
+		if km, ok := msg.(tea.KeyMsg); ok {
+			switch km.String() {
+			case "esc":
+				b.inputOpen = false
+				b.input.Blur()
+				m.mode = ModeNormal
+				return m, nil
+			case "enter":
+				if err := b.Jump(b.input.Value()); err != nil {
+					b.err = err.Error()
+				} else {
+					b.err = ""
+					b.inputOpen = false
+					b.input.Blur()
+					m.mode = ModeNormal
+				}
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		b.input, cmd = b.input.Update(msg)
+		return m, cmd
+	}
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch km.String() {
+	case "up":
+		b.Up()
+	case "down":
+		b.Down()
+	case "enter":
+		path, isFile, _ := b.Enter()
+		if !isFile {
+			return m, nil // 已进入子目录
+		}
+		m.fileInput.SetValue(path)
+		m.pop()
+		m.browser = nil
+		m.mode = ModeInsert
+		m.fileInput.Focus()
+		return m, textinput.Blink
+	case "backspace", "left":
+		b.Parent()
+	case "/":
+		b.inputOpen = true
+		b.input.Focus()
+		m.mode = ModeInsert
+		return m, textinput.Blink
+	case "h":
+		b.ToggleHidden()
+	case "esc":
+		m.pop()
+		m.browser = nil
+		m.mode = ModeInsert
+		m.fileInput.Focus()
+		return m, textinput.Blink
 	}
 	return m, nil
 }

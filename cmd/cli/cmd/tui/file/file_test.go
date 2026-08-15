@@ -185,6 +185,7 @@ func TestEscAtRootEmitsLeavePanel(t *testing.T) {
 
 func TestEnterEditsFieldAndEscRestores(t *testing.T) {
 	m := newTestModel(t)
+	m.op = OpDownload // download 的本地文件字段不弹浏览器, 走普通编辑
 	nm, _ := m.Update(key(tea.KeyEnter))
 	m = nm.(FileModel)
 	if m.mode != ModeInsert {
@@ -551,5 +552,145 @@ func TestAdvanced_TextEditNameFormatPersists(t *testing.T) {
 	}
 	if m.advanced.fields[m.advanced.cursor].input.Focused() {
 		t.Fatal("expected input blurred after esc")
+	}
+}
+
+func TestEnterOnLocalFileFieldOpensBrowser(t *testing.T) {
+	m := newTestModel(t)
+	m.fileInput.Reset()
+	// 本地文件字段是 cursor 0, 直接 Enter
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(FileModel)
+	if m.current() != LocBrowser {
+		t.Fatalf("expected LocBrowser, got %v", m.current())
+	}
+	if m.browser == nil || m.browser.dir == "" {
+		t.Fatal("expected browser opened")
+	}
+	got := m.View()
+	for _, want := range []string{"文件浏览器", "本地文件"} {
+		if !contains(got, want) {
+			t.Fatalf("view missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestBrowserSelectFileFillsInputAndEdits(t *testing.T) {
+	m := newTestModel(t)
+	m.fileInput.Reset()
+	// 切到独立临时目录, 避免把测试文件写进源码树
+	t.Chdir(t.TempDir())
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(FileModel)
+	// 写入一个真实文件供选中
+	dir := m.browser.dir
+	f := filepath.Join(dir, "pick-me.txt")
+	if err := os.WriteFile(f, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// 重新加载使文件可见
+	if err := m.browser.Jump(dir); err != nil {
+		t.Fatal(err)
+	}
+	// 光标移到该文件(目录在前, 文件按字母序, pick-me.txt 应在最后)
+	for i := 0; i < len(m.browser.entries); i++ {
+		if m.browser.entries[i].Name == "pick-me.txt" {
+			m.browser.cursor = i
+			break
+		}
+	}
+	nm, _ = m.Update(key(tea.KeyEnter))
+	m = nm.(FileModel)
+	if m.current() != LocFile {
+		t.Fatalf("expected back to LocFile, got %v", m.current())
+	}
+	if m.fileInput.Value() != f {
+		t.Fatalf("expected input %q, got %q", f, m.fileInput.Value())
+	}
+	if m.mode != ModeInsert || !m.fileInput.Focused() {
+		t.Fatal("expected field editing mode after pick")
+	}
+}
+
+func TestBrowserEscReturnsToFieldEdit(t *testing.T) {
+	m := newTestModel(t)
+	m.fileInput.Reset()
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(FileModel)
+	nm, _ = m.Update(key(tea.KeyEsc))
+	m = nm.(FileModel)
+	if m.current() != LocFile {
+		t.Fatalf("expected LocFile, got %v", m.current())
+	}
+	if m.mode != ModeInsert || !m.fileInput.Focused() {
+		t.Fatal("expected field editing mode after esc")
+	}
+}
+
+func TestBrowserEscClosesPathInputFirst(t *testing.T) {
+	m := newTestModel(t)
+	m.fileInput.Reset()
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(FileModel)
+	nm, _ = m.Update(runeKey('/')) // 打开路径输入
+	m = nm.(FileModel)
+	nm, _ = m.Update(key(tea.KeyEsc)) // 第一次 Esc: 关输入
+	m = nm.(FileModel)
+	if m.current() != LocBrowser {
+		t.Fatal("expected still in browser after first esc")
+	}
+	nm, _ = m.Update(key(tea.KeyEsc)) // 第二次 Esc: 退出浏览器
+	m = nm.(FileModel)
+	if m.current() != LocFile {
+		t.Fatalf("expected LocFile after second esc, got %v", m.current())
+	}
+}
+
+func TestBrowserNavigateDirAndBack(t *testing.T) {
+	m := newTestModel(t)
+	m.fileInput.Reset()
+	// 浏览器起点是 os.Getwd(); 切到含子目录的临时目录保证首个条目是目录
+	base := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(base, "sub"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(base)
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(FileModel)
+	root := m.browser.dir
+	// 首个条目应是目录
+	if len(m.browser.entries) == 0 || !m.browser.entries[0].IsDir {
+		t.Fatal("expected a dir at cursor 0")
+	}
+	nm, _ = m.Update(key(tea.KeyEnter)) // 进入
+	m = nm.(FileModel)
+	if m.browser.dir == root {
+		t.Fatal("expected dir changed")
+	}
+	nm, _ = m.Update(key(tea.KeyBackspace)) // 返回上级
+	m = nm.(FileModel)
+	if m.browser.dir != root {
+		t.Fatalf("expected back to %s, got %s", root, m.browser.dir)
+	}
+}
+
+func TestEnterOnDownloadNoBrowser(t *testing.T) {
+	m := newTestModel(t)
+	m.op = OpDownload
+	m.fileInput.Reset()
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(FileModel)
+	if m.current() != LocFile || m.mode != ModeInsert {
+		t.Fatalf("download must stay on field edit, got loc=%v mode=%v", m.current(), m.mode)
+	}
+}
+
+func TestEnterOnOtherFieldNoBrowser(t *testing.T) {
+	m := newTestModel(t)
+	m.cursor = 1 // 节点字段
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(FileModel)
+	if m.current() != LocFile || m.mode != ModeInsert {
+		t.Fatalf("other fields must stay on field edit, got loc=%v mode=%v", m.current(), m.mode)
 	}
 }

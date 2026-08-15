@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/charmbracelet/bubbles/textinput"
 )
 
 type BrowserEntry struct {
@@ -20,6 +22,8 @@ type FileBrowser struct {
 	cursor     int
 	showHidden bool
 	err        string
+	input      textinput.Model
+	inputOpen  bool
 }
 
 // NewFileBrowser 以 startDir 为起点创建浏览器; startDir 为空时回退当前工作目录
@@ -31,7 +35,12 @@ func NewFileBrowser(startDir string) *FileBrowser {
 			startDir = "."
 		}
 	}
-	b := &FileBrowser{dir: startDir}
+	ti := textinput.New()
+	ti.Placeholder = "输入路径跳转"
+	ti.Width = 50
+	ti.CharLimit = 512
+	ti.Blur()
+	b := &FileBrowser{dir: startDir, input: ti}
 	b.reload()
 	return b
 }
