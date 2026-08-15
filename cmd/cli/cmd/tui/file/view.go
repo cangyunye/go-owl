@@ -49,3 +49,33 @@ func (m FileModel) fileView() string {
 	b.WriteString("└─")
 	return b.String()
 }
+
+func (m FileModel) advancedView() string {
+	f := m.advanced
+	if f == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("┌─ 高级选项 ─────────────────────────\n")
+	for i, fd := range f.fields {
+		marker := " "
+		if i == f.cursor && m.mode == ModeNormal {
+			marker = ">"
+		}
+		box := "[ ]"
+		if fd.checked {
+			box = "[x]"
+		}
+		line := fmt.Sprintf("  %s %s %-14s Space 切换\n", marker, box, fd.label)
+		if i == f.cursor && m.mode == ModeNormal {
+			line = styleSelected.Render(strings.TrimRight(line, "\n")) + "\n"
+		}
+		b.WriteString(line)
+	}
+	if f.error != "" {
+		b.WriteString(styleError.Render("  "+f.error) + "\n")
+	}
+	b.WriteString(styleDim.Render("  ↑↓移动 Space切换bool s保存 Esc返回") + "\n")
+	b.WriteString("└─")
+	return b.String()
+}

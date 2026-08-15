@@ -208,6 +208,69 @@ func TestInsertMode_LeftRightTogglesOpDisabled(t *testing.T) {
 	}
 }
 
+func TestAdvanced_Defaults(t *testing.T) {
+	f := newAdvancedForm()
+	if !f.isOn("parallel") {
+		t.Fatal("expected parallel on")
+	}
+	if !f.isOn("resume") {
+		t.Fatal("expected resume on")
+	}
+	if f.isOn("no-overwrite") {
+		t.Fatal("expected no-overwrite off")
+	}
+	opts := f.uploadOpts()
+	if opts == nil || !opts.Parallel || !opts.Resume || opts.NoOverwrite {
+		t.Fatalf("unexpected default opts: %+v", opts)
+	}
+}
+
+func TestAdvanced_ToggleBoolWithSpace(t *testing.T) {
+	m := newTestModel(t)
+	m.advanced = newAdvancedForm()
+	m.push(LocAdvanced)
+	// cursor 0 = parallel 行, 空格关闭
+	nm, _ := m.Update(runeKey(' '))
+	m = nm.(FileModel)
+	if m.advanced.isOn("parallel") {
+		t.Fatal("expected parallel off after space")
+	}
+	// 移到 resume 行再切换
+	nm, _ = m.Update(key(tea.KeyDown))
+	m = nm.(FileModel)
+	nm, _ = m.Update(runeKey(' '))
+	m = nm.(FileModel)
+	if m.advanced.isOn("resume") {
+		t.Fatal("expected resume off after space on row 1")
+	}
+}
+
+func TestAdvanced_SaveReturnsToFile(t *testing.T) {
+	m := newTestModel(t)
+	m.advanced = newAdvancedForm()
+	m.push(LocAdvanced)
+	nm, _ := m.Update(runeKey('s'))
+	m = nm.(FileModel)
+	if m.current() != LocFile {
+		t.Fatalf("expected LocFile after save, got %v", m.current())
+	}
+	if m.advanced != nil {
+		t.Fatal("expected advanced cleared")
+	}
+}
+
+func TestAdvanced_ViewShowsCheckboxes(t *testing.T) {
+	m := newTestModel(t)
+	m.advanced = newAdvancedForm()
+	m.push(LocAdvanced)
+	got := m.View()
+	for _, want := range []string{"高级选项", "parallel", "[x]", "[ ]"} {
+		if !contains(got, want) {
+			t.Fatalf("view missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func nodeIDs(nodes []*common.NodeInfo) []string {
 	ids := make([]string, 0, len(nodes))
 	for _, n := range nodes {
