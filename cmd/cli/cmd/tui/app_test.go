@@ -375,3 +375,78 @@ func TestApp_TabNeutralKeepsFormState(t *testing.T) {
 		t.Fatalf("tab must be neutral, expected nodes n1, got %q", got)
 	}
 }
+
+func TestApp_FWithMarksFillsNodes(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey(' ')) // 勾选 n1
+	m = nm.(*App)
+	nm, _ = m.Update(key(tea.KeyDown))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey(' ')) // 勾选 n2
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('f'))
+	m = nm.(*App)
+	if m.panel != 2 {
+		t.Fatalf("expected panel 2, got %d", m.panel)
+	}
+	if got := m.file.NodesValue(); got != "n1,n2" {
+		t.Fatalf("expected nodes n1,n2, got %q", got)
+	}
+}
+
+func TestApp_FNoMarksFillsFilterConditions(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('/'))
+	nm, _ = nm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g:web")})
+	nm, _ = nm.Update(key(tea.KeyEnter))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('f'))
+	m = nm.(*App)
+	if m.panel != 2 {
+		t.Fatalf("expected panel 2, got %d", m.panel)
+	}
+	if got := m.file.GroupsValue(); got != "web" {
+		t.Fatalf("expected groups web, got %q", got)
+	}
+	if got := m.file.NodesValue(); got != "" {
+		t.Fatalf("expected nodes cleared, got %q", got)
+	}
+}
+
+func TestApp_FSearchFilterFallsBackToSnapshot(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('/'))
+	nm, _ = nm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("foo")})
+	nm, _ = nm.Update(key(tea.KeyEnter))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('f'))
+	m = nm.(*App)
+	if m.panel != 2 {
+		t.Fatalf("expected panel 2, got %d", m.panel)
+	}
+	if got := m.file.GroupsValue(); got != "" {
+		t.Fatalf("search filter must not fill groups, got %q", got)
+	}
+	if got := m.file.NodesValue(); got != "" {
+		t.Fatalf("expected nodes cleared, got %q", got)
+	}
+}
+
+func TestApp_FTabNeutralKeepsFormState(t *testing.T) {
+	m := newApp(t)
+	// 进 File 手填节点
+	nm, _ := m.Update(runeKey('3'))
+	m = nm.(*App)
+	m.file.FillNodes([]string{"n1"})
+	// Tab 绕一圈(4 面板)再回 File: 字段保留
+	for i := 0; i < 4; i++ {
+		nm, _ = m.Update(key(tea.KeyTab))
+		m = nm.(*App)
+	}
+	if m.panel != 2 {
+		t.Fatalf("expected panel 2 after 4 tabs, got %d", m.panel)
+	}
+	if got := m.file.NodesValue(); got != "n1" {
+		t.Fatalf("tab must be neutral, expected nodes n1, got %q", got)
+	}
+}

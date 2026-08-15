@@ -143,7 +143,7 @@ func (m Model) statusBar() string {
 		b.WriteString(m.filterInput.View())
 		b.WriteString(styleDim.Render("  Enter 应用  Esc 取消"))
 	} else {
-		b.WriteString(styleDim.Render("↑↓选择 ←→切栏 g/G首尾 a添加 e编辑 d删除 c列 p ping k 检查 i导入导出 o分组 l标签 Space勾选 x执行 f文件 /过滤 ?帮助 q退出"))
+		b.WriteString(styleDim.Render("↑↓选择 ←→切栏 g/G首尾 a添加 e编辑 d删除 c列 p ping k 检查 i导入导出 o分组 l标签 Space勾选 x执行 f文件(带入) /过滤 ?帮助 q退出"))
 	}
 	if m.status != "" {
 		b.WriteString("  " + styleDim.Render(m.status))

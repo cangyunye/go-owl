@@ -65,8 +65,8 @@ func (m *App) currentPanel() Panel {
 type Entry int
 
 const (
-	EntryNeutral Entry = iota // Tab/数字/f: 不动表单, 仅刷新快照
-	EntryBySelection          // x: 勾选优先, 否则纯组/标签过滤条件
+	EntryNeutral     Entry = iota // Tab/数字: 不动表单, 仅刷新快照
+	EntryBySelection              // x/f: 勾选优先, 否则纯组/标签过滤条件
 )
 
 func (m *App) switchPanel(i int, entry Entry) {
@@ -85,21 +85,34 @@ func (m *App) switchPanel(i int, entry Entry) {
 	}
 	if m.panel == 2 {
 		m.file.CaptureTargets(m.nodes.Visible())
+		if entry == EntryBySelection {
+			m.applyFileSelectionEntry()
+		}
 	}
 }
 
 // applySelectionEntry 按 x 语义填充 Exec 表单: 勾选优先, 否则纯组/标签过滤; 含搜索/状态回退快照(当前可见集)
 func (m *App) applySelectionEntry() {
+	m.selectionFill(m.exec.FillNodes, m.exec.FillConditions)
+}
+
+// selectionFill 按 x/f 语义填充目标面板表单: 勾选优先, 否则纯组/标签过滤; 含搜索/状态回退快照(当前可见集)
+func (m *App) selectionFill(fillNodes func([]string), fillConditions func([]string, map[string]string)) {
 	if ids := m.nodes.MarkedIDs(); len(ids) > 0 {
-		m.exec.FillNodes(ids)
+		fillNodes(ids)
 		return
 	}
 	fq := m.nodes.Filter()
 	if fq.Search == "" && fq.Status == "" {
-		m.exec.FillConditions(fq.Groups, fq.Labels)
+		fillConditions(fq.Groups, fq.Labels)
 		return
 	}
-	m.exec.FillConditions(nil, nil)
+	fillConditions(nil, nil)
+}
+
+// applyFileSelectionEntry 按 f 语义填充 File 表单: 与 x 同款(勾选优先/纯过滤/快照兜底)
+func (m *App) applyFileSelectionEntry() {
+	m.selectionFill(m.file.FillNodes, m.file.FillConditions)
 }
 
 func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -179,7 +192,7 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "f":
 			if m.panel == 0 && m.nodes.AtList() {
-				m.switchPanel(2, EntryNeutral)
+				m.switchPanel(2, EntryBySelection)
 				return m, nil
 			}
 		case "x":
@@ -257,7 +270,7 @@ func helpView() string {
 		"  执行:  命令必填  r 执行  a 高级选项  f 格式",
 		"        ↑↓ 移动字段  Enter 编辑  Esc 返回 Nodes",
 		"  文件:  ↑↓ 移动字段  Enter 编辑  ←→ 操作(upload/download)",
-		"        a 高级选项  r 执行  Esc 返回 Nodes",
+		"        a 高级选项  r 执行  Esc 返回 Nodes  f 勾选/筛选带入",
 		"  AI:      Enter 输入  Enter 发送  n 新会话  Esc 返回",
 		"  模式:  Normal=命令   Insert=输入(Esc 退出)",
 		"└────────────────────────────────────",
