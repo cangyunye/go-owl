@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	tuiai "github.com/cangyunye/go-owl/cmd/cli/cmd/tui/ai"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/exec"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/file"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
@@ -37,18 +38,6 @@ func TestApp_DefaultPanelIsNodes(t *testing.T) {
 	}
 	if got := m.View(); !strings.Contains(got, "[Nodes]") {
 		t.Fatalf("menu bar missing [Nodes]: %s", got)
-	}
-}
-
-func TestApp_TabSwitchesPanels(t *testing.T) {
-	m := newApp(t)
-	// 三个面板: 0 Nodes → 1 Exec → 2 File → 0 Nodes
-	for i, want := range []int{1, 2, 0} {
-		nm, _ := m.Update(key(tea.KeyTab))
-		m = nm.(*App)
-		if m.panel != want {
-			t.Fatalf("tab %d: expected panel %d, got %d", i+1, want, m.panel)
-		}
 	}
 }
 
@@ -221,5 +210,39 @@ func TestApp_HelpContainsFilterSyntaxExamples(t *testing.T) {
 		if !strings.Contains(v, want) {
 			t.Fatalf("expected help overlay to contain filter example %q: %q", want, v)
 		}
+	}
+}
+
+func TestApp_Digit4JumpsToAI(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('4'))
+	m = nm.(*App)
+	if m.panel != 3 {
+		t.Fatalf("expected panel 3 on '4', got %d", m.panel)
+	}
+	if got := m.View(); !strings.Contains(got, "[AI]") {
+		t.Fatalf("menu bar missing [AI]: %s", got)
+	}
+}
+
+func TestApp_TabCyclesFourPanels(t *testing.T) {
+	m := newApp(t)
+	for _, want := range []int{1, 2, 3, 0} {
+		nm, _ := m.Update(key(tea.KeyTab))
+		m = nm.(*App)
+		if m.panel != want {
+			t.Fatalf("expected panel %d after tab, got %d", want, m.panel)
+		}
+	}
+}
+
+func TestApp_AIEscReturnsToNodes(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('4'))
+	m = nm.(*App)
+	nm, _ = m.Update(tuiai.LeavePanelMsg{})
+	m = nm.(*App)
+	if m.panel != 0 {
+		t.Fatalf("expected panel 0 after AI esc, got %d", m.panel)
 	}
 }

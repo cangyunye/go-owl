@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	tuiai "github.com/cangyunye/go-owl/cmd/cli/cmd/tui/ai"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/exec"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/file"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/nodes"
@@ -26,13 +27,14 @@ type App struct {
 	nodes nodes.Model
 	exec  exec.ExecModel
 	file  file.FileModel
-	panel int // 0=Nodes 1=Exec 2=File
+	ai    tuiai.Model
+	panel int // 0=Nodes 1=Exec 2=File 3=AI
 
 	Help        bool
 	QuitConfirm bool
 }
 
-var panelNames = []string{"Nodes", "Exec", "File"}
+var panelNames = []string{"Nodes", "Exec", "File", "AI"}
 
 func NewApp(store common.NodeStore) *App {
 	m := &App{nodes: nodes.NewModel(store)}
@@ -40,6 +42,7 @@ func NewApp(store common.NodeStore) *App {
 	m.exec.CaptureTargets(m.nodes.Visible())
 	m.file = file.NewModel(store)
 	m.file.CaptureTargets(m.nodes.Visible())
+	m.ai = tuiai.NewModel(store)
 	return m
 }
 
@@ -51,6 +54,8 @@ func (m *App) currentPanel() Panel {
 		return &m.exec
 	case 2:
 		return &m.file
+	case 3:
+		return &m.ai
 	default:
 		return &m.nodes
 	}
@@ -78,6 +83,10 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if _, ok := msg.(file.LeavePanelMsg); ok {
+		m.switchPanel(0)
+		return m, nil
+	}
+	if _, ok := msg.(tuiai.LeavePanelMsg); ok {
 		m.switchPanel(0)
 		return m, nil
 	}
@@ -124,7 +133,7 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Help = true
 			return m, nil
 		case "tab":
-			m.switchPanel((m.panel + 1) % 3)
+			m.switchPanel((m.panel + 1) % 4)
 			return m, nil
 		case "1":
 			m.switchPanel(0)
@@ -134,6 +143,9 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "3":
 			m.switchPanel(2)
+			return m, nil
+		case "4":
+			m.switchPanel(3)
 			return m, nil
 		case "f":
 			if m.panel == 0 && m.nodes.AtList() {
@@ -157,6 +169,8 @@ func (m *App) forward(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.exec = pm.(exec.ExecModel)
 	case 2:
 		m.file = pm.(file.FileModel)
+	case 3:
+		m.ai = pm.(tuiai.Model)
 	default:
 		m.nodes = pm.(nodes.Model)
 	}
@@ -194,7 +208,7 @@ func menuBar(active int) string {
 			parts = append(parts, "["+name+"]")
 		}
 	}
-	return strings.Join(parts, " ") + dim.Render("  Tab 切换  1/2/3 直达")
+	return strings.Join(parts, " ") + dim.Render("  Tab 切换  1/2/3/4 直达")
 }
 
 func helpView() string {
