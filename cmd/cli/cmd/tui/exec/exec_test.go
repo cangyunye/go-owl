@@ -1,6 +1,8 @@
 package exec
 
 import (
+	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -8,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/control/command"
 )
 
 func key(t tea.KeyType) tea.Msg { return tea.KeyMsg{Type: t} }
@@ -386,5 +389,116 @@ func TestAdvanced_ViewShowsCheckboxes(t *testing.T) {
 		if !contains(got, want) {
 			t.Fatalf("view missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func fakeStream(results []command.CommandResult) {
+	runStream = func(ctx context.Context, ids []string, cmd string, opts *command.ExecuteOptions) (<-chan command.CommandResult, func()) {
+		ch := make(chan command.CommandResult, len(results))
+		for _, r := range results {
+			ch <- r
+		}
+		close(ch)
+		return ch, func() {}
+	}
+}
+
+func TestStartRun_EmptyCommand(t *testing.T) {
+	m := newTestModel(t)
+	if _, err := m.startRun(); err == nil {
+		t.Fatal("expected error for empty command")
+	}
+}
+
+func TestStartRun_NoTargets(t *testing.T) {
+	m := newTestModel(t)
+	m.CaptureTargets(nil)
+	m.cmdInput.SetValue("echo hi")
+	if _, err := m.startRun(); err == nil {
+		t.Fatal("expected error for no targets")
+	}
+}
+
+func TestStartRun_InvalidAdvancedOption(t *testing.T) {
+	m := newTestModel(t)
+	m.cmdInput.SetValue("echo hi")
+	m.advanced = newAdvancedForm()
+	m.advanced.fields[0].input.SetValue("abc")
+	if _, err := m.startRun(); err == nil {
+		t.Fatal("expected error for invalid timeout")
+	}
+}
+
+func TestRun_StreamsResultsAndRenders(t *testing.T) {
+	fakeStream([]command.CommandResult{
+		{NodeID: "n1", Success: true, ExitCode: 0, Duration: time.Second, Output: "ok"},
+		{NodeID: "n2", Success: false, ExitCode: 127, Error: errors.New("boom")},
+	})
+	m := newTestModel(t)
+	m.cmdInput.SetValue("echo hi")
+	nm, cmd := m.Update(runeKey('r'))
+	m = nm.(ExecModel)
+	if m.current() != LocResult {
+		t.Fatalf("expected LocResult after r, got %v", m.current())
+	}
+	if cmd == nil {
+		t.Fatal("expected start cmd")
+	}
+	msg := cmd()
+	sm, ok := msg.(ExecStreamMsg)
+	if !ok {
+		t.Fatalf("expected ExecStreamMsg, got %T", msg)
+	}
+	// 泵出第一条
+	nm, cmd = m.Update(sm)
+	m = nm.(ExecModel)
+	rmsg := cmd().(ExecResultMsg)
+	nm, cmd = m.Update(rmsg)
+	m = nm.(ExecModel)
+	if len(m.results) != 1 || m.results[0].NodeID != "n1" {
+		t.Fatalf("expected 1 result n1, got %v", m.results)
+	}
+	// 第二条
+	nm, cmd = m.Update((cmd().(ExecResultMsg)))
+	m = nm.(ExecModel)
+	if len(m.results) != 2 || m.results[1].NodeID != "n2" {
+		t.Fatalf("expected 2 results, got %v", m.results)
+	}
+	// 泵结束: ch 已关闭, 下一泵消息是 ExecDoneMsg
+	nm, cmd = m.Update(cmd())
+	m = nm.(ExecModel)
+	if cmd != nil {
+		t.Fatal("expected nil cmd after ExecDoneMsg")
+	}
+	got := m.View()
+	for _, want := range []string{"Exec 结果", "n1", "n2", "成功 1/2"} {
+		if !contains(got, want) {
+			t.Fatalf("view missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestResult_EscReturnsToRun(t *testing.T) {
+	m := newTestModel(t)
+	m.push(LocResult)
+	nm, _ := m.Update(key(tea.KeyEsc))
+	m = nm.(ExecModel)
+	if m.current() != LocRun {
+		t.Fatalf("expected LocRun after esc, got %v", m.current())
+	}
+}
+
+func TestResult_Rerun(t *testing.T) {
+	fakeStream(nil)
+	m := newTestModel(t)
+	m.cmdInput.SetValue("echo hi")
+	m.push(LocResult)
+	nm, cmd := m.Update(runeKey('r'))
+	m = nm.(ExecModel)
+	if cmd == nil {
+		t.Fatal("expected rerun cmd")
+	}
+	if _, ok := cmd().(ExecStreamMsg); !ok {
+		t.Fatalf("expected ExecStreamMsg, got %T", cmd())
 	}
 }

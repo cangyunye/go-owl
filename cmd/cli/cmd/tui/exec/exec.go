@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/control/command"
 )
 
 type Loc int
@@ -47,7 +48,15 @@ type ExecModel struct {
 	advanced *AdvancedForm
 
 	targets []*common.NodeInfo
-	error   string
+
+	runCh    chan command.CommandResult
+	lastCmd  string
+	lastIDs  []string
+	lastOpts *command.ExecuteOptions
+	loading  bool
+	results  []command.CommandResult
+
+	error string
 }
 
 func NewModel(store common.NodeStore) ExecModel {
@@ -161,6 +170,13 @@ func (m ExecModel) updateRun(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "f":
 		m.formatIdx = (m.formatIdx + 1) % len(formats)
 		m.format = formats[m.formatIdx]
+	case "r":
+		cmd, err := m.startRun()
+		if err != nil {
+			m.error = err.Error()
+			return m, nil
+		}
+		return m, cmd
 	case "a":
 		m.advanced = newAdvancedForm()
 		m.push(LocAdvanced)
@@ -212,7 +228,35 @@ func (m ExecModel) updateAdvanced(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
-func (m ExecModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd)   { return m, nil }
+func (m ExecModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case ExecStreamMsg:
+		m.loading = false
+		m.results = nil
+		m.runCh = msg.ch
+		return m, pumpResults(msg.ch)
+	case ExecResultMsg:
+		m.results = append(m.results, msg.Result)
+		return m, pumpResults(m.runCh)
+	case ExecDoneMsg:
+		m.loading = false
+		return m, nil
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			m.pop()
+			return m, nil
+		case "r":
+			cmd, err := m.startRun()
+			if err != nil {
+				m.error = err.Error()
+				return m, nil
+			}
+			return m, cmd
+		}
+	}
+	return m, nil
+}
 func (m ExecModel) updateDanger(msg tea.Msg) (tea.Model, tea.Cmd)   { return m, nil }
 
 func (m *ExecModel) resolveTargets() ([]*common.NodeInfo, error) {

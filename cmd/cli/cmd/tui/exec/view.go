@@ -3,6 +3,7 @@ package exec
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -88,5 +89,43 @@ func (m ExecModel) advancedView() string {
 	b.WriteString("└─")
 	return b.String()
 }
-func (m ExecModel) resultView() string { return "" }
+func (m ExecModel) resultView() string {
+	var b strings.Builder
+	b.WriteString("┌─ Exec 结果 ─────────────────────────\n")
+	if m.loading {
+		b.WriteString("  " + styleDim.Render("正在执行 "+m.lastCmd+" …") + "\n")
+	} else {
+		success := 0
+		for _, r := range m.results {
+			mark := "✗"
+			if r.Success {
+				mark = "✓"
+				success++
+			}
+			line := fmt.Sprintf("  %s %-24s exit %-3d %s\n", mark, r.NodeID, r.ExitCode, r.Duration.Round(time.Millisecond))
+			if r.Success {
+				line = styleSelected.Render(line)
+			}
+			b.WriteString(line)
+			if !r.Success && r.ErrorDetail != "" {
+				b.WriteString(styleError.Render("      "+r.ErrorDetail) + "\n")
+			} else if !r.Success && r.Error != nil {
+				b.WriteString(styleError.Render("      "+r.Error.Error()) + "\n")
+			}
+			if r.Output != "" {
+				out := r.Output
+				if len([]rune(out)) > 500 {
+					out = string([]rune(out)[:497]) + "..."
+				}
+				for _, l := range strings.Split(out, "\n") {
+					b.WriteString("      " + l + "\n")
+				}
+			}
+		}
+		b.WriteString(styleDim.Render(fmt.Sprintf("  成功 %d/%d", success, len(m.results))) + "\n")
+	}
+	b.WriteString(styleDim.Render("  r 重跑  Esc 返回") + "\n")
+	b.WriteString("└─")
+	return b.String()
+}
 func (m ExecModel) dangerView() string { return "" }
