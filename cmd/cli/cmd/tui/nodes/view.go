@@ -117,8 +117,60 @@ func (m Model) detailPane() string {
 	for _, r := range rows {
 		if r[1] == "" {
 			r[1] = "—"
+			b.WriteString(fmt.Sprintf("%-12s %s\n", r[0], r[1]))
+			continue
 		}
-		b.WriteString(fmt.Sprintf("%-12s %s\n", r[0], r[1]))
+		b.WriteString(fmt.Sprintf("%-12s %s\n", r[0], coloredValue(r[0], r[1])))
+	}
+	return b.String()
+}
+
+func styleForStatus(s string) lipgloss.Style {
+	switch s {
+	case "online":
+		return theme.Style(theme.SlotSuccess)
+	case "offline":
+		return theme.Style(theme.SlotError)
+	default:
+		return theme.Style(theme.SlotWarning)
+	}
+}
+
+func coloredValue(key, val string) string {
+	switch key {
+	case "Status":
+		return styleForStatus(val).Render(val)
+	case "Labels":
+		return rainbowLabelsFull(val)
+	case "Address":
+		return theme.Style(theme.SlotAccent).Render(val)
+	case "User":
+		return theme.Style(theme.SlotUser).Render(val)
+	case "Groups":
+		return theme.Style(theme.SlotTitle).Render(val)
+	}
+	return val
+}
+
+func rainbowText(key, val string) string {
+	k := lipgloss.NewStyle().Foreground(theme.Rainbow(key)).Render(key)
+	return k + styleDim.Render("="+val)
+}
+
+func rainbowLabelsFull(s string) string {
+	if s == "" {
+		return ""
+	}
+	labels, ok := splitPairs(s)
+	if !ok {
+		return styleDim.Render(s)
+	}
+	var b strings.Builder
+	for i, kv := range labels {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(rainbowText(kv[0], kv[1]))
 	}
 	return b.String()
 }

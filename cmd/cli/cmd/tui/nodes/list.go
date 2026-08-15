@@ -61,6 +61,22 @@ func cellValue(n *common.NodeInfo, key string) string {
 	return ""
 }
 
+func splitPairs(s string) ([][2]string, bool) {
+	if s == "" {
+		return nil, false
+	}
+	parts := strings.Split(s, ",")
+	out := make([][2]string, 0, len(parts))
+	for _, p := range parts {
+		kv := strings.SplitN(p, "=", 2)
+		if len(kv) != 2 {
+			return nil, false
+		}
+		out = append(out, [2]string{kv[0], kv[1]})
+	}
+	return out, true
+}
+
 func sortedLabels(labels map[string]string) string {
 	if len(labels) == 0 {
 		return ""
