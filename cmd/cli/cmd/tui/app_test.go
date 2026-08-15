@@ -10,6 +10,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/exec"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/file"
+	"github.com/cangyunye/go-owl/internal/control/transfer"
 )
 
 func key(t tea.KeyType) tea.Msg { return tea.KeyMsg{Type: t} }
@@ -125,6 +126,26 @@ func TestApp_FileLeavePanelMsgReturnsToNodes(t *testing.T) {
 	m = nm.(*App)
 	if m.panel != 0 {
 		t.Fatalf("expected panel 0 after LeavePanelMsg, got %d", m.panel)
+	}
+}
+
+func TestApp_DoneMsgRoutedToFilePanelWhileInactive(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('3')) // 进入 File
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('2')) // 切到 Exec(File 不活跃)
+	m = nm.(*App)
+	// 模拟传输完成消息在 File 面板不活跃时到达
+	nm, _ = m.Update(file.UploadDoneMsg{Results: []transfer.TransferResult{{NodeID: "n1", Path: "/tmp/a.tar", Method: "scp"}}})
+	m = nm.(*App)
+	if m.panel != 1 {
+		t.Fatalf("panel must stay 1, got %d", m.panel)
+	}
+	if m.file.Loading() {
+		t.Fatal("expected loading cleared by routed msg")
+	}
+	if len(m.file.Results()) != 1 || m.file.Results()[0].NodeID != "n1" {
+		t.Fatalf("expected routed results [n1], got %v", m.file.Results())
 	}
 }
 

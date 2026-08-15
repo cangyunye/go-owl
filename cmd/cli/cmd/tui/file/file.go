@@ -94,6 +94,12 @@ func (m FileModel) Init() tea.Cmd { return nil }
 
 func (m FileModel) Targets() []*common.NodeInfo { return m.targets }
 
+// Loading 返回文件传输是否仍在进行中
+func (m FileModel) Loading() bool { return m.loading }
+
+// Results 返回最近一次文件传输的结果列表
+func (m FileModel) Results() []transfer.TransferResult { return m.results }
+
 func (m *FileModel) CaptureTargets(nodes []*common.NodeInfo) {
 	m.targets = append([]*common.NodeInfo(nil), nodes...)
 }
@@ -142,6 +148,11 @@ func (m *FileModel) fieldAt(i int) *textinput.Model {
 }
 
 func (m FileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// 传输完成消息在任何位置都必须被消费,否则结果丢失且 loading 卡死
+	switch msg.(type) {
+	case UploadDoneMsg, DownloadDoneMsg:
+		return m.updateResult(msg)
+	}
 	switch m.current() {
 	case LocAdvanced:
 		return m.updateAdvanced(msg)

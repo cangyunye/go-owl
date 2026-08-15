@@ -13,7 +13,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/nodes"
 )
 
-// Panel 顶层面板: 节点管理 / 命令执行
+// Panel 顶层面板: 节点管理 / 命令执行 / 文件传输
 type Panel interface {
 	Update(msg tea.Msg) (tea.Model, tea.Cmd)
 	View() string
@@ -80,6 +80,13 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := msg.(file.LeavePanelMsg); ok {
 		m.switchPanel(0)
 		return m, nil
+	}
+	switch msg.(type) {
+	case file.UploadDoneMsg, file.DownloadDoneMsg:
+		// 传输完成消息直接路由到 File 面板,即使当前处于其他面板,避免结果丢失导致 loading 卡死
+		fm, cmd := m.file.Update(msg)
+		m.file = fm.(file.FileModel)
+		return m, cmd
 	}
 	if m.QuitConfirm {
 		if km, ok := msg.(tea.KeyMsg); ok {
