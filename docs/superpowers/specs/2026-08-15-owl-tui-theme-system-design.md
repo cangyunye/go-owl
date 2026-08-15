@@ -148,3 +148,6 @@ cmd/cli/cmd/tui/theme/
 - `lipgloss_examples/color/standalone` — v2 明暗探测 + 自适应示例
 - `lipgloss_examples/compat/standalone` — `AdaptiveColor` 用法
 - `lipgloss_examples/color/bubbletea` — bubbletea 下 `BackgroundColorMsg` + `View()` 新签名(v2,仅参考不采用)
+
+## 实现状态
+- [x] 已完成(2026-08-15),计划见 docs/superpowers/plans/2026-08-15-owl-tui-theme-system.md
