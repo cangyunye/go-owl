@@ -223,3 +223,11 @@ func TestRainbowLabelsWidthTrailingSpace(t *testing.T) {
 		t.Fatal("带尾部空格也应正常渲染")
 	}
 }
+
+func TestRainbowLabelsWidthNoOverflow(t *testing.T) {
+	// 段宽刚好耗尽 remaining 时,省略号不应使可见宽度超过列宽
+	got := rainbowLabelsWidth("a=1,b=2", 3)
+	if common.DisplayWidth(got) > 3 {
+		t.Fatalf("可见宽度 %d 超过列宽 3, got %q", common.DisplayWidth(got), got)
+	}
+}

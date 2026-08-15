@@ -196,7 +196,7 @@ func rainbowLabelsWidth(raw string, width int) string {
 			if remaining >= 1 {
 				b.WriteString("…")
 			}
-		} else {
+		} else if remaining >= 1 {
 			b.WriteString("…")
 		}
 		break
