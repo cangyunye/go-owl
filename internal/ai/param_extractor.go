@@ -270,9 +270,13 @@ func (e *ParamExtractor) extractOwnerFilter(input string, params map[string]inte
 		return
 	}
 
-	name := e.extractPersonName(input)
-	if name != "" {
-		params["labels"] = map[string]interface{}{"owner": name}
+	// 兜底姓名提取仅限"XX的节点/主机"式所有格查询(含"的"字样)。
+	// 否则会把查询文本中的任意二字中文子串误当 owner,如"列出当前在线节点"→"出当"。
+	if strings.Contains(input, "的") {
+		name := e.extractPersonName(input)
+		if name != "" {
+			params["labels"] = map[string]interface{}{"owner": name}
+		}
 	}
 }
 

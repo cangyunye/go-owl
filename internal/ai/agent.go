@@ -310,6 +310,44 @@ var unsupportedRouteLabels = map[string]bool{
 	"metrics": true, "node_sample": true, "sample": true,
 }
 
+// normalizeRouteLabel 清洗路由响应: 小写、去空白、去尾部句点与 markdown 围栏。
+func normalizeRouteLabel(s string) string {
+	s = strings.TrimSpace(strings.ToLower(s))
+	s = strings.TrimRight(s, ".")
+	s = strings.TrimPrefix(s, "```")
+	s = strings.TrimSuffix(s, "```")
+	return strings.TrimSpace(s)
+}
+
+// applyRouteAliases 将别名路由标签映射到正式标签。
+func applyRouteAliases(label string) string {
+	switch label {
+	case "exec", "execute":
+		return "exec_run"
+	case "playbook":
+		return "playbook_list"
+	case "node":
+		return "node_list"
+	}
+	return label
+}
+
+// isValidRouteLabel 判断标签是否为已注册路由类别(精确或包含匹配)或 "uncertain"。
+func isValidRouteLabel(routeLabel string) bool {
+	if routeLabel == "uncertain" {
+		return true
+	}
+	if _, ok := groupPrompts[routeLabel]; ok {
+		return true
+	}
+	for k := range groupPrompts {
+		if strings.Contains(routeLabel, k) {
+			return true
+		}
+	}
+	return false
+}
+
 var toolHints = map[string]string{
 	"execute_command":   aiPrompts.ExecuteCommandPrompt,
 	"execute_script":    aiPrompts.ExecuteScriptPrompt,
@@ -439,11 +477,20 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 	debugPrint(a.debug, "路由原始响应长度: %d", len(routeResp))
 	debugPrint(a.debug, "路由原始响应前200字符: %.200s", routeResp)
 
-	routeLabel := strings.TrimSpace(strings.ToLower(routeResp))
-	routeLabel = strings.TrimRight(routeLabel, ".")
-	routeLabel = strings.TrimPrefix(routeLabel, "```")
-	routeLabel = strings.TrimSuffix(routeLabel, "```")
-	routeLabel = strings.TrimSpace(routeLabel)
+	// 模型跳过路由阶段直接输出工具调用 JSON(部分模型行为): 直接执行,无需再走工具生成阶段
+	if directCalls := a.parseToolCalls(routeResp); len(directCalls) > 0 {
+		debugPrint(a.debug, "路由响应直接包含工具调用,跳过路由直接执行")
+		if onProgress != nil {
+			onProgress("generate", directCalls[0].Name)
+		}
+		result, _ := a.runToolCalls(ctx, directCalls, onProgress)
+		if onProgress != nil {
+			onProgress("result", "完成")
+		}
+		return result, nil
+	}
+
+	routeLabel := applyRouteAliases(normalizeRouteLabel(routeResp))
 
 	debugPrint(a.debug, "路由标签: %s", routeLabel)
 
@@ -451,23 +498,37 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		return "我不确定您要做什么", nil
 	}
 
-	if routeLabel == "exec" || routeLabel == "execute" {
-		routeLabel = "exec_run"
-	}
-
-	if routeLabel == "playbook" {
-		routeLabel = "playbook_list"
-	}
-
-	if routeLabel == "node" {
-		routeLabel = "node_list"
-	}
-
 	if unsupportedRouteLabels[routeLabel] {
 		if onProgress != nil {
 			onProgress("result", "不支持")
 		}
 		return "该功能不支持 AI 操作", nil
+	}
+
+	// 路由响应不是有效标签(如模型输出了解释/帮助文本而非标签): 追加严格指令重试一次
+	if !isValidRouteLabel(routeLabel) {
+		debugPrint(a.debug, "路由标签无效,追加严格指令重试")
+		retryMessages := append(append([]Message{}, routerMessages...), Message{
+			Role:    "system",
+			Content: "你上一次返回的内容不是有效指令标签。请仅输出一个指令标签(如 node_list / exec_run / query_nodes),不要输出任何解释或帮助文本。",
+		})
+		retryResp, retryErr := generateWithRetry(ctx, chatModel, retryMessages, "路由")
+		if retryErr == nil {
+			retryLabel := applyRouteAliases(normalizeRouteLabel(retryResp))
+			if retryLabel == "uncertain" || retryLabel == "" {
+				return "我不确定您要做什么", nil
+			}
+			if isValidRouteLabel(retryLabel) {
+				routeLabel = retryLabel
+				debugPrint(a.debug, "重试后路由标签: %s", routeLabel)
+			}
+		}
+		if !isValidRouteLabel(routeLabel) {
+			if onProgress != nil {
+				onProgress("result", "路由失败: 模型未返回有效指令标签")
+			}
+			return "", fmt.Errorf("模型未返回有效指令标签,无法路由请求(原始响应: %.120s)", routeResp)
+		}
 	}
 
 	if onProgress != nil {
@@ -559,7 +620,9 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 				classifier := NewIntentClassifier()
 				intentResult := classifier.Classify(userInput)
 
-				if intentResult.Type == IntentUncertain || intentResult.Confidence < 30 {
+				// 置信度阈值 20: 两个及以上关键词命中(如"列出节点")即视为有效意图,
+				// 单关键词命中(置信度 10)仍拒绝,兼顾召回与误判。
+				if intentResult.Type == IntentUncertain || intentResult.Confidence < 20 {
 					debugPrint(a.debug, "本地分类器也无法确定，返回不确定")
 					return "我不确定您要做什么", nil
 				}
@@ -930,6 +993,28 @@ func (a *Agent) confirmToolCall(call ToolCall) (bool, string) {
 	return true, ""
 }
 
+// runToolCalls 顺序执行一批工具调用。全部放行时返回(首个结果, true);
+// 确认门拦截时返回(问题文案, false),与 Process 工具阶段的首轮语义一致。
+func (a *Agent) runToolCalls(ctx context.Context, calls []ToolCall, onProgress ProgressCallback) (string, bool) {
+	for _, call := range calls {
+		if onProgress != nil {
+			onProgress("execute", call.Name)
+		}
+		if ok, question := a.confirmToolCall(call); !ok {
+			if onProgress != nil {
+				onProgress("result", "等待确认")
+			}
+			return question, false
+		}
+		result, err := a.executeToolCall(ctx, call)
+		if err != nil {
+			result = fmt.Sprintf("Tool execution failed: %v", err)
+		}
+		return result, true
+	}
+	return "", true
+}
+
 func (a *Agent) executeToolCall(ctx context.Context, call ToolCall) (string, error) {
 	debugPrint(a.debug, "执行工具: %s", call.Name)
 	debugPrint(a.debug, "工具参数: %+v", call.Arguments)
@@ -989,7 +1074,7 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 	extractor := NewParamExtractor(nodeNames)
 	validator := NewValidator()
 
-	if intentResult.Type == IntentUncertain || intentResult.Confidence < 30 {
+	if intentResult.Type == IntentUncertain || intentResult.Confidence < 20 {
 		return formatter.FormatUncertainHelp(), nil
 	}
 

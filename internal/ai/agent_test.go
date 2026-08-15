@@ -753,6 +753,111 @@ func TestProcessRouterError(t *testing.T) {
 	}
 }
 
+func TestNormalizeRouteLabel(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"  node_list  ", "node_list"},
+		{"```EXEC```", "exec"},
+		{"query_nodes.", "query_nodes"},
+		{"  \n node_list \t ", "node_list"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := normalizeRouteLabel(c.in); got != c.want {
+			t.Fatalf("normalizeRouteLabel(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestApplyRouteAliases(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"exec", "exec_run"},
+		{"execute", "exec_run"},
+		{"playbook", "playbook_list"},
+		{"node", "node_list"},
+		{"query_nodes", "query_nodes"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := applyRouteAliases(c.in); got != c.want {
+			t.Fatalf("applyRouteAliases(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestIsValidRouteLabel(t *testing.T) {
+	valid := []string{"uncertain", "query_nodes", "node_list", "exec_run 相关", "我确认 exec_run"}
+	for _, label := range valid {
+		if !isValidRouteLabel(label) {
+			t.Fatalf("expected valid: %q", label)
+		}
+	}
+	invalid := []string{"", "抱歉，我无法确定您要执行的具体操作。", "random text", "exec"}
+	for _, label := range invalid {
+		if isValidRouteLabel(label) {
+			t.Fatalf("expected invalid: %q", label)
+		}
+	}
+}
+
+func TestProcessRouteInvalidLabel_RetryWithStrictInstruction(t *testing.T) {
+	helpText := "抱歉，我无法确定您要执行的具体操作。\n\n我可以帮助您：\n 1. 查询节点信息 - 查看节点状态、分组、标签\n 2. 执行命令 - 在指定节点上运行 shell 命令\n 3. 生成并执行剧本 - 自动化部署操作\n 4. 传输文件 - 向节点分发文件"
+	agent := newTestAgentForRoute([]string{helpText,
+		"node",
+		"```json\n{\"tool_calls\":[{\"name\":\"query_nodes\",\"arguments\":{}}]}\n```",
+		"",
+	})
+	ctx := context.Background()
+	resp, err := agent.Process(ctx, "列出当前在线节点", nil)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if resp == "我不确定您要做什么" {
+		t.Fatal("invalid route label should trigger strict retry, not reject")
+	}
+}
+
+func TestProcessRouteInvalidLabelTwice_ReturnsExplicitError(t *testing.T) {
+	helpText := "抱歉，我无法确定您要执行的具体操作。\n\n我可以帮助您：\n 1. 查询节点信息\n 2. 执行命令"
+	agent := newTestAgentForRoute([]string{helpText, "抱歉，还是无法确定。"})
+	ctx := context.Background()
+	resp, err := agent.Process(ctx, "列出当前在线节点", nil)
+	if err == nil {
+		t.Fatalf("expected explicit routing error, got resp=%q", resp)
+	}
+	if !strings.Contains(err.Error(), "有效指令标签") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProcessRouteDirectToolCall_ExecutesImmediately(t *testing.T) {
+	direct := "```json\n{\"tool_calls\":[{\"name\":\"query_nodes\",\"arguments\":{\"status\":\"online\"}}]}\n```"
+	agent := newTestAgentForRoute([]string{direct})
+	ctx := context.Background()
+	resp, err := agent.Process(ctx, "列出当前在线节点", nil)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if !strings.Contains(resp, "node1") {
+		t.Fatalf("expected direct tool call to execute and return node1, got: %s", resp)
+	}
+}
+
+func TestProcessLocalFallback_LowConfidenceIntent(t *testing.T) {
+	helpText := "抱歉，我无法确定您要执行的具体操作。\n\n我可以帮助您：\n 1. 查询节点信息 - 查看节点状态、分组、标签\n 2. 执行命令 - 在指定节点上运行 shell 命令"
+	agent := newTestAgentForRoute([]string{"node_list", helpText})
+	ctx := context.Background()
+	resp, err := agent.Process(ctx, "列出当前在线节点", nil)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if resp == "我不确定您要做什么" {
+		t.Fatal("local fallback should accept two-keyword query intent, not reject")
+	}
+	if !strings.Contains(resp, "node1") {
+		t.Fatalf("expected node1 in fallback query result, got: %s", resp)
+	}
+}
+
 func TestParseToolCallsValid(t *testing.T) {
 	agent := &Agent{}
 	response := "```json\n{\"tool_calls\":[{\"name\":\"execute_command\",\"arguments\":{\"command\":\"uptime\",\"nodes\":[\"node1\"]}}]}\n```"
