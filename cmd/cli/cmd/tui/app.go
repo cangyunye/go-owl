@@ -9,6 +9,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/exec"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/file"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/nodes"
 )
 
@@ -24,28 +25,35 @@ type Panel interface {
 type App struct {
 	nodes nodes.Model
 	exec  exec.ExecModel
-	panel int // 0=Nodes 1=Exec
+	file  file.FileModel
+	panel int // 0=Nodes 1=Exec 2=File
 
 	Help        bool
 	QuitConfirm bool
 }
 
-var panelNames = []string{"Nodes", "Exec"}
+var panelNames = []string{"Nodes", "Exec", "File"}
 
 func NewApp(store common.NodeStore) *App {
 	m := &App{nodes: nodes.NewModel(store)}
 	m.exec = exec.NewModel(store)
 	m.exec.CaptureTargets(m.nodes.Visible())
+	m.file = file.NewModel(store)
+	m.file.CaptureTargets(m.nodes.Visible())
 	return m
 }
 
 func (m *App) Init() tea.Cmd { return nil }
 
 func (m *App) currentPanel() Panel {
-	if m.panel == 1 {
+	switch m.panel {
+	case 1:
 		return &m.exec
+	case 2:
+		return &m.file
+	default:
+		return &m.nodes
 	}
-	return &m.nodes
 }
 
 func (m *App) switchPanel(i int) {
@@ -59,10 +67,17 @@ func (m *App) switchPanel(i int) {
 	if m.panel == 1 {
 		m.exec.CaptureTargets(m.nodes.Visible())
 	}
+	if m.panel == 2 {
+		m.file.CaptureTargets(m.nodes.Visible())
+	}
 }
 
 func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := msg.(exec.LeavePanelMsg); ok {
+		m.switchPanel(0)
+		return m, nil
+	}
+	if _, ok := msg.(file.LeavePanelMsg); ok {
 		m.switchPanel(0)
 		return m, nil
 	}
@@ -102,7 +117,7 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Help = true
 			return m, nil
 		case "tab":
-			m.switchPanel((m.panel + 1) % 2)
+			m.switchPanel((m.panel + 1) % 3)
 			return m, nil
 		case "1":
 			m.switchPanel(0)
@@ -110,6 +125,14 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "2":
 			m.switchPanel(1)
 			return m, nil
+		case "3":
+			m.switchPanel(2)
+			return m, nil
+		case "f":
+			if m.panel == 0 {
+				m.switchPanel(2)
+				return m, nil
+			}
 		case "x":
 			if m.panel == 0 {
 				m.switchPanel(1)
@@ -122,9 +145,12 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *App) forward(msg tea.Msg) (tea.Model, tea.Cmd) {
 	pm, cmd := m.currentPanel().Update(msg)
-	if m.panel == 1 {
+	switch m.panel {
+	case 1:
 		m.exec = pm.(exec.ExecModel)
-	} else {
+	case 2:
+		m.file = pm.(file.FileModel)
+	default:
 		m.nodes = pm.(nodes.Model)
 	}
 	return m, cmd
@@ -161,13 +187,13 @@ func menuBar(active int) string {
 			parts = append(parts, "["+name+"]")
 		}
 	}
-	return strings.Join(parts, " ") + dim.Render("  Tab 切换  1/2 直达")
+	return strings.Join(parts, " ") + dim.Render("  Tab 切换  1/2/3 直达")
 }
 
 func helpView() string {
 	return strings.Join([]string{
 		"┌─ 帮助 ─────────────────────────────",
-		"  菜单:  Tab 切换  1/2 直达  x 快捷执行",
+		"  菜单:  Tab 切换  1/2/3 直达  x 快捷执行  f 快捷文件",
 		"  列表:  ↑↓ 选择  ←→ 切栏  g/G 首尾",
 		"        a 添加  e 编辑  d 删除  c 列配置",
 		"        p ping  k SSH检查  i 导入导出  o 分组  l 标签",
@@ -178,6 +204,8 @@ func helpView() string {
 		"        s 保存  Esc 返回/退出输入  ? 帮助",
 		"  执行:  命令必填  r 执行  a 高级选项  f 格式",
 		"        ↑↓ 移动字段  Enter 编辑  Esc 返回 Nodes",
+		"  文件:  ↑↓ 移动字段  Enter 编辑  ←→ 操作(upload/download)",
+		"        a 高级选项  r 执行  Esc 返回 Nodes",
 		"  模式:  Normal=命令   Insert=输入(Esc 退出)",
 		"└────────────────────────────────────",
 	}, "\n")

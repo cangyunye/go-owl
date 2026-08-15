@@ -9,6 +9,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/exec"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/file"
 )
 
 func key(t tea.KeyType) tea.Msg { return tea.KeyMsg{Type: t} }
@@ -38,20 +39,72 @@ func TestApp_DefaultPanelIsNodes(t *testing.T) {
 	}
 }
 
-func TestApp_TabSwitchesToExecAndBack(t *testing.T) {
+func TestApp_TabSwitchesPanels(t *testing.T) {
 	m := newApp(t)
-	nm, _ := m.Update(key(tea.KeyTab))
+	// 三个面板: 0 Nodes → 1 Exec → 2 File → 0 Nodes
+	for i, want := range []int{1, 2, 0} {
+		nm, _ := m.Update(key(tea.KeyTab))
+		m = nm.(*App)
+		if m.panel != want {
+			t.Fatalf("tab %d: expected panel %d, got %d", i+1, want, m.panel)
+		}
+	}
+}
+
+func TestApp_Digit3JumpsToFile(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('3'))
+	m = nm.(*App)
+	if m.panel != 2 {
+		t.Fatalf("expected panel 2 on '3', got %d", m.panel)
+	}
+	if got := m.View(); !strings.Contains(got, "[File]") {
+		t.Fatalf("menu bar missing [File]: %s", got)
+	}
+}
+
+func TestApp_FJumpsToFileFromNodes(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('f'))
+	m = nm.(*App)
+	if m.panel != 2 {
+		t.Fatalf("expected panel 2 on 'f', got %d", m.panel)
+	}
+}
+
+func TestApp_FIgnoredInExecPanel(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('2'))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('f'))
 	m = nm.(*App)
 	if m.panel != 1 {
-		t.Fatalf("expected panel 1 after tab, got %d", m.panel)
+		t.Fatalf("'f' must not switch panel from exec, got %d", m.panel)
 	}
-	if got := m.View(); !strings.Contains(got, "[Exec]") {
-		t.Fatalf("menu bar missing [Exec]: %s", got)
+}
+
+func TestApp_FileCapturesVisibleSnapshot(t *testing.T) {
+	m := newApp(t)
+	// 过滤到 web 组后切到 file, 快照应只有 n1
+	nm, _ := m.Update(runeKey('/'))
+	nm, _ = nm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g:web")})
+	nm, _ = nm.Update(key(tea.KeyEnter))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('3'))
+	m = nm.(*App)
+	if len(m.file.Targets()) != 1 || m.file.Targets()[0].ID != "n1" {
+		t.Fatalf("expected snapshot [n1], got %v", m.file.Targets())
 	}
-	nm, _ = m.Update(key(tea.KeyTab))
+}
+
+func TestApp_FileLeavePanelMsgReturnsToNodes(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('3'))
+	m = nm.(*App)
+	nm, _ = m.Update(file.LeavePanelMsg{})
 	m = nm.(*App)
 	if m.panel != 0 {
-		t.Fatalf("expected panel 0 after second tab, got %d", m.panel)
+		t.Fatalf("expected panel 0 after LeavePanelMsg, got %d", m.panel)
 	}
 }
 
