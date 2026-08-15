@@ -272,8 +272,59 @@ func TestAdvanced_SaveReturnsToRun(t *testing.T) {
 	if m.current() != LocRun {
 		t.Fatalf("expected LocRun after save, got %v", m.current())
 	}
+	if m.advanced == nil {
+		t.Fatal("expected advanced kept after save")
+	}
+	got := m.View()
+	for _, want := range []string{"高级", "并行", "timeout=60s"} {
+		if !contains(got, want) {
+			t.Fatalf("run view missing %q after save:\n%s", want, got)
+		}
+	}
+}
+
+func TestAdvanced_EscDiscards(t *testing.T) {
+	m := newTestModel(t)
+	m.advanced = newAdvancedForm()
+	m.push(LocAdvanced)
+	nm, _ := m.Update(key(tea.KeyEsc))
+	m = nm.(ExecModel)
+	if m.current() != LocRun {
+		t.Fatalf("expected LocRun after esc, got %v", m.current())
+	}
 	if m.advanced != nil {
-		t.Fatal("expected advanced cleared")
+		t.Fatal("expected advanced cleared after esc")
+	}
+}
+
+func TestAdvanced_Summary(t *testing.T) {
+	f := newAdvancedForm()
+	got := advancedSummary(f)
+	for _, want := range []string{"并行", "timeout=60s"} {
+		if !contains(got, want) {
+			t.Fatalf("default summary missing %q: %q", want, got)
+		}
+	}
+	f.toggle(4) // serial
+	got = advancedSummary(f)
+	if !contains(got, "串行") {
+		t.Fatalf("serial summary missing 串行: %q", got)
+	}
+	if contains(got, "并行") {
+		t.Fatalf("serial summary should not contain 并行: %q", got)
+	}
+	f.toggle(9) // async
+	got = advancedSummary(f)
+	if !contains(got, "async") {
+		t.Fatalf("summary missing async: %q", got)
+	}
+}
+
+func TestRunView_ShowsAdvancedHintWhenUnset(t *testing.T) {
+	m := newTestModel(t)
+	got := m.View()
+	if !contains(got, "默认(未设置)") {
+		t.Fatalf("run view missing advanced hint:\n%s", got)
 	}
 }
 

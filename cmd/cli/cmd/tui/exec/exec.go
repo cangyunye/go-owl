@@ -204,7 +204,9 @@ func (m ExecModel) updateAdvanced(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if f.fields[f.cursor].kind == KindBool {
 			f.toggle(f.cursor)
 		}
-	case "s", "esc":
+	case "s":
+		m.pop()
+	case "esc":
 		m.pop()
 		m.advanced = nil
 	}

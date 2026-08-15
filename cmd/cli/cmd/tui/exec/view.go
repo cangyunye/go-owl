@@ -40,6 +40,8 @@ func (m ExecModel) runView() string {
 	b.WriteString("  格式  " + styleSelected.Render(m.format) + styleDim.Render("  f 切换") + "\n")
 	if m.advanced != nil {
 		b.WriteString(styleDim.Render("  高级  "+advancedSummary(m.advanced)) + "\n")
+	} else {
+		b.WriteString(styleDim.Render("  高级  默认(未设置)  a 打开") + "\n")
 	}
 	if nodes, err := m.resolveTargets(); err == nil {
 		b.WriteString(styleDim.Render(fmt.Sprintf("  目标  %d 台", len(nodes))) + "\n")
