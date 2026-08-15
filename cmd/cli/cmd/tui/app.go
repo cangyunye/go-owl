@@ -214,7 +214,7 @@ func menuBar(active int) string {
 func helpView() string {
 	return strings.Join([]string{
 		"┌─ 帮助 ─────────────────────────────",
-		"  菜单:  Tab 切换  1/2/3 直达  x 快捷执行  f 快捷文件",
+		"  菜单:  Tab 切换  1/2/3/4 直达  x 快捷执行  f 快捷文件",
 		"  列表:  ↑↓ 选择  ←→ 切栏  g/G 首尾",
 		"        a 添加  e 编辑  d 删除  c 列配置",
 		"        p ping  k SSH检查  i 导入导出  o 分组  l 标签",
@@ -227,6 +227,7 @@ func helpView() string {
 		"        ↑↓ 移动字段  Enter 编辑  Esc 返回 Nodes",
 		"  文件:  ↑↓ 移动字段  Enter 编辑  ←→ 操作(upload/download)",
 		"        a 高级选项  r 执行  Esc 返回 Nodes",
+		"  AI:      Enter 输入  Enter 发送  n 新会话  Esc 返回",
 		"  模式:  Normal=命令   Insert=输入(Esc 退出)",
 		"└────────────────────────────────────",
 	}, "\n")
