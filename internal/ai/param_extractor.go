@@ -270,6 +270,16 @@ func (e *ParamExtractor) extractOwnerFilter(input string, params map[string]inte
 		return
 	}
 
+	// "张三有哪些节点"/"张三有什么服务器": "有哪些/有什么" 前的文本即 owner 名
+	for _, marker := range []string{"有哪些", "有什么"} {
+		if idx := strings.Index(input, marker); idx >= 0 {
+			if name := e.extractPersonName(strings.TrimSpace(input[:idx])); name != "" {
+				params["labels"] = map[string]interface{}{"owner": name}
+			}
+			return
+		}
+	}
+
 	// 兜底姓名提取仅限"XX的节点/主机"式所有格查询(含"的"字样)。
 	// 否则会把查询文本中的任意二字中文子串误当 owner,如"列出当前在线节点"→"出当"。
 	if strings.Contains(input, "的") {
