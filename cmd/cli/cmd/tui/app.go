@@ -96,6 +96,11 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		fm, cmd := m.file.Update(msg)
 		m.file = fm.(file.FileModel)
 		return m, cmd
+	case tuiai.ChatDoneMsg:
+		// AI 回复直接路由到 AI 面板,即使当前处于其他面板,避免 busy 永久卡死
+		am, cmd := m.ai.Update(msg)
+		m.ai = am.(tuiai.Model)
+		return m, cmd
 	}
 	if m.QuitConfirm {
 		if km, ok := msg.(tea.KeyMsg); ok {

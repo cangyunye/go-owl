@@ -236,6 +236,24 @@ func TestApp_TabCyclesFourPanels(t *testing.T) {
 	}
 }
 
+func TestApp_ChatDoneRoutedToAIPanelWhileInactive(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('4'))
+	m = nm.(*App)
+	nm, _ = m.Update(key(tea.KeyTab))
+	m = nm.(*App)
+	if m.panel != 0 {
+		t.Fatalf("expected back on Nodes after tab, got %d", m.panel)
+	}
+	nm, _ = m.Update(tuiai.ChatDoneMsg{Text: "完成回复"})
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('4'))
+	m = nm.(*App)
+	if got := m.View(); !strings.Contains(got, "完成回复") {
+		t.Fatalf("ChatDoneMsg not routed to AI panel: %s", got)
+	}
+}
+
 func TestApp_AIEscReturnsToNodes(t *testing.T) {
 	m := newApp(t)
 	nm, _ := m.Update(runeKey('4'))
