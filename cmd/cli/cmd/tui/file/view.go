@@ -28,7 +28,15 @@ func (m FileModel) fileView() string {
 	var b strings.Builder
 	b.WriteString("┌─ " + opLabels[m.op] + " ─────────────────────────\n")
 	b.WriteString("  操作: " + styleSelected.Render(opLabels[m.op]) + styleDim.Render("  ←→ 切换") + "\n")
-	labels := []string{"本地文件", "节点", "分组", "标签", "目标目录"}
+	fileLabel := "本地文件"
+	if m.op == OpDownload {
+		fileLabel = "远程文件"
+	}
+	destLabel := "目标目录"
+	if m.op == OpDownload {
+		destLabel = "本地目录"
+	}
+	labels := []string{fileLabel, "节点", "分组", "标签", destLabel}
 	for i := 0; i < 5; i++ {
 		marker := " "
 		if i == m.cursor && m.mode == ModeNormal {
@@ -62,29 +70,42 @@ func (m FileModel) advancedView() string {
 		if i == f.cursor && m.mode == ModeNormal {
 			marker = ">"
 		}
-		box := "[ ]"
-		if fd.checked {
-			box = "[x]"
+		line := ""
+		if fd.kind == KindBool {
+			box := "[ ]"
+			if fd.checked {
+				box = "[x]"
+			}
+			line = fmt.Sprintf("%s %s %-14s Space 切换\n", marker, box, fd.label)
+		} else {
+			line = fmt.Sprintf("%s %-14s %s\n", marker, fd.label, fd.input.View())
 		}
-		line := fmt.Sprintf("  %s %s %-14s Space 切换\n", marker, box, fd.label)
 		if i == f.cursor && m.mode == ModeNormal {
 			line = styleSelected.Render(strings.TrimRight(line, "\n")) + "\n"
 		}
-		b.WriteString(line)
+		b.WriteString("  " + line)
 	}
 	if f.error != "" {
 		b.WriteString(styleError.Render("  "+f.error) + "\n")
 	}
-	b.WriteString(styleDim.Render("  ↑↓移动 Space切换bool s保存 Esc返回") + "\n")
+	b.WriteString(styleDim.Render("  ↑↓移动 Enter编辑 Space切换bool s保存 Esc返回") + "\n")
 	b.WriteString("└─")
 	return b.String()
 }
 
 func (m FileModel) resultView() string {
 	var b strings.Builder
-	b.WriteString("┌─ 上传结果 ─────────────────────\n")
+	title := "上传结果"
+	if m.op == OpDownload {
+		title = "下载结果"
+	}
+	b.WriteString("┌─ " + title + " ─────────────────────\n")
 	if m.loading {
-		if m.lastUpload != nil {
+		if m.op == OpDownload {
+			if m.lastDownload != nil {
+				b.WriteString("  " + styleDim.Render("正在下载 "+m.lastDownload.remoteFile+" …") + "\n")
+			}
+		} else if m.lastUpload != nil {
 			b.WriteString("  " + styleDim.Render("正在上传 "+m.lastUpload.localFile+" …") + "\n")
 		}
 	} else {

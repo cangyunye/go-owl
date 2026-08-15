@@ -57,9 +57,10 @@ type FileModel struct {
 	advanced *AdvancedForm
 	error    string
 
-	lastUpload *uploadRunState
-	loading    bool
-	results    []transfer.TransferResult
+	lastUpload   *uploadRunState
+	lastDownload *downloadRunState
+	loading      bool
+	results      []transfer.TransferResult
 }
 
 func NewModel(store common.NodeStore) FileModel {
@@ -183,7 +184,14 @@ func (m FileModel) updateFile(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.advanced = newAdvancedForm()
 		m.push(LocAdvanced)
 	case "r":
-		cmd, err := m.startUpload()
+		var cmd tea.Cmd
+		var err error
+		switch m.op {
+		case OpDownload:
+			cmd, err = m.startDownload()
+		default:
+			cmd, err = m.startUpload()
+		}
 		if err != nil {
 			m.error = err.Error()
 			return m, nil
@@ -200,6 +208,10 @@ func (m FileModel) updateFile(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m FileModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case UploadDoneMsg:
+		m.loading = false
+		m.results = msg.Results
+		return m, nil
+	case DownloadDoneMsg:
 		m.loading = false
 		m.results = msg.Results
 		return m, nil

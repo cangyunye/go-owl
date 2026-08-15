@@ -387,3 +387,94 @@ func TestResult_Rerun(t *testing.T) {
 		t.Fatalf("expected UploadDoneMsg, got %T", cmd())
 	}
 }
+
+func TestStartDownload_EmptyRemote(t *testing.T) {
+	m := newTestModel(t)
+	m.op = OpDownload
+	if _, err := m.startDownload(); err == nil {
+		t.Fatal("expected error for empty remote path")
+	}
+}
+
+func TestStartDownload_NoTargets(t *testing.T) {
+	m := newTestModel(t)
+	m.op = OpDownload
+	m.CaptureTargets(nil)
+	m.fileInput.SetValue("/var/log/app.log")
+	if _, err := m.startDownload(); err == nil {
+		t.Fatal("expected error for no targets")
+	}
+}
+
+func TestDownload_RunsAndRenders(t *testing.T) {
+	downloadRun = func(ctx context.Context, ids []string, remoteFile, localDir string, opts *transfer.DownloadOptions) []transfer.TransferResult {
+		return []transfer.TransferResult{
+			{NodeID: "n1", Path: "out/n1.app.log", Method: "scp"},
+		}
+	}
+	recordOperation = func(o *history.Operation) error { return nil }
+	recordFileTransfer = func(f *history.FileTransfer) error { return nil }
+	m := newTestModel(t)
+	m.op = OpDownload
+	m.destInput.SetValue(filepath.Join(t.TempDir(), "out"))
+	m.fileInput.SetValue("/var/log/app.log")
+	nm, cmd := m.Update(runeKey('r'))
+	m = nm.(FileModel)
+	if m.current() != LocResult {
+		t.Fatalf("expected LocResult, got %v", m.current())
+	}
+	msg := cmd()
+	dm, ok := msg.(DownloadDoneMsg)
+	if !ok {
+		t.Fatalf("expected DownloadDoneMsg, got %T", msg)
+	}
+	nm, _ = m.Update(dm)
+	m = nm.(FileModel)
+	got := m.View()
+	for _, want := range []string{"下载结果", "n1", "成功 1/1"} {
+		if !contains(got, want) {
+			t.Fatalf("view missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestDownload_ViewLabelsPerOp(t *testing.T) {
+	m := newTestModel(t)
+	m.op = OpDownload
+	got := m.View()
+	for _, want := range []string{"远程文件", "本地目录"} {
+		if !contains(got, want) {
+			t.Fatalf("download view missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestAdvanced_TextEditNameFormatPersists(t *testing.T) {
+	m := newTestModel(t)
+	m.advanced = newAdvancedForm()
+	m.push(LocAdvanced)
+	for i := 0; i < 4; i++ {
+		nm, _ := m.Update(key(tea.KeyDown))
+		m = nm.(FileModel)
+	}
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(FileModel)
+	if m.mode != ModeInsert {
+		t.Fatalf("expected ModeInsert on name-format row, got %v", m.mode)
+	}
+	nm, _ = m.Update(runeKey('n'))
+	m = nm.(FileModel)
+	nm, _ = m.Update(runeKey('m'))
+	m = nm.(FileModel)
+	nm, _ = m.Update(key(tea.KeyEsc))
+	m = nm.(FileModel)
+	if m.mode != ModeNormal {
+		t.Fatalf("expected ModeNormal after esc, got %v", m.mode)
+	}
+	if v := m.advanced.value("name-format"); v != "nm" {
+		t.Fatalf("expected name-format 'nm', got %q", v)
+	}
+	if m.advanced.fields[m.advanced.cursor].input.Focused() {
+		t.Fatal("expected input blurred after esc")
+	}
+}

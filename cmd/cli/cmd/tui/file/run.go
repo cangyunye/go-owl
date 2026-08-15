@@ -27,6 +27,17 @@ var uploadRun = func(ctx context.Context, ids []string, localFile, remotePath st
 	return manager.Upload(ctx, ids, localFile, remotePath, opts)
 }
 
+type DownloadDoneMsg struct {
+	Results []transfer.TransferResult
+}
+
+// downloadRun 可注入的下载执行器(测试替换);默认走 TransferManager + NodeResolver
+var downloadRun = func(ctx context.Context, ids []string, remoteFile, localDir string, opts *transfer.DownloadOptions) []transfer.TransferResult {
+	manager := transfer.NewTransferManager(node.NewNodeResolver())
+	defer manager.Close()
+	return manager.Download(ctx, ids, remoteFile, localDir, opts)
+}
+
 // history 记录可注入(测试替换);默认走 internal/history
 var recordOperation = history.RecordOperation
 var recordFileTransfer = history.RecordFileTransfer
@@ -154,4 +165,52 @@ func fileNameFromPath(path string) string {
 		}
 	}
 	return path
+}
+
+type downloadRunState struct {
+	ids        []string
+	remoteFile string
+	localDir   string
+	opts       *transfer.DownloadOptions
+}
+
+func (m *FileModel) startDownload() (tea.Cmd, error) {
+	remote := strings.TrimSpace(m.fileInput.Value())
+	if remote == "" {
+		return nil, errors.New("远程文件路径不能为空")
+	}
+	nodes, err := m.resolveTargets()
+	if err != nil {
+		return nil, err
+	}
+	if len(nodes) == 0 {
+		return nil, errors.New("没有目标节点")
+	}
+	f := m.advanced
+	if f == nil {
+		f = newAdvancedForm()
+	}
+	localDir := strings.TrimSpace(m.destInput.Value())
+	if localDir == "" {
+		localDir = "."
+	}
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		ids = append(ids, n.ID)
+	}
+	m.lastDownload = &downloadRunState{ids: ids, remoteFile: remote, localDir: localDir, opts: f.downloadOpts()}
+	m.results = nil
+	m.loading = true
+	return m.launchDownload(), nil
+}
+
+func (m *FileModel) launchDownload() tea.Cmd {
+	s := m.lastDownload
+	return func() tea.Msg {
+		results := downloadRun(context.Background(), s.ids, s.remoteFile, s.localDir, s.opts)
+		return DownloadDoneMsg{Results: results}
+	}
 }

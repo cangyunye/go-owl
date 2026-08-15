@@ -41,6 +41,8 @@ func newAdvancedForm() *AdvancedForm {
 		{"parallel", "parallel", "", KindBool, true},
 		{"resume", "resume", "", KindBool, true},
 		{"no-overwrite", "no-overwrite", "", KindBool, false},
+		{"subdir", "subdir", "", KindBool, false},
+		{"name-format", "name-format", "", KindText, false},
 	}
 	for _, s := range specs {
 		ti := textinput.New()
@@ -86,6 +88,15 @@ func (f *AdvancedForm) uploadOpts() *transfer.UploadOptions {
 	}
 }
 
+func (f *AdvancedForm) downloadOpts() *transfer.DownloadOptions {
+	return &transfer.DownloadOptions{
+		Parallel:   f.isOn("parallel"),
+		Subdir:     f.isOn("subdir"),
+		NameFormat: f.value("name-format"),
+		Resume:     f.isOn("resume"),
+	}
+}
+
 func advancedSummary(f *AdvancedForm) string {
 	parts := []string{}
 	if f.isOn("parallel") {
@@ -126,8 +137,16 @@ func (m FileModel) updateAdvanced(msg tea.Msg) (tea.Model, tea.Cmd) {
 		f.move(-1)
 	case "down":
 		f.move(1)
+	case "enter":
+		if f.fields[f.cursor].kind == KindText {
+			m.mode = ModeInsert
+			f.fields[f.cursor].input.SetValue("")
+			f.fields[f.cursor].input.Focus()
+		}
 	case " ":
-		f.toggle(f.cursor)
+		if f.fields[f.cursor].kind == KindBool {
+			f.toggle(f.cursor)
+		}
 	case "s", "esc":
 		m.pop()
 		m.advanced = nil
