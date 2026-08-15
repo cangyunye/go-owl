@@ -730,3 +730,51 @@ func TestEnterOnOtherFieldNoBrowser(t *testing.T) {
 		t.Fatalf("other fields must stay on field edit, got loc=%v mode=%v", m.current(), m.mode)
 	}
 }
+
+func TestFillNodes_FillsAndClears(t *testing.T) {
+	m := newTestModel(t)
+	m.groupsInput.SetValue("web")
+	m.labelsInput.SetValue("env=prod")
+	m.FillNodes([]string{"n1", "n3"})
+	if got := m.NodesValue(); got != "n1,n3" {
+		t.Fatalf("expected nodes n1,n3, got %q", got)
+	}
+	if got := m.GroupsValue(); got != "" {
+		t.Fatalf("expected groups cleared, got %q", got)
+	}
+	if got := m.labelsInput.Value(); got != "" {
+		t.Fatalf("expected labels cleared, got %q", got)
+	}
+}
+
+func TestFillConditions_FillsAndClears(t *testing.T) {
+	m := newTestModel(t)
+	m.nodesInput.SetValue("n1")
+	m.FillConditions([]string{"web", "cache"}, map[string]string{"env": "prod", "role": "cache"})
+	if got := m.NodesValue(); got != "" {
+		t.Fatalf("expected nodes cleared, got %q", got)
+	}
+	if got := m.GroupsValue(); got != "web,cache" {
+		t.Fatalf("expected groups web,cache, got %q", got)
+	}
+	if got := m.labelsInput.Value(); got != "env=prod,role=cache" {
+		t.Fatalf("expected sorted labels env=prod,role=cache, got %q", got)
+	}
+}
+
+func TestFillConditions_EmptyClearsAll(t *testing.T) {
+	m := newTestModel(t)
+	m.nodesInput.SetValue("n1")
+	m.groupsInput.SetValue("web")
+	m.labelsInput.SetValue("env=prod")
+	m.FillConditions(nil, nil)
+	if got := m.NodesValue(); got != "" {
+		t.Fatalf("expected nodes cleared, got %q", got)
+	}
+	if got := m.GroupsValue(); got != "" {
+		t.Fatalf("expected groups cleared, got %q", got)
+	}
+	if got := m.labelsInput.Value(); got != "" {
+		t.Fatalf("expected labels cleared, got %q", got)
+	}
+}

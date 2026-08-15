@@ -105,6 +105,33 @@ func (m *FileModel) CaptureTargets(nodes []*common.NodeInfo) {
 	m.targets = append([]*common.NodeInfo(nil), nodes...)
 }
 
+// FillNodes 填显式节点列表并清空组/标签条件
+func (m *FileModel) FillNodes(ids []string) {
+	m.nodesInput.SetValue(strings.Join(ids, ","))
+	m.groupsInput.SetValue("")
+	m.labelsInput.SetValue("")
+}
+
+// FillConditions 填分组/标签条件并清空显式节点列表(组/标签为空即清空)
+func (m *FileModel) FillConditions(groups []string, labels map[string]string) {
+	m.nodesInput.SetValue("")
+	m.groupsInput.SetValue(strings.Join(groups, ","))
+	var pairs []string
+	for k, v := range labels {
+		if v != "" {
+			pairs = append(pairs, k+"="+v)
+		} else {
+			pairs = append(pairs, k)
+		}
+	}
+	sort.Strings(pairs)
+	m.labelsInput.SetValue(strings.Join(pairs, ","))
+}
+
+func (m FileModel) NodesValue() string { return m.nodesInput.Value() }
+
+func (m FileModel) GroupsValue() string { return m.groupsInput.Value() }
+
 func (m FileModel) current() Loc { return m.stack[len(m.stack)-1] }
 
 func (m *FileModel) push(l Loc) { m.stack = append(m.stack, l) }
