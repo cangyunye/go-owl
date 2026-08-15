@@ -65,10 +65,9 @@ type FileModel struct {
 
 func NewModel(store common.NodeStore) FileModel {
 	dest := textinput.New()
-	dest.Placeholder = "目标目录"
+	dest.Placeholder = "目标目录 (默认 /tmp)"
 	dest.Width = 40
 	dest.CharLimit = 256
-	dest.SetValue("/tmp")
 	dest.Blur()
 	return FileModel{
 		store:       store,
@@ -132,6 +131,17 @@ func (m FileModel) Path() []string {
 	}
 }
 
+// applyOpPlaceholders 按操作切换文件/目标目录字段的占位提示(下载为本地目录,默认 .)
+func (m *FileModel) applyOpPlaceholders() {
+	if m.op == OpDownload {
+		m.destInput.Placeholder = "本地目录 (默认 .)"
+		m.fileInput.Placeholder = "远程文件路径 (必填)"
+	} else {
+		m.destInput.Placeholder = "目标目录 (默认 /tmp)"
+		m.fileInput.Placeholder = "本地文件路径 (必填)"
+	}
+}
+
 func (m *FileModel) fieldAt(i int) *textinput.Model {
 	switch i {
 	case 0:
@@ -189,8 +199,10 @@ func (m FileModel) updateFile(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.fieldAt(m.cursor).Focus()
 	case "left":
 		m.op = Op((int(m.op) - 1 + 3) % 3)
+		m.applyOpPlaceholders()
 	case "right":
 		m.op = Op((int(m.op) + 1) % 3)
+		m.applyOpPlaceholders()
 	case "a":
 		m.advanced = newAdvancedForm()
 		m.push(LocAdvanced)

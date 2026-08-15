@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -417,6 +418,56 @@ func TestStartDownload_EmptyRemote(t *testing.T) {
 	m.op = OpDownload
 	if _, err := m.startDownload(); err == nil {
 		t.Fatal("expected error for empty remote path")
+	}
+}
+
+func TestOpSwitch_SwapsDestPlaceholderByOp(t *testing.T) {
+	m := newTestModel(t)
+	if !strings.Contains(m.destInput.Placeholder, "/tmp") {
+		t.Fatalf("upload dest placeholder should mention /tmp, got %q", m.destInput.Placeholder)
+	}
+	nm, _ := m.Update(key(tea.KeyRight))
+	m = nm.(FileModel)
+	if !strings.Contains(m.destInput.Placeholder, "本地目录") {
+		t.Fatalf("download dest placeholder should mention 本地目录, got %q", m.destInput.Placeholder)
+	}
+	if v := m.destInput.Value(); v != "" {
+		t.Fatalf("expected empty dest value, got %q", v)
+	}
+	if !strings.Contains(m.fileInput.Placeholder, "远程文件") {
+		t.Fatalf("download file placeholder should mention 远程文件, got %q", m.fileInput.Placeholder)
+	}
+	nm, _ = m.Update(key(tea.KeyRight))
+	m = nm.(FileModel)
+	if !strings.Contains(m.destInput.Placeholder, "目标目录") {
+		t.Fatalf("transfer dest placeholder should mention 目标目录, got %q", m.destInput.Placeholder)
+	}
+	if !strings.Contains(m.fileInput.Placeholder, "本地文件") {
+		t.Fatalf("transfer file placeholder should mention 本地文件, got %q", m.fileInput.Placeholder)
+	}
+}
+
+func TestStartDownload_EmptyDestDefaultsToDot(t *testing.T) {
+	var gotDir string
+	downloadRun = func(ctx context.Context, ids []string, remoteFile, localDir string, opts *transfer.DownloadOptions) []transfer.TransferResult {
+		gotDir = localDir
+		return []transfer.TransferResult{{NodeID: "n1", Path: "app.log", Method: "scp"}}
+	}
+	recordOperation = func(o *history.Operation) error { return nil }
+	recordFileTransfer = func(f *history.FileTransfer) error { return nil }
+	m := newTestModel(t)
+	m.op = OpDownload
+	m.fileInput.SetValue("/var/log/app.log")
+	cmd, err := m.startDownload()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd == nil {
+		t.Fatal("expected cmd")
+	}
+	cmd()
+	if gotDir != "." {
+		t.Fatalf("expected localDir default '.', got %q", gotDir)
 	}
 }
 
