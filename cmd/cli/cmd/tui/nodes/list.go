@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/theme"
 )
 
 type Column struct {
@@ -142,6 +143,65 @@ func truncateCell(s string, width int) string {
 		out = append(out, r)
 	}
 	res := string(out)
+	for common.DisplayWidth(res) < width {
+		res += " "
+	}
+	return res
+}
+
+func renderCell(n *common.NodeInfo, key string, width int, selected bool) string {
+	raw := truncateCell(cellValue(n, key), width)
+	if selected {
+		return styleSelected.Render(raw)
+	}
+	switch key {
+	case "status":
+		return styleForStatus(n.Status).Render(raw)
+	case "labels":
+		return rainbowLabelsWidth(raw, width)
+	case "user":
+		return theme.Style(theme.SlotUser).Render(raw)
+	case "address":
+		return theme.Style(theme.SlotAccent).Render(raw)
+	case "groups":
+		return theme.Style(theme.SlotTitle).Render(raw)
+	}
+	return raw
+}
+
+func rainbowLabelsWidth(raw string, width int) string {
+	if raw == "" || width <= 0 {
+		return ""
+	}
+	// truncateCell 输出带尾部空格填充,先去掉再解析,避免空格混入 value
+	trimmed := strings.TrimRight(raw, " ")
+	labels, ok := splitPairs(trimmed)
+	if !ok {
+		return styleDim.Render(raw)
+	}
+	remaining := width
+	var b strings.Builder
+	for i, kv := range labels {
+		seg := rainbowText(kv[0], kv[1])
+		if i > 0 {
+			seg = "," + seg
+		}
+		sw := common.DisplayWidth(seg)
+		if sw <= remaining {
+			b.WriteString(seg)
+			remaining -= sw
+			continue
+		}
+		if b.Len() == 0 {
+			if remaining >= 1 {
+				b.WriteString("…")
+			}
+		} else {
+			b.WriteString("…")
+		}
+		break
+	}
+	res := b.String()
 	for common.DisplayWidth(res) < width {
 		res += " "
 	}

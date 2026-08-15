@@ -75,10 +75,7 @@ func (m Model) listPane() string {
 		}
 		b.WriteString(box + " " + marker)
 		for j, c := range cols {
-			cell := truncateCell(cellValue(n, c.Key), widths[j])
-			if i == m.cursor {
-				cell = styleSelected.Render(cell)
-			}
+			cell := renderCell(n, c.Key, widths[j], i == m.cursor)
 			b.WriteString(cell)
 			b.WriteString(" ")
 		}

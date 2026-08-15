@@ -6,6 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 )
 
 // withColor forces a TrueColor profile so coloring tests see ANSI codes;
@@ -163,4 +165,61 @@ func TestRainbowLabelsFull(t *testing.T) {
 			t.Fatal("异常格式不应为空")
 		}
 	})
+}
+
+func TestRenderCellSelected(t *testing.T) {
+	withColor(t, func() {
+		n := &common.NodeInfo{ID: "n1", Status: "online", Labels: map[string]string{"a": "1"}}
+		sel := renderCell(n, "status", 10, true)
+		if sel == "online" {
+			t.Fatal("选中行应整体高亮")
+		}
+		unsel := renderCell(n, "status", 10, false)
+		if unsel == "online" {
+			t.Fatal("非选中 Status 应着色")
+		}
+		if got := renderCell(n, "id", 10, false); got == "" {
+			t.Fatal("ID 列应正常渲染")
+		}
+	})
+}
+
+func TestRainbowLabelsWidth(t *testing.T) {
+	if got := rainbowLabelsWidth("", 10); got != "" {
+		t.Fatalf("空串原样, got %q", got)
+	}
+	// 宽度极小 → 省略号
+	got := rainbowLabelsWidth("a=1", 2)
+	if got == "" {
+		t.Fatal("不应为空")
+	}
+	// 宽列全量彩虹
+	withColor(t, func() {
+		wide := rainbowLabelsWidth("a=1,b=2", 30)
+		if wide == "a=1,b=2" {
+			t.Fatal("应带 ANSI 着色")
+		}
+	})
+	// 窄列截断不切 ANSI
+	short := rainbowLabelsWidth("a=1,b=2", 6)
+	if short == "" {
+		t.Fatal("窄列应非空")
+	}
+}
+
+func TestRenderCellLabels(t *testing.T) {
+	n := &common.NodeInfo{Labels: map[string]string{"a": "1"}}
+	cell := renderCell(n, "labels", 20, false)
+	if cell == "" {
+		t.Fatal("labels 列应渲染")
+	}
+}
+
+func TestRainbowLabelsWidthTrailingSpace(t *testing.T) {
+	// truncateCell 会补尾部空格,rainbowLabelsWidth 需先 trim 再解析
+	raw := "a=1  "
+	got := rainbowLabelsWidth(raw, 8)
+	if got == "" {
+		t.Fatal("带尾部空格也应正常渲染")
+	}
 }
