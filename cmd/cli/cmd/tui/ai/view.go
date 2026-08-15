@@ -5,13 +5,15 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
+
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/theme"
 )
 
 var (
-	styleUser  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	styleAI    = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	styleDim   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	styleError = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	styleUser  = lipgloss.NewStyle().Foreground(theme.Fg(theme.CUser))
+	styleAI    = lipgloss.NewStyle().Foreground(theme.Fg(theme.CAI))
+	styleDim   = lipgloss.NewStyle().Foreground(theme.Fg(theme.CDim))
+	styleError = lipgloss.NewStyle().Foreground(theme.Fg(theme.CError))
 )
 
 func (m Model) View() string {

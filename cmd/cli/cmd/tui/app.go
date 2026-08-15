@@ -12,6 +12,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/exec"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/file"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/nodes"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/theme"
 )
 
 // Panel 顶层面板: 节点管理 / 命令执行 / 文件传输
@@ -241,8 +242,8 @@ func (m *App) View() string {
 }
 
 func menuBar(active int) string {
-	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	activeStyle := lipgloss.NewStyle().Foreground(theme.Fg(theme.CSelected))
+	dim := lipgloss.NewStyle().Foreground(theme.Fg(theme.CDim))
 	var parts []string
 	for i, name := range panelNames {
 		if i == active {

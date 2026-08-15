@@ -9,6 +9,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/theme"
 	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
@@ -34,6 +35,12 @@ func runTui(cmd *cobra.Command, args []string) {
 	store := common.GetNodeStore()
 	if dbs, ok := store.(*common.NodeStoreDB); ok {
 		dbs.SetConflictPrompt(false)
+	}
+
+	// 请求 truecolor 但终端不支持(如 conhost)时回退 ANSI 并提示
+	if theme.DowngradedToANSI() {
+		fmt.Fprintln(os.Stderr, "提示: OWL_TUI_THEME=truecolor 但当前终端不支持真彩色(conhost 无法渲染 24bit 色),已回退 ANSI 主题。")
+		fmt.Fprintln(os.Stderr, "      请在 Windows Terminal / ConEmu 等支持真彩的终端中运行,或取消该环境变量。")
 	}
 
 	app := NewApp(store)

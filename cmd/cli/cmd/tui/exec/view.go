@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/theme"
 )
 
 var (
-	styleSelected = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
-	styleDim      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	styleError    = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	styleSelected = lipgloss.NewStyle().Foreground(theme.Fg(theme.CSelected))
+	styleDim      = lipgloss.NewStyle().Foreground(theme.Fg(theme.CDim))
+	styleError    = lipgloss.NewStyle().Foreground(theme.Fg(theme.CError))
 )
 
 func (m ExecModel) View() string {

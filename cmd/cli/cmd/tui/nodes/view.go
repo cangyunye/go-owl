@@ -6,14 +6,16 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/theme"
 )
 
 var (
 	styleListBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
 	styleDetail     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
-	styleError      = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	styleDim        = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	styleSelected   = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
+	styleError      = lipgloss.NewStyle().Foreground(theme.Fg(theme.CError))
+	styleDim        = lipgloss.NewStyle().Foreground(theme.Fg(theme.CDim))
+	styleSelected   = lipgloss.NewStyle().Foreground(theme.Fg(theme.CSelected))
 )
 
 func (m Model) selectedColumns() []Column {
@@ -91,8 +93,8 @@ func (m Model) listPane() string {
 	if m.focus == paneDetail {
 		listBox = styleDim.Render(b.String())
 		listBox = styleListBorder.Width(avail + 2).Render(listBox)
-		detailBox = styleSelected.Foreground(lipgloss.Color("0")).
-			Background(lipgloss.Color("14")).Render(m.detailPane())
+		detailBox = styleSelected.Foreground(theme.Fg(theme.CHighlightFg)).
+			Background(theme.Fg(theme.CHighlightBg)).Render(m.detailPane())
 		detailBox = styleDetail.Width(avail + 2).Render(detailBox)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, listBox, "  ", detailBox)
