@@ -88,7 +88,7 @@ func (m *App) switchPanel(i int, entry Entry) {
 	}
 }
 
-// applySelectionEntry 按 x 语义填充 Exec 表单: 勾选优先, 否则纯组/标签过滤; 含搜索/状态回退快照
+// applySelectionEntry 按 x 语义填充 Exec 表单: 勾选优先, 否则纯组/标签过滤; 含搜索/状态回退快照(当前可见集)
 func (m *App) applySelectionEntry() {
 	if ids := m.nodes.MarkedIDs(); len(ids) > 0 {
 		m.exec.FillNodes(ids)
@@ -99,8 +99,6 @@ func (m *App) applySelectionEntry() {
 		m.exec.FillConditions(fq.Groups, fq.Labels)
 		return
 	}
-	// 搜索/状态过滤无法翻译为组/标签条件: 表单清空, 快照兜底为全量节点
-	m.exec.CaptureAllTargets()
 	m.exec.FillConditions(nil, nil)
 }
 

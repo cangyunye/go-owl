@@ -95,16 +95,6 @@ func (m *ExecModel) CaptureTargets(nodes []*common.NodeInfo) {
 	m.targets = append([]*common.NodeInfo(nil), nodes...)
 }
 
-// CaptureAllTargets 快照回退: 以 store 全量节点为目标(搜索/状态过滤无法翻译为组/标签条件时的兜底)
-func (m *ExecModel) CaptureAllTargets() {
-	all, err := m.store.List()
-	if err != nil {
-		m.targets = nil
-		return
-	}
-	m.targets = append([]*common.NodeInfo(nil), all...)
-}
-
 // FillNodes 填显式节点列表并清空组/标签条件
 func (m *ExecModel) FillNodes(ids []string) {
 	m.nodesInput.SetValue(strings.Join(ids, ","))

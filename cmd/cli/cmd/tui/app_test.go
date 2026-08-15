@@ -322,13 +322,38 @@ func TestApp_XSearchFilterFallsBackToSnapshot(t *testing.T) {
 	if got := m.exec.NodesValue(); got != "" {
 		t.Fatalf("expected nodes cleared, got %q", got)
 	}
-	// 快照兜底: 目标仍为全部可见节点
+	// 快照兜底 = 当前可见集: 搜索 foo 无匹配 → 可见 0 → 快照 0
 	nodes, err := m.exec.ResolveForTest()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nodes) != 2 {
-		t.Fatalf("expected snapshot fallback of 2 nodes, got %d", len(nodes))
+	if len(nodes) != 0 {
+		t.Fatalf("expected empty snapshot fallback (search foo matches nothing), got %d", len(nodes))
+	}
+}
+
+func TestApp_XStatusFilterFallsBackToVisible(t *testing.T) {
+	m := newApp(t)
+	// 过滤 s:online → 可见 = 过滤后的 Visible(seed 无 status 字段 → 匹配空/非空, 数量以 Visible 为准)
+	nm, _ := m.Update(runeKey('/'))
+	nm, _ = nm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s:online")})
+	nm, _ = nm.Update(key(tea.KeyEnter))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('x'))
+	m = nm.(*App)
+	if m.panel != 1 {
+		t.Fatalf("expected panel 1, got %d", m.panel)
+	}
+	if got := m.exec.GroupsValue(); got != "" {
+		t.Fatalf("status filter must not fill groups, got %q", got)
+	}
+	nodes, err := m.exec.ResolveForTest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 快照 = 当前可见集(过滤后的 Visible), 不是 store 全量
+	if len(nodes) != len(m.nodes.Visible()) {
+		t.Fatalf("expected fallback to visible set (%d), got %d", len(m.nodes.Visible()), len(nodes))
 	}
 }
 
