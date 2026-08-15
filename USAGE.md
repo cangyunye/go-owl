@@ -133,6 +133,9 @@ ai:
   api-key: your-api-key
 ```
 
+### 配置 TUI 主题
+`OWL_TUI_THEME` 主题名：`default|catppuccin|nord|dracula|solarized`（默认 catppuccin）。
+
 ## 🎯 优化目标
 
 本次优化主要实现：

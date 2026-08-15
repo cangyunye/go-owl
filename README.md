@@ -289,6 +289,9 @@ settings:
 
 历史数据库默认位于 `~/.owl/owl.db`，可通过环境变量 `OWL_DB_PATH` 覆盖。
 
+`OWL_TUI_THEME` 选择主题：`default` / `catppuccin` / `nord` / `dracula` / `solarized`（默认 `catppuccin`）。
+主题在 TrueColor/256/ANSI 色域自动降级，并按终端明暗背景自适应。
+
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！

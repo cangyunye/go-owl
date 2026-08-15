@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -37,10 +38,10 @@ func runTui(cmd *cobra.Command, args []string) {
 		dbs.SetConflictPrompt(false)
 	}
 
-	// 请求 truecolor 但终端不支持(如 conhost)时回退 ANSI 并提示
-	if theme.DowngradedToANSI() {
-		fmt.Fprintln(os.Stderr, "提示: OWL_TUI_THEME=truecolor 但当前终端不支持真彩色(conhost 无法渲染 24bit 色),已回退 ANSI 主题。")
-		fmt.Fprintln(os.Stderr, "      请在 Windows Terminal / ConEmu 等支持真彩的终端中运行,或取消该环境变量。")
+	// 请求了主题但环境变量值不可识别时回退默认并提示
+	if name := os.Getenv(theme.EnvTheme); name != "" && theme.Current() == theme.DefaultTheme && strings.ToLower(strings.TrimSpace(name)) != string(theme.DefaultTheme) {
+		fmt.Fprintln(os.Stderr, "提示: OWL_TUI_THEME=\""+name+"\" 不是可用主题,已回退默认(catppuccin)。")
+		fmt.Fprintln(os.Stderr, "      可用: default / catppuccin / nord / dracula / solarized")
 	}
 
 	app := NewApp(store)
