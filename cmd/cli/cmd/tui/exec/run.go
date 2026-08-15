@@ -17,6 +17,7 @@ type ExecStreamMsg struct {
 
 type ExecResultMsg struct {
 	Result command.CommandResult
+	Ch     chan command.CommandResult
 }
 
 type ExecDoneMsg struct{}
@@ -55,20 +56,40 @@ func (m *ExecModel) startRun() (tea.Cmd, error) {
 }
 
 func (m *ExecModel) launchRun(ids []string, cmd string, opts *command.ExecuteOptions) tea.Cmd {
+	if m.runCancel != nil {
+		m.runCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.runCancel = cancel
+	out := make(chan command.CommandResult, len(ids))
+	m.runCh = out
 	m.lastCmd = cmd
 	m.lastIDs = ids
 	m.lastOpts = opts
 	m.results = nil
 	m.loading = true
-	m.push(LocResult)
+	if m.current() != LocResult {
+		m.push(LocResult)
+	}
 	return func() tea.Msg {
-		ch, stop := runStream(context.Background(), ids, cmd, opts)
-		out := make(chan command.CommandResult, len(ids))
+		ch, stop := runStream(ctx, ids, cmd, opts)
 		go func() {
 			defer stop()
 			defer close(out)
-			for r := range ch {
-				out <- r
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case r, ok := <-ch:
+					if !ok {
+						return
+					}
+					select {
+					case out <- r:
+					case <-ctx.Done():
+						return
+					}
+				}
 			}
 		}()
 		return ExecStreamMsg{ch: out}
@@ -81,6 +102,6 @@ func pumpResults(ch chan command.CommandResult) tea.Cmd {
 		if !ok {
 			return ExecDoneMsg{}
 		}
-		return ExecResultMsg{Result: r}
+		return ExecResultMsg{Result: r, Ch: ch}
 	}
 }

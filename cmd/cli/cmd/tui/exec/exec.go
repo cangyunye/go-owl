@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"context"
 	"sort"
 	"strings"
 
@@ -49,8 +50,9 @@ type ExecModel struct {
 
 	targets []*common.NodeInfo
 
-	runCh    chan command.CommandResult
-	lastCmd  string
+	runCh     chan command.CommandResult
+	runCancel context.CancelFunc
+	lastCmd   string
 	lastIDs  []string
 	lastOpts *command.ExecuteOptions
 	loading  bool
@@ -236,6 +238,9 @@ func (m ExecModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.runCh = msg.ch
 		return m, pumpResults(msg.ch)
 	case ExecResultMsg:
+		if msg.Ch != m.runCh {
+			return m, nil
+		}
 		m.results = append(m.results, msg.Result)
 		return m, pumpResults(m.runCh)
 	case ExecDoneMsg:
@@ -244,6 +249,9 @@ func (m ExecModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
+			if m.runCancel != nil {
+				m.runCancel()
+			}
 			m.pop()
 			return m, nil
 		case "r":

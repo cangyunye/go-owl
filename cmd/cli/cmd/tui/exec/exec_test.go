@@ -502,3 +502,109 @@ func TestResult_Rerun(t *testing.T) {
 		t.Fatalf("expected ExecStreamMsg, got %T", cmd())
 	}
 }
+
+func TestResult_RerunMidStreamDropsStale(t *testing.T) {
+	var call int
+	runStream = func(ctx context.Context, ids []string, cmd string, opts *command.ExecuteOptions) (<-chan command.CommandResult, func()) {
+		call++
+		ch := make(chan command.CommandResult, 2)
+		if call == 1 {
+			ch <- command.CommandResult{NodeID: "n1", Success: true}
+			ch <- command.CommandResult{NodeID: "n2", Success: false}
+		} else {
+			ch <- command.CommandResult{NodeID: "n3", Success: true}
+		}
+		close(ch)
+		return ch, func() {}
+	}
+	m := newTestModel(t)
+	m.cmdInput.SetValue("echo hi")
+	nm, cmd := m.Update(runeKey('r'))
+	m = nm.(ExecModel)
+	sm := cmd().(ExecStreamMsg)
+	nm, cmd = m.Update(sm)
+	m = nm.(ExecModel)
+	rmsg := cmd().(ExecResultMsg)
+	nm, cmd = m.Update(rmsg)
+	m = nm.(ExecModel)
+	if len(m.results) != 1 || m.results[0].NodeID != "n1" {
+		t.Fatalf("expected 1 result n1, got %v", m.results)
+	}
+	oldPumpCmd := cmd
+	nm, cmd = m.Update(runeKey('r'))
+	m = nm.(ExecModel)
+	sm2 := cmd().(ExecStreamMsg)
+	nm, newPumpCmd := m.Update(sm2)
+	m = nm.(ExecModel)
+	if len(m.results) != 0 {
+		t.Fatalf("expected results reset on rerun, got %v", m.results)
+	}
+	oldMsg := oldPumpCmd()
+	nm, cmd = m.Update(oldMsg)
+	m = nm.(ExecModel)
+	if len(m.results) != 0 {
+		t.Fatalf("stale result from old stream appended: %v", m.results)
+	}
+	if cmd != nil {
+		t.Fatalf("stale result should not re-pump, got %v", cmd)
+	}
+	newMsg := newPumpCmd()
+	nm, cmd = m.Update(newMsg)
+	m = nm.(ExecModel)
+	if len(m.results) != 1 || m.results[0].NodeID != "n3" {
+		t.Fatalf("expected 1 result n3, got %v", m.results)
+	}
+	got := m.View()
+	if !contains(got, "成功 1/1") {
+		t.Fatalf("view missing 成功 1/1:\n%s", got)
+	}
+	if contains(got, "n2") {
+		t.Fatalf("view should not contain stale n2:\n%s", got)
+	}
+}
+
+func TestResult_EscCancelsAndStopsExecutor(t *testing.T) {
+	stopCalled := make(chan struct{})
+	runStream = func(ctx context.Context, ids []string, cmd string, opts *command.ExecuteOptions) (<-chan command.CommandResult, func()) {
+		ch := make(chan command.CommandResult)
+		return ch, func() { close(stopCalled) }
+	}
+	m := newTestModel(t)
+	m.cmdInput.SetValue("echo hi")
+	nm, cmd := m.Update(runeKey('r'))
+	m = nm.(ExecModel)
+	sm := cmd().(ExecStreamMsg)
+	nm, _ = m.Update(sm)
+	m = nm.(ExecModel)
+	nm, _ = m.Update(key(tea.KeyEsc))
+	m = nm.(ExecModel)
+	select {
+	case <-stopCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stop not called after esc")
+	}
+	if m.current() != LocRun {
+		t.Fatalf("expected LocRun after esc, got %v", m.current())
+	}
+}
+
+func TestResult_RerunPushesLocResultOnce(t *testing.T) {
+	fakeStream(nil)
+	m := newTestModel(t)
+	m.cmdInput.SetValue("echo hi")
+	nm, cmd := m.Update(runeKey('r'))
+	m = nm.(ExecModel)
+	sm := cmd().(ExecStreamMsg)
+	nm, _ = m.Update(sm)
+	m = nm.(ExecModel)
+	nm, cmd = m.Update(runeKey('r'))
+	m = nm.(ExecModel)
+	sm = cmd().(ExecStreamMsg)
+	nm, _ = m.Update(sm)
+	m = nm.(ExecModel)
+	nm, _ = m.Update(key(tea.KeyEsc))
+	m = nm.(ExecModel)
+	if m.current() != LocRun {
+		t.Fatalf("expected LocRun after one esc, got %v", m.current())
+	}
+}
