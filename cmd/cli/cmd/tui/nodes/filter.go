@@ -15,6 +15,7 @@ type FilterQuery struct {
 
 func ParseFilterQuery(q string) FilterQuery {
 	fq := FilterQuery{Labels: map[string]string{}}
+	q = normalizeFullwidth(q)
 	var search []string
 	for _, raw := range strings.Fields(q) {
 		// `&&` 是显式 AND 运算符:每个空格切出的 token 再按 `&&` 切分,语义与空格等价
@@ -89,6 +90,25 @@ func applyFilter(nodes []*common.NodeInfo, fq FilterQuery) []*common.NodeInfo {
 		}
 	}
 	return out
+}
+
+// normalizeFullwidth 将中文输入法全角模式下的常见符号归一化为半角:
+// ＆→& (AND 运算符)、：→: (g:/l:/s: 前缀)、＝→= (label k=v)。
+func normalizeFullwidth(q string) string {
+	var b strings.Builder
+	for _, r := range q {
+		switch r {
+		case '＆':
+			b.WriteRune('&')
+		case '：':
+			b.WriteRune(':')
+		case '＝':
+			b.WriteRune('=')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func groupsIntersect(a, b []string) bool {

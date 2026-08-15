@@ -49,6 +49,16 @@ func TestParseFilterQuery_Empty(t *testing.T) {
 	}
 }
 
+func TestParseFilterQuery_FullwidthAND(t *testing.T) {
+	fq := ParseFilterQuery("g:dev ＆＆ l:app=kali")
+	if len(fq.Groups) != 1 || fq.Groups[0] != "dev" || fq.Labels["app"] != "kali" {
+		t.Fatalf("fullwidth && should parse as AND: groups=%#v labels=%#v search=%q", fq.Groups, fq.Labels, fq.Search)
+	}
+	if fq.Search != "" {
+		t.Fatalf("fullwidth && must not leak into search: %q", fq.Search)
+	}
+}
+
 func TestParseFilterQuery_ExplicitAND(t *testing.T) {
 	fq := ParseFilterQuery("web && cache")
 	if fq.Search != "web cache" {
