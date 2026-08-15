@@ -67,3 +67,27 @@ func TestView_ColumnsRendersFields(t *testing.T) {
 		}
 	}
 }
+
+func TestListView_ShowsMarkBoxes(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	nm, _ := m.Update(runeKey(' '))
+	m = nm.(Model)
+	got := m.View()
+	if !strings.Contains(got, "[x]") || !strings.Contains(got, "[ ]") {
+		t.Fatalf("expected mark boxes in list view:\n%s", got)
+	}
+}
+
+func TestStatusBar_ShowsMarkCount(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	m.marked["n1"] = true
+	m.marked["n2"] = true
+	got := m.View()
+	if !strings.Contains(got, "已选 2") {
+		t.Fatalf("expected mark count in status bar:\n%s", got)
+	}
+}

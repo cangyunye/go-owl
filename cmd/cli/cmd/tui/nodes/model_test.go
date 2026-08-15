@@ -230,3 +230,85 @@ func TestWindowSizeMsg_UpdatesWidth(t *testing.T) {
 		t.Fatalf("expected width 100, got %d", m.width)
 	}
 }
+
+func idsOf(nodes []*common.NodeInfo) []string {
+	ids := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		ids = append(ids, n.ID)
+	}
+	return ids
+}
+
+func TestMark_ToggleWithSpace(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	// 光标在 n1, Space 勾选
+	nm, _ := m.Update(runeKey(' '))
+	m = nm.(Model)
+	if !m.IsMarked("n1") || m.MarkedCount() != 1 {
+		t.Fatalf("expected n1 marked, got %d", m.MarkedCount())
+	}
+	// 再 Space 取消
+	nm, _ = m.Update(runeKey(' '))
+	m = nm.(Model)
+	if m.IsMarked("n1") || m.MarkedCount() != 0 {
+		t.Fatal("expected n1 unmarked after second space")
+	}
+}
+
+func TestMarkedIDs_Sorted(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	m.marked["n3"] = true
+	m.marked["n1"] = true
+	if got := m.MarkedIDs(); len(got) != 2 || got[0] != "n1" || got[1] != "n3" {
+		t.Fatalf("expected sorted [n1 n3], got %v", got)
+	}
+}
+
+func TestMarked_MovesWithCursorAndSurvivesFilter(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	// 勾选 n1, 下移到 n2 勾选
+	nm, _ := m.Update(runeKey(' '))
+	m = nm.(Model)
+	nm, _ = m.Update(key(tea.KeyDown))
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey(' '))
+	m = nm.(Model)
+	if m.MarkedCount() != 2 {
+		t.Fatalf("expected 2 marked, got %d", m.MarkedCount())
+	}
+	// 过滤到 db 组(n2), 勾选保留
+	m.filter = ParseFilterQuery("g:db")
+	m.reload()
+	if !m.IsMarked("n1") || !m.IsMarked("n2") {
+		t.Fatal("marks must survive filter change")
+	}
+	if len(m.visible()) != 1 || m.visible()[0].ID != "n2" {
+		t.Fatalf("filter should show only n2, got %v", idsOf(m.visible()))
+	}
+}
+
+func TestMark_DoesNotAffectIsDirty(t *testing.T) {
+	store := newTestStore(t)
+	seedNodes(t, store)
+	m := NewModel(store)
+	nm, _ := m.Update(runeKey(' '))
+	m = nm.(Model)
+	if m.IsDirty() {
+		t.Fatal("marks are session state, must not dirty the model")
+	}
+}
+
+func TestFilter_Exported(t *testing.T) {
+	m := NewModel(newTestStore(t))
+	m.filter = ParseFilterQuery("g:web l:env=prod")
+	fq := m.Filter()
+	if len(fq.Groups) != 1 || fq.Groups[0] != "web" || fq.Labels["env"] != "prod" {
+		t.Fatalf("unexpected filter export: %#v", fq)
+	}
+}

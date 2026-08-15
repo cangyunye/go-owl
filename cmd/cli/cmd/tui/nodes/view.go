@@ -52,21 +52,26 @@ func (m Model) View() string {
 func (m Model) listPane() string {
 	cols := m.selectedColumns()
 	avail := m.width / 2
-	widths := computeColumnWidths(cols, avail)
+	widths := computeColumnWidths(cols, avail-5)
 	var b strings.Builder
+	b.WriteString("     ")
 	for i, c := range cols {
 		b.WriteString(styleSelected.Render(truncateCell(c.Label, widths[i])))
 		b.WriteString(" ")
 	}
 	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", sum(widths)+len(cols)) + "\n")
+	b.WriteString("     " + strings.Repeat("─", sum(widths)+len(cols)) + "\n")
 	v := m.visible()
 	for i, n := range v {
+		box := "[ ]"
+		if m.marked[n.ID] {
+			box = "[x]"
+		}
 		marker := " "
 		if i == m.cursor {
 			marker = ">"
 		}
-		b.WriteString(marker)
+		b.WriteString(box + " " + marker)
 		for j, c := range cols {
 			cell := truncateCell(cellValue(n, c.Key), widths[j])
 			if i == m.cursor {
@@ -128,6 +133,10 @@ func (m Model) statusBar() string {
 	var b strings.Builder
 	if len(chips) > 0 {
 		b.WriteString(styleSelected.Render("[" + strings.Join(chips, " ") + "]"))
+		b.WriteString("  ")
+	}
+	if m.MarkedCount() > 0 {
+		b.WriteString(styleSelected.Render(fmt.Sprintf("[已选 %d]", m.MarkedCount())))
 		b.WriteString("  ")
 	}
 	if m.filterOpen {

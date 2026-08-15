@@ -54,6 +54,8 @@ type Model struct {
 	filterOpen  bool
 	filterText  string
 
+	marked map[string]bool
+
 	columns      []string
 	form         *FormModel
 	confirm      *ConfirmModel
@@ -73,6 +75,7 @@ func NewModel(store common.NodeStore) Model {
 		stack:       []Location{LocList},
 		columns:     append([]string(nil), defaultColumnKeys...),
 		filterInput: newInput("/ 过滤 (g:组 l:标签)", 40),
+		marked:      map[string]bool{},
 		width:       120,
 	}
 	m.reload()
@@ -157,6 +160,21 @@ func (m Model) Visible() []*common.NodeInfo { return m.visible() }
 
 func (m Model) InsertMode() bool { return m.mode != ModeNormal }
 
+func (m Model) MarkedIDs() []string {
+	ids := make([]string, 0, len(m.marked))
+	for id := range m.marked {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func (m Model) MarkedCount() int { return len(m.marked) }
+
+func (m Model) IsMarked(id string) bool { return m.marked[id] }
+
+func (m Model) Filter() FilterQuery { return m.filter }
+
 func (m Model) Path() []string {
 	id := m.selectedID()
 	switch m.current() {
@@ -240,6 +258,14 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case "G":
 		m.cursor = len(m.visible()) - 1
+	case " ":
+		if n := m.selectedNode(); n != nil {
+			if m.marked[n.ID] {
+				delete(m.marked, n.ID)
+			} else {
+				m.marked[n.ID] = true
+			}
+		}
 	case "/":
 		m.filterOpen = true
 		m.mode = ModeInsert
