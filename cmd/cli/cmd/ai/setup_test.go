@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -41,5 +42,18 @@ func TestSetupSession_NilConfigLoadsFileOrDefault(t *testing.T) {
 	}
 	if cfg == nil || cfg.AI.Provider == "" {
 		t.Fatal("cfg should be loaded from file or default")
+	}
+}
+
+type errStore struct{ common.NodeStore }
+
+func (errStore) List() ([]*common.NodeInfo, error) {
+	return nil, fmt.Errorf("list boom")
+}
+
+func TestSetupSession_StoreListError(t *testing.T) {
+	_, _, err := SetupSession(errStore{}, nil, false)
+	if err == nil {
+		t.Fatal("expected error from store list failure")
 	}
 }

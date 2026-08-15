@@ -648,6 +648,7 @@
   "ai.progress.execute": "Starting execution",
   "ai.progress.done": "Operation completed",
   "ai.error_init_node_manager": "Error: failed to initialize node manager\n",
+  "ai.error_init_agent": "AI session setup failed: %v\n",
   "ai.chat.user_line": "[%s] You: %s\n",
   "ai.chat.failed": "[%s] owl-ai: failed: %v\n",
   "ai.banner.title": "\u001b[36m║           owl-AI Intelligent Ops Assistant             ║\u001b[0m",

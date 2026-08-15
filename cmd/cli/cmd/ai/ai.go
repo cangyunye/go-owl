@@ -249,7 +249,8 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	agent, _, err := SetupSession(store, config, aiVerbose)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize Eino LLM: %v, using fallback mode\n", err)
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.error_init_agent", err))
+		os.Exit(1)
 	}
 
 	if len(args) > 0 {

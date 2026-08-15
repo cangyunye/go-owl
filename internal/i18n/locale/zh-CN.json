@@ -648,6 +648,7 @@
   "ai.progress.execute": "开始执行操作",
   "ai.progress.done": "操作完成",
   "ai.error_init_node_manager": "Error: 初始化节点管理器失败\n",
+  "ai.error_init_agent": "AI 会话装配失败: %v\n",
   "ai.chat.user_line": "[%s] 用户：%s\n",
   "ai.chat.failed": "[%s] owl-ai: 失败: %v\n",
   "ai.banner.title": "\u001b[36m║           owl-AI 智能运维助手                          ║\u001b[0m",
