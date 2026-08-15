@@ -15,7 +15,6 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/ai/input"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/ai"
-	"github.com/cangyunye/go-owl/internal/control/playbook"
 	internalhistory "github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/i18n"
 )
@@ -205,22 +204,7 @@ func truncateForDB(s string, maxLen int) string {
 func runAI(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
-	// 设置日志详细模式
-	ai.SetLogVerbose(aiVerbose)
-	ai.SetLLMLogVerbose(aiVerbose)
-
 	store := common.GetNodeStore()
-	nodeStoreAdapter := createBridgeAdapter(store)
-	bridge := ai.NewNodeStoreBridge()
-	bridge.SyncFromStore(nodeStoreAdapter)
-
-	nodeMgr := ai.InitNodeManager(bridge)
-	if nodeMgr == nil {
-		fmt.Fprintf(os.Stderr, "%s", i18n.T("ai.error_init_node_manager"))
-		os.Exit(1)
-	}
-
-	playbookParser := playbook.NewParser()
 
 	home, _ := os.UserHomeDir()
 	configPath := filepath.Join(home, ".owl", "config.yaml")
@@ -263,8 +247,7 @@ func runAI(cmd *cobra.Command, args []string) {
 
 	sessionID := fmt.Sprintf("ai-%d", time.Now().UnixMilli())
 
-	executor := ai.NewCLIExecutor(nodeMgr, nodeStoreAdapter)
-	agent, err := ai.NewAgent(executor, config, nodeMgr, nodeStoreAdapter, playbookParser, aiVerbose)
+	agent, _, err := SetupSession(store, config, aiVerbose)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize Eino LLM: %v, using fallback mode\n", err)
 	}
