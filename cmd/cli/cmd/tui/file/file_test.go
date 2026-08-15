@@ -388,6 +388,30 @@ func TestResult_Rerun(t *testing.T) {
 	}
 }
 
+func TestResult_RerunDownload(t *testing.T) {
+	downloadRun = func(ctx context.Context, ids []string, remoteFile, localDir string, opts *transfer.DownloadOptions) []transfer.TransferResult {
+		return nil
+	}
+	recordOperation = func(o *history.Operation) error { return nil }
+	recordFileTransfer = func(f *history.FileTransfer) error { return nil }
+	m := newTestModel(t)
+	m.op = OpDownload
+	m.destInput.SetValue(filepath.Join(t.TempDir(), "out"))
+	m.fileInput.SetValue("/var/log/app.log")
+	m.push(LocResult)
+	nm, cmd := m.Update(runeKey('r'))
+	m = nm.(FileModel)
+	if cmd == nil {
+		t.Fatal("expected rerun cmd")
+	}
+	if _, ok := cmd().(DownloadDoneMsg); !ok {
+		t.Fatalf("expected DownloadDoneMsg, got %T", cmd())
+	}
+	if m.current() != LocResult {
+		t.Fatalf("expected to stay on LocResult, got %v", m.current())
+	}
+}
+
 func TestStartDownload_EmptyRemote(t *testing.T) {
 	m := newTestModel(t)
 	m.op = OpDownload

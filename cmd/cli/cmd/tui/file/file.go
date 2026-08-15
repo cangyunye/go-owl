@@ -220,7 +220,14 @@ func (m FileModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.pop()
 		case "r":
-			cmd, err := m.startUpload()
+			var cmd tea.Cmd
+			var err error
+			switch m.op {
+			case OpDownload:
+				cmd, err = m.startDownload()
+			default:
+				cmd, err = m.startUpload()
+			}
 			if err != nil {
 				m.error = err.Error()
 				m.pop()
