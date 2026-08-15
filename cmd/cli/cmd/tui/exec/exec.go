@@ -294,19 +294,17 @@ func (m *ExecModel) resolveTargets() ([]*common.NodeInfo, error) {
 				nodes = append(nodes, n)
 			}
 		}
-	case m.groupsInput.Value() != "":
+	case m.groupsInput.Value() != "" || m.labelsInput.Value() != "":
 		groups := splitTrim(m.groupsInput.Value(), ",")
-		for _, n := range all {
-			if groupsIntersect(n.Groups, groups) {
-				nodes = append(nodes, n)
-			}
-		}
-	case m.labelsInput.Value() != "":
 		labels := parseLabels(m.labelsInput.Value())
 		for _, n := range all {
-			if labelsMatch(n.Labels, labels) {
-				nodes = append(nodes, n)
+			if len(groups) > 0 && !groupsIntersect(n.Groups, groups) {
+				continue
 			}
+			if len(labels) > 0 && !labelsMatch(n.Labels, labels) {
+				continue
+			}
+			nodes = append(nodes, n)
 		}
 	default:
 		nodes = m.targets

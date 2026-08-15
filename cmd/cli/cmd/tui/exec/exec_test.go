@@ -145,6 +145,56 @@ func TestResolve_DedupeAndSort(t *testing.T) {
 	}
 }
 
+func TestResolve_GroupsAndLabels_Intersect(t *testing.T) {
+	m := newTestModel(t)
+	m.groupsInput.SetValue("web")
+	m.labelsInput.SetValue("role=cache")
+	nodes, err := m.resolveTargets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 || nodes[0].ID != "n3" {
+		t.Fatalf("expected [n3] (web AND role=cache), got %v", nodeIDs(nodes))
+	}
+}
+
+func TestResolve_GroupsAndLabels_Mismatch(t *testing.T) {
+	m := newTestModel(t)
+	m.groupsInput.SetValue("db")
+	m.labelsInput.SetValue("env=prod")
+	nodes, err := m.resolveTargets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("expected no match (db AND env=prod), got %v", nodeIDs(nodes))
+	}
+}
+
+func TestResolve_GroupsOnly_NoLabels(t *testing.T) {
+	m := newTestModel(t)
+	m.groupsInput.SetValue("web")
+	nodes, err := m.resolveTargets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 2 || nodes[0].ID != "n1" || nodes[1].ID != "n3" {
+		t.Fatalf("expected [n1 n3], got %v", nodeIDs(nodes))
+	}
+}
+
+func TestResolve_LabelsOnly_NoGroups(t *testing.T) {
+	m := newTestModel(t)
+	m.labelsInput.SetValue("env=prod")
+	nodes, err := m.resolveTargets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 2 || nodes[0].ID != "n1" || nodes[1].ID != "n3" {
+		t.Fatalf("expected [n1 n3], got %v", nodeIDs(nodes))
+	}
+}
+
 func TestRunView_ShowsFourFieldsAndFormat(t *testing.T) {
 	m := newTestModel(t)
 	got := m.View()
