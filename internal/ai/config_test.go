@@ -2,6 +2,7 @@ package ai
 
 import (
 	"os"
+	"runtime"
 	"testing"
 )
 
@@ -181,6 +182,9 @@ func TestConfig_SaveAndLoad(t *testing.T) {
 }
 
 func TestConfig_SavePermission(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX 权限位在 Windows 上无意义(Go 将 0600 归一化为 0666)")
+	}
 	dir := t.TempDir()
 	path := dir + "/perm-test.yaml"
 

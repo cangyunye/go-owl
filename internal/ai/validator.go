@@ -2,7 +2,6 @@ package ai
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -202,7 +201,8 @@ func (v *Validator) ValidateTransferFile(params map[string]interface{}) error {
 	if !ok || destStr == "" {
 		return fmt.Errorf("dest_dir must be a non-empty string")
 	}
-	if !filepath.IsAbs(destStr) {
+	// 传输目标是远端 Linux 节点,按 POSIX 判定绝对路径(不以 Windows filepath.IsAbs 为准)
+	if !strings.HasPrefix(destStr, "/") {
 		return fmt.Errorf("dest_dir must be an absolute path")
 	}
 
@@ -279,7 +279,8 @@ func (v *Validator) ValidateExecuteScript(params map[string]interface{}) error {
 		if !ok {
 			return fmt.Errorf("dest must be a string")
 		}
-		if !filepath.IsAbs(destStr) {
+		// dest 为远端节点上的脚本目标目录,按 POSIX 判定绝对路径
+		if !strings.HasPrefix(destStr, "/") {
 			return fmt.Errorf("dest must be an absolute path")
 		}
 	}
