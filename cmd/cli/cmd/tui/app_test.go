@@ -72,6 +72,26 @@ func TestApp_FJumpsToFileFromNodes(t *testing.T) {
 	}
 }
 
+func TestApp_FNotInterceptedInsideImportExportDialog(t *testing.T) {
+	m := newApp(t)
+	// 打开导入/导出对话框(i),Esc 回 Normal 后按 f 应切换格式,而不是被 App 劫持跳到 File 面板
+	nm, _ := m.Update(runeKey('i'))
+	m = nm.(*App)
+	nm, _ = m.Update(key(tea.KeyEsc))
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('f'))
+	m = nm.(*App)
+	if m.panel != 0 {
+		t.Fatalf("'f' inside import/export dialog must not switch panel, got %d", m.panel)
+	}
+	if got := m.View(); !strings.Contains(got, "导入/导出") {
+		t.Fatalf("expected import/export dialog still open: %s", got)
+	}
+	if got := m.View(); !strings.Contains(got, "json") {
+		t.Fatalf("expected format toggled to json after 'f': %s", got)
+	}
+}
+
 func TestApp_FIgnoredInExecPanel(t *testing.T) {
 	m := newApp(t)
 	nm, _ := m.Update(runeKey('2'))

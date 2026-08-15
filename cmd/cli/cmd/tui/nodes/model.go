@@ -150,6 +150,9 @@ func (m Model) selectedID() string {
 
 func (m Model) Mode() Mode { return m.mode }
 
+// AtList 是否位于节点列表主视图(非对话框/表单)
+func (m Model) AtList() bool { return m.current() == LocList }
+
 func (m Model) Visible() []*common.NodeInfo { return m.visible() }
 
 func (m Model) InsertMode() bool { return m.mode != ModeNormal }

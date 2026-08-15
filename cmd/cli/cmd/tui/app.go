@@ -129,7 +129,7 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.switchPanel(2)
 			return m, nil
 		case "f":
-			if m.panel == 0 {
+			if m.panel == 0 && m.nodes.AtList() {
 				m.switchPanel(2)
 				return m, nil
 			}
