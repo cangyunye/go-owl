@@ -53,10 +53,15 @@ type ExecModel struct {
 	runCh     chan command.CommandResult
 	runCancel context.CancelFunc
 	lastCmd   string
-	lastIDs  []string
-	lastOpts *command.ExecuteOptions
-	loading  bool
-	results  []command.CommandResult
+	lastIDs   []string
+	lastOpts  *command.ExecuteOptions
+	loading   bool
+	results   []command.CommandResult
+
+	pendingBlocked []BlockedInfo
+	pendingCmd     string
+	pendingIDs     []string
+	pendingOpts    *command.ExecuteOptions
 
 	error string
 }
@@ -265,8 +270,6 @@ func (m ExecModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
-func (m ExecModel) updateDanger(msg tea.Msg) (tea.Model, tea.Cmd)   { return m, nil }
-
 func (m *ExecModel) resolveTargets() ([]*common.NodeInfo, error) {
 	all, err := m.store.List()
 	if err != nil {

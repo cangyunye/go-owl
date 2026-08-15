@@ -128,4 +128,17 @@ func (m ExecModel) resultView() string {
 	b.WriteString("└─")
 	return b.String()
 }
-func (m ExecModel) dangerView() string { return "" }
+func (m ExecModel) dangerView() string {
+	var b strings.Builder
+	b.WriteString("┌─ 危险命令确认 ─────────────────────\n")
+	b.WriteString("  命令: " + styleSelected.Render(m.pendingCmd) + "\n")
+	for _, bl := range m.pendingBlocked {
+		b.WriteString(fmt.Sprintf("  ✗ %s (user=%s)\n", bl.NodeID, bl.User))
+		for _, mt := range bl.Matches {
+			b.WriteString(styleError.Render("     匹配 "+mt.Pattern+": "+mt.Line) + "\n")
+		}
+	}
+	b.WriteString(styleDim.Render("  继续执行? y 执行  n 取消") + "\n")
+	b.WriteString("└─")
+	return b.String()
+}

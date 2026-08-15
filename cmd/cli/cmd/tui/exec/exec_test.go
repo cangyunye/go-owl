@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	"github.com/cangyunye/go-owl/internal/control/command"
 )
 
@@ -606,5 +607,85 @@ func TestResult_RerunPushesLocResultOnce(t *testing.T) {
 	m = nm.(ExecModel)
 	if m.current() != LocRun {
 		t.Fatalf("expected LocRun after one esc, got %v", m.current())
+	}
+}
+
+func fakeBlacklist(blocked []BlockedInfo) {
+	checkBlacklist = func(nodeUsers map[string]string, cmd string) []BlockedInfo {
+		return blocked
+	}
+}
+
+func TestDanger_BlockedStopsAndConfirms(t *testing.T) {
+	fakeBlacklist([]BlockedInfo{
+		{NodeID: "n1", User: "root", Matches: []blacklist.MatchItem{{Pattern: "rm", Line: "rm -rf /"}}},
+	})
+	m := newTestModel(t)
+	m.cmdInput.SetValue("rm -rf /")
+	cmd, _ := m.startRun()
+	if cmd != nil {
+		t.Fatal("expected nil cmd while blocked")
+	}
+	if m.current() != LocDanger {
+		t.Fatalf("expected LocDanger, got %v", m.current())
+	}
+	got := m.View()
+	for _, want := range []string{"危险命令确认", "rm -rf /", "rm"} {
+		if !contains(got, want) {
+			t.Fatalf("view missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestDanger_YProceedsToResult(t *testing.T) {
+	fakeBlacklist([]BlockedInfo{{NodeID: "n1", User: "root"}})
+	fakeStream(nil)
+	m := newTestModel(t)
+	m.cmdInput.SetValue("rm -rf /")
+	m.startRun()
+	nm, cmd := m.Update(runeKey('y'))
+	m = nm.(ExecModel)
+	if cmd == nil {
+		t.Fatal("expected exec cmd after y")
+	}
+	if _, ok := cmd().(ExecStreamMsg); !ok {
+		t.Fatalf("expected ExecStreamMsg, got %T", cmd())
+	}
+	if m.current() != LocResult {
+		t.Fatalf("expected LocResult, got %v", m.current())
+	}
+}
+
+func TestDanger_NCancels(t *testing.T) {
+	fakeBlacklist([]BlockedInfo{{NodeID: "n1", User: "root"}})
+	m := newTestModel(t)
+	m.cmdInput.SetValue("rm -rf /")
+	m.startRun()
+	nm, cmd := m.Update(runeKey('n'))
+	m = nm.(ExecModel)
+	if cmd != nil {
+		t.Fatal("expected nil cmd after n")
+	}
+	if m.current() != LocRun {
+		t.Fatalf("expected LocRun, got %v", m.current())
+	}
+}
+
+func TestForce_SkipsBlacklist(t *testing.T) {
+	checkBlacklist = func(nodeUsers map[string]string, cmd string) []BlockedInfo {
+		t.Fatal("checkBlacklist should not be called with force")
+		return nil
+	}
+	fakeStream(nil)
+	m := newTestModel(t)
+	m.cmdInput.SetValue("rm -rf /")
+	m.advanced = newAdvancedForm()
+	m.advanced.fields[17].checked = true // force 行
+	cmd, _ := m.startRun()
+	if cmd == nil {
+		t.Fatal("expected exec cmd with force")
+	}
+	if _, ok := cmd().(ExecStreamMsg); !ok {
+		t.Fatalf("expected ExecStreamMsg, got %T", cmd())
 	}
 }

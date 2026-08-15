@@ -52,6 +52,20 @@ func (m *ExecModel) startRun() (tea.Cmd, error) {
 	for _, n := range nodes {
 		ids = append(ids, n.ID)
 	}
+	if !f.isOn("force") {
+		nodeUsers := map[string]string{}
+		for _, n := range nodes {
+			nodeUsers[n.ID] = n.User
+		}
+		if blocked := checkBlacklist(nodeUsers, cmd); len(blocked) > 0 {
+			m.pendingBlocked = blocked
+			m.pendingCmd = cmd
+			m.pendingIDs = ids
+			m.pendingOpts = opts
+			m.push(LocDanger)
+			return nil, nil
+		}
+	}
 	return m.launchRun(ids, cmd, opts), nil
 }
 

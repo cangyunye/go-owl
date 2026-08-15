@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/exec"
@@ -173,6 +173,8 @@ func helpView() string {
 		"        例: s:online  → 状态为在线的节点  ? 帮助  q 退出",
 		"  表单:  ↑↓ 移动字段(首尾回卷)  Enter 编辑",
 		"        s 保存  Esc 返回/退出输入  ? 帮助",
+		"  执行:  命令必填  r 执行  a 高级选项  f 格式",
+		"        ↑↓ 移动字段  Enter 编辑  Esc 返回 Nodes",
 		"  模式:  Normal=命令   Insert=输入(Esc 退出)",
 		"└────────────────────────────────────",
 	}, "\n")
