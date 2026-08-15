@@ -252,6 +252,7 @@ func (m FileModel) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				b.inputOpen = false
 				b.input.Blur()
+				b.err = ""
 				m.mode = ModeNormal
 				return m, nil
 			case "enter":

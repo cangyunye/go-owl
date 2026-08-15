@@ -646,6 +646,42 @@ func TestBrowserEscClosesPathInputFirst(t *testing.T) {
 	}
 }
 
+func TestBrowserEscAfterFailedJumpClearsErr(t *testing.T) {
+	m := newTestModel(t)
+	m.fileInput.Reset()
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(FileModel)
+	if m.current() != LocBrowser {
+		t.Fatalf("expected LocBrowser, got %v", m.current())
+	}
+	nm, _ = m.Update(runeKey('/')) // 打开路径输入
+	m = nm.(FileModel)
+	if !m.browser.inputOpen {
+		t.Fatal("expected path input open")
+	}
+	bad := filepath.Join(t.TempDir(), "no-such-dir")
+	for _, r := range bad {
+		nm, _ = m.Update(runeKey(r))
+		m = nm.(FileModel)
+	}
+	nm, _ = m.Update(key(tea.KeyEnter)) // 跳转失败 → b.err 置位, 输入保持打开
+	m = nm.(FileModel)
+	if m.browser.err == "" {
+		t.Fatal("expected err set after failed jump")
+	}
+	if !m.browser.inputOpen {
+		t.Fatal("expected input still open after failed jump")
+	}
+	nm, _ = m.Update(key(tea.KeyEsc)) // 取消输入
+	m = nm.(FileModel)
+	if m.browser.err != "" {
+		t.Fatalf("expected err cleared after esc cancel, got %q", m.browser.err)
+	}
+	if m.current() != LocBrowser || m.mode != ModeNormal {
+		t.Fatalf("expected still in browser normal mode, got loc=%v mode=%v", m.current(), m.mode)
+	}
+}
+
 func TestBrowserNavigateDirAndBack(t *testing.T) {
 	m := newTestModel(t)
 	m.fileInput.Reset()
