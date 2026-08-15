@@ -97,3 +97,6 @@ func styleForStatus(s string) lipgloss.Style {
 - 不新增语义槽(复用现有 13 槽 + 色环)
 - 不改 AI 聊天/Exec/File 面板(仅 nodes 模块)
 - 不升级 lipgloss v2(延续上一主题决策)
+
+## 实现状态
+- [x] 已完成(2026-08-15),计划见 docs/superpowers/plans/2026-08-15-owl-tui-field-coloring.md
