@@ -249,6 +249,7 @@ func helpView() string {
 		"        a 添加  e 编辑  d 删除  c 列配置",
 		"        p ping  k SSH检查  i 导入导出  o 分组  l 标签",
 		"        / 过滤: 关键词 | g:组 l:k=v s:状态(空格或&&=AND)",
+		"        Space 勾选多选(x 带入 Exec)  ? 帮助  q 退出",
 		"        例: g:web && l:env=prod  → 组含web且env=prod的节点",
 		"        例: s:online  → 状态为在线的节点  ? 帮助  q 退出",
 		"  表单:  ↑↓ 移动字段(首尾回卷)  Enter 编辑",
