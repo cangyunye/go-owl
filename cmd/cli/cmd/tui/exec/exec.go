@@ -270,6 +270,13 @@ func (m ExecModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
+// CancelRun 取消正在运行的流(App 离开 Exec 面板时调用;无运行流时幂等)
+func (m *ExecModel) CancelRun() {
+	if m.runCancel != nil {
+		m.runCancel()
+	}
+}
+
 func (m *ExecModel) resolveTargets() ([]*common.NodeInfo, error) {
 	all, err := m.store.List()
 	if err != nil {

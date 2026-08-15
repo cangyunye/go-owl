@@ -52,6 +52,9 @@ func (m *App) switchPanel(i int) {
 	if i < 0 || i >= len(panelNames) || i == m.panel {
 		return
 	}
+	if m.panel == 1 {
+		m.exec.CancelRun()
+	}
 	m.panel = i
 	if m.panel == 1 {
 		m.exec.CaptureTargets(m.nodes.Visible())

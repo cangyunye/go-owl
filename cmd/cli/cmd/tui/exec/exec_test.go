@@ -589,6 +589,26 @@ func TestResult_EscCancelsAndStopsExecutor(t *testing.T) {
 	}
 }
 
+func TestCancelRun_StopsExecutor(t *testing.T) {
+	stopCalled := make(chan struct{})
+	runStream = func(ctx context.Context, ids []string, cmd string, opts *command.ExecuteOptions) (<-chan command.CommandResult, func()) {
+		ch := make(chan command.CommandResult)
+		return ch, func() { close(stopCalled) }
+	}
+	m := newTestModel(t)
+	m.cmdInput.SetValue("echo hi")
+	cmd, _ := m.startRun()
+	_ = cmd() // ExecStreamMsg
+	m.CancelRun()
+	select {
+	case <-stopCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stop not called after CancelRun")
+	}
+	// 幂等:重复取消不 panic
+	m.CancelRun()
+}
+
 func TestResult_RerunPushesLocResultOnce(t *testing.T) {
 	fakeStream(nil)
 	m := newTestModel(t)
