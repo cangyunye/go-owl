@@ -216,18 +216,3 @@ func (m *Model) refreshViewport() {
 	m.view.GotoBottom()
 }
 
-func (m Model) View() string {
-	var b strings.Builder
-	b.WriteString("┌─ AI Chat ──────────────────────────\n")
-	if m.modelLabel != "" {
-		b.WriteString("  模型  " + m.modelLabel + "\n")
-	}
-	if m.status != "" {
-		b.WriteString("  " + m.status + "\n")
-	}
-	b.WriteString(m.view.View())
-	b.WriteString("\n  " + m.input.View() + "\n")
-	b.WriteString("  Enter 输入/发送  n 新会话  Esc 返回 Nodes\n")
-	b.WriteString("└─")
-	return b.String()
-}
