@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/control/transfer"
 )
 
 type Loc int
@@ -55,6 +56,10 @@ type FileModel struct {
 	targets  []*common.NodeInfo
 	advanced *AdvancedForm
 	error    string
+
+	lastUpload *uploadRunState
+	loading    bool
+	results    []transfer.TransferResult
 }
 
 func NewModel(store common.NodeStore) FileModel {
@@ -177,8 +182,41 @@ func (m FileModel) updateFile(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "a":
 		m.advanced = newAdvancedForm()
 		m.push(LocAdvanced)
+	case "r":
+		cmd, err := m.startUpload()
+		if err != nil {
+			m.error = err.Error()
+			return m, nil
+		}
+		m.error = ""
+		m.push(LocResult)
+		return m, cmd
 	case "esc":
 		return m, func() tea.Msg { return LeavePanelMsg{} }
+	}
+	return m, nil
+}
+
+func (m FileModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case UploadDoneMsg:
+		m.loading = false
+		m.results = msg.Results
+		return m, nil
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			m.pop()
+		case "r":
+			cmd, err := m.startUpload()
+			if err != nil {
+				m.error = err.Error()
+				m.pop()
+				return m, nil
+			}
+			m.error = ""
+			return m, cmd
+		}
 	}
 	return m, nil
 }

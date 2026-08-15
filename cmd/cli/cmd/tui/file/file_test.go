@@ -1,12 +1,17 @@
 package file
 
 import (
+	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/control/transfer"
+	"github.com/cangyunye/go-owl/internal/history"
 )
 
 func key(t tea.KeyType) tea.Msg { return tea.KeyMsg{Type: t} }
@@ -286,4 +291,99 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func fakeUpload(results []transfer.TransferResult) {
+	uploadRun = func(ctx context.Context, ids []string, localFile, remotePath string, opts *transfer.UploadOptions) []transfer.TransferResult {
+		return results
+	}
+	recordOperation = func(o *history.Operation) error { return nil }
+	recordFileTransfer = func(f *history.FileTransfer) error { return nil }
+}
+
+func TestStartUpload_EmptyFile(t *testing.T) {
+	m := newTestModel(t)
+	if _, err := m.startUpload(); err == nil {
+		t.Fatal("expected error for empty file path")
+	}
+}
+
+func TestStartUpload_FileNotExist(t *testing.T) {
+	m := newTestModel(t)
+	m.fileInput.SetValue(filepath.Join(t.TempDir(), "no-such.tar.gz"))
+	if _, err := m.startUpload(); err == nil {
+		t.Fatal("expected error for missing local file")
+	}
+}
+
+func TestStartUpload_NoTargets(t *testing.T) {
+	m := newTestModel(t)
+	m.CaptureTargets(nil)
+	m.fileInput.SetValue(filepath.Join(t.TempDir(), "a.tar"))
+	if _, err := m.startUpload(); err == nil {
+		t.Fatal("expected error for no targets")
+	}
+}
+
+func TestUpload_RunsAndRenders(t *testing.T) {
+	fakeUpload([]transfer.TransferResult{
+		{NodeID: "n1", Path: "/tmp/a.tar", Method: "scp"},
+		{NodeID: "n2", Path: "/tmp/a.tar", Method: "scp", Error: errors.New("boom")},
+	})
+	m := newTestModel(t)
+	local := filepath.Join(t.TempDir(), "a.tar")
+	if err := os.WriteFile(local, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m.fileInput.SetValue(local)
+	nm, cmd := m.Update(runeKey('r'))
+	m = nm.(FileModel)
+	if m.current() != LocResult {
+		t.Fatalf("expected LocResult after r, got %v", m.current())
+	}
+	if cmd == nil {
+		t.Fatal("expected start cmd")
+	}
+	msg := cmd()
+	dm, ok := msg.(UploadDoneMsg)
+	if !ok {
+		t.Fatalf("expected UploadDoneMsg, got %T", msg)
+	}
+	nm, _ = m.Update(dm)
+	m = nm.(FileModel)
+	got := m.View()
+	for _, want := range []string{"上传结果", "n1", "n2", "成功 1/2", "/tmp/a.tar"} {
+		if !contains(got, want) {
+			t.Fatalf("view missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestResult_EscReturnsToFile(t *testing.T) {
+	m := newTestModel(t)
+	m.push(LocResult)
+	nm, _ := m.Update(key(tea.KeyEsc))
+	m = nm.(FileModel)
+	if m.current() != LocFile {
+		t.Fatalf("expected LocFile after esc, got %v", m.current())
+	}
+}
+
+func TestResult_Rerun(t *testing.T) {
+	fakeUpload(nil)
+	m := newTestModel(t)
+	local := filepath.Join(t.TempDir(), "a.tar")
+	if err := os.WriteFile(local, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m.fileInput.SetValue(local)
+	m.push(LocResult)
+	nm, cmd := m.Update(runeKey('r'))
+	m = nm.(FileModel)
+	if cmd == nil {
+		t.Fatal("expected rerun cmd")
+	}
+	if _, ok := cmd().(UploadDoneMsg); !ok {
+		t.Fatalf("expected UploadDoneMsg, got %T", cmd())
+	}
 }

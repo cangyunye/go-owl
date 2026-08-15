@@ -79,3 +79,40 @@ func (m FileModel) advancedView() string {
 	b.WriteString("└─")
 	return b.String()
 }
+
+func (m FileModel) resultView() string {
+	var b strings.Builder
+	b.WriteString("┌─ 上传结果 ─────────────────────\n")
+	if m.loading {
+		if m.lastUpload != nil {
+			b.WriteString("  " + styleDim.Render("正在上传 "+m.lastUpload.localFile+" …") + "\n")
+		}
+	} else {
+		success := 0
+		for _, r := range m.results {
+			mark := "✗"
+			if r.Error == nil {
+				mark = "✓"
+				success++
+			}
+			method := r.Method
+			if method == "" {
+				method = "scp"
+			}
+			line := fmt.Sprintf("  %s %-24s %-5s %s\n", mark, r.NodeID, method, r.Path)
+			if r.Error == nil {
+				line = styleSelected.Render(line)
+			}
+			b.WriteString(line)
+			if r.Error != nil {
+				b.WriteString(styleError.Render("      "+r.Error.Error()) + "\n")
+			} else if r.Speed != "" && r.Speed != "N/A" {
+				b.WriteString("      " + styleDim.Render(r.Speed) + "\n")
+			}
+		}
+		b.WriteString(styleDim.Render(fmt.Sprintf("  成功 %d/%d", success, len(m.results))) + "\n")
+	}
+	b.WriteString(styleDim.Render("  r 重跑  Esc 返回") + "\n")
+	b.WriteString("└─")
+	return b.String()
+}
