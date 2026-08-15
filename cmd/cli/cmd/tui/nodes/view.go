@@ -13,9 +13,9 @@ import (
 var (
 	styleListBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
 	styleDetail     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
-	styleError      = lipgloss.NewStyle().Foreground(theme.Fg(theme.CError))
-	styleDim        = lipgloss.NewStyle().Foreground(theme.Fg(theme.CDim))
-	styleSelected   = lipgloss.NewStyle().Foreground(theme.Fg(theme.CSelected))
+	styleError      = theme.Style(theme.SlotError)
+	styleDim        = theme.Style(theme.SlotDim)
+	styleSelected   = theme.Style(theme.SlotSelected)
 )
 
 func (m Model) selectedColumns() []Column {
@@ -93,8 +93,10 @@ func (m Model) listPane() string {
 	if m.focus == paneDetail {
 		listBox = styleDim.Render(b.String())
 		listBox = styleListBorder.Width(avail + 2).Render(listBox)
-		detailBox = styleSelected.Foreground(theme.Fg(theme.CHighlightFg)).
-			Background(theme.Fg(theme.CHighlightBg)).Render(m.detailPane())
+		detailBox = lipgloss.NewStyle().
+			Foreground(theme.Color(theme.SlotHighlightFg)).
+			Background(theme.Color(theme.SlotHighlightBg)).
+			Render(m.detailPane())
 		detailBox = styleDetail.Width(avail + 2).Render(detailBox)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, listBox, "  ", detailBox)

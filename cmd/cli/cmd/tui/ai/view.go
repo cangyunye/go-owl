@@ -3,17 +3,16 @@ package ai
 import (
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/theme"
 )
 
 var (
-	styleUser  = lipgloss.NewStyle().Foreground(theme.Fg(theme.CUser))
-	styleAI    = lipgloss.NewStyle().Foreground(theme.Fg(theme.CAI))
-	styleDim   = lipgloss.NewStyle().Foreground(theme.Fg(theme.CDim))
-	styleError = lipgloss.NewStyle().Foreground(theme.Fg(theme.CError))
+	styleUser  = theme.Style(theme.SlotUser)
+	styleAI    = theme.Style(theme.SlotAI)
+	styleDim   = theme.Style(theme.SlotDim)
+	styleError = theme.Style(theme.SlotError)
 )
 
 func (m Model) View() string {

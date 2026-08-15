@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	tuiai "github.com/cangyunye/go-owl/cmd/cli/cmd/tui/ai"
@@ -242,8 +241,8 @@ func (m *App) View() string {
 }
 
 func menuBar(active int) string {
-	activeStyle := lipgloss.NewStyle().Foreground(theme.Fg(theme.CSelected))
-	dim := lipgloss.NewStyle().Foreground(theme.Fg(theme.CDim))
+	activeStyle := theme.Style(theme.SlotSelected)
+	dim := theme.Style(theme.SlotDim)
 	var parts []string
 	for i, name := range panelNames {
 		if i == active {

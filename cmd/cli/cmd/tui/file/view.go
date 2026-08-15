@@ -4,15 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/tui/theme"
 )
 
 var (
-	styleSelected = lipgloss.NewStyle().Foreground(theme.Fg(theme.CSelected))
-	styleDim      = lipgloss.NewStyle().Foreground(theme.Fg(theme.CDim))
-	styleError    = lipgloss.NewStyle().Foreground(theme.Fg(theme.CError))
+	styleSelected = theme.Style(theme.SlotSelected)
+	styleDim      = theme.Style(theme.SlotDim)
+	styleError    = theme.Style(theme.SlotError)
 )
 
 func (m FileModel) View() string {
