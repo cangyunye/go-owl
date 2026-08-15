@@ -132,6 +132,9 @@ func (m FileModel) NodesValue() string { return m.nodesInput.Value() }
 
 func (m FileModel) GroupsValue() string { return m.groupsInput.Value() }
 
+// ResolveForTest 导出目标解析(测试断言快照回退)
+func (m FileModel) ResolveForTest() ([]*common.NodeInfo, error) { return m.resolveTargets() }
+
 func (m FileModel) current() Loc { return m.stack[len(m.stack)-1] }
 
 func (m *FileModel) push(l Loc) { m.stack = append(m.stack, l) }

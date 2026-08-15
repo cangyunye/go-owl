@@ -415,8 +415,9 @@ func TestApp_FNoMarksFillsFilterConditions(t *testing.T) {
 
 func TestApp_FSearchFilterFallsBackToSnapshot(t *testing.T) {
 	m := newApp(t)
+	// 过滤 g:web foo: 搜索词 foo 无匹配 → 可见 0 → 快照 0; 搜索词存在时不得填组
 	nm, _ := m.Update(runeKey('/'))
-	nm, _ = nm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("foo")})
+	nm, _ = nm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g:web foo")})
 	nm, _ = nm.Update(key(tea.KeyEnter))
 	m = nm.(*App)
 	nm, _ = m.Update(runeKey('f'))
@@ -425,10 +426,18 @@ func TestApp_FSearchFilterFallsBackToSnapshot(t *testing.T) {
 		t.Fatalf("expected panel 2, got %d", m.panel)
 	}
 	if got := m.file.GroupsValue(); got != "" {
-		t.Fatalf("search filter must not fill groups, got %q", got)
+		t.Fatalf("search filter must not fill groups (g:web foo), got %q", got)
 	}
 	if got := m.file.NodesValue(); got != "" {
 		t.Fatalf("expected nodes cleared, got %q", got)
+	}
+	// 快照兜底 = 当前可见集: g:web foo 无匹配 → 可见 0 → 快照 0
+	nodes, err := m.file.ResolveForTest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("expected empty snapshot fallback (search foo matches nothing), got %d", len(nodes))
 	}
 }
 
