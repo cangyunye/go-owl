@@ -127,32 +127,6 @@ func TestBuildToolCall(t *testing.T) {
 	}
 }
 
-func TestExtractCommand(t *testing.T) {
-	agent := &Agent{}
-
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{"uptime command", "Show me the uptime", "uptime"},
-		{"disk space command", "Check disk space", "df -h"},
-		{"memory command", "How is memory usage?", "free -m"},
-		{"process command", "List running processes", "ps aux"},
-		{"status command", "What is the status?", "uptime && df -h"},
-		{"no matching keyword", "Some random text", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := agent.extractCommand(tt.input)
-			if result != tt.expected {
-				t.Errorf("Expected extractCommand to return '%s', got '%s'", tt.expected, result)
-			}
-		})
-	}
-}
-
 func TestQueryDatabaseTool_StructuredFilter(t *testing.T) {
 	mgr := &mockNodeMgr{}
 	tool := NewQueryDatabaseTool(nil, mgr)
@@ -301,30 +275,6 @@ func TestSessionDefaultConfirmGate(t *testing.T) {
 	}
 }
 
-func TestExtractFilePath(t *testing.T) {
-	agent := &Agent{}
-
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{"absolute path", "Transfer /home/user/file.txt", "/home/user/file.txt"},
-		{"tar file", "Backup archive.tar.gz", "archive.tar.gz"},
-		{"zip file", "Upload package.zip", "package.zip"},
-		{"no file path", "Just some text", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := agent.extractFilePath(tt.input)
-			if result != tt.expected {
-				t.Errorf("Expected extractFilePath to return '%s', got '%s'", tt.expected, result)
-			}
-		})
-	}
-}
-
 func TestNewAgent(t *testing.T) {
 	config := &Config{}
 	agent, err := NewAgent(nil, config, nil, nil, nil)
@@ -357,11 +307,6 @@ func TestSessionManager(t *testing.T) {
 	}
 	if sm.sessions == nil {
 		t.Fatal("Expected sessions map to be initialized")
-	}
-
-	sessions := sm.ListSessions()
-	if len(sessions) != 0 {
-		t.Errorf("Expected empty session list, got %d sessions", len(sessions))
 	}
 }
 

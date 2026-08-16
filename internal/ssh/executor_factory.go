@@ -35,13 +35,6 @@ func NewNodeExecutorFactory() *NodeExecutorFactory {
 	return &NodeExecutorFactory{}
 }
 
-// NewNodeExecutorFactoryWithSSHConfig 使用自定义 SSH config 路径创建工厂
-func NewNodeExecutorFactoryWithSSHConfig(sshConfigPath string) *NodeExecutorFactory {
-	return &NodeExecutorFactory{
-		sshConfigPath: sshConfigPath,
-	}
-}
-
 // GetExecutorForNode 获取适合指定节点的执行器
 // 默认使用基于 crypto/ssh 的原生执行器（支持密钥优先、密码兜底）
 // proxyJump 非空时，执行器会先连跳板机再转发到目标节点

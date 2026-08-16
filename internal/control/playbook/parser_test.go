@@ -553,36 +553,6 @@ func TestTemplateEngine_Render(t *testing.T) {
 	}
 }
 
-func TestTemplateEngine_SetVariable(t *testing.T) {
-	engine := NewTemplateEngine(nil)
-
-	engine.SetVariable("name", "test")
-	val, ok := engine.GetVariable("name")
-	if !ok {
-		t.Error("expected variable to be set")
-	}
-	if val != "test" {
-		t.Errorf("expected 'test', got '%v'", val)
-	}
-}
-
-func TestTemplateEngine_MergeVariables(t *testing.T) {
-	engine := NewTemplateEngine(map[string]interface{}{
-		"existing": "value1",
-	})
-
-	engine.MergeVariables(map[string]interface{}{
-		"new": "value2",
-	})
-
-	if _, ok := engine.GetVariable("existing"); !ok {
-		t.Error("expected existing variable to remain")
-	}
-	if _, ok := engine.GetVariable("new"); !ok {
-		t.Error("expected new variable to be added")
-	}
-}
-
 func TestConditionEvaluator_Evaluate(t *testing.T) {
 	t.Run("nil condition", func(t *testing.T) {
 		evaluator := NewConditionEvaluator(nil)

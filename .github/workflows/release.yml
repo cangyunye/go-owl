@@ -23,14 +23,29 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
-          make build PLATFORMS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64" WITH=serve,gscp VERSION="$VERSION"
+          make build PLATFORMS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64" WITH=serve,gscp,tui VERSION="$VERSION"
 
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          gh release create "$TAG" \
-            build/*/owl build/*/owl-serve build/*/gscp \
-            build/*/owl.exe build/*/owl-serve.exe build/*/gscp.exe \
-            --title "$TAG" --generate-notes
+          # 二进制复制为带平台后缀的唯一文件名再上传:避免同名资产冲突(GitHub 对重复
+          # 文件名上传返回 404),且与文档下载 URL 一致(如 owl-linux-amd64)
+          mkdir -p dist
+          cp build/linux-amd64/owl dist/owl-linux-amd64
+          cp build/linux-arm64/owl dist/owl-linux-arm64
+          cp build/darwin-amd64/owl dist/owl-darwin-amd64
+          cp build/darwin-arm64/owl dist/owl-darwin-arm64
+          cp build/windows-amd64/owl.exe dist/owl-windows-amd64.exe
+          cp build/linux-amd64/owl-serve dist/owl-serve-linux-amd64
+          cp build/linux-arm64/owl-serve dist/owl-serve-linux-arm64
+          cp build/darwin-amd64/owl-serve dist/owl-serve-darwin-amd64
+          cp build/darwin-arm64/owl-serve dist/owl-serve-darwin-arm64
+          cp build/windows-amd64/owl-serve.exe dist/owl-serve-windows-amd64.exe
+          cp build/linux-amd64/gscp dist/gscp-linux-amd64
+          cp build/linux-arm64/gscp dist/gscp-linux-arm64
+          cp build/darwin-amd64/gscp dist/gscp-darwin-amd64
+          cp build/darwin-arm64/gscp dist/gscp-darwin-arm64
+          cp build/windows-amd64/gscp.exe dist/gscp-windows-amd64.exe
+          gh release create "$TAG" dist/* --title "$TAG" --generate-notes

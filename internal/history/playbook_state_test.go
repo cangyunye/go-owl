@@ -4,7 +4,6 @@
 package history
 
 import (
-	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -20,7 +19,7 @@ func setupTestDB(t *testing.T) func() {
 	}
 	return func() {
 		db.Close()
-		SetGlobalDB(nil)
+		globalDB = nil
 	}
 }
 
@@ -364,49 +363,9 @@ func TestComputePlaybookHash(t *testing.T) {
 	}
 }
 
-func TestFindLastFailedRunByPlaybookName(t *testing.T) {
-	cleanup := setupTestDB(t)
-	defer cleanup()
-
-	base := time.Now()
-	completed := &PlaybookRun{
-		ID: "run-completed", PlaybookName: "deploy.yml", PlaybookHash: "h",
-		Nodes: []string{"n"}, Status: "completed", StartedAt: base, TotalSteps: 1,
-	}
-	failed := &PlaybookRun{
-		ID: "run-failed", PlaybookName: "deploy.yml", PlaybookHash: "h",
-		Nodes: []string{"n"}, Status: "failed", StartedAt: base.Add(time.Second), TotalSteps: 1,
-	}
-	if err := CreatePlaybookRun(completed); err != nil {
-		t.Fatalf("CreatePlaybookRun(completed) failed: %v", err)
-	}
-	if err := CreatePlaybookRun(failed); err != nil {
-		t.Fatalf("CreatePlaybookRun(failed) failed: %v", err)
-	}
-
-	got, err := FindLastFailedRunByPlaybookName("deploy.yml")
-	if err != nil {
-		t.Fatalf("FindLastFailedRunByPlaybookName failed: %v", err)
-	}
-	if got == nil {
-		t.Fatal("expected failed run, got nil")
-	}
-	if got.ID != "run-failed" {
-		t.Errorf("ID = %q, want run-failed", got.ID)
-	}
-	if got.Status != "failed" {
-		t.Errorf("Status = %q, want failed", got.Status)
-	}
-
-	_, err = FindLastFailedRunByPlaybookName("nonexistent.yml")
-	if err != sql.ErrNoRows {
-		t.Errorf("expected sql.ErrNoRows for missing playbook, got %v", err)
-	}
-}
-
 func TestGlobalDB_NilSafety(t *testing.T) {
-	SetGlobalDB(nil)
-	defer SetGlobalDB(nil)
+	globalDB = nil
+	defer func() { globalDB = nil }()
 
 	if err := CreatePlaybookRun(&PlaybookRun{ID: "x"}); err != nil {
 		t.Errorf("CreatePlaybookRun: expected nil error, got %v", err)
@@ -431,10 +390,5 @@ func TestGlobalDB_NilSafety(t *testing.T) {
 	steps, err := GetStepStates("x", "", "")
 	if err != nil || steps != nil {
 		t.Errorf("GetStepStates: expected (nil, nil), got (%v, %v)", steps, err)
-	}
-
-	failed, err := FindLastFailedRunByPlaybookName("x")
-	if err != nil || failed != nil {
-		t.Errorf("FindLastFailedRunByPlaybookName: expected (nil, nil), got (%v, %v)", failed, err)
 	}
 }

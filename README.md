@@ -303,7 +303,7 @@ git push origin v1.2.3
 ```
 
 工作流会构建 `linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64` 五个平台的
-`owl` / `owl-serve` / `gscp` 二进制，并创建带自动生成 changelog 的 GitHub Release。
+`owl`（含 TUI 组件）/ `owl-serve` / `gscp` 二进制，并创建带自动生成 changelog 的 GitHub Release。
 
 ## 🤝 贡献
 

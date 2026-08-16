@@ -126,22 +126,3 @@ func LoadConfig() (*Config, error) {
 
 	return &cfg, nil
 }
-
-func SaveConfig(cfg *Config) error {
-	path := configPath()
-	if path == "" {
-		return fmt.Errorf("无法获取用户主目录")
-	}
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建配置目录失败: %w", err)
-	}
-
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("序列化配置失败: %w", err)
-	}
-
-	return os.WriteFile(path, data, 0600)
-}

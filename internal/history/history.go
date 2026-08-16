@@ -72,13 +72,8 @@ type Record struct {
 	Transfers         []*FileTransfer
 }
 
-// RecordOperation 记录操作：同一 task_id 已存在时更新其状态（终态覆盖 running），
-// 否则插入新行。避免 owl history 对同一次操作重复显示 running + 终态两行。
-func (db *DB) RecordOperation(op *Operation) error {
-	return upsertOperation(db.impl.Connection(), op)
-}
-
 // upsertOperation 先按 task_id 更新既有行；无匹配时插入新行。
+// 同一 task_id 的终态记录覆盖 running 行，避免 owl history 重复显示。
 func upsertOperation(conn *sql.DB, op *Operation) error {
 	targetsJSON, _ := json.Marshal(op.Targets)
 
@@ -106,33 +101,6 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
-}
-
-// RecordCommandExecution 记录命令执行
-func (db *DB) RecordCommandExecution(exec *CommandExecution) error {
-	_, err := db.impl.Connection().Exec(`
-		INSERT INTO command_executions (task_id, node_id, command, exit_code, stdout, stderr, duration_ms, success, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, exec.TaskID, exec.NodeID, exec.Command, exec.ExitCode, exec.Stdout, exec.Stderr, exec.DurationMs, exec.Success, exec.CreatedAt)
-	return err
-}
-
-// RecordNodeCommunication 记录节点通信
-func (db *DB) RecordNodeCommunication(comm *NodeCommunication) error {
-	_, err := db.impl.Connection().Exec(`
-		INSERT INTO node_communications (task_id, node_id, node_address, direction, message_type, payload, success, error, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, comm.TaskID, comm.NodeID, comm.NodeAddress, comm.Direction, comm.MessageType, comm.Payload, comm.Success, comm.Error, comm.CreatedAt)
-	return err
-}
-
-// RecordFileTransfer 记录文件传输
-func (db *DB) RecordFileTransfer(transfer *FileTransfer) error {
-	_, err := db.impl.Connection().Exec(`
-		INSERT INTO file_transfers (task_id, node_id, file_name, file_size, transfer_type, status, progress, error, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, transfer.TaskID, transfer.NodeID, transfer.FileName, transfer.FileSize, transfer.TransferType, transfer.Status, transfer.Progress, transfer.Error, transfer.CreatedAt)
-	return err
 }
 
 // QueryOptions 查询选项
@@ -382,17 +350,6 @@ func RecordCommandExecution(exec *CommandExecution) error {
 		INSERT INTO command_executions (task_id, node_id, command, exit_code, stdout, stderr, duration_ms, success, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, exec.TaskID, exec.NodeID, exec.Command, exec.ExitCode, exec.Stdout, exec.Stderr, exec.DurationMs, exec.Success, exec.CreatedAt)
-	return err
-}
-
-func RecordNodeCommunication(comm *NodeCommunication) error {
-	if GetGlobalDB() == nil {
-		return nil
-	}
-	_, err := GetGlobalDB().Connection().Exec(`
-		INSERT INTO node_communications (task_id, node_id, node_address, direction, message_type, payload, success, error, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, comm.TaskID, comm.NodeID, comm.NodeAddress, comm.Direction, comm.MessageType, comm.Payload, comm.Success, comm.Error, comm.CreatedAt)
 	return err
 }
 

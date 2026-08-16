@@ -1,7 +1,6 @@
 package history
 
 import (
-	"database/sql"
 	"os"
 	"path/filepath"
 )
@@ -37,30 +36,6 @@ func DefaultConfig() *Config {
 		DBPath:        dbPath,
 		RetentionDays: 90,
 	}
-}
-
-// Connection 获取底层连接
-func (d *DB) Connection() *sql.DB {
-	if d == nil || d.impl == nil {
-		return nil
-	}
-	return d.impl.Connection()
-}
-
-// Close 关闭连接
-func (d *DB) Close() error {
-	if d == nil || d.impl == nil {
-		return nil
-	}
-	return d.impl.Close()
-}
-
-// Cleanup 清理过期数据
-func (d *DB) Cleanup(retentionDays int) error {
-	if d == nil || d.impl == nil {
-		return nil
-	}
-	return d.impl.Cleanup(retentionDays)
 }
 
 func ensureDBDir(path string) {

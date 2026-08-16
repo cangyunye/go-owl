@@ -268,48 +268,6 @@ func (m *AsyncTaskManager) ListTasks() []*AsyncTask {
 	return tasks
 }
 
-// StartAndForget 启动异步任务并立即返回
-func (m *AsyncTaskManager) StartAndForget(ctx context.Context, nodeID, command string, opts *AsyncOptions) (string, error) {
-	if opts == nil {
-		opts = &AsyncOptions{}
-	}
-
-	opts.PollInterval = 0
-
-	task, err := m.StartAsync(ctx, nodeID, command, opts)
-	if err != nil {
-		return "", err
-	}
-
-	return task.ID, nil
-}
-
-// WaitForAll 等待所有指定任务完成
-func (m *AsyncTaskManager) WaitForAll(ctx context.Context, taskIDs []string, pollInterval time.Duration) []AsyncTask {
-	results := make([]AsyncTask, len(taskIDs))
-
-	var wg sync.WaitGroup
-	wg.Add(len(taskIDs))
-
-	for i, taskID := range taskIDs {
-		go func(idx int, id string) {
-			defer wg.Done()
-			task := m.GetTask(id)
-			if task == nil {
-				return
-			}
-
-			completed, _ := m.PollTaskStatus(ctx, task, pollInterval, 0)
-			if completed != nil {
-				results[idx] = *completed
-			}
-		}(i, taskID)
-	}
-
-	wg.Wait()
-	return results
-}
-
 // CleanupCompletedTasks 清理已完成的任务
 func (m *AsyncTaskManager) CleanupCompletedTasks() {
 	m.mu.Lock()

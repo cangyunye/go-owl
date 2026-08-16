@@ -5,27 +5,6 @@ import (
 	"time"
 )
 
-func TestNewTask(t *testing.T) {
-	payload := &CommandPayload{Command: "ls -la"}
-	task := NewTask("task-1", TaskTypeCommand, []string{"node-1", "node-2"}, payload)
-
-	if task.ID != "task-1" {
-		t.Errorf("expected ID 'task-1', got '%s'", task.ID)
-	}
-	if task.Type != TaskTypeCommand {
-		t.Errorf("expected Type 'command', got '%s'", task.Type)
-	}
-	if len(task.Targets) != 2 {
-		t.Errorf("expected 2 targets, got %d", len(task.Targets))
-	}
-	if task.Status != TaskStatusPending {
-		t.Errorf("expected Status 'pending', got '%s'", task.Status)
-	}
-	if len(task.Results) != 0 {
-		t.Errorf("expected empty Results, got %d", len(task.Results))
-	}
-}
-
 func TestTask_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -81,7 +60,7 @@ func TestTask_Validate(t *testing.T) {
 }
 
 func TestTask_SetStatus(t *testing.T) {
-	task := NewTask("task-1", TaskTypeCommand, []string{"node-1"}, nil)
+	task := &Task{ID: "task-1", Type: TaskTypeCommand, Targets: []string{"node-1"}, Results: make(map[string]*TaskResult)}
 
 	task.SetStatus(TaskStatusRunning)
 	if task.Status != TaskStatusRunning {
@@ -101,7 +80,7 @@ func TestTask_SetStatus(t *testing.T) {
 }
 
 func TestTask_SetResult(t *testing.T) {
-	task := NewTask("task-1", TaskTypeCommand, []string{"node-1", "node-2"}, nil)
+	task := &Task{ID: "task-1", Type: TaskTypeCommand, Targets: []string{"node-1", "node-2"}, Results: make(map[string]*TaskResult)}
 
 	result := &TaskResult{
 		NodeID:   "node-1",
@@ -121,7 +100,7 @@ func TestTask_SetResult(t *testing.T) {
 }
 
 func TestTask_IsCompleted(t *testing.T) {
-	task := NewTask("task-1", TaskTypeCommand, []string{"node-1"}, nil)
+	task := &Task{ID: "task-1", Type: TaskTypeCommand, Targets: []string{"node-1"}, Results: make(map[string]*TaskResult)}
 
 	if task.IsCompleted() {
 		t.Error("expected IsCompleted() to be false for pending task")
@@ -139,7 +118,7 @@ func TestTask_IsCompleted(t *testing.T) {
 }
 
 func TestTask_Progress(t *testing.T) {
-	task := NewTask("task-1", TaskTypeCommand, []string{"node-1", "node-2", "node-3"}, nil)
+	task := &Task{ID: "task-1", Type: TaskTypeCommand, Targets: []string{"node-1", "node-2", "node-3"}, Results: make(map[string]*TaskResult)}
 
 	progress := task.Progress()
 	if progress != 0 {
@@ -160,7 +139,7 @@ func TestTask_Progress(t *testing.T) {
 }
 
 func TestTask_SuccessFailureCount(t *testing.T) {
-	task := NewTask("task-1", TaskTypeCommand, []string{"node-1", "node-2", "node-3"}, nil)
+	task := &Task{ID: "task-1", Type: TaskTypeCommand, Targets: []string{"node-1", "node-2", "node-3"}, Results: make(map[string]*TaskResult)}
 
 	task.SetResult("node-1", &TaskResult{ExitCode: 0})
 	task.SetResult("node-2", &TaskResult{ExitCode: 1})
@@ -175,7 +154,7 @@ func TestTask_SuccessFailureCount(t *testing.T) {
 }
 
 func TestTask_Duration(t *testing.T) {
-	task := NewTask("task-1", TaskTypeCommand, []string{"node-1"}, nil)
+	task := &Task{ID: "task-1", Type: TaskTypeCommand, Targets: []string{"node-1"}, Results: make(map[string]*TaskResult)}
 
 	duration := task.Duration()
 	if duration != 0 {
@@ -189,257 +168,6 @@ func TestTask_Duration(t *testing.T) {
 	duration = task.Duration()
 	if duration != 0 {
 		t.Errorf("expected duration 0 for completed task with same start/end time, got %v", duration)
-	}
-}
-
-func TestInMemoryTaskStore(t *testing.T) {
-	store := NewInMemoryTaskStore()
-
-	task := NewTask("task-1", TaskTypeCommand, []string{"node-1"}, nil)
-	store.Set("task-1", task)
-
-	retrieved, ok := store.Get("task-1")
-	if !ok {
-		t.Error("expected task to be found")
-	}
-	if retrieved.ID != task.ID {
-		t.Errorf("expected ID '%s', got '%s'", task.ID, retrieved.ID)
-	}
-
-	all := store.GetAll()
-	if len(all) != 1 {
-		t.Errorf("expected 1 task, got %d", len(all))
-	}
-
-	deleted := store.Delete("task-1")
-	if !deleted {
-		t.Error("expected task to be deleted")
-	}
-
-	_, ok = store.Get("task-1")
-	if ok {
-		t.Error("expected task to not be found after deletion")
-	}
-}
-
-func TestScheduler_CreateTask(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	sched := NewScheduler(store)
-
-	payload := &CommandPayload{Command: "ls -la"}
-	task, err := sched.CreateTask(TaskTypeCommand, []string{"node-1", "node-2"}, payload)
-
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if task == nil {
-		t.Fatal("expected task, got nil")
-	}
-	if task.ID == "" {
-		t.Error("expected task ID to be set")
-	}
-	if task.Status != TaskStatusPending {
-		t.Errorf("expected Status 'pending', got '%s'", task.Status)
-	}
-}
-
-func TestScheduler_CreateTask_WithIDGenerator(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	idCounter := 0
-	sched := &scheduler{
-		store: store,
-		idGen: func() string {
-			idCounter++
-			return "custom-task-" + string(rune('0'+idCounter))
-		},
-	}
-
-	task1, _ := sched.CreateTask(TaskTypeCommand, []string{"node-1"}, nil)
-	task2, _ := sched.CreateTask(TaskTypeCommand, []string{"node-1"}, nil)
-
-	if task1.ID == task2.ID {
-		t.Error("expected different task IDs")
-	}
-}
-
-func TestScheduler_GetTask(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	sched := NewScheduler(store)
-
-	_, err := sched.GetTask("nonexistent")
-	if err == nil {
-		t.Error("expected error for nonexistent task")
-	}
-
-	task, _ := sched.CreateTask(TaskTypeCommand, []string{"node-1"}, nil)
-	retrieved, err := sched.GetTask(task.ID)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if retrieved.ID != task.ID {
-		t.Errorf("expected ID '%s', got '%s'", task.ID, retrieved.ID)
-	}
-}
-
-func TestScheduler_ListTasks(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	sched := NewScheduler(store)
-
-	tasks := sched.ListTasks()
-	if len(tasks) != 0 {
-		t.Errorf("expected 0 tasks, got %d", len(tasks))
-	}
-
-	sched.CreateTask(TaskTypeCommand, []string{"node-1"}, nil)
-	sched.CreateTask(TaskTypeCommand, []string{"node-1"}, nil)
-	sched.CreateTask(TaskTypeScript, []string{"node-1"}, nil)
-
-	tasks = sched.ListTasks()
-	if len(tasks) != 3 {
-		t.Errorf("expected 3 tasks, got %d", len(tasks))
-	}
-}
-
-func TestScheduler_CancelTask(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	sched := NewScheduler(store)
-
-	task, _ := sched.CreateTask(TaskTypeCommand, []string{"node-1"}, nil)
-
-	err := sched.CancelTask(task.ID)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-
-	cancelled, _ := sched.GetTask(task.ID)
-	if cancelled.Status != TaskStatusCancelled {
-		t.Errorf("expected Status 'cancelled', got '%s'", cancelled.Status)
-	}
-}
-
-func TestScheduler_CancelTask_NotFound(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	sched := NewScheduler(store)
-
-	err := sched.CancelTask("nonexistent")
-	if err == nil {
-		t.Error("expected error for nonexistent task")
-	}
-}
-
-func TestScheduler_CancelTask_AlreadyCompleted(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	sched := NewScheduler(store)
-
-	task, _ := sched.CreateTask(TaskTypeCommand, []string{"node-1"}, nil)
-	task.SetStatus(TaskStatusCompleted)
-	store.Set(task.ID, task)
-
-	err := sched.CancelTask(task.ID)
-	if err == nil {
-		t.Error("expected error for already completed task")
-	}
-}
-
-func TestScheduler_DispatchTask(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	sched := NewScheduler(store)
-
-	task, _ := sched.CreateTask(TaskTypeCommand, []string{"node-1"}, nil)
-
-	dispatchCalled := false
-	err := sched.DispatchTask(task.ID, func(t *Task) error {
-		dispatchCalled = true
-		t.SetResult("node-1", &TaskResult{ExitCode: 0})
-		return nil
-	})
-
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-
-	updated, _ := sched.GetTask(task.ID)
-	if updated.Status != TaskStatusRunning {
-		t.Errorf("expected Status 'running' immediately after dispatch, got '%s'", updated.Status)
-	}
-
-	time.Sleep(10 * time.Millisecond)
-
-	updated, _ = sched.GetTask(task.ID)
-	if updated.Status != TaskStatusCompleted {
-		t.Errorf("expected Status 'completed', got '%s'", updated.Status)
-	}
-
-	if !dispatchCalled {
-		t.Error("expected dispatcher to be called")
-	}
-}
-
-func TestScheduler_DispatchTask_WithFailure(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	sched := NewScheduler(store)
-
-	task, _ := sched.CreateTask(TaskTypeCommand, []string{"node-1"}, nil)
-
-	err := sched.DispatchTask(task.ID, func(t *Task) error {
-		t.SetResult("node-1", &TaskResult{ExitCode: 1})
-		return nil
-	})
-
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-
-	time.Sleep(10 * time.Millisecond)
-
-	updated, _ := sched.GetTask(task.ID)
-	if updated.Status != TaskStatusFailed {
-		t.Errorf("expected Status 'failed' when all results have non-zero exit code, got '%s'", updated.Status)
-	}
-}
-
-func TestScheduler_DispatchTask_NotFound(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	sched := NewScheduler(store)
-
-	err := sched.DispatchTask("nonexistent", func(t *Task) error {
-		return nil
-	})
-	if err == nil {
-		t.Error("expected error for nonexistent task")
-	}
-}
-
-func TestScheduler_DispatchTask_AlreadyCompleted(t *testing.T) {
-	store := NewInMemoryTaskStore()
-	sched := NewScheduler(store)
-
-	task, _ := sched.CreateTask(TaskTypeCommand, []string{"node-1"}, nil)
-	task.SetStatus(TaskStatusCompleted)
-	store.Set(task.ID, task)
-
-	err := sched.DispatchTask(task.ID, func(t *Task) error {
-		return nil
-	})
-	if err == nil {
-		t.Error("expected error for already completed task")
-	}
-}
-
-func TestDefaultExecutionOptions(t *testing.T) {
-	opts := DefaultExecutionOptions()
-
-	if opts.Parallelism != 10 {
-		t.Errorf("expected Parallelism 10, got %d", opts.Parallelism)
-	}
-	if opts.Policy != ParallelismAll {
-		t.Errorf("expected Policy ParallelismAll, got %v", opts.Policy)
-	}
-	if opts.FailureMode != "stop" {
-		t.Errorf("expected FailureMode 'stop', got '%s'", opts.FailureMode)
-	}
-	if opts.ContinueOnError {
-		t.Error("expected ContinueOnError to be false")
 	}
 }
 

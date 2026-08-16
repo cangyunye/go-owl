@@ -18,89 +18,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestParseLabels_Valid(t *testing.T) {
-	tests := []struct {
-		name  string
-		input []string
-		want  map[string]string
-	}{
-		{
-			name:  "single key=value",
-			input: []string{"env=prod"},
-			want:  map[string]string{"env": "prod"},
-		},
-		{
-			name:  "multiple key=value pairs",
-			input: []string{"env=prod", "appname=owl", "region=cn-east"},
-			want:  map[string]string{"env": "prod", "appname": "owl", "region": "cn-east"},
-		},
-		{
-			name:  "value with spaces",
-			input: []string{"name=Web Server"},
-			want:  map[string]string{"name": "Web Server"},
-		},
-		{
-			name:  "key with spaces trimmed",
-			input: []string{" env =prod"},
-			want:  map[string]string{"env": "prod"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseLabels(tt.input)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if len(got) != len(tt.want) {
-				t.Fatalf("expected %d labels, got %d: %v", len(tt.want), len(got), got)
-			}
-			for k, v := range tt.want {
-				if got[k] != v {
-					t.Errorf("label[%s]: expected '%s', got '%s'", k, v, got[k])
-				}
-			}
-		})
-	}
-}
-
-func TestParseLabels_Invalid(t *testing.T) {
-	tests := []struct {
-		name  string
-		input []string
-	}{
-		{"no equals sign", []string{"envprod"}},
-		{"empty string entry", []string{""}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := ParseLabels(tt.input)
-			if err == nil {
-				t.Error("expected error, got nil")
-			}
-		})
-	}
-}
-
-func TestParseLabels_Empty(t *testing.T) {
-	labels, err := ParseLabels(nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(labels) != 0 {
-		t.Errorf("expected empty map, got %v", labels)
-	}
-
-	labels, err = ParseLabels([]string{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(labels) != 0 {
-		t.Errorf("expected empty map, got %v", labels)
-	}
-}
-
 func TestParseNodeList(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -129,40 +46,6 @@ func TestParseNodeList(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestParseGroupList(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  int
-	}{
-		{"single group", "web", 1},
-		{"multiple groups", "web,production,frontend", 3},
-		{"empty string", "", 0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ParseGroupList(tt.input)
-			if len(got) != tt.want {
-				t.Errorf("expected %d groups, got %d: %v", tt.want, len(got), got)
-			}
-		})
-	}
-}
-
-func TestParseGroupList_IsAlias(t *testing.T) {
-	result := ParseGroupList("web,production")
-	expected := []string{"web", "production"}
-	if len(result) != len(expected) {
-		t.Fatalf("expected %d groups, got %d", len(expected), len(result))
-	}
-	for i := range result {
-		if result[i] != expected[i] {
-			t.Errorf("item[%d]: expected '%s', got '%s'", i, expected[i], result[i])
-		}
 	}
 }
 

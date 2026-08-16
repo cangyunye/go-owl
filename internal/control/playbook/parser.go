@@ -501,25 +501,9 @@ func (e *TemplateEngine) Render(template string) (string, error) {
 	return result, nil
 }
 
-func (e *TemplateEngine) SetVariable(name string, value interface{}) {
-	if e.variables == nil {
-		e.variables = make(map[string]interface{})
-	}
-	e.variables[name] = value
-}
-
 func (e *TemplateEngine) GetVariable(name string) (interface{}, bool) {
 	val, ok := e.variables[name]
 	return val, ok
-}
-
-func (e *TemplateEngine) MergeVariables(vars map[string]interface{}) {
-	if e.variables == nil {
-		e.variables = make(map[string]interface{})
-	}
-	for k, v := range vars {
-		e.variables[k] = v
-	}
 }
 
 type ConditionEvaluator struct {

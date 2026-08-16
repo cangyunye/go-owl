@@ -32,20 +32,6 @@ func (m *MockExecutor) Stop(execID string) error {
 	return nil
 }
 
-func TestNewExecutor(t *testing.T) {
-	executor := NewExecutor(nil, nil, nil, nil)
-	if executor == nil {
-		t.Fatal("expected executor to be created")
-	}
-}
-
-func TestNewDefaultActionRunner(t *testing.T) {
-	runner := NewDefaultActionRunner(nil, nil)
-	if runner == nil {
-		t.Fatal("expected runner to be created")
-	}
-}
-
 func TestPlaybookExecution(t *testing.T) {
 	exec := &PlaybookExecution{
 		ID:        "exec-1",
@@ -197,73 +183,6 @@ func TestExecutionStatus(t *testing.T) {
 	}
 }
 
-func TestNewParallelExecutor(t *testing.T) {
-	executor := NewParallelExecutor(nil, 5)
-	if executor == nil {
-		t.Fatal("expected parallel executor to be created")
-	}
-	if executor.maxParallelism != 5 {
-		t.Errorf("expected maxParallelism 5, got %d", executor.maxParallelism)
-	}
-}
-
-func TestNewParallelExecutor_DefaultParallelism(t *testing.T) {
-	executor := NewParallelExecutor(nil, 0)
-	if executor.maxParallelism != 10 {
-		t.Errorf("expected default maxParallelism 10, got %d", executor.maxParallelism)
-	}
-}
-
-func TestParallelExecutor_ExecuteAsync(t *testing.T) {
-	mockExec := &MockExecutor{}
-	executor := NewParallelExecutor(mockExec, 1)
-	_, err := executor.ExecuteAsync(nil, nil, nil)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	time.Sleep(10 * time.Millisecond)
-}
-
-func TestParallelExecutor_GetExecution(t *testing.T) {
-	mockExec := &MockExecutor{}
-	executor := NewParallelExecutor(mockExec, 1)
-
-	execID, _ := executor.ExecuteAsync(nil, nil, nil)
-
-	time.Sleep(10 * time.Millisecond)
-	exec, ok := executor.GetExecution(execID)
-	if !ok {
-		t.Error("expected execution to be found")
-	}
-	if exec == nil {
-		t.Error("expected non-nil execution")
-	}
-
-	_, ok = executor.GetExecution("nonexistent")
-	if ok {
-		t.Error("expected no execution for nonexistent ID")
-	}
-}
-
-func TestParallelExecutor_ListExecutions(t *testing.T) {
-	mockExec := &MockExecutor{}
-	executor := NewParallelExecutor(mockExec, 1)
-
-	execs := executor.ListExecutions()
-	if len(execs) != 0 {
-		t.Errorf("expected 0 executions initially, got %d", len(execs))
-	}
-
-	executor.ExecuteAsync(nil, nil, nil)
-	executor.ExecuteAsync(nil, nil, nil)
-
-	time.Sleep(10 * time.Millisecond)
-	execs = executor.ListExecutions()
-	if len(execs) != 2 {
-		t.Errorf("expected 2 executions, got %d", len(execs))
-	}
-}
-
 func TestTaskContext(t *testing.T) {
 	ctx := &TaskContext{
 		Execution: &PlaybookExecution{},
@@ -285,7 +204,7 @@ func TestTaskContext(t *testing.T) {
 }
 
 func TestExecutor_Stop(t *testing.T) {
-	executor := NewExecutor(nil, nil, nil, nil)
+	executor := &playbookExecutor{}
 	err := executor.Stop("exec-1")
 	if err == nil {
 		t.Error("expected error for stop (not implemented)")
@@ -342,7 +261,7 @@ func (m *MockNodeManager) Count() int {
 
 func TestExecutor_ExecuteTask(t *testing.T) {
 	mockNodeMgr := &MockNodeManager{}
-	executor := NewExecutor(mockNodeMgr, nil, nil, nil)
+	executor := &playbookExecutor{nodeMgr: mockNodeMgr}
 
 	exec := &PlaybookExecution{
 		ID:      "exec-1",
@@ -473,7 +392,7 @@ func TestPlaybookExecutor_executeTaskInternal_WithLoop(t *testing.T) {
 
 func TestDefaultActionRunner_RunAction(t *testing.T) {
 	t.Run("with cmd arg", func(t *testing.T) {
-		runner := NewDefaultActionRunner(nil, nil)
+		runner := &defaultActionRunner{}
 		result, err := runner.RunAction("command", map[string]interface{}{"cmd": "echo hello"}, "node-1", nil, nil)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
@@ -484,7 +403,7 @@ func TestDefaultActionRunner_RunAction(t *testing.T) {
 	})
 
 	t.Run("with command arg", func(t *testing.T) {
-		runner := NewDefaultActionRunner(nil, nil)
+		runner := &defaultActionRunner{}
 		result, err := runner.RunAction("shell", map[string]interface{}{"command": "ls"}, "node-1", nil, nil)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
@@ -498,7 +417,7 @@ func TestDefaultActionRunner_RunAction(t *testing.T) {
 
 func TestExecutor_Execute(t *testing.T) {
 	mockNodeMgr := &MockNodeManager{}
-	executor := NewExecutor(mockNodeMgr, nil, nil, nil)
+	executor := NewExecutorWithOptions(mockNodeMgr, nil, nil, nil, nil)
 
 	playbook := &ParsedPlaybook{
 		Raw: &Playbook{
@@ -600,7 +519,7 @@ func TestExecutor_Execute_PipelineModeFailsFast(t *testing.T) {
 	mockCmd := &mockCmdExecutor{
 		failOnCall: 2, // 2nd task fails
 	}
-	executor := NewExecutor(mockNodeMgr, mockCmd, nil, nil)
+	executor := NewExecutorWithOptions(mockNodeMgr, mockCmd, nil, nil, nil)
 
 	playbook := &ParsedPlaybook{
 		Raw: &Playbook{
@@ -652,7 +571,7 @@ func TestExecutor_Execute_FailContinueRunsAll(t *testing.T) {
 	mockCmd := &mockCmdExecutor{
 		failOnCall: 2,
 	}
-	executor := NewExecutor(mockNodeMgr, mockCmd, nil, nil)
+	executor := NewExecutorWithOptions(mockNodeMgr, mockCmd, nil, nil, nil)
 
 	playbook := &ParsedPlaybook{
 		Raw: &Playbook{
@@ -803,7 +722,7 @@ func TestExecutor_CheckMode_UploadAction(t *testing.T) {
 func TestExecutor_SuccessFailureCount_MultiNode(t *testing.T) {
 	mockNodeMgr := &MockNodeManager{}
 	mockCmd := &mockCmdExecutor{failOnCall: 100}
-	executor := NewExecutor(mockNodeMgr, mockCmd, nil, nil)
+	executor := NewExecutorWithOptions(mockNodeMgr, mockCmd, nil, nil, nil)
 
 	playbook := &ParsedPlaybook{
 		Raw:           &Playbook{Name: "count test", Hosts: []string{"web"}},
@@ -830,7 +749,7 @@ func TestDefaultActionRunner_ResolveDownloadDest(t *testing.T) {
 	dest := "/staging"
 
 	t.Run("absolute dest stays absolute", func(t *testing.T) {
-		runner := NewDefaultActionRunner(nil, nil)
+		runner := &defaultActionRunner{}
 		runner.SetDownloadBaseDir(dest)
 		got := runner.resolveDownloadDest("/opt/backup/app.log", nil)
 		if got != "/opt/backup/app.log" {
@@ -839,7 +758,7 @@ func TestDefaultActionRunner_ResolveDownloadDest(t *testing.T) {
 	})
 
 	t.Run("relative dest falls into download base dir", func(t *testing.T) {
-		runner := NewDefaultActionRunner(nil, nil)
+		runner := &defaultActionRunner{}
 		runner.SetDownloadBaseDir(dest)
 		got := runner.resolveDownloadDest("logs/app.log", nil)
 		if got != filepath.Join(dest, "logs/app.log") {
@@ -848,7 +767,7 @@ func TestDefaultActionRunner_ResolveDownloadDest(t *testing.T) {
 	})
 
 	t.Run("trailing slash dest keeps base dir semantics", func(t *testing.T) {
-		runner := NewDefaultActionRunner(nil, nil)
+		runner := &defaultActionRunner{}
 		runner.SetDownloadBaseDir(dest)
 		got := runner.resolveDownloadDest("./", nil)
 		if got != filepath.Join(dest, ".") {
@@ -857,7 +776,7 @@ func TestDefaultActionRunner_ResolveDownloadDest(t *testing.T) {
 	})
 
 	t.Run("no download base dir falls back to playbook base dir", func(t *testing.T) {
-		runner := NewDefaultActionRunner(nil, nil)
+		runner := &defaultActionRunner{}
 		runner.SetPlaybookBaseDir("/pb")
 		got := runner.resolveDownloadDest("logs/app.log", nil)
 		if got != filepath.Join("/pb", "logs/app.log") {
@@ -866,11 +785,13 @@ func TestDefaultActionRunner_ResolveDownloadDest(t *testing.T) {
 	})
 
 	t.Run("no base dirs at all keeps dest as-is", func(t *testing.T) {
-		runner := NewDefaultActionRunner(nil, nil)
+		runner := &defaultActionRunner{}
 		got := runner.resolveDownloadDest("logs/app.log", nil)
 		if got != "logs/app.log" {
 			t.Errorf("expected %q, got %q", "logs/app.log", got)
 		}
 	})
 }
+
+
 

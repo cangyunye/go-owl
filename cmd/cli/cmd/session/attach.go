@@ -212,11 +212,6 @@ func parseNodeID(nodeID string) *session.NodeConfig {
 	return config
 }
 
-// getAuthMethods 获取认证方法
-func getAuthMethods() ([]gossh.AuthMethod, error) {
-	return getAuthMethodsWithConfig(nil, "", "")
-}
-
 // getAuthMethodsWithConfig 根据 SSH 配置获取认证方法
 func getAuthMethodsWithConfig(sshConfig *ssh.SSHConfig, password, sshKey string) ([]gossh.AuthMethod, error) {
 	var authMethods []gossh.AuthMethod
@@ -284,13 +279,6 @@ func publicKeyAuth(keyFile string) (gossh.AuthMethod, error) {
 	}
 
 	return gossh.PublicKeys(signer), nil
-}
-
-// sshAgentAuth SSH Agent 认证
-func sshAgentAuth() gossh.AuthMethod {
-	// 简化实现：返回 nil
-	// 实际应该连接到 SSH Agent
-	return nil
 }
 
 // printWelcome 显示欢迎信息

@@ -42,28 +42,6 @@ func DefaultPlaybookDefaults() *PlaybookDefaults {
 	}
 }
 
-func NewPlaybookDefaults(connectTimeout, commandTimeout time.Duration, retry, retryMax int, retryInterval, retryMaxInterval time.Duration) *PlaybookDefaults {
-	defaults := DefaultPlaybookDefaults()
-
-	if connectTimeout > 0 {
-		defaults.TimeoutConfig.ConnectTimeout = connectTimeout
-	}
-	if commandTimeout > 0 {
-		defaults.TimeoutConfig.CommandTimeout = commandTimeout
-	}
-	if retry > 0 {
-		defaults.RetryConfig.MaxRetries = retry
-	}
-	if retryInterval > 0 {
-		defaults.RetryConfig.InitialInterval = retryInterval
-	}
-	if retryMaxInterval > 0 {
-		defaults.RetryConfig.MaxInterval = retryMaxInterval
-	}
-
-	return defaults
-}
-
 func (opts *ActionOptions) GetTimeout() time.Duration {
 	if opts != nil && opts.Timeout != nil && opts.Timeout.Command > 0 {
 		return opts.Timeout.Command

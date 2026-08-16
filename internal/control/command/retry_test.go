@@ -130,19 +130,6 @@ func TestCalculateInterval_Linear(t *testing.T) {
 	}
 }
 
-func TestRetryableError_Error(t *testing.T) {
-	causeErr := errors.New("connection refused")
-	err := &RetryableError{
-		OriginalError: causeErr,
-		RetryCount:    3,
-	}
-
-	expected := "retryable error after 3 attempts: connection refused"
-	if err.Error() != expected {
-		t.Errorf("expected error message '%s', got '%s'", expected, err.Error())
-	}
-}
-
 func TestRetryResult_Success(t *testing.T) {
 	result := RetryResult{
 		CommandResult: CommandResult{Success: true},

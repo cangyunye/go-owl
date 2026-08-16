@@ -35,7 +35,7 @@ func TestOperationsColumnMigration_DuckDB_LegacyDB(t *testing.T) {
 		require.Equal(t, 1, n, "column %s should be migrated", col)
 	}
 
-	require.NoError(t, GetDB().RecordOperation(&Operation{
+	require.NoError(t, RecordOperation(&Operation{
 		TaskID:        "d1",
 		OpType:        "command",
 		Command:       "uptime",

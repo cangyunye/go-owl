@@ -437,18 +437,6 @@ func writeNodesJSON(jsonPath string, nodes []*NodeInfo) error {
 	return os.WriteFile(jsonPath, data, 0644)
 }
 
-func PrintConflictReport(conflicts []NodeConflict, dbCount, jsonCount int) {
-	conflictNodeIDs := collectConflictNodeIDs(conflicts)
-
-	fmt.Println(i18n.T("common.conflict.banner"))
-	fmt.Printf("%s", i18n.T("common.conflict.report_count", i18n.F(dbCount), i18n.F(len(conflictNodeIDs))))
-	fmt.Printf("%s", i18n.T("common.conflict.json_count", i18n.F(jsonCount)))
-	fmt.Println(i18n.T("common.conflict.report_details"))
-	for _, c := range conflicts {
-		fmt.Printf("  [%s] %s\n", c.Type, c.Description)
-	}
-}
-
 func CheckNodeConflictsBeforeExec() {
 	db, err := internalhistory.NewDB(internalhistory.DefaultConfig())
 	if err != nil || db == nil {

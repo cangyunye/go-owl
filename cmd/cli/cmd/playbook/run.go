@@ -621,15 +621,6 @@ func selectPlaybookRunTargetNodes(resolver *node.NodeResolver, playbookHosts []s
 	return result
 }
 
-func containsNodeIDList(ids []string, id string) bool {
-	for _, i := range ids {
-		if i == id {
-			return true
-		}
-	}
-	return false
-}
-
 func parseNodeIDsList(s string) []string {
 	result := make([]string, 0)
 	for _, id := range splitStringList(s, ",") {

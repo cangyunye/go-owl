@@ -5,26 +5,6 @@ import (
 	"time"
 )
 
-func TestDefaultAsyncOptions(t *testing.T) {
-	opts := DefaultAsyncOptions()
-
-	if opts.Timeout != 1*time.Hour {
-		t.Errorf("expected Timeout 1h, got %v", opts.Timeout)
-	}
-
-	if opts.PollInterval != 10*time.Second {
-		t.Errorf("expected PollInterval 10s, got %v", opts.PollInterval)
-	}
-
-	if opts.MaxPollCount != 3600 {
-		t.Errorf("expected MaxPollCount 3600, got %d", opts.MaxPollCount)
-	}
-
-	if opts.RemoteBaseDir != "/tmp/owl" {
-		t.Errorf("expected RemoteBaseDir /tmp/owl, got %s", opts.RemoteBaseDir)
-	}
-}
-
 func TestAsyncTask_IsCompleted(t *testing.T) {
 	tests := []struct {
 		name   string

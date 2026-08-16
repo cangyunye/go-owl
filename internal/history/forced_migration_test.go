@@ -30,7 +30,7 @@ func TestForcedColumnMigration_LegacyDB(t *testing.T) {
 
 	require.NoError(t, db.EnsureOperationColumns())
 
-	require.NoError(t, GetDB().RecordOperation(&Operation{
+	require.NoError(t, RecordOperation(&Operation{
 		TaskID: "t1", OpType: "command", Command: "uptime",
 		Targets: []string{"n1"}, Status: "running", Forced: true,
 	}))
@@ -70,7 +70,7 @@ func TestOperationsColumnMigration_LegacyDB(t *testing.T) {
 		require.Equal(t, 1, n, "column %s should be migrated", col)
 	}
 
-	require.NoError(t, GetDB().RecordOperation(&Operation{
+	require.NoError(t, RecordOperation(&Operation{
 		TaskID:           "t1",
 		OpType:           "command",
 		Command:          "uptime",
@@ -106,7 +106,7 @@ func TestForcedColumnMigration_Idempotent(t *testing.T) {
 	require.NoError(t, db.EnsureOperationColumns())
 	require.NoError(t, db.EnsureOperationColumns())
 
-	require.NoError(t, GetDB().RecordOperation(&Operation{
+	require.NoError(t, RecordOperation(&Operation{
 		TaskID: "t2", OpType: "command", Command: "uptime",
 		Targets: []string{"n1"}, Status: "running",
 	}))

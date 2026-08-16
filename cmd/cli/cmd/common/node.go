@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 )
 
 // NodeStore 节点存储接口
@@ -73,17 +72,6 @@ func init() {
 		store.initSampleData()
 	}
 	globalStore = store
-}
-
-// NewInMemoryNodeStore 创建内存节点存储
-func NewInMemoryNodeStore() *InMemoryNodeStore {
-	dataFile := filepath.Join(GetConfigDir(), "nodes.json")
-	store := &InMemoryNodeStore{
-		nodes:    make(map[string]*NodeInfo),
-		dataFile: dataFile,
-	}
-	// 注意：不调用 initSampleData，只用于测试
-	return store
 }
 
 // NewInMemoryNodeStoreAt 创建内存节点存储(数据文件路径自定义,测试用)
@@ -199,152 +187,4 @@ func GetNodeStore() NodeStore {
 // InitNodeStoreFromDB 从数据库初始化节点存储
 func InitNodeStoreFromDB(db *sql.DB) {
 	globalStore = NewNodeStoreDB(db)
-}
-
-// Node manager commands
-
-var (
-	addName     string
-	addAddress  string
-	addPort     int
-	addUser     string
-	addPassword string
-	addSSHKey   string
-	addGroups   string
-	addLabels   []string
-)
-
-// RunAddNode 添加节点
-func RunAddNode(args []string) {
-	nodeID := args[0]
-	store := GetNodeStore()
-
-	// 检查节点是否已存在
-	if _, err := store.Get(nodeID); err == nil {
-		fmt.Fprintf(os.Stderr, "Error: node already exists: %s\n", nodeID)
-		os.Exit(1)
-	}
-
-	// 解析分组
-	groups := []string{}
-	if addGroups != "" {
-		for _, g := range splitAndTrim(addGroups, ",") {
-			if g != "" {
-				groups = append(groups, g)
-			}
-		}
-	}
-
-	// 解析标签
-	labels := make(map[string]string)
-	for _, label := range addLabels {
-		parts := splitAndTrim(label, "=")
-		if len(parts) == 2 {
-			labels[parts[0]] = parts[1]
-		}
-	}
-
-	// 创建节点
-	now := time.Now().Format(time.RFC3339)
-	node := &NodeInfo{
-		ID:        nodeID,
-		Name:      addName,
-		Address:   addAddress,
-		Port:      addPort,
-		User:      addUser,
-		Password:  addPassword,
-		SSHKey:    addSSHKey,
-		Status:    "offline",
-		Groups:    groups,
-		Labels:    labels,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-
-	// 保存节点
-	if err := store.Add(node); err != nil {
-		fmt.Fprintf(os.Stderr, "Error adding node: %v\n", err)
-		os.Exit(1)
-	}
-
-	// 持久化到文件
-	store.Save()
-
-	fmt.Printf("Node '%s' added successfully\n", nodeID)
-	fmt.Printf("  Name:    %s\n", node.Name)
-	fmt.Printf("  Address: %s:%d\n", node.Address, node.Port)
-}
-
-// RunRemoveNode 删除节点
-func RunRemoveNode(args []string) {
-	store := GetNodeStore()
-	success := 0
-	failed := 0
-
-	for _, nodeID := range args {
-		if err := store.Remove(nodeID); err != nil {
-			fmt.Printf("Failed to remove node '%s': %v\n", nodeID, err)
-			failed++
-		} else {
-			fmt.Printf("Node '%s' removed successfully\n", nodeID)
-			success++
-		}
-	}
-
-	// 持久化到文件
-	if success > 0 {
-		store.Save()
-	}
-
-	fmt.Printf("\nRemoved: %d nodes, Failed: %d\n", success, failed)
-	if failed > 0 {
-		os.Exit(1)
-	}
-}
-
-// Helper functions
-func splitAndTrim(s string, sep string) []string {
-	parts := make([]string, 0)
-	for _, p := range splitStr(s, sep) {
-		if trimmed := trimStr(p); trimmed != "" {
-			parts = append(parts, trimmed)
-		}
-	}
-	return parts
-}
-
-func splitStr(s string, sep string) []string {
-	result := make([]string, 0)
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if i+len(sep) <= len(s) && s[i:i+len(sep)] == sep {
-			result = append(result, s[start:i])
-			start = i + len(sep)
-			i += len(sep) - 1
-		}
-	}
-	result = append(result, s[start:])
-	return result
-}
-
-func trimStr(s string) string {
-	start, end := 0, len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
-		end--
-	}
-	return s[start:end]
-}
-
-func joinStrings(strs []string, sep string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	result := strs[0]
-	for _, s := range strs[1:] {
-		result += sep + s
-	}
-	return result
 }

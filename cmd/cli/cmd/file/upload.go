@@ -258,19 +258,6 @@ func parseNodeList(s string) []string {
 	return result
 }
 
-func parseLabels(labels []string) map[string]string {
-	result := make(map[string]string)
-	for _, label := range labels {
-		for i := 0; i < len(label); i++ {
-			if label[i] == '=' {
-				result[label[:i]] = label[i+1:]
-				break
-			}
-		}
-	}
-	return result
-}
-
 func getFileNameFromPath(path string) string {
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i] == '/' {

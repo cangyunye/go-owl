@@ -588,7 +588,3 @@ func handleDirectCommand(cmdStr string) {
 	fmt.Printf("%s", i18n.T("ai.direct.executing", cmdStr))
 	fmt.Println(i18n.T("ai.direct.not_supported"))
 }
-
-func NewSessionManager() *ai.SessionManager {
-	return ai.NewSessionManager()
-}

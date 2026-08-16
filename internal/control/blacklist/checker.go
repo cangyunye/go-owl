@@ -23,6 +23,7 @@ func NewChecker(cfg *Config) *Checker {
 	return &Checker{config: cfg}
 }
 
+// NewDefaultChecker 使用默认规则创建检查器（Web 端剧本/命令执行校验使用）。
 func NewDefaultChecker() *Checker {
 	return &Checker{config: &Config{Rules: DefaultRules()}}
 }

@@ -212,30 +212,6 @@ func GetStepStates(runID string, nodeID string, statusFilter string) ([]*Playboo
 	return steps, nil
 }
 
-func FindLastFailedRunByPlaybookName(playbookName string) (*PlaybookRun, error) {
-	if GetGlobalDB() == nil {
-		return nil, nil
-	}
-	row := GetGlobalDB().Connection().QueryRow(`
-		SELECT id, playbook_name, playbook_hash, nodes, status, started_at, finished_at, total_steps, completed_steps, failed_steps
-		FROM playbook_run_states
-		WHERE playbook_name = ? AND status = 'failed'
-		ORDER BY started_at DESC LIMIT 1
-	`, playbookName)
-
-	var run PlaybookRun
-	var nodesJSON string
-	var finishedAt *time.Time
-	err := row.Scan(&run.ID, &run.PlaybookName, &run.PlaybookHash, &nodesJSON,
-		&run.Status, &run.StartedAt, &finishedAt, &run.TotalSteps, &run.CompletedSteps, &run.FailedSteps)
-	if err != nil {
-		return nil, err
-	}
-	run.FinishedAt = finishedAt
-	json.Unmarshal([]byte(nodesJSON), &run.Nodes)
-	return &run, nil
-}
-
 func truncateForDB(s string) string {
 	const maxLen = 4096
 	if len(s) <= maxLen {

@@ -133,12 +133,6 @@ func min(a, b int) int {
 	return b
 }
 
-func NewDiffusionTree() *DiffusionTree {
-	return &DiffusionTree{
-		Nodes: make(map[string]*TreeNode),
-	}
-}
-
 func (t *DiffusionTree) GetNode(id string) (*TreeNode, bool) {
 	node, ok := t.Nodes[id]
 	return node, ok
