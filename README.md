@@ -152,6 +152,7 @@ owl ai config show
 | **系统设置** | [SETTINGS.md](docs/user/SETTINGS.md) | 配置管理和目标配置 |
 | **AI 助手** | [AI.md](docs/user/AI.md) | 智能运维辅助 |
 | **历史记录** | [HISTORY.md](docs/user/HISTORY.md) | 执行历史查看 |
+| **TUI 界面** | [TUI.md](docs/user/TUI.md) | `owl tui` 终端界面（Nodes/Exec/File/AI 面板） |
 
 ## 🛠️ 使用示例
 
@@ -291,6 +292,18 @@ settings:
 
 `OWL_TUI_THEME` 选择主题：`default` / `catppuccin` / `nord` / `dracula` / `solarized`（默认 `catppuccin`）。
 主题在 TrueColor/256/ANSI 色域自动降级，并按终端明暗背景自适应。
+
+## 🚀 发布
+
+推送 `v*` 标签触发 GitHub Actions（`.github/workflows/release.yml`）自动构建并发布：
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+工作流会构建 `linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64` 五个平台的
+`owl` / `owl-serve` / `gscp` 二进制，并创建带自动生成 changelog 的 GitHub Release。
 
 ## 🤝 贡献
 

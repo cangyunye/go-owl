@@ -19,6 +19,7 @@
 | [AI.md](AI.md) | AI 助手 |
 | [HISTORY.md](HISTORY.md) | 执行历史记录 |
 | [SETTINGS.md](SETTINGS.md) | 系统设置 |
+| [TUI.md](TUI.md) | TUI 终端界面（Nodes/Exec/File/AI 面板） |
 
 ## 📚 相关文档
 
