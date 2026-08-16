@@ -29,6 +29,7 @@ type WebExecutor struct {
 	keyManager          *KeyManager
 	debugMode           bool
 	userRole            string
+	userName            string
 	History             *store.HistoryStore
 	PlaybookHandler     *PlaybookHandler
 	checker             *blacklist.Checker
@@ -199,7 +200,7 @@ func (e *WebExecutor) ExecuteCommand(ctx context.Context, params ai2.ExecCommand
 		sb.WriteString(fmt.Sprintf("%s [%s] exit=%d\n%s\n", mark, r.nodeID, r.exitCode, strings.TrimSpace(r.output)))
 	}
 
-	e.History.RecordOperation(ctx, &store.Operation{TaskID: opID, OpType: "command", Command: params.Command, Targets: nodeIDs, Status: aggregateStatus(successCount, len(results)), CreatedAt: time.Now().UTC()})
+	e.History.RecordOperation(ctx, &store.Operation{TaskID: opID, OpType: "command", Command: params.Command, Targets: nodeIDs, Status: aggregateStatus(successCount, len(results)), Username: e.userName, CreatedAt: time.Now().UTC()})
 
 	return &ai2.ExecResult{Text: fmt.Sprintf("在 %d 个节点执行（%d 成功）：\n\n%s", len(nodeIDs), successCount, sb.String())}, nil
 }
@@ -292,7 +293,7 @@ func (e *WebExecutor) ExecuteScript(ctx context.Context, params ai2.ExecScriptPa
 		sb.WriteString(fmt.Sprintf("%s [%s] exit=%d\n%s\n", mark, r.nodeID, r.exitCode, strings.TrimSpace(r.output)))
 	}
 
-	e.History.RecordOperation(ctx, &store.Operation{TaskID: opID, OpType: "script", Command: displayCmd, Targets: nodeIDs, Status: aggregateStatus(successCount, len(results)), CreatedAt: time.Now().UTC()})
+	e.History.RecordOperation(ctx, &store.Operation{TaskID: opID, OpType: "script", Command: displayCmd, Targets: nodeIDs, Status: aggregateStatus(successCount, len(results)), Username: e.userName, CreatedAt: time.Now().UTC()})
 
 	return &ai2.ExecScriptResult{Text: fmt.Sprintf("在 %d 个节点执行脚本（%d 成功）：\n\n%s", len(nodeIDs), successCount, sb.String())}, nil
 }
@@ -362,7 +363,7 @@ func (e *WebExecutor) TransferFile(ctx context.Context, params ai2.TransferFileP
 		sb.WriteString(fmt.Sprintf("%s [%s] %s\n", mark, nid, errMsg))
 	}
 
-	e.History.RecordOperation(ctx, &store.Operation{TaskID: rec.ID, OpType: "file_transfer", Command: fmt.Sprintf("transfer %s -> %s", params.SourceFile, params.DestDir), Targets: nodeIDs, Status: aggregateStatus(successCount, len(nodeIDs)), CreatedAt: time.Now().UTC()})
+	e.History.RecordOperation(ctx, &store.Operation{TaskID: rec.ID, OpType: "file_transfer", Command: fmt.Sprintf("transfer %s -> %s", params.SourceFile, params.DestDir), Targets: nodeIDs, Status: aggregateStatus(successCount, len(nodeIDs)), Username: e.userName, CreatedAt: time.Now().UTC()})
 
 	return &ai2.TransferResult{Text: fmt.Sprintf("传输 %s -> %s 到 %d 个节点（%d 成功）：\n%s", params.SourceFile, params.DestDir, len(nodeIDs), successCount, sb.String())}, nil
 }

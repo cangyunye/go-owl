@@ -2,7 +2,7 @@ export function renderHistory(render, navigate, user, api, shell) {
   const isAdmin = user && user.role === 'admin';
   const pageSize = 50;
   const state = {
-    opType: '', status: '', nodeId: '', command: '', last: '', page: 1, total: 0, records: [], stats: null, wsCleanup: null,
+    opType: '', status: '', nodeId: '', command: '', user: '', last: '', page: 1, total: 0, records: [], stats: null, wsCleanup: null,
   };
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -14,7 +14,7 @@ export function renderHistory(render, navigate, user, api, shell) {
 
   function buildParams() {
     return {
-      op_type: state.opType, status: state.status, node_id: state.nodeId, command: state.command, last: state.last,
+      op_type: state.opType, status: state.status, node_id: state.nodeId, command: state.command, user: state.user, last: state.last,
       limit: pageSize, offset: (state.page - 1) * pageSize,
     };
   }
@@ -57,7 +57,7 @@ export function renderHistory(render, navigate, user, api, shell) {
           <div class="hi-icon"><svg width="16" height="16" aria-hidden="true"><use href="#icon-${icon}"/></svg></div>
           <div class="hi-info">
             <div class="hi-name">${esc(op.command || '')}</div>
-            <div class="hi-meta">${OP_LABELS[op.op_type] || esc(op.op_type)} · ${targets || '无目标'} · ${timeAgo(op.created_at)}</div>
+            <div class="hi-meta">${OP_LABELS[op.op_type] || esc(op.op_type)} · ${targets || '无目标'} · ${op.username ? `执行人: ${esc(op.username)} · ` : ''}${timeAgo(op.created_at)}</div>
           </div>
           ${statusBadge(op.status)}
           <div class="hi-action"><svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg></div>
@@ -148,7 +148,7 @@ export function renderHistory(render, navigate, user, api, shell) {
       <div class="modal-header"><h3>${esc(op.command || '操作详情')}</h3>
         <button class="btn btn-ghost btn-icon" id="detail-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
       <div class="modal-body">
-        <p style="color:var(--muted);font-size:12px">类型: ${OP_LABELS[op.op_type] || esc(op.op_type)} · 状态: ${STATUS_TEXT[op.status] || esc(op.status)} · 时间: ${esc(op.created_at)}</p>
+        <p style="color:var(--muted);font-size:12px">类型: ${OP_LABELS[op.op_type] || esc(op.op_type)} · 状态: ${STATUS_TEXT[op.status] || esc(op.status)} · ${op.username ? `执行人: ${esc(op.username)} · ` : ''}时间: ${esc(op.created_at)}</p>
         <p style="color:var(--muted);font-size:12px">目标: ${(op.targets || []).map(esc).join(', ') || '无'}</p>
         ${dlRow}
         ${execBlocks ? `<h4>命令执行</h4>${execBlocks}` : ''}
@@ -186,6 +186,7 @@ export function renderHistory(render, navigate, user, api, shell) {
         <option value="7d">最近 7 天</option>
         <option value="30d">最近 30 天</option>
       </select>
+      <input class="input" id="user-filter" placeholder="按用户过滤" style="max-width:120px" />
       <input class="input" id="node-filter" placeholder="按节点过滤" style="max-width:140px" />
       <input class="input" id="cmd-filter" placeholder="搜索命令" style="flex:1;min-width:160px;max-width:280px" />
       <div class="spacer" style="flex:1"></div>
@@ -205,6 +206,11 @@ export function renderHistory(render, navigate, user, api, shell) {
 
     document.getElementById('status-filter').addEventListener('change', (e) => { state.status = e.target.value; state.page = 1; load(); });
     document.getElementById('time-filter').addEventListener('change', (e) => { state.last = e.target.value; state.page = 1; load(); });
+    let userTimer = null;
+    document.getElementById('user-filter').addEventListener('input', (e) => {
+      clearTimeout(userTimer);
+      userTimer = setTimeout(() => { state.user = e.target.value.trim(); state.page = 1; load(); }, 300);
+    });
     let nodeTimer = null;
     document.getElementById('node-filter').addEventListener('input', (e) => {
       clearTimeout(nodeTimer);

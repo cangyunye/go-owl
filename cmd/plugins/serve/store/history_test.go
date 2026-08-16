@@ -36,6 +36,67 @@ func TestHistoryStore_InitAndRecordOperation(t *testing.T) {
 	assert.JSONEq(t, `["n1","n2"]`, targets)
 }
 
+// TestHistoryStore_UsernameRoundtrip 验证 serve 侧操作的执行用户归属：
+// 写入 Username 后 Query/GetByTaskID 能原样读回。
+func TestHistoryStore_UsernameRoundtrip(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "op-u1", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed", Username: "alice"}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "op-u2", OpType: "command", Command: "df -h", Targets: []string{"n2"}, Status: "failed", Username: "bob"}))
+
+	rec, err := s.GetByTaskID(ctx, "op-u1")
+	require.NoError(t, err)
+	assert.Equal(t, "alice", rec.Operation.Username)
+
+	recs, total, err := s.Query(ctx, &QueryOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, recs, 2)
+	usernames := map[string]bool{}
+	for _, r := range recs {
+		usernames[r.Operation.Username] = true
+	}
+	assert.True(t, usernames["alice"], "alice's record should carry username")
+	assert.True(t, usernames["bob"], "bob's record should carry username")
+}
+
+// TestHistoryStore_QueryUserFilter 验证按执行用户筛选：
+// User 精确匹配，其他用户与空归属（CLI 存量/未归属）记录不命中。
+func TestHistoryStore_QueryUserFilter(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "a1", OpType: "command", Command: "uptime", Status: "completed", Username: "alice"}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "a2", OpType: "command", Command: "who", Status: "failed", Username: "alice"}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "b1", OpType: "command", Command: "df -h", Status: "completed", Username: "bob"}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "c1", OpType: "command", Command: "legacy", Status: "completed"}))
+
+	byAlice, total, err := s.Query(ctx, &QueryOptions{User: "alice"})
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, byAlice, 2)
+
+	byBob, total, err := s.Query(ctx, &QueryOptions{User: "bob"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	assert.Equal(t, "b1", byBob[0].Operation.TaskID)
+
+	none, total, err := s.Query(ctx, &QueryOptions{User: "nobody"})
+	require.NoError(t, err)
+	assert.Equal(t, 0, total)
+	assert.Len(t, none, 0)
+
+	unassigned, total, err := s.Query(ctx, &QueryOptions{User: ""})
+	require.NoError(t, err)
+	assert.Equal(t, 4, total, "empty user filter should not filter anything")
+	assert.Len(t, unassigned, 4)
+}
+
 func TestHistoryStore_NilSafe(t *testing.T) {
 	var s *HistoryStore
 	assert.NoError(t, s.Init(context.Background()))
@@ -253,6 +314,70 @@ func TestHistoryStore_OperationsColumnMigration_LegacyDB(t *testing.T) {
 
 	require.NoError(t, s.Init(ctx))
 	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "legacy-2", OpType: "command", Status: "running"}))
+}
+
+// TestHistoryStore_UsernameColumnMigration_LegacyDB 覆盖旧库场景：
+// 存量 operations 表无 username 列（早期 CLI 建库），serve 启动 Init 后
+// 必须 ALTER 补齐，否则带 Username 的 RecordOperation 报
+// "has no column named username"。
+func TestHistoryStore_UsernameColumnMigration_LegacyDB(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	_, err := db.Exec(`CREATE TABLE operations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id TEXT,
+		op_type TEXT,
+		command TEXT,
+		targets TEXT,
+		status TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	var n int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('operations') WHERE name = 'username'`).Scan(&n))
+	assert.Equal(t, 1, n, "username column should be migrated into legacy operations table")
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "legacy-u1", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed", Username: "alice"}))
+
+	rec, err := s.GetByTaskID(ctx, "legacy-u1")
+	require.NoError(t, err)
+	assert.Equal(t, "alice", rec.Operation.Username)
+}
+
+// TestHistoryStore_UsernameMigration_Idempotent 验证列已存在时重复 Init
+// 不报错（serve 与 CLI 可能并发迁移同一旧库）。
+func TestHistoryStore_UsernameMigration_Idempotent(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+	require.NoError(t, s.Init(ctx))
+	require.NoError(t, s.Init(ctx))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "idem-1", OpType: "command", Status: "completed", Username: "admin"}))
+}
+
+// TestHistoryStore_UsernameColumn_CLICompatInsert 验证 CLI（internal/history）
+// 风格 INSERT：显式列清单不含 username。serve 建表后该语句必须仍成功，
+// 未归属记录读回 Username 为空串——保证 CLI 与 serve 共用 owl.db 不互相破坏。
+func TestHistoryStore_UsernameColumn_CLICompatInsert(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "cli-write-1", "command", "uptime", `["n1"]`, "completed", "", "", 0, "", 0, time.Now().UTC())
+	require.NoError(t, err)
+
+	rec, err := s.GetByTaskID(ctx, "cli-write-1")
+	require.NoError(t, err)
+	assert.Equal(t, "", rec.Operation.Username)
 }
 
 func TestHistoryStore_UpdateOperationStatus(t *testing.T) {

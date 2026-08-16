@@ -133,7 +133,7 @@ func (h *TransferHandler) submit(c *gin.Context, req *transferRequest) {
 	}
 	h.recordStore.SetNodeCount(c.Request.Context(), transferRec.ID, len(req.NodeIDs))
 
-	op := &store.Operation{TaskID: transferRec.ID, OpType: "file_transfer", Command: fmt.Sprintf("transfer %s -> %s", req.SourcePath, req.DestPath), Targets: req.NodeIDs, Status: "running", CreatedAt: time.Now().UTC()}
+	op := &store.Operation{TaskID: transferRec.ID, OpType: "file_transfer", Command: fmt.Sprintf("transfer %s -> %s", req.SourcePath, req.DestPath), Targets: req.NodeIDs, Status: "running", CreatedAt: time.Now().UTC(), Username: c.GetString("username")}
 	if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
 		log.Printf("record history: %v", err)
 	}

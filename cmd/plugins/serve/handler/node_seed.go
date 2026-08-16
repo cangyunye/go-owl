@@ -214,7 +214,7 @@ func (h *NodeHandler) Seed(c *gin.Context) {
 		for _, spec := range specs {
 			ids = append(ids, spec.id)
 		}
-		h.recordNodeManage(c.Request.Context(), "node seed", ids)
+		h.recordNodeManage(c, "node seed", ids)
 	}
 	c.JSON(http.StatusOK, gin.H{"created": created, "skipped": skipped, "total": len(specs)})
 }

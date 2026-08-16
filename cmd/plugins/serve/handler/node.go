@@ -74,16 +74,17 @@ func NewNodeHandler(db *sql.DB) *NodeHandler {
 	return &NodeHandler{db: db}
 }
 
-func (h *NodeHandler) recordNodeManage(ctx context.Context, action string, targets []string) {
+func (h *NodeHandler) recordNodeManage(c *gin.Context, action string, targets []string) {
 	op := &store.Operation{
 		TaskID:    uuid.New().String(),
 		OpType:    "node_manage",
 		Command:   action,
 		Targets:   targets,
 		Status:    "completed",
+		Username:  c.GetString("username"),
 		CreatedAt: time.Now().UTC(),
 	}
-	if err := h.History.RecordOperation(ctx, op); err != nil {
+	if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
 		log.Printf("record history: %v", err)
 	}
 	if h.Hub != nil {
@@ -398,7 +399,7 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		n.Labels = map[string]string{}
 	}
 
-	h.recordNodeManage(c.Request.Context(), "node create "+req.ID, []string{req.ID})
+	h.recordNodeManage(c, "node create "+req.ID, []string{req.ID})
 	c.JSON(http.StatusCreated, n)
 }
 
@@ -481,7 +482,7 @@ func (h *NodeHandler) Update(c *gin.Context) {
 	}
 
 	// Return updated node
-	h.recordNodeManage(c.Request.Context(), "node update "+id, []string{id})
+	h.recordNodeManage(c, "node update "+id, []string{id})
 	c.Request.URL.Path = "/api/v1/nodes/" + id
 	h.Get(c)
 }
@@ -498,7 +499,7 @@ func (h *NodeHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "node not found"})
 		return
 	}
-	h.recordNodeManage(c.Request.Context(), "node delete "+id, []string{id})
+	h.recordNodeManage(c, "node delete "+id, []string{id})
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
@@ -582,7 +583,7 @@ func (h *NodeHandler) BatchGroups(c *gin.Context) {
 	}
 
 	if updated > 0 {
-		h.recordNodeManage(c.Request.Context(), fmt.Sprintf("node batch groups add=%v remove=%v", req.Add, req.Remove), req.NodeIDs)
+		h.recordNodeManage(c, fmt.Sprintf("node batch groups add=%v remove=%v", req.Add, req.Remove), req.NodeIDs)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"updated": updated,
@@ -804,7 +805,7 @@ func (h *NodeHandler) Import(c *gin.Context) {
 	}
 
 	if len(importedIDs) > 0 {
-		h.recordNodeManage(c.Request.Context(), fmt.Sprintf("node import success=%d", result.Success), importedIDs)
+		h.recordNodeManage(c, fmt.Sprintf("node import success=%d", result.Success), importedIDs)
 	}
 	c.JSON(http.StatusOK, result)
 }

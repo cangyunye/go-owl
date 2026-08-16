@@ -100,6 +100,34 @@ func TestHistoryList_AndFilters(t *testing.T) {
 	assert.Equal(t, "a", resp4.Data[0].Operation.TaskID)
 }
 
+func TestHistoryList_UserFilter(t *testing.T) {
+	hs, r := historyTestSetup(t)
+	ctx := context.Background()
+	hs.RecordOperation(ctx, &store.Operation{TaskID: "u-admin", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed", Username: "admin", CreatedAt: time.Now().UTC()})
+	hs.RecordOperation(ctx, &store.Operation{TaskID: "u-alice", OpType: "playbook", Command: "deploy", Targets: []string{"n2"}, Status: "failed", Username: "alice", CreatedAt: time.Now().UTC()})
+	hs.RecordOperation(ctx, &store.Operation{TaskID: "u-legacy", OpType: "command", Command: "df -h", Status: "completed", CreatedAt: time.Now().UTC()})
+
+	w := historyGET(t, r, "/api/v1/history?user=admin", adminToken())
+	require.Equal(t, 200, w.Code)
+	var resp struct {
+		Data []store.Record `json:"data"`
+		Meta struct{ Total int `json:"total"` } `json:"meta"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, 1, resp.Meta.Total)
+	assert.Equal(t, "u-admin", resp.Data[0].Operation.TaskID)
+	assert.Equal(t, "admin", resp.Data[0].Operation.Username)
+
+	w2 := historyGET(t, r, "/api/v1/history?user=alice", adminToken())
+	var resp2 struct {
+		Data []store.Record `json:"data"`
+		Meta struct{ Total int `json:"total"` } `json:"meta"`
+	}
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp2))
+	assert.Equal(t, 1, resp2.Meta.Total)
+	assert.Equal(t, "u-alice", resp2.Data[0].Operation.TaskID)
+}
+
 func TestHistoryGet_Detail(t *testing.T) {
 	hs, r := historyTestSetup(t)
 	ctx := context.Background()

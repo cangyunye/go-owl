@@ -128,6 +128,7 @@ func (h *AIHandler) Chat(c *gin.Context) {
 	}
 
 	h.executor.userRole = c.GetString("role")
+	h.executor.userName = c.GetString("username")
 
 	session, exists := h.sessionMgr.GetSession(sessionKey)
 	if !exists {

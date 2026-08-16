@@ -48,11 +48,12 @@ func parseHistoryDuration(s string) (time.Duration, error) {
 
 func (h *HistoryHandler) parseOptions(c *gin.Context) *store.QueryOptions {
 	opts := &store.QueryOptions{
-		TaskID: c.Query("task_id"),
-		NodeID: c.Query("node_id"),
-		OpType: c.Query("op_type"),
-		Status: c.Query("status"),
+		TaskID:  c.Query("task_id"),
+		NodeID:  c.Query("node_id"),
+		OpType:  c.Query("op_type"),
+		Status:  c.Query("status"),
 		Command: c.Query("command"),
+		User:    c.Query("user"),
 	}
 	if v := c.Query("last"); v != "" {
 		if d, err := parseHistoryDuration(v); err == nil && d > 0 {
