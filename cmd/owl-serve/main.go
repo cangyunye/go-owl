@@ -28,12 +28,7 @@ func main() {
 - 基于角色的多用户访问控制
 - RESTful JSON API`,
 		Run: func(cmd *cobra.Command, args []string) {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				log.Fatalf("cannot get home dir: %v", err)
-			}
-
-			dbPath := home + "/.owl/owl.db"
+			dbPath := resolveDBPath()
 
 			cfg := &serve.Config{
 				DBPath:      dbPath,
