@@ -1,6 +1,7 @@
 package history
 
 import (
+	"database/sql"
 	"encoding/json"
 	"time"
 )
@@ -71,11 +72,29 @@ type Record struct {
 	Transfers         []*FileTransfer
 }
 
-// RecordOperation 记录操作
+// RecordOperation 记录操作：同一 task_id 已存在时更新其状态（终态覆盖 running），
+// 否则插入新行。避免 owl history 对同一次操作重复显示 running + 终态两行。
 func (db *DB) RecordOperation(op *Operation) error {
+	return upsertOperation(db.impl.Connection(), op)
+}
+
+// upsertOperation 先按 task_id 更新既有行；无匹配时插入新行。
+func upsertOperation(conn *sql.DB, op *Operation) error {
 	targetsJSON, _ := json.Marshal(op.Targets)
 
-	_, err := db.impl.Connection().Exec(`
+	res, err := conn.Exec(`
+		UPDATE operations SET status = ?, execution_mode = ?, playbook_path = ?,
+			current_task_index = ?, current_task_phase = ?, forced = ?, created_at = ?
+		WHERE task_id = ?
+	`, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, boolToInt(op.Forced), op.CreatedAt, op.TaskID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		return nil
+	}
+
+	_, err = conn.Exec(`
 		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, boolToInt(op.Forced), op.CreatedAt)
@@ -318,12 +337,7 @@ func RecordOperation(op *Operation) error {
 	if GetGlobalDB() == nil {
 		return nil
 	}
-	targetsJSON, _ := json.Marshal(op.Targets)
-	_, err := GetGlobalDB().Connection().Exec(`
-		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, boolToInt(op.Forced), op.CreatedAt)
-	return err
+	return upsertOperation(GetGlobalDB().Connection(), op)
 }
 
 // UpdateOperationStatus 更新操作状态和 checkpoint
