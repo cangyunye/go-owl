@@ -26,15 +26,6 @@ func NewTransferManager(nodeResolver *node.NodeResolver) *TransferManager {
 	}
 }
 
-// NewTransferManagerWithSSHConfig 创建带自定义 SSH config 路径的传输管理器
-func NewTransferManagerWithSSHConfig(nodeResolver *node.NodeResolver, sshConfigPath string) *TransferManager {
-	return &TransferManager{
-		nodeResolver:   nodeResolver,
-		sshConfigPath:  sshConfigPath,
-		rsyncAvailable: make(map[string]bool),
-	}
-}
-
 type TransferResult struct {
 	NodeID     string
 	Path       string

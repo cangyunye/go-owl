@@ -216,11 +216,6 @@ func (e *RelayExecutor) DeployRelay(ctx context.Context, nodeID string) error {
 	return nil
 }
 
-// Deprecated: 使用 DeployRelay 替代
-func (e *RelayExecutor) DeployScript(ctx context.Context, nodeID string) error {
-	return e.DeployRelay(ctx, nodeID)
-}
-
 func (e *RelayExecutor) ExecuteRelay(ctx context.Context, nodeID string, task *RelaySubTask) ([]RelayTargetResult, error) {
 	_, connInfo, err := e.resolveConnInfo(ctx, nodeID)
 	if err != nil {

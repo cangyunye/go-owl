@@ -100,17 +100,6 @@ func (e *playbookExecutor) SetCheckpointFunc(fn func(phase string, index int)) {
 	e.checkpointFunc = fn
 }
 
-func NewExecutor(nodeMgr controlnode.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, nodeResolver *node.NodeResolver) Executor {
-	runner := NewDefaultActionRunner(cmdExec, nodeResolver)
-	return &playbookExecutor{
-		nodeMgr:      nodeMgr,
-		cmdExec:      cmdExec,
-		taskSched:    taskSched,
-		runner:       runner,
-		nodeResolver: nodeResolver,
-	}
-}
-
 func NewExecutorWithOptions(nodeMgr controlnode.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, nodeResolver *node.NodeResolver, opts *PlaybookOptions) Executor {
 	runner := NewDefaultActionRunnerWithOptions(cmdExec, nodeResolver, opts)
 	return &playbookExecutor{
@@ -141,14 +130,6 @@ type defaultActionRunner struct {
 	opts            *PlaybookOptions
 	playbookBaseDir string
 	downloadBaseDir string
-}
-
-func NewDefaultActionRunner(cmdExec command.CommandExecutor, nodeResolver *node.NodeResolver) *defaultActionRunner {
-	return &defaultActionRunner{
-		cmdExec:       cmdExec,
-		nodeResolver:  nodeResolver,
-		transferMgr:   transfer.NewTransferManager(nodeResolver),
-	}
 }
 
 func NewDefaultActionRunnerWithOptions(cmdExec command.CommandExecutor, nodeResolver *node.NodeResolver, opts *PlaybookOptions) *defaultActionRunner {
@@ -472,13 +453,6 @@ func (r *defaultActionRunner) interpolateVariables(s string, vars map[string]int
 	return s
 }
 
-func (r *defaultActionRunner) getTimeout() time.Duration {
-	if r.opts != nil && r.opts.TimeoutConfig != nil {
-		return r.opts.TimeoutConfig.CommandTimeout
-	}
-	return 5 * time.Minute
-}
-
 func (r *defaultActionRunner) getGlobalDefaults() *PlaybookDefaults {
 	if r.opts == nil {
 		return DefaultPlaybookDefaults()
@@ -771,56 +745,6 @@ func (e *playbookExecutor) ExecuteTask(exec *PlaybookExecution, task *ParsedTask
 
 func (e *playbookExecutor) Stop(execID string) error {
 	return fmt.Errorf("stop functionality not implemented yet")
-}
-
-type ParallelExecutor struct {
-	executor       Executor
-	maxParallelism int
-	mu             sync.Mutex
-	executions     map[string]*PlaybookExecution
-}
-
-func NewParallelExecutor(executor Executor, maxParallelism int) *ParallelExecutor {
-	if maxParallelism <= 0 {
-		maxParallelism = 10
-	}
-	return &ParallelExecutor{
-		executor:       executor,
-		maxParallelism: maxParallelism,
-		executions:     make(map[string]*PlaybookExecution),
-	}
-}
-
-func (p *ParallelExecutor) ExecuteAsync(playbook *ParsedPlaybook, targets []*model.Node, extraVars map[string]interface{}) (string, error) {
-	execID := fmt.Sprintf("parallel-exec-%d", time.Now().UnixNano())
-
-	go func() {
-		exec, err := p.executor.Execute(playbook, targets, extraVars)
-		p.mu.Lock()
-		if err == nil {
-			p.executions[execID] = exec
-		}
-		p.mu.Unlock()
-	}()
-
-	return execID, nil
-}
-
-func (p *ParallelExecutor) GetExecution(execID string) (*PlaybookExecution, bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	exec, ok := p.executions[execID]
-	return exec, ok
-}
-
-func (p *ParallelExecutor) ListExecutions() []*PlaybookExecution {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	execs := make([]*PlaybookExecution, 0, len(p.executions))
-	for _, exec := range p.executions {
-		execs = append(execs, exec)
-	}
-	return execs
 }
 
 func (e *PlaybookExecution) GetTaskResult(taskName string) []*TaskResult {

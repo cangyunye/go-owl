@@ -177,22 +177,3 @@ func (c *IntentClassifier) isScriptFile(input string) bool {
 		strings.Contains(lowerInput, "script") ||
 		strings.Contains(lowerInput, "inline")
 }
-
-func GetIntentDescription(intent IntentType) string {
-	switch intent {
-	case IntentQueryNodes:
-		return "查询节点信息"
-	case IntentExecuteCmd:
-		return "执行命令"
-	case IntentExecuteScript:
-		return "执行脚本"
-	case IntentGeneratePlaybook:
-		return "生成并执行剧本"
-	case IntentTransferFile:
-		return "传输文件"
-	case IntentFileDownload:
-		return "下载文件"
-	default:
-		return "无法确定"
-	}
-}

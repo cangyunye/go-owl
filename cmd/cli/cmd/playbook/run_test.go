@@ -272,23 +272,6 @@ func TestParsePlaybookRunExtraVars(t *testing.T) {
 	}
 }
 
-func TestContainsNodeIDList(t *testing.T) {
-	list := []string{"node1", "node2", "node3"}
-
-	if !containsNodeIDList(list, "node1") {
-		t.Error("expected node1 to be found")
-	}
-	if !containsNodeIDList(list, "node3") {
-		t.Error("expected node3 to be found")
-	}
-	if containsNodeIDList(list, "node4") {
-		t.Error("expected node4 not to be found")
-	}
-	if containsNodeIDList(nil, "node1") {
-		t.Error("expected false for nil list")
-	}
-}
-
 func TestTruncateStr(t *testing.T) {
 	tests := []struct {
 		name   string

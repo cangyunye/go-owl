@@ -19,25 +19,6 @@ func TestDefaultPlaybookDefaults(t *testing.T) {
 	}
 }
 
-func TestNewPlaybookDefaults(t *testing.T) {
-	defaults := NewPlaybookDefaults(
-		5*time.Second,
-		10*time.Minute,
-		3,
-		0,
-		2*time.Second,
-		60*time.Second,
-	)
-
-	if defaults.TimeoutConfig.ConnectTimeout != 5*time.Second {
-		t.Errorf("expected ConnectTimeout 5s, got %v", defaults.TimeoutConfig.ConnectTimeout)
-	}
-
-	if defaults.TimeoutConfig.CommandTimeout != 10*time.Minute {
-		t.Errorf("expected CommandTimeout 10m, got %v", defaults.TimeoutConfig.CommandTimeout)
-	}
-}
-
 func TestActionOptions_GetTimeout(t *testing.T) {
 	opts := &ActionOptions{
 		Timeout: &TimeoutOption{

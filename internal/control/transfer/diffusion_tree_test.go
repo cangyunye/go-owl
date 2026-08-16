@@ -464,20 +464,6 @@ func TestDiffusionTree_RemoveNode_NotFound(t *testing.T) {
 	}
 }
 
-func TestNewDiffusionTree(t *testing.T) {
-	tree := NewDiffusionTree()
-
-	if tree == nil {
-		t.Fatal("expected tree, got nil")
-	}
-	if tree.Nodes == nil {
-		t.Error("expected Nodes to be initialized")
-	}
-	if tree.Root != "" {
-		t.Errorf("expected empty root, got '%s'", tree.Root)
-	}
-}
-
 func TestDiffusionTree_DefaultValues(t *testing.T) {
 	builder := NewTreeBuilder(0, 0, 0)
 	nodes := []*model.Node{

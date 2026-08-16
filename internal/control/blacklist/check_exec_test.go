@@ -8,7 +8,7 @@ import (
 )
 
 func TestCheckForExec_BlockedCommands(t *testing.T) {
-	c := NewDefaultChecker()
+	c := NewChecker(&Config{Rules: DefaultRules()})
 
 	_, err := c.CheckForExec("root", "rm -rf /var/log", false)
 	require.Error(t, err)
@@ -20,7 +20,7 @@ func TestCheckForExec_BlockedCommands(t *testing.T) {
 }
 
 func TestCheckForExec_ForceAllows(t *testing.T) {
-	c := NewDefaultChecker()
+	c := NewChecker(&Config{Rules: DefaultRules()})
 
 	result, err := c.CheckForExec("root", "rm -rf /var/log", true)
 	require.NoError(t, err)
@@ -29,7 +29,7 @@ func TestCheckForExec_ForceAllows(t *testing.T) {
 }
 
 func TestCheckForExec_SafeCommand(t *testing.T) {
-	c := NewDefaultChecker()
+	c := NewChecker(&Config{Rules: DefaultRules()})
 
 	result, err := c.CheckForExec("root", "uptime", false)
 	require.NoError(t, err)
@@ -37,7 +37,7 @@ func TestCheckForExec_SafeCommand(t *testing.T) {
 }
 
 func TestCheckForExec_UserScope(t *testing.T) {
-	c := NewDefaultChecker()
+	c := NewChecker(&Config{Rules: DefaultRules()})
 
 	// sudo 规则仅对 root 用户生效
 	_, err := c.CheckForExec("www-data", "echo hello", false)

@@ -14,14 +14,6 @@ type TimeoutConfig struct {
 	CommandTimeout time.Duration
 }
 
-// DefaultTimeoutConfig 默认超时配置
-func DefaultTimeoutConfig() TimeoutConfig {
-	return TimeoutConfig{
-		ConnectTimeout: 10 * time.Second,
-		CommandTimeout: 30 * time.Second,
-	}
-}
-
 // TimeoutType 超时类型
 type TimeoutType string
 
@@ -46,18 +38,4 @@ func (e *TimeoutError) Error() string {
 
 func (e *TimeoutError) Unwrap() error {
 	return e.Cause
-}
-
-// IsTimeoutError 判断错误是否为超时错误
-func IsTimeoutError(err error) bool {
-	_, ok := err.(*TimeoutError)
-	return ok
-}
-
-// GetTimeoutType 获取超时类型
-func GetTimeoutType(err error) (TimeoutType, bool) {
-	if te, ok := err.(*TimeoutError); ok {
-		return te.Type, true
-	}
-	return "", false
 }

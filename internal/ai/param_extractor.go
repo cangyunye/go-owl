@@ -39,17 +39,12 @@ var labelKeyMap = map[string]string{
 
 type ParamExtractor struct {
 	nodeNames []string
-	nodeAddrs []string
 }
 
 func NewParamExtractor(nodeNames []string) *ParamExtractor {
 	return &ParamExtractor{
 		nodeNames: nodeNames,
 	}
-}
-
-func (e *ParamExtractor) SetNodeAddresses(addrs []string) {
-	e.nodeAddrs = addrs
 }
 
 func (e *ParamExtractor) ExtractParams(intent IntentType, input string) map[string]interface{} {
@@ -729,8 +724,4 @@ func (e *ParamExtractor) extractDestDir(input string) string {
 	}
 
 	return ""
-}
-
-func (e *ParamExtractor) SetNodeNames(nodeNames []string) {
-	e.nodeNames = nodeNames
 }

@@ -1,4 +1,4 @@
-package playbook
+﻿package playbook
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 func TestPlaybookExecutor_ResumeSkipsCompletedTasks(t *testing.T) {
 	mockNodeMgr := &MockNodeManager{}
 	mockCmd := &mockCmdExecutor{}
-	executor := NewExecutor(mockNodeMgr, mockCmd, nil, nil)
+	executor := NewExecutorWithOptions(mockNodeMgr, mockCmd, nil, nil, nil)
 	pbExecutor := executor.(*playbookExecutor)
 	pbExecutor.SetResumeFrom("tasks", 2) // skip task 1 and task 2
 
@@ -66,7 +66,7 @@ func TestPlaybookExecutor_CheckpointCallback(t *testing.T) {
 	mockCmd := &mockCmdExecutor{
 		failOnCall: 2,
 	}
-	executor := NewExecutor(mockNodeMgr, mockCmd, nil, nil)
+	executor := NewExecutorWithOptions(mockNodeMgr, mockCmd, nil, nil, nil)
 	pbExecutor := executor.(*playbookExecutor)
 
 	var capturedPhase string
@@ -106,3 +106,4 @@ func TestPlaybookExecutor_CheckpointCallback(t *testing.T) {
 		t.Errorf("expected checkpoint index 1 (task 2 failed), got %d", capturedIndex)
 	}
 }
+

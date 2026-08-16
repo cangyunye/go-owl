@@ -70,17 +70,6 @@ type RetryAttempt struct {
 	Duration   time.Duration
 }
 
-// RetryableError 可重试的错误
-type RetryableError struct {
-	OriginalError error
-	RetryCount    int
-	NextRetryAt   time.Time
-}
-
-func (e *RetryableError) Error() string {
-	return fmt.Sprintf("retryable error after %d attempts: %v", e.RetryCount, e.OriginalError)
-}
-
 // IsRetryable 判断错误是否可重试
 func IsRetryable(err error, config *RetryConfig) bool {
 	if err == nil {

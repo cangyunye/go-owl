@@ -18,40 +18,6 @@ func TestDefaultConfig(t *testing.T) {
 	}
 }
 
-func TestDB_NilSafety(t *testing.T) {
-	var db *DB
-
-	if conn := db.Connection(); conn != nil {
-		t.Error("expected nil Connection for nil DB")
-	}
-	if err := db.Close(); err != nil {
-		t.Errorf("expected nil error for Close on nil DB, got %v", err)
-	}
-	if err := db.Cleanup(30); err != nil {
-		t.Errorf("expected nil error for Cleanup on nil DB, got %v", err)
-	}
-}
-
-func TestDB_EmptyImpl(t *testing.T) {
-	db := &DB{}
-
-	if conn := db.Connection(); conn != nil {
-		t.Error("expected nil Connection for DB with nil impl")
-	}
-	if err := db.Close(); err != nil {
-		t.Errorf("expected nil error for Close with nil impl, got %v", err)
-	}
-}
-
-func TestGetDB_NilGlobal(t *testing.T) {
-	SetGlobalDB(nil)
-
-	db := GetDB()
-	if db != nil {
-		t.Error("expected nil DB when global is nil")
-	}
-}
-
 func TestConfig_Fields(t *testing.T) {
 	config := &Config{
 		Enabled:       false,

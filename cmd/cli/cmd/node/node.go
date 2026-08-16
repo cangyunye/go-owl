@@ -3,7 +3,6 @@ package node
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
@@ -30,9 +29,4 @@ func NewNodeCmd() *cobra.Command {
 	nodeCmd.AddCommand(NewCheckCmd())
 
 	return nodeCmd
-}
-
-// GetNodeStore 获取节点存储
-func GetNodeStore() common.NodeStore {
-	return common.GetNodeStore()
 }

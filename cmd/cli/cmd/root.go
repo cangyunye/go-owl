@@ -3,7 +3,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/ai"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/async"
@@ -75,14 +74,4 @@ commit: %s
 `, version, buildTime, commitID))
 
 	return rootCmd
-}
-
-// exitWithError 退出并显示错误
-func exitWithError(msg string, err error) {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", i18n.T("root.error_prefix", fmt.Sprintf("%s: %v", msg, err)))
-	} else {
-		fmt.Fprintf(os.Stderr, "%s\n", i18n.T("root.error_prefix", msg))
-	}
-	os.Exit(1)
 }

@@ -23,10 +23,6 @@ func NewChecker(cfg *Config) *Checker {
 	return &Checker{config: cfg}
 }
 
-func NewDefaultChecker() *Checker {
-	return &Checker{config: &Config{Rules: DefaultRules()}}
-}
-
 func (c *Checker) Check(user, command string) *CheckResult {
 	result := &CheckResult{
 		User: user,

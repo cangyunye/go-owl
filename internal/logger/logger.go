@@ -148,16 +148,6 @@ func WithOperation(opType string) zap.Field {
 	return zap.String("op_type", opType)
 }
 
-// WithTaskID 添加任务ID字段
-func WithTaskID(taskID string) zap.Field {
-	return zap.String("task_id", taskID)
-}
-
-// WithNodeID 添加节点ID字段
-func WithNodeID(nodeID string) zap.Field {
-	return zap.String("node_id", nodeID)
-}
-
 // 快捷函数
 func Debug(msg string, fields ...zap.Field) {
 	GetLogger().Debug(msg, fields...)
@@ -169,14 +159,6 @@ func Info(msg string, fields ...zap.Field) {
 
 func Warn(msg string, fields ...zap.Field) {
 	GetLogger().Warn(msg, fields...)
-}
-
-func Error(msg string, fields ...zap.Field) {
-	GetLogger().Error(msg, fields...)
-}
-
-func Fatal(msg string, fields ...zap.Field) {
-	GetLogger().Fatal(msg, fields...)
 }
 
 func Sync() {

@@ -339,18 +339,6 @@ func (f *OutputFormatter) FormatNode(node *model.Node) {
 	}
 }
 
-// FormatTaskResults 格式化任务结果
-func (f *OutputFormatter) FormatTaskResults(results map[string]*model.Node) {
-	switch f.Format {
-	case OutputFormatJSON:
-		f.printJSON(results)
-	case OutputFormatYAML:
-		f.printYAML(results)
-	default:
-		f.printTaskResultsSimple(results)
-	}
-}
-
 func (f *OutputFormatter) printJSON(v interface{}) {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -455,30 +443,6 @@ func (f *OutputFormatter) printNodeDetail(node *model.Node) {
 	fmt.Println("==============================================")
 }
 
-func (f *OutputFormatter) printTaskResultsSimple(results map[string]*model.Node) {
-	success := 0
-	failed := 0
-
-	for nodeID, node := range results {
-		status := greenStr(i18n.T("common.node_ok"))
-		if node == nil {
-			status = redStr(i18n.T("common.node_fail"))
-			failed++
-		} else {
-			success++
-		}
-		fmt.Printf("[%s] %s: %s\n", status, nodeID, formatNodeStatusStr(node))
-	}
-
-	successStr := fmt.Sprintf("%d", success)
-	failedStr := fmt.Sprintf("%d", failed)
-	if f.Color {
-		successStr = greenStr(successStr)
-		failedStr = redStr(failedStr)
-	}
-	fmt.Printf("\n%s\n", i18n.T("common.summary_ok", successStr, failedStr))
-}
-
 // Helper functions
 
 // PrintLabels 打印标签
@@ -542,13 +506,6 @@ func PadRight(s string, width int) string {
 		return s
 	}
 	return s + strings.Repeat(" ", width-dw)
-}
-
-func formatNodeStatusStr(node *model.Node) string {
-	if node == nil {
-		return i18n.T("common.not_found")
-	}
-	return string(node.Status)
 }
 
 // Color codes - 使用函数避免与常量冲突

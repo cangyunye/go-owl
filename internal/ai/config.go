@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	aiPrompts "github.com/cangyunye/go-owl/internal/ai/prompts"
 	"gopkg.in/yaml.v3"
 )
 
@@ -111,53 +110,7 @@ func SaveConfig(path string, cfg *Config) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-func getConfigPath() string {
-	home, _ := os.UserHomeDir()
-	if home == "" {
-		home = "/tmp"
-	}
-	return filepath.Join(home, ".owl", "config.yaml")
-}
-
 func createConfigDir(path string) error {
 	dir := filepath.Dir(path)
 	return os.MkdirAll(dir, 0755)
-}
-
-func GetPromptPath(name string) string {
-	home, _ := os.UserHomeDir()
-	owlDir := filepath.Join(home, ".owl", "prompts")
-	os.MkdirAll(owlDir, 0755)
-	return filepath.Join(owlDir, name)
-}
-
-func SaveDefaultPrompts() error {
-	promptsDir := filepath.Join(getHomeDir(), ".owl", "prompts")
-	os.MkdirAll(promptsDir, 0755)
-
-	promptsMap := map[string]string{
-		"system.md":   aiPrompts.ExecSystemPrompt,
-		"playbook.md": aiPrompts.PlaybookPrompt,
-		"command.md":  aiPrompts.CommandPrompt,
-		"transfer.md": aiPrompts.TransferPrompt,
-	}
-
-	for name, content := range promptsMap {
-		path := filepath.Join(promptsDir, name)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func getHomeDir() string {
-	home, _ := os.UserHomeDir()
-	if home == "" {
-		return "/tmp"
-	}
-	return home
 }

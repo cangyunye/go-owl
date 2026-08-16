@@ -73,17 +73,6 @@ type AsyncOptions struct {
 	RemoteBaseDir string
 }
 
-// DefaultAsyncOptions 默认配置
-func DefaultAsyncOptions() AsyncOptions {
-	return AsyncOptions{
-		Timeout:      1 * time.Hour,
-		PollInterval: 10 * time.Second,
-		MaxPollCount: 3600,
-		Async:        false,
-		RemoteBaseDir: "/tmp/owl",
-	}
-}
-
 // IsCompleted 判断任务是否已完成
 func (task *AsyncTask) IsCompleted() bool {
 	return task.Status == AsyncTaskStatusSuccess ||
