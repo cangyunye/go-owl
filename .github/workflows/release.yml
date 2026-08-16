@@ -30,21 +30,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          gh release create "$TAG" --title "$TAG" --generate-notes
-          # 每个平台二进制带平台后缀重命名上传，避免同名资产触发 404 且匹配文档下载 URL
-          gh release upload "$TAG" \
-            build/linux-amd64/owl#owl-linux-amd64 \
-            build/linux-arm64/owl#owl-linux-arm64 \
-            build/darwin-amd64/owl#owl-darwin-amd64 \
-            build/darwin-arm64/owl#owl-darwin-arm64 \
-            build/windows-amd64/owl.exe#owl-windows-amd64.exe \
-            build/linux-amd64/owl-serve#owl-serve-linux-amd64 \
-            build/linux-arm64/owl-serve#owl-serve-linux-arm64 \
-            build/darwin-amd64/owl-serve#owl-serve-darwin-amd64 \
-            build/darwin-arm64/owl-serve#owl-serve-darwin-arm64 \
-            build/windows-amd64/owl-serve.exe#owl-serve-windows-amd64.exe \
-            build/linux-amd64/gscp#gscp-linux-amd64 \
-            build/linux-arm64/gscp#gscp-linux-arm64 \
-            build/darwin-amd64/gscp#gscp-darwin-amd64 \
-            build/darwin-arm64/gscp#gscp-darwin-arm64 \
-            build/windows-amd64/gscp.exe#gscp-windows-amd64.exe
+          # 二进制复制为带平台后缀的唯一文件名再上传:避免同名资产冲突(GitHub 对重复
+          # 文件名上传返回 404),且与文档下载 URL 一致(如 owl-linux-amd64)
+          mkdir -p dist
+          cp build/linux-amd64/owl dist/owl-linux-amd64
+          cp build/linux-arm64/owl dist/owl-linux-arm64
+          cp build/darwin-amd64/owl dist/owl-darwin-amd64
+          cp build/darwin-arm64/owl dist/owl-darwin-arm64
+          cp build/windows-amd64/owl.exe dist/owl-windows-amd64.exe
+          cp build/linux-amd64/owl-serve dist/owl-serve-linux-amd64
+          cp build/linux-arm64/owl-serve dist/owl-serve-linux-arm64
+          cp build/darwin-amd64/owl-serve dist/owl-serve-darwin-amd64
+          cp build/darwin-arm64/owl-serve dist/owl-serve-darwin-arm64
+          cp build/windows-amd64/owl-serve.exe dist/owl-serve-windows-amd64.exe
+          cp build/linux-amd64/gscp dist/gscp-linux-amd64
+          cp build/linux-arm64/gscp dist/gscp-linux-arm64
+          cp build/darwin-amd64/gscp dist/gscp-darwin-amd64
+          cp build/darwin-arm64/gscp dist/gscp-darwin-arm64
+          cp build/windows-amd64/gscp.exe dist/gscp-windows-amd64.exe
+          gh release create "$TAG" dist/* --title "$TAG" --generate-notes
