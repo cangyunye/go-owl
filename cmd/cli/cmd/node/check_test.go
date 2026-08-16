@@ -106,3 +106,37 @@ func TestFilterCheckNodes_OnlyFailedCombinedWithGroup(t *testing.T) {
 		t.Fatalf("expected only offline web node n2, got %d nodes", len(result))
 	}
 }
+
+func TestToModelNode_MapsCreatedUpdated(t *testing.T) {
+	info := &common.NodeInfo{
+		ID:          "n1",
+		Name:        "node one",
+		Address:     "10.0.0.1",
+		Port:        2222,
+		User:        "root",
+		Status:      "online",
+		Groups:      []string{"web"},
+		Labels:      map[string]string{"env": "prod"},
+		CreatedAt:   "2026-01-02T03:04:05Z",
+		UpdatedAt:   "2026-02-03T04:05:06Z",
+		LastCheckAt: "2026-03-04T05:06:07Z",
+	}
+
+	m := toModelNode(info)
+	if m.CreatedAt.Format("2006-01-02T15:04:05Z07:00") != "2026-01-02T03:04:05Z" {
+		t.Errorf("CreatedAt = %s, want 2026-01-02T03:04:05Z", m.CreatedAt)
+	}
+	if m.UpdatedAt.Format("2006-01-02T15:04:05Z07:00") != "2026-02-03T04:05:06Z" {
+		t.Errorf("UpdatedAt = %s, want 2026-02-03T04:05:06Z", m.UpdatedAt)
+	}
+	if m.LastCheckAt != info.LastCheckAt {
+		t.Errorf("LastCheckAt = %q, want %q", m.LastCheckAt, info.LastCheckAt)
+	}
+}
+
+func TestToModelNode_EmptyTimesStaysZero(t *testing.T) {
+	m := toModelNode(&common.NodeInfo{ID: "n2", Status: "offline"})
+	if !m.CreatedAt.IsZero() || !m.UpdatedAt.IsZero() {
+		t.Errorf("expected zero CreatedAt/UpdatedAt for empty input, got %v / %v", m.CreatedAt, m.UpdatedAt)
+	}
+}

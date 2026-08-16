@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -155,6 +156,8 @@ func toModelNodes(nodes []*common.NodeInfo) []*model.Node {
 			Status:      model.NodeStatus(n.Status),
 			Groups:      n.Groups,
 			Labels:      n.Labels,
+			CreatedAt:   parseTime(n.CreatedAt),
+			UpdatedAt:   parseTime(n.UpdatedAt),
 			LastCheckAt: n.LastCheckAt,
 		}
 	}
@@ -171,8 +174,22 @@ func toModelNode(n *common.NodeInfo) *model.Node {
 		Status:      model.NodeStatus(n.Status),
 		Groups:      n.Groups,
 		Labels:      n.Labels,
+		CreatedAt:   parseTime(n.CreatedAt),
+		UpdatedAt:   parseTime(n.UpdatedAt),
 		LastCheckAt: n.LastCheckAt,
 	}
+}
+
+// parseTime 将 RFC3339 时间字符串解析为 time.Time，空或非法值返回零值。
+func parseTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // applyListSettingsFallback 从 owl settings 加载未显式指定的 node list flag 默认值

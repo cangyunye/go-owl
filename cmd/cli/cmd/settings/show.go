@@ -2,6 +2,8 @@ package settings
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -36,7 +38,7 @@ func runSettingsShow(cmd *cobra.Command, args []string) {
 		fmt.Printf("  Group:    %s\n", settings.Default.Group)
 	}
 	if len(settings.Default.Labels) > 0 {
-		fmt.Printf("  Labels:   %v\n", settings.Default.Labels)
+		fmt.Printf("  Labels:   %s\n", FormatLabels(settings.Default.Labels))
 	}
 	fmt.Println()
 	fmt.Println("Target:")
@@ -53,4 +55,21 @@ func runSettingsShow(cmd *cobra.Command, args []string) {
 	} else {
 		fmt.Println("  (no default target set)")
 	}
+}
+
+// FormatLabels 将标签 map 渲染为可读的 key=value 列表（按键名排序，确定性输出）。
+func FormatLabels(labels map[string]string) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	pairs := make([]string, 0, len(keys))
+	for _, k := range keys {
+		pairs = append(pairs, k+"="+labels[k])
+	}
+	return strings.Join(pairs, ", ")
 }

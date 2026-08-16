@@ -211,3 +211,24 @@ func TestSettingsLabelsMap(t *testing.T) {
 		t.Logf("Labels map has %d entries", len(s.Default.Labels))
 	}
 }
+
+// TestFormatLabels 验证 settings show 的标签渲染为可读的 key=value 格式
+func TestFormatLabels(t *testing.T) {
+	cases := []struct {
+		name   string
+		labels map[string]string
+		want   string
+	}{
+		{name: "多标签按键名排序", labels: map[string]string{"region": "us", "env": "prod"}, want: "env=prod, region=us"},
+		{name: "单标签", labels: map[string]string{"env": "prod"}, want: "env=prod"},
+		{name: "空 map", labels: map[string]string{}, want: ""},
+		{name: "nil map", labels: nil, want: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := settings.FormatLabels(tc.labels); got != tc.want {
+				t.Errorf("FormatLabels(%v) = %q, want %q", tc.labels, got, tc.want)
+			}
+		})
+	}
+}
