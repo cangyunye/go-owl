@@ -1054,12 +1054,27 @@ func (a *Agent) executeToolCall(ctx context.Context, call ToolCall) (string, err
 }
 
 func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (string, error) {
-	if len(messages) < 2 {
+	if len(messages) < 1 {
 		return "", fmt.Errorf("insufficient messages")
 	}
 
-	lastMsg := messages[len(messages)-1]
-	input := lastMsg.Content
+	// 判断当前是否为路由阶段（首条 system 消息为 RouterPrompt）。
+	// 路由阶段要求返回单一标签；不确定意图直接返回 "uncertain"，
+	// 而非帮助文案（避免把多行文案误当路由标签输出）。
+	isRoute := len(messages) > 0 && strings.HasPrefix(messages[0].Content, aiPrompts.RouterPrompt)
+
+	// 取最后一条 user 消息作为用户输入：路由重试会在尾部追加 system 严格指令，
+	// 若直接取最后一条会把系统指令误当作查询语句，产生乱码工具调用。
+	input := ""
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			input = messages[i].Content
+			break
+		}
+	}
+	if input == "" {
+		return "", fmt.Errorf("no user message in input")
+	}
 
 	nodes := a.nodeMgr.List()
 	nodeNames := make([]string, 0, len(nodes))
@@ -1075,6 +1090,9 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 	validator := NewValidator()
 
 	if intentResult.Type == IntentUncertain || intentResult.Confidence < 20 {
+		if isRoute {
+			return "uncertain", nil
+		}
 		return formatter.FormatUncertainHelp(), nil
 	}
 

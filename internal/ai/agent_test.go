@@ -675,6 +675,59 @@ func TestProcessRouteUncertain(t *testing.T) {
 	}
 }
 
+// offlineTestAgent 构造使用本地意图分类器（defaultChatHandler）的 Agent（无 API Key）。
+func offlineTestAgent(t *testing.T) *Agent {
+	t.Helper()
+	config := &Config{}
+	mgr := &mockNodeMgrForAI{
+		nodes: []*model.Node{
+			{Name: "node1", Address: "127.0.0.1", Port: 22, Status: "online"},
+		},
+	}
+	agent, err := NewAgent(nil, config, mgr, nil, nil)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+	return agent
+}
+
+// TestOfflineProcess_UncertainChinese 离线模式下中文不确定输入应干净地返回拒绝提示，
+// 不产生含乱码/系统提示词混杂的工具调用输出。
+func TestOfflineProcess_UncertainChinese(t *testing.T) {
+	agent := offlineTestAgent(t)
+	resp, err := agent.Process(context.Background(), "你好", nil)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if resp != "我不确定您要做什么" {
+		t.Errorf("expected '我不确定您要做什么', got: %q", resp)
+	}
+	if strings.Contains(resp, "\ufffd") {
+		t.Errorf("response contains replacement character garbage: %q", resp)
+	}
+}
+
+// TestDefaultChatHandler_UsesLastUserMessage 验证路由重试追加 system 指令后，
+// 意图分类仍基于真实的 user 消息，而不是把系统指令当作用户查询（导致乱码工具调用）。
+func TestDefaultChatHandler_UsesLastUserMessage(t *testing.T) {
+	agent := offlineTestAgent(t)
+	messages := []Message{
+		{Role: "system", Content: "route the user request"},
+		{Role: "user", Content: "你好"},
+		{Role: "system", Content: "你上一次返回的内容不是有效指令标签。请仅输出一个指令标签(如 node_list / exec_run / query_nodes)"},
+	}
+	out, err := agent.defaultChatHandler(context.Background(), messages)
+	if err != nil {
+		t.Fatalf("defaultChatHandler: %v", err)
+	}
+	if strings.Contains(out, "tool_calls") {
+		t.Errorf("must not generate tool calls from the system retry message, got: %s", out)
+	}
+	if strings.Contains(out, "\ufffd") {
+		t.Errorf("output contains replacement character garbage: %q", out)
+	}
+}
+
 func TestProcessRouteEmpty(t *testing.T) {
 	agent := newTestAgentForRoute([]string{""})
 	ctx := context.Background()
