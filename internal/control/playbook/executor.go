@@ -245,11 +245,10 @@ func (r *defaultActionRunner) runCommand(result *TaskResult, args map[string]int
 	mergedOpts := MergeActionOptions(actionOpts, r.getGlobalDefaults())
 
 	if r.cmdExec != nil {
-		timeout := mergedOpts.GetTimeout()
-		taskResult, err := r.cmdExec.ExecuteOnNode(nodeID, cmd, timeout)
+		taskResult, err := executeCommandOnNode(r.cmdExec, nodeID, cmd, mergedOpts)
 		if err != nil {
 			if mergedOpts.ShouldRetry() {
-				taskResult, err = r.executeWithRetry(nodeID, cmd, timeout, mergedOpts.GetRetryConfig())
+				taskResult, err = r.executeWithRetry(nodeID, cmd, mergedOpts)
 			}
 			if err != nil {
 				result.Error = err
@@ -489,7 +488,20 @@ func (r *defaultActionRunner) getGlobalDefaults() *PlaybookDefaults {
 	}
 }
 
-func (r *defaultActionRunner) executeWithRetry(nodeID, cmd string, timeout time.Duration, retryConfig *command.RetryConfig) (*task.TaskResult, error) {
+// executeCommandOnNode 通过命令执行器运行命令，优先使用带连接/命令超时区分的配置。
+func executeCommandOnNode(cmdExec command.CommandExecutor, nodeID, cmd string, opts *ActionOptions) (*task.TaskResult, error) {
+	config := opts.GetTimeoutConfig()
+	if config.ConnectTimeout <= 0 && config.CommandTimeout <= 0 {
+		return cmdExec.ExecuteOnNode(nodeID, cmd, 5*time.Minute)
+	}
+	return cmdExec.ExecuteOnNodeWithConfig(nodeID, cmd, config)
+}
+
+func (r *defaultActionRunner) executeWithRetry(nodeID, cmd string, opts *ActionOptions) (*task.TaskResult, error) {
+	retryConfig := opts.GetRetryConfig()
+	if retryConfig == nil {
+		retryConfig = &command.RetryConfig{MaxRetries: 3}
+	}
 	maxRetries := retryConfig.MaxRetries
 	if maxRetries <= 0 {
 		maxRetries = 3
@@ -497,7 +509,7 @@ func (r *defaultActionRunner) executeWithRetry(nodeID, cmd string, timeout time.
 
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		result, err := r.cmdExec.ExecuteOnNode(nodeID, cmd, timeout)
+		result, err := executeCommandOnNode(r.cmdExec, nodeID, cmd, opts)
 		if err == nil {
 			return result, nil
 		}

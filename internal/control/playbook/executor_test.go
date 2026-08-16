@@ -10,6 +10,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/cangyunye/go-owl/internal/control/task"
+	"github.com/cangyunye/go-owl/internal/ssh"
 )
 
 type MockExecutor struct{}
@@ -543,6 +544,55 @@ func (m *mockCmdExecutor) ExecuteOnNode(nodeID string, command string, timeout t
 
 func (m *mockCmdExecutor) Execute(tk *task.Task, nodeMgr node.Manager) error {
 	return nil
+}
+
+func (m *mockCmdExecutor) ExecuteOnNodeWithConfig(nodeID string, command string, config *ssh.TimeoutConfig) (*task.TaskResult, error) {
+	return m.ExecuteOnNode(nodeID, command, 0)
+}
+
+// mockCmdExecutorWithConfig 额外记录 ExecuteOnNodeWithConfig 收到的超时配置。
+type mockCmdExecutorWithConfig struct {
+	mockCmdExecutor
+	lastConfig *ssh.TimeoutConfig
+}
+
+func (m *mockCmdExecutorWithConfig) ExecuteOnNodeWithConfig(nodeID string, command string, config *ssh.TimeoutConfig) (*task.TaskResult, error) {
+	m.lastConfig = config
+	return m.ExecuteOnNode(nodeID, command, 0)
+}
+
+// TestExecutor_CommandTaskPassesTimeoutConfig 验证 command 任务把连接超时与命令超时
+// 分别传给执行器（修复不可达节点上剧本执行按 5 分钟连接超时挂起的问题）。
+func TestExecutor_CommandTaskPassesTimeoutConfig(t *testing.T) {
+	mockNodeMgr := &MockNodeManager{}
+	mockCmd := &mockCmdExecutorWithConfig{}
+	opts := &PlaybookOptions{
+		TimeoutConfig: &ssh.TimeoutConfig{ConnectTimeout: 10 * time.Second, CommandTimeout: 30 * time.Second},
+	}
+	executor := NewExecutorWithOptions(mockNodeMgr, mockCmd, nil, nil, opts)
+
+	playbook := &ParsedPlaybook{
+		Raw:           &Playbook{Name: "timeout test", Hosts: []string{"web"}},
+		ExecutionMode: ExecutionModeFailContinue,
+		Variables:     make(map[string]interface{}),
+		Tasks: []*ParsedTask{
+			{Name: "task 1", Action: "command", Args: map[string]interface{}{"cmd": "echo hello"}},
+		},
+	}
+
+	_, err := executor.Execute(playbook, []*model.Node{{ID: "node-1"}}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mockCmd.lastConfig == nil {
+		t.Fatal("expected ExecuteOnNodeWithConfig to receive a timeout config")
+	}
+	if mockCmd.lastConfig.ConnectTimeout != 10*time.Second {
+		t.Errorf("ConnectTimeout = %v, want 10s", mockCmd.lastConfig.ConnectTimeout)
+	}
+	if mockCmd.lastConfig.CommandTimeout != 30*time.Second {
+		t.Errorf("CommandTimeout = %v, want 30s", mockCmd.lastConfig.CommandTimeout)
+	}
 }
 
 func TestExecutor_Execute_PipelineModeFailsFast(t *testing.T) {

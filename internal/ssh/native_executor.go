@@ -77,8 +77,12 @@ func (e *NativeNodeExecutor) ExecuteWithConfig(command string, config *TimeoutCo
 			CommandTimeout: 30 * time.Second,
 		}
 	}
-	totalTimeout := config.ConnectTimeout + config.CommandTimeout
-	return e.execute(command, totalTimeout, config.CommandTimeout)
+	if config.ConnectTimeout <= 0 {
+		config.ConnectTimeout = 10 * time.Second
+	}
+	// 连接超时单独作用于拨号/握手，命令超时作用于命令运行，
+	// 二者不可相加当作拨号超时（否则不可达主机按 connect+command 长期挂起）。
+	return e.execute(command, config.ConnectTimeout, config.CommandTimeout)
 }
 
 func (e *NativeNodeExecutor) execute(command string, dialTimeout, commandTimeout time.Duration) (int, string, error) {

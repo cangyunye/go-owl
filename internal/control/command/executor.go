@@ -89,6 +89,7 @@ type ExecuteOptions struct {
 type CommandExecutor interface {
 	Execute(tk *task.Task, nodeMgr node.Manager) error
 	ExecuteOnNode(nodeID string, command string, timeout time.Duration) (*task.TaskResult, error)
+	ExecuteOnNodeWithConfig(nodeID string, command string, config *ssh.TimeoutConfig) (*task.TaskResult, error)
 }
 
 type NodeExecutor interface {
@@ -286,6 +287,16 @@ func (e *commandExecutor) ExecuteOnNode(nodeID string, command string, timeout t
 		StartTime: startTime,
 		EndTime:   endTime,
 	}, nil
+}
+
+// ExecuteOnNodeWithConfig 带完整超时配置执行命令。底层 NodeExecutor 仅支持单超时，
+// 这里以命令超时为准（本地/直连执行路径无独立连接阶段）。
+func (e *commandExecutor) ExecuteOnNodeWithConfig(nodeID string, command string, config *ssh.TimeoutConfig) (*task.TaskResult, error) {
+	timeout := 30 * time.Second
+	if config != nil && config.CommandTimeout > 0 {
+		timeout = config.CommandTimeout
+	}
+	return e.ExecuteOnNode(nodeID, command, timeout)
 }
 
 type CommandBuilder struct {

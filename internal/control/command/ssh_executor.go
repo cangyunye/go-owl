@@ -280,6 +280,21 @@ func (e *Executor) ExecuteOnNode(nodeID string, cmd string, timeout time.Duratio
 		Parallel: false,
 		Timeout:  timeout,
 	}
+	return e.executeOnNodeWithOpts(ctx, nodeID, cmd, opts)
+}
+
+// ExecuteOnNodeWithConfig 带完整超时配置执行命令：SSH 连接超时与命令超时分开限制，
+// 避免不可达节点按命令超时（默认 5 分钟）等待连接建立。
+func (e *Executor) ExecuteOnNodeWithConfig(nodeID string, cmd string, config *ssh.TimeoutConfig) (*task.TaskResult, error) {
+	ctx := context.Background()
+	opts := &ExecuteOptions{
+		Parallel:      false,
+		TimeoutConfig: config,
+	}
+	return e.executeOnNodeWithOpts(ctx, nodeID, cmd, opts)
+}
+
+func (e *Executor) executeOnNodeWithOpts(ctx context.Context, nodeID string, cmd string, opts *ExecuteOptions) (*task.TaskResult, error) {
 	results := e.Run(ctx, []string{nodeID}, cmd, opts)
 	if len(results) == 0 {
 		return nil, fmt.Errorf("no result from node %s", nodeID)

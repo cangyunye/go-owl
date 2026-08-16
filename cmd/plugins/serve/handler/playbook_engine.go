@@ -19,6 +19,7 @@ import (
 	"github.com/cangyunye/go-owl/internal/control/task"
 	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/node"
+	owlssh "github.com/cangyunye/go-owl/internal/ssh"
 )
 
 type webCommandExecutor struct {
@@ -68,6 +69,16 @@ func (e *webCommandExecutor) ExecuteOnNode(nodeID string, cmd string, timeout ti
 		result.Error = err
 	}
 	return result, err
+}
+
+// ExecuteOnNodeWithConfig 实现 CommandExecutor 接口；Web 侧无独立的连接阶段，
+// 以命令超时为准执行。
+func (e *webCommandExecutor) ExecuteOnNodeWithConfig(nodeID string, cmd string, config *owlssh.TimeoutConfig) (*task.TaskResult, error) {
+	timeout := 30 * time.Second
+	if config != nil && config.CommandTimeout > 0 {
+		timeout = config.CommandTimeout
+	}
+	return e.ExecuteOnNode(nodeID, cmd, timeout)
 }
 
 type webNodeManager struct {
