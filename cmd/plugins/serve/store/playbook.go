@@ -201,6 +201,19 @@ type playbookYAMLMeta struct {
 	Tasks       []any  `yaml:"tasks"`
 }
 
+// taskActionKeys 剧本任务支持的动作键，按固定顺序查找作为任务名回退。
+var taskActionKeys = []string{"command", "shell", "script", "copy", "template", "file", "service", "package", "git", "action", "playbook", "include", "import", "set_fact", "debug"}
+
+// firstActionKey 在任务 map 中按固定顺序返回命中的动作键，未命中返回空串。
+func firstActionKey(m map[string]interface{}) string {
+	for _, k := range taskActionKeys {
+		if _, ok := m[k]; ok {
+			return k
+		}
+	}
+	return ""
+}
+
 func readPlaybookMeta(path string) *model.Playbook {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -217,11 +230,23 @@ func readPlaybookMeta(path string) *model.Playbook {
 	var taskNames []string
 	if len(meta.Tasks) > 0 {
 		for _, t := range meta.Tasks {
-			if m, ok := t.(map[string]interface{}); ok {
-				for k := range m {
-					taskNames = append(taskNames, k)
-					break
-				}
+			m, ok := t.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// 优先取 name 字段；缺失时回退到动作键（固定顺序查找，结果确定有序，
+			// 不依赖 Go map 随机迭代顺序）。
+			if name, has := m["name"].(string); has && name != "" {
+				taskNames = append(taskNames, name)
+				continue
+			}
+			if action := firstActionKey(m); action != "" {
+				taskNames = append(taskNames, action)
+				continue
+			}
+			for k := range m {
+				taskNames = append(taskNames, k)
+				break
 			}
 		}
 	}

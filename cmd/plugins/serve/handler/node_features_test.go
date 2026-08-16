@@ -52,6 +52,7 @@ func featuresTestSetup(t *testing.T) (*sql.DB, *NodeHandler, *gin.Engine) {
 	injectRBAC(db, router, "POST", "/api/v1/nodes/import", model.RoleEditor, h.Import)
 	injectRBAC(db, router, "POST", "/api/v1/nodes/ping", model.RoleEditor, h.Ping)
 	injectRBAC(db, router, "POST", "/api/v1/nodes/check", model.RoleEditor, h.Check)
+	injectRBAC(db, router, "POST", "/api/v1/nodes/seed", model.RoleEditor, h.Seed)
 
 	return db, h, router
 }
@@ -828,4 +829,64 @@ nodes:
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, 0, resp.Success)
 	assert.Equal(t, 2, resp.Failed)
+}
+
+func TestSeed_CreatesFiftyNodes(t *testing.T) {
+	db, _, router := featuresTestSetup(t)
+
+	w := authRequest(t, router, "POST", "/api/v1/nodes/seed", nil, "editor")
+	assert.Equal(t, 200, w.Code)
+
+	var resp struct {
+		Created int `json:"created"`
+		Skipped int `json:"skipped"`
+		Total   int `json:"total"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, 50, resp.Created)
+	assert.Equal(t, 0, resp.Skipped)
+	assert.Equal(t, 50, resp.Total)
+
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&count)
+	assert.Equal(t, 53, count, "3 个预置节点 + 50 个种子节点")
+
+	// 分组与标签多样性抽查
+	for _, id := range []string{"web-01", "db-01", "cache-01", "worker-01", "monitor-01", "gateway-01"} {
+		var groupsJSON string
+		var labelsJSON string
+		err := db.QueryRow("SELECT groups, labels FROM nodes WHERE id = ?", id).Scan(&groupsJSON, &labelsJSON)
+		require.NoError(t, err, "seed node %s should exist", id)
+		assert.NotEmpty(t, groupsJSON)
+		assert.NotEmpty(t, labelsJSON)
+	}
+}
+
+func TestSeed_IdempotentSkipsExisting(t *testing.T) {
+	_, h, router := featuresTestSetup(t)
+
+	w := authRequest(t, router, "POST", "/api/v1/nodes/seed", nil, "editor")
+	assert.Equal(t, 200, w.Code)
+
+	var first struct {
+		Created int `json:"created"`
+		Skipped int `json:"skipped"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &first)
+	assert.Equal(t, 50, first.Created)
+
+	w = authRequest(t, router, "POST", "/api/v1/nodes/seed", nil, "editor")
+	assert.Equal(t, 200, w.Code)
+
+	var second struct {
+		Created int `json:"created"`
+		Skipped int `json:"skipped"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &second)
+	assert.Equal(t, 0, second.Created)
+	assert.Equal(t, 50, second.Skipped)
+
+	var count int
+	h.db.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&count)
+	assert.Equal(t, 53, count)
 }

@@ -315,3 +315,22 @@ func TestPlaybookStore_SyncFromDir_FilePathReturnsError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a directory")
 }
+
+func TestReadPlaybookMeta_TaskNamesDeterministic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pb.yaml")
+	writeYAML(t, path, `name: pb
+tasks:
+  - name: first task
+    command: echo 1
+  - name: second task
+    shell: echo 2
+  - command: unnamed task
+`)
+
+	pb := readPlaybookMeta(path)
+	require.NotNil(t, pb)
+	// 前两个任务取 name 字段，第三个无 name 时回退到 action 键。
+	// 结果必须确定有序，不能受 Go map 随机迭代顺序影响。
+	assert.Equal(t, []string{"first task", "second task", "command"}, pb.TaskNames)
+}
