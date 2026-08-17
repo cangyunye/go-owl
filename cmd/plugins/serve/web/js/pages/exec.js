@@ -782,6 +782,11 @@ free -m</textarea>
       </div>
 
       <div class="exec-sidebar">
+        <button class="btn btn-primary" id="exec-btn" style="width:100%;justify-content:center;padding:10px" disabled>
+          <svg width="16" height="16" aria-hidden="true"><use href="#icon-play"/></svg>
+          选择目标节点
+        </button>
+
         <div class="card">
           <div class="card-header"><h3>筛选条件</h3></div>
           <div class="card-body" id="filter-controls"></div>
@@ -872,11 +877,6 @@ free -m</textarea>
             </div>
           </div>
         </div>
-
-        <button class="btn btn-primary" id="exec-btn" style="width:100%;justify-content:center;padding:10px" disabled>
-          <svg width="16" height="16" aria-hidden="true"><use href="#icon-play"/></svg>
-          选择目标节点
-        </button>
       </div>
     </div>
   `, () => {
