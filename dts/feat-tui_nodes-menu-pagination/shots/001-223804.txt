@@ -1,0 +1,37 @@
+=== INITIAL (24x100 PTY, 30 nodes) ===
+[Nodes] [Exec] [File] [AI]  Tab 切换  1/2/3/4 直达
+/nodes   Mode:Normal
+────────────────────────────────────────────────────────────
+╭─────────────────────────────────────────────────────╮  ╭──────────────────────────────────────────
+│     ID          Name         Address      Status    │  │ID           node-01
+│─────────────────────────────────────────────────    │  │Name         srv-node-01
+│[ ] >node-01     srv-node-01  10.0.0.1     online    │  │Address      10.0.0.1:22
+│[ ]  node-02     srv-node-02  10.0.0.2     online    │  │User         root
+│[ ]  node-03     srv-node-03  10.0.0.3     online    │  │Status       online
+│[ ]  node-04     srv-node-04  10.0.0.4     online    │  │Groups       web
+│[ ]  node-05     srv-node-05  10.0.0.5     online    │  │Labels       env=prod
+│[ ]  node-06     srv-node-06  10.0.0.6     online    │  │ProxyJump    —
+│[ ]  node-07     srv-node-07  10.0.0.7     online    │  │SSHKey       —
+│[ ]  node-08     srv-node-08  10.0.0.8     online    │  │LastCheck    —
+│[ ]  node-09     srv-node-09  10.0.0.9     online    │  │CreatedAt    2026-01-01T00:00:00Z
+│[ ]  node-10     srv-node-10  10.0.0.10    online    │
+│[ ]  node-11     srv-node-11  10.0.0.11    online    │
+│[ ]  node-12     srv-node-12  10.0.0.12    online    │
+│[ ]  node-13     srv-node-13  10.0.0.13    online    │
+│[ ]  node-14     srv-node-14  10.0.0.14    online    │
+│[ ]  node-15     srv-node-15  10.0.0.15    online    │
+│  ↓ 还有 15 项  PgUp/PgDn 翻页                       │
+╰─────────────────────────────────────────────────────╯
+[1/30]  ↑↓选择 ←→切栏 g/G首尾 PgUp/Dn翻页 a添加 e编辑 d删除 c列 p ping k 检查 i导入导出 o分组 l标签 Space勾选 x执行 f文件(带入) /过滤 ?帮助 q退出
+
+=== E2E assertions ===
+PASS initial shows top menu [Nodes]
+PASS initial shows node-01
+PASS initial does NOT show node-30 (paginated)
+PASS initial shows scroll hint
+PASS initial shows position 1/30
+PASS pgdown scrolled window
+PASS after G shows node-30
+PASS after G does not show node-01
+PASS after G shows position 30/30
+OK

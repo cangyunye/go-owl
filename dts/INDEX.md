@@ -1,6 +1,12 @@
 # dts 问题档案索引
 
-共 26 条 · 未解决 1 · 已解决 25 · 更新于 2026-08-17T22:11:47+08:00
+共 27 条 · 未解决 1 · 已解决 26 · 更新于 2026-08-17T22:40:21+08:00
+
+## feat-tui
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [feat-tui_nodes-menu-pagination](feat-tui_nodes-menu-pagination/dts.md) | 2026-08-17 | owl TUI 的 nodes 菜单需要翻页功能,节点太多时看不到顶上菜单选项,怀疑有全屏高度限制 | resolved |
 
 ## fix-serve-ui
 
