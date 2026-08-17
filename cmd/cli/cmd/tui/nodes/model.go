@@ -46,7 +46,9 @@ type Model struct {
 	mode   Mode
 	focus  pane
 	cursor int
+	offset int
 	width  int
+	height int
 
 	nodes       []*common.NodeInfo
 	filter      FilterQuery
@@ -77,9 +79,22 @@ func NewModel(store common.NodeStore) Model {
 		filterInput: newInput("/ 过滤 (g:组 l:标签)", 40),
 		marked:      map[string]bool{},
 		width:       120,
+		height:      24,
 	}
 	m.reload()
 	return m
+}
+
+// listChromeLines 列表区之外的固定占行: 顶部 chrome 3(菜单/路径/分隔线) + 状态栏 1 + 列表边框 2 + 表头 1 + 分隔 1 + 滚动提示行 1
+const listChromeLines = 9
+
+// listRows 列表区可容纳的节点行数
+func (m Model) listRows() int {
+	rows := m.height - listChromeLines
+	if rows < 1 {
+		rows = 1
+	}
+	return rows
 }
 
 func newInput(placeholder string, width int) textinput.Model {
@@ -113,6 +128,7 @@ func (m *Model) clampCursor() {
 	v := m.visible()
 	if len(v) == 0 {
 		m.cursor = 0
+		m.offset = 0
 		return
 	}
 	if m.cursor >= len(v) {
@@ -120,6 +136,23 @@ func (m *Model) clampCursor() {
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
+	}
+	rows := m.listRows()
+	maxOffset := len(v) - rows
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if m.offset > maxOffset {
+		m.offset = maxOffset
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if m.cursor >= m.offset+rows {
+		m.offset = m.cursor - rows + 1
 	}
 }
 
@@ -213,6 +246,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if ws.Width > 0 {
 			m.width = ws.Width
 		}
+		if ws.Height > 0 {
+			m.height = ws.Height
+		}
 		return m, nil
 	}
 	switch m.current() {
@@ -254,6 +290,10 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.focus = paneList
 	case "right":
 		m.focus = paneDetail
+	case "pgup", "ctrl+u":
+		m.moveCursor(-m.listRows())
+	case "pgdown", "ctrl+d":
+		m.moveCursor(m.listRows())
 	case "g":
 		m.cursor = 0
 	case "G":

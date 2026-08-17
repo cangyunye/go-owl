@@ -1,7 +1,10 @@
 package nodes
 
 import (
+	"fmt"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -219,15 +222,127 @@ func TestCellValue_VariousKeys(t *testing.T) {
 	}
 }
 
-func TestWindowSizeMsg_UpdatesWidth(t *testing.T) {
+func seedMany(t *testing.T, store common.NodeStore, n int) {
+	t.Helper()
+	for i := 1; i <= n; i++ {
+		id := fmt.Sprintf("node-%02d", i)
+		node := &common.NodeInfo{
+			ID: id, Name: "srv-" + id, Address: "10.0.0." + strconv.Itoa(i),
+			Port: 22, User: "root", Status: "online",
+		}
+		if err := store.Add(node); err != nil {
+			t.Fatalf("seed add: %v", err)
+		}
+	}
+}
+
+func TestWindowSizeMsg_UpdatesWidthAndHeight(t *testing.T) {
 	m := NewModel(newTestStore(t))
 	if m.width != 120 {
 		t.Fatalf("expected default width 120, got %d", m.width)
+	}
+	if m.height != 24 {
+		t.Fatalf("expected default height 24, got %d", m.height)
 	}
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = nm.(Model)
 	if m.width != 100 {
 		t.Fatalf("expected width 100, got %d", m.width)
+	}
+	if m.height != 30 {
+		t.Fatalf("expected height 30, got %d", m.height)
+	}
+}
+
+func TestListView_ScrollsToKeepCursorVisible(t *testing.T) {
+	store := newTestStore(t)
+	seedMany(t, store, 30)
+	m := NewModel(store)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m = nm.(Model)
+	for i := 0; i < 20; i++ {
+		nm, _ = m.Update(key(tea.KeyDown))
+		m = nm.(Model)
+	}
+	if m.cursor != 20 {
+		t.Fatalf("expected cursor 20, got %d", m.cursor)
+	}
+	if m.offset <= 0 {
+		t.Fatalf("expected window to scroll forward, got offset %d", m.offset)
+	}
+	v := m.View()
+	if !strings.Contains(v, "node-21") {
+		t.Fatalf("cursor row should be visible, offset=%d:\n%s", m.offset, v)
+	}
+	if strings.Contains(v, "node-01") {
+		t.Fatalf("scrolled window should not render node-01, offset=%d:\n%s", m.offset, v)
+	}
+}
+
+func TestListView_PageDownPageUp(t *testing.T) {
+	store := newTestStore(t)
+	seedMany(t, store, 30)
+	m := NewModel(store)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m = nm.(Model)
+	nm, _ = m.Update(key(tea.KeyPgDown))
+	m = nm.(Model)
+	if m.cursor != 15 {
+		t.Fatalf("expected cursor 15 after PgDown, got %d", m.cursor)
+	}
+	if m.offset != 1 {
+		t.Fatalf("expected offset 1 after PgDown, got %d", m.offset)
+	}
+	nm, _ = m.Update(key(tea.KeyPgUp))
+	m = nm.(Model)
+	if m.cursor != 0 || m.offset != 0 {
+		t.Fatalf("expected cursor/offset 0 after PgUp, got %d/%d", m.cursor, m.offset)
+	}
+}
+
+func TestListView_CtrlDUCtrlU(t *testing.T) {
+	store := newTestStore(t)
+	seedMany(t, store, 30)
+	m := NewModel(store)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m = nm.(Model)
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	m = nm.(Model)
+	if m.cursor != 15 {
+		t.Fatalf("expected cursor 15 after Ctrl+D, got %d", m.cursor)
+	}
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	m = nm.(Model)
+	if m.cursor != 0 || m.offset != 0 {
+		t.Fatalf("expected cursor/offset 0 after Ctrl+U, got %d/%d", m.cursor, m.offset)
+	}
+}
+
+func TestListView_GJumpsToBottomAndBack(t *testing.T) {
+	store := newTestStore(t)
+	seedMany(t, store, 30)
+	m := NewModel(store)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey('G'))
+	m = nm.(Model)
+	if m.cursor != 29 {
+		t.Fatalf("expected cursor 29 after G, got %d", m.cursor)
+	}
+	if m.offset != 15 {
+		t.Fatalf("expected offset 15 after G, got %d", m.offset)
+	}
+	v := m.View()
+	if !strings.Contains(v, "node-30") {
+		t.Fatalf("last node should be visible after G:\n%s", v)
+	}
+	if strings.Contains(v, "node-01") {
+		t.Fatalf("first node should not be visible after G, offset=%d:\n%s", m.offset, v)
+	}
+	nm, _ = m.Update(runeKey('g'))
+	m = nm.(Model)
+	if m.cursor != 0 || m.offset != 0 {
+		t.Fatalf("expected cursor/offset 0 after g, got %d/%d", m.cursor, m.offset)
 	}
 }
 

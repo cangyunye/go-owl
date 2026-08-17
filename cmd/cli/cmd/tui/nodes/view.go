@@ -54,17 +54,26 @@ func (m Model) View() string {
 func (m Model) listPane() string {
 	cols := m.selectedColumns()
 	avail := m.width / 2
-	widths := computeColumnWidths(cols, avail-5)
-	var b strings.Builder
-	b.WriteString("     ")
+	widths := computeColumnWidths(cols, avail-5-len(cols))
+	lines := make([]string, 0, 8+len(cols))
+
+	var header strings.Builder
+	header.WriteString("     ")
 	for i, c := range cols {
-		b.WriteString(styleSelected.Render(truncateCell(c.Label, widths[i])))
-		b.WriteString(" ")
+		header.WriteString(styleSelected.Render(truncateCell(c.Label, widths[i])))
+		header.WriteString(" ")
 	}
-	b.WriteString("\n")
-	b.WriteString("     " + strings.Repeat("─", sum(widths)+len(cols)) + "\n")
+	lines = append(lines, header.String())
+	lines = append(lines, "     "+strings.Repeat("─", sum(widths)+len(cols)))
+
 	v := m.visible()
-	for i, n := range v {
+	rows := m.listRows()
+	end := m.offset + rows
+	if end > len(v) {
+		end = len(v)
+	}
+	for i := m.offset; i < end; i++ {
+		n := v[i]
 		box := "[ ]"
 		if m.marked[n.ID] {
 			box = "[x]"
@@ -73,30 +82,51 @@ func (m Model) listPane() string {
 		if i == m.cursor {
 			marker = ">"
 		}
-		b.WriteString(box + " " + marker)
+		var line strings.Builder
+		line.WriteString(box + " " + marker)
 		for j, c := range cols {
 			cell := renderCell(n, c.Key, widths[j], i == m.cursor)
-			b.WriteString(cell)
-			b.WriteString(" ")
+			line.WriteString(cell)
+			line.WriteString(" ")
 		}
-		b.WriteString("\n")
+		lines = append(lines, line.String())
+	}
+	switch {
+	case len(v) > end:
+		lines = append(lines, styleDim.Render(fmt.Sprintf("  ↓ 还有 %d 项  PgUp/PgDn 翻页", len(v)-end)))
+	case m.offset > 0:
+		lines = append(lines, styleDim.Render("  ↑ 已滚动"))
+	default:
+		lines = append(lines, " ")
 	}
 	if len(v) == 0 {
-		b.WriteString(styleDim.Render("  (无匹配节点,按 / 修改过滤或 a 添加)"))
-		b.WriteString("\n")
+		lines = append(lines, styleDim.Render("  (无匹配节点,按 / 修改过滤或 a 添加)"))
 	}
-	listBox := styleListBorder.Width(avail + 2).Render(b.String())
-	detailBox := styleDetail.Width(avail + 2).Render(m.detailPane())
+	content := strings.Join(lines, "\n")
+	listBox := styleListBorder.Width(avail + 2).Render(content)
+	detailContent := truncateLines(m.detailPane(), rows+3)
+	detailBox := styleDetail.Width(avail + 2).Render(detailContent)
 	if m.focus == paneDetail {
-		listBox = styleDim.Render(b.String())
+		listBox = styleDim.Render(content)
 		listBox = styleListBorder.Width(avail + 2).Render(listBox)
 		detailBox = lipgloss.NewStyle().
 			Foreground(theme.Color(theme.SlotHighlightFg)).
 			Background(theme.Color(theme.SlotHighlightBg)).
-			Render(m.detailPane())
+			Render(detailContent)
 		detailBox = styleDetail.Width(avail + 2).Render(detailBox)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, listBox, "  ", detailBox)
+}
+
+func truncateLines(s string, max int) string {
+	if max < 1 {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= max {
+		return s
+	}
+	return strings.Join(lines[:max], "\n") + "\n…"
 }
 
 func (m Model) detailPane() string {
@@ -189,11 +219,15 @@ func (m Model) statusBar() string {
 		b.WriteString(styleSelected.Render(fmt.Sprintf("[已选 %d]", m.MarkedCount())))
 		b.WriteString("  ")
 	}
+	if len(m.visible()) > 0 {
+		b.WriteString(styleDim.Render(fmt.Sprintf("[%d/%d]", m.cursor+1, len(m.visible()))))
+		b.WriteString("  ")
+	}
 	if m.filterOpen {
 		b.WriteString(m.filterInput.View())
 		b.WriteString(styleDim.Render("  Enter 应用  Esc 取消"))
 	} else {
-		b.WriteString(styleDim.Render("↑↓选择 ←→切栏 g/G首尾 a添加 e编辑 d删除 c列 p ping k 检查 i导入导出 o分组 l标签 Space勾选 x执行 f文件(带入) /过滤 ?帮助 q退出"))
+		b.WriteString(styleDim.Render("↑↓选择 ←→切栏 g/G首尾 PgUp/Dn翻页 a添加 e编辑 d删除 c列 p ping k 检查 i导入导出 o分组 l标签 Space勾选 x执行 f文件(带入) /过滤 ?帮助 q退出"))
 	}
 	if m.status != "" {
 		b.WriteString("  " + styleDim.Render(m.status))

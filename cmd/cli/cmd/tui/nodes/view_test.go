@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
@@ -109,6 +110,54 @@ func TestStatusBar_ShowsMarkCount(t *testing.T) {
 	got := m.View()
 	if !strings.Contains(got, "已选 2") {
 		t.Fatalf("expected mark count in status bar:\n%s", got)
+	}
+}
+
+func TestListView_RespectsHeightLimit(t *testing.T) {
+	store := newTestStore(t)
+	seedMany(t, store, 30)
+	m := NewModel(store)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m = nm.(Model)
+	v := m.View()
+	if !strings.Contains(v, "node-01") {
+		t.Fatalf("first node should be visible at top of viewport:\n%s", v)
+	}
+	if strings.Contains(v, "node-30") {
+		t.Fatalf("node-30 must not render beyond the viewport, output too tall:\n%s", v)
+	}
+}
+
+func TestListView_RespectsHeightLimit_EmptyList(t *testing.T) {
+	store := newTestStore(t)
+	seedMany(t, store, 30)
+	m := NewModel(store)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 10})
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey('/'))
+	m = nm.(Model)
+	for _, r := range []rune("zzz-no-match") {
+		nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = nm.(Model)
+	}
+	nm, _ = m.Update(key(tea.KeyEnter))
+	m = nm.(Model)
+	if v := m.View(); !strings.Contains(v, "无匹配节点") {
+		t.Fatalf("empty state should still render in tiny terminal:\n%s", v)
+	}
+}
+
+func TestStatusBar_ShowsPosition(t *testing.T) {
+	store := newTestStore(t)
+	seedMany(t, store, 30)
+	m := NewModel(store)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey('G'))
+	m = nm.(Model)
+	v := m.View()
+	if !strings.Contains(v, "30/30") {
+		t.Fatalf("status bar should show position 30/30, got:\n%s", v)
 	}
 }
 
