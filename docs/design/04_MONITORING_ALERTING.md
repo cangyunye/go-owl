@@ -347,10 +347,18 @@ admin:    PUT  /api/v1/alert-types/:id   POST/PUT/DELETE /api/v1/remedies
           POST /api/v1/notify-channels/:id/test
 ```
 
-## 10. AI 处置闭环（Phase 2 前瞻，本设计预留接口）
+## 10. AI 处置闭环（Phase 2，已部分落地）
 
-第一期不实现，但存储模型已预留（`auto_approve`、`remedies.reviewed/rollback/exec_count`）。
-Phase 2 闸门链（沿用头脑风暴结论）：
+**P2-M1 手动处置编排（已完成，提交 efbef16）**：用户在告警详情多选对策、拖拽排序、
+按序串行执行——这是 AI 自愈的执行底座：AI 处置只是把「谁选对策/谁排序」从人换成模型，
+执行引擎（RemedyRun）完全复用。执行引擎要点：
+
+- 脚本经 base64 管道执行，避免转义问题；sop 人工步骤自动跳过
+- 黑名单闸门：命中危险命令不执行（默认不允许 force）
+- 失败即停 / 失败继续可选；执行中可停止；对策内容执行时快照
+- 每步完成回写 `RecordExecution`，为 AI 推荐积累成功率数据
+
+**P2-M2（AI 处置引擎，待 LLM 凭据）**：AI 选对策 + 排序 + 现场生成脚本，闸门链：
 
 ```
 告警触发 → AI 富化(根因解读) → 对策匹配 → 未命中则 AI 起草脚本
