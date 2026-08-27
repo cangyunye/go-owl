@@ -58,6 +58,7 @@ type collectStep struct {
 // collectSteps 首批采集命令表（可后续扩展 svc.*/err.* 等）。
 var collectSteps = []collectStep{
 	{name: "loadavg", command: "cat /proc/loadavg", required: true, parse: ParseLoadavg},
+	{name: "nproc", command: "nproc", parse: ParseNproc},
 	{name: "df-usage", command: "df -P", parse: func(raw, n string, ts int64) ([]Sample, error) {
 		return ParseDF(raw, n, ts, "disk.usage")
 	}},

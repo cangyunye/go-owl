@@ -38,6 +38,10 @@ func OpenStore(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := s.SeedAlertTypesIfEmpty(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return s, nil
 }
 

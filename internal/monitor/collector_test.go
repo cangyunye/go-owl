@@ -36,14 +36,14 @@ func (f *fakeFactory) NewExecer(t *Target) (Execer, error) {
 
 func sampleOutputs() map[string]string {
 	return map[string]string{
-		"cat /proc/loadavg":       "0.52 0.47 0.41 2/345 12345\n",
-		"df -P":                   "Filesystem     1024-blocks    Used Available Capacity Mounted on\n/dev/sda1 205113712 85641132 108722116 45% /\n",
-		"df -Pi":                  "Filesystem     Inodes IUsed IFree IUse% Mounted on\n/dev/sda1 12845056 296247 12548809 3% /\n",
-		"free -m":                 "              total        used        free      shared  buff/cache   available\nMem:          15891        2352        2419         189       11120       12902\nSwap:          2047           0        2047\n",
-		"cat /proc/net/dev":       "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n  eth0: 1000000000  500000    0    0    0     0          0         0  50000000  250000    0    0    0     0       0          0\n",
-		"ss -s":                   "Total: 128 (kernel 96)\nTCP:   12 (estab 4, closed 3, orphaned 0, timewait 5, transports 12), \n",
-		"cat /proc/uptime":        "12345.67 23456.78\n",
-		"nproc":                   "8\n",
+		"cat /proc/loadavg":         "0.52 0.47 0.41 2/345 12345\n",
+		"df -P":                     "Filesystem     1024-blocks    Used Available Capacity Mounted on\n/dev/sda1 205113712 85641132 108722116 45% /\n",
+		"df -Pi":                    "Filesystem     Inodes IUsed IFree IUse% Mounted on\n/dev/sda1 12845056 296247 12548809 3% /\n",
+		"free -m":                   "              total        used        free      shared  buff/cache   available\nMem:          15891        2352        2419         189       11120       12902\nSwap:          2047           0        2047\n",
+		"cat /proc/net/dev":         "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n  eth0: 1000000000  500000    0    0    0     0          0         0  50000000  250000    0    0    0     0       0          0\n",
+		"ss -s":                     "Total: 128 (kernel 96)\nTCP:   12 (estab 4, closed 3, orphaned 0, timewait 5, transports 12), \n",
+		"cat /proc/uptime":          "12345.67 23456.78\n",
+		"nproc":                     "8\n",
 		"systemctl is-active nginx": "active\n",
 	}
 }
@@ -64,6 +64,7 @@ func TestCollector_CollectAll(t *testing.T) {
 		byMetric[s.Metric] = s.Value
 	}
 	require.InDelta(t, 0.52, byMetric["load.load1"], 0.001)
+	require.InDelta(t, 8, byMetric["sys.cores"], 0.001)
 	require.InDelta(t, 45, byMetric["disk.usage./"], 0.001)
 	require.InDelta(t, 3, byMetric["disk.inodes./"], 0.001)
 	require.InDelta(t, 18.81, byMetric["mem.used_pct"], 0.01)
