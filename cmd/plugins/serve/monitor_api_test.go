@@ -328,3 +328,122 @@ func TestMonitorAPI_EngineStartup(t *testing.T) {
 	require.NoError(t, err)
 	_ = fmt.Sprintf("ok")
 }
+
+// TestMonitorAPI_RemedyPlan 验证处置计划：创建 → 真实本地执行 → 查询进度 → 反馈。
+// 节点指向 127.0.0.1（本地执行器），脚本经 base64 管道真实运行。
+func TestMonitorAPI_RemedyPlan(t *testing.T) {
+	srv, token := setupMonitorServer(t)
+
+	// 注册本机节点（本地执行器路径，无需真实 SSH）
+	nodeReq, _ := json.Marshal(map[string]any{
+		"id": "local-test", "name": "本机", "address": "127.0.0.1",
+		"port": 22, "user": "local", "groups": []string{"web"},
+	})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/nodes", bytes.NewReader(nodeReq))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	srv.Router.ServeHTTP(w, req)
+	require.Equal(t, 201, w.Code, w.Body.String())
+
+	// 建一个可执行脚本对策（属于 OWL-DSK-001）
+	remedy := owlmonitor.Remedy{
+		ID: "RM-EXEC", AlertTypeID: "OWL-DSK-001", Name: "测试脚本",
+		Kind: "script", Content: "echo remedy-ok && hostname", Risk: "low",
+		Source: "user", Reviewed: true,
+	}
+	w = authedPost(t, srv, token, "/api/v1/remedies", remedy)
+	require.Equal(t, 200, w.Code, w.Body.String())
+
+	// 种子告警（local-test 节点，OWL-DSK-001）
+	id := seedAlert(t, srv, "OWL-DSK-001", "local-test")
+
+	// 创建处置计划
+	w = authedPost(t, srv, token, "/api/v1/alerts/"+id+"/plans", map[string]any{
+		"remedy_ids": []string{"RM-EXEC"}, "stop_on_error": true,
+	})
+	require.Equal(t, 202, w.Code, w.Body.String())
+	var created struct {
+		Run struct {
+			ID    string `json:"id"`
+			Steps []struct {
+				Order  int    `json:"order"`
+				Kind   string `json:"kind"`
+				Status string `json:"status"`
+				NodeID string `json:"node_id"`
+			} `json:"steps"`
+		} `json:"run"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	require.Equal(t, "local-test", created.Run.Steps[0].NodeID, "步骤应绑定告警节点")
+	runID := created.Run.ID
+
+	// 轮询直到执行完成（本地执行很快）
+	deadline := time.Now().Add(5 * time.Second)
+	var run owlmonitor.RemedyRun
+	for time.Now().Before(deadline) {
+		w = authedGet(t, srv, token, "/api/v1/plans/"+runID)
+		require.Equal(t, 200, w.Code)
+		var resp struct {
+			Run owlmonitor.RemedyRun `json:"run"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		run = resp.Run
+		if run.IsTerminal() {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	require.Equal(t, owlmonitor.RunDone, run.Status, "本地脚本应执行成功")
+	require.Len(t, run.Steps, 1)
+	require.Equal(t, owlmonitor.StepSuccess, run.Steps[0].Status)
+	require.Contains(t, run.Steps[0].Output, "remedy-ok", "应捕获脚本输出")
+
+	// 对策反馈计数累加
+	rm, _, _ := srv.monitor.Store.GetRemedy("RM-EXEC")
+	require.Equal(t, 1, rm.ExecCount)
+	require.Equal(t, 1, rm.SuccessCount)
+
+	// 处置记录可按告警查询
+	w = authedGet(t, srv, token, "/api/v1/alerts/"+id+"/plans")
+	require.Equal(t, 200, w.Code)
+	var list struct {
+		Items []owlmonitor.RemedyRun `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &list))
+	require.Len(t, list.Items, 1)
+}
+
+// TestMonitorAPI_RemedyPlan_Validation 验证非法创建被拒绝。
+func TestMonitorAPI_RemedyPlan_Validation(t *testing.T) {
+	srv, token := setupMonitorServer(t)
+	id := seedAlert(t, srv, "OWL-DSK-001", "node-a")
+
+	// 空对策列表 → 400
+	w := authedPost(t, srv, token, "/api/v1/alerts/"+id+"/plans", map[string]any{"remedy_ids": []string{}})
+	require.Equal(t, 400, w.Code)
+
+	// 不存在的对策 → 400
+	w = authedPost(t, srv, token, "/api/v1/alerts/"+id+"/plans", map[string]any{"remedy_ids": []string{"RM-NOPE"}})
+	require.Equal(t, 400, w.Code)
+
+	// 类型不匹配的对策 → 400（建一条 MEM 类型对策用于 DSK 告警）
+	remedy := owlmonitor.Remedy{
+		ID: "RM-WRONG", AlertTypeID: "OWL-MEM-001", Name: "内存对策",
+		Kind: "script", Content: "echo x", Risk: "low", Source: "user", Reviewed: true,
+	}
+	w = authedPost(t, srv, token, "/api/v1/remedies", remedy)
+	require.Equal(t, 200, w.Code)
+	w = authedPost(t, srv, token, "/api/v1/alerts/"+id+"/plans", map[string]any{"remedy_ids": []string{"RM-WRONG"}})
+	require.Equal(t, 400, w.Code, "类型不匹配应拒绝")
+
+	// viewer 不能创建
+	srv2, token2 := setupMonitorServer(t)
+	w = authedPost(t, srv2, token2, "/api/v1/users", map[string]any{
+		"username": "viewer1", "password": "viewer123", "role": "viewer",
+	})
+	require.Equal(t, 201, w.Code)
+	vt := login(t, srv2, "viewer1", "viewer123")
+	w = authedPost(t, srv2, vt, "/api/v1/alerts/"+id+"/plans", map[string]any{"remedy_ids": []string{"RM-X"}})
+	require.Equal(t, 403, w.Code, "viewer 不应允许创建处置计划")
+}

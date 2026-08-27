@@ -184,7 +184,86 @@ export function renderAlerts(render, navigate, user, api, shell) {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay open';
     const snapshot = (() => { try { return Object.entries(JSON.parse(a.metric_snapshot || '{}')); } catch { return []; } })();
-    overlay.innerHTML = `<div class="modal" style="max-width:720px;max-height:82vh;overflow:auto">
+
+    function planProgressHtml(plan) {
+      const RUN_TEXT = { pending: '待执行', running: '执行中', done: '已完成', stopped: '已停止', failed: '失败' };
+      const STEP_TEXT = { pending: '等待', running: '执行中', success: '成功', failed: '失败', skipped: '跳过' };
+      const STEP_COLOR = { pending: 'var(--muted)', running: 'var(--info)', success: 'var(--success)', failed: 'var(--danger)', skipped: 'var(--muted)' };
+      const steps = (plan.steps || []).map(st => `
+        <li style="display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;background:var(--bg)">
+          <span style="min-width:18px;text-align:center;font-weight:600;color:var(--muted)">${st.order + 1}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600">${esc(st.name)} <span style="color:var(--muted);font-weight:400">· ${esc(st.kind)}</span></div>
+            ${st.output ? `<pre style="margin:4px 0 0;padding:6px;background:var(--surface);border-radius:var(--radius);font-family:var(--font-mono);font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:auto">${esc(st.output)}</pre>` : ''}
+          </div>
+          <span style="font-size:11px;font-weight:600;color:${STEP_COLOR[st.status] || 'var(--muted)'}">${STEP_TEXT[st.status] || esc(st.status)}</span>
+        </li>`).join('');
+      return `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin:12px 0;background:var(--surface)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <strong style="font-size:13px">处置计划 <code>${esc(plan.id)}</code></strong>
+          <span style="display:flex;gap:6px;align-items:center">
+            <span style="font-size:12px;font-weight:600;color:${plan.status === 'done' ? 'var(--success)' : plan.status === 'failed' || plan.status === 'stopped' ? 'var(--danger)' : 'var(--info)'}">${RUN_TEXT[plan.status] || esc(plan.status)}</span>
+            ${plan.status === 'running' || plan.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-stop-plan="${esc(plan.id)}">停止</button>` : ''}
+          </span>
+        </div>
+        <ul style="list-style:none;margin:0;padding:0">${steps}</ul>
+      </div>`;
+    }
+
+    async function loadPlanProgress(planId, area) {
+      let plan = null;
+      try {
+        const res = await api.remedyPlan(planId);
+        plan = res.run;
+      } catch { return; }
+      area.innerHTML = planProgressHtml(plan);
+      area.querySelector('[data-stop-plan]')?.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try { await api.stopRemedyPlan(planId); } catch (err) { alert('停止失败: ' + (err.message || err)); }
+      });
+      if (plan && !['done', 'stopped', 'failed'].includes(plan.status)) {
+        setTimeout(() => loadPlanProgress(planId, area), 1500);
+      }
+    }
+
+    async function executePlan() {
+      const rows = [...overlay.querySelectorAll('#rm-list .rm-row')];
+      const selected = rows.filter(r => r.querySelector('.rm-check').checked);
+      if (!selected.length) { alert('请先勾选要执行的对策'); return; }
+      const remedyIds = selected.map(r => r.dataset.rid);
+      const stopOnError = overlay.querySelector('#rm-stop-on-error')?.checked !== false;
+      const btn = overlay.querySelector('#rm-exec');
+      btn.disabled = true;
+      btn.textContent = '执行中...';
+      try {
+        const res = await api.createRemedyPlan(a.id, { remedy_ids: remedyIds, stop_on_error: stopOnError });
+        const planArea = overlay.querySelector('#plan-area');
+        planArea.innerHTML = '<p style="color:var(--muted);font-size:12px">计划已创建，执行中...</p>';
+        loadPlanProgress(res.run.id, planArea);
+        loadPlanHistory();
+      } catch (err) {
+        alert('创建处置计划失败: ' + (err.message || err));
+      }
+      btn.disabled = false;
+      btn.textContent = '按序执行';
+    }
+
+    async function loadPlanHistory() {
+      const area = overlay.querySelector('#plan-history');
+      if (!area) return;
+      let runs = [];
+      try { runs = (await api.remedyPlans(a.id)).items || []; } catch {}
+      if (!runs.length) { area.innerHTML = ''; return; }
+      const RUN_TEXT = { pending: '待执行', running: '执行中', done: '已完成', stopped: '已停止', failed: '失败' };
+      area.innerHTML = `<h4 style="margin-top:14px">处置历史</h4><ul style="list-style:none;margin:0;padding:0">${
+        runs.map(r => `<li style="display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;font-size:12px;background:var(--bg)">
+          <code>${esc(r.id)}</code><span style="color:var(--muted)">${r.steps ? r.steps.length : 0} 步</span>
+          <span style="flex:1"></span><span style="color:var(--muted)">${esc(r.created_by || '')}</span>
+          <span style="font-weight:600">${RUN_TEXT[r.status] || esc(r.status)}</span></li>`).join('')}</ul>`;
+    }
+
+    const draggable = isOperator;
+    overlay.innerHTML = `<div class="modal" style="max-width:760px;max-height:84vh;overflow:auto">
       <div class="modal-header"><h3>${severityBadge(a.severity)} ${esc(a.alert_type_name)}</h3>
         <button class="btn btn-ghost btn-icon" id="detail-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
       <div class="modal-body">
@@ -192,21 +271,67 @@ export function renderAlerts(render, navigate, user, api, shell) {
         <p style="font-size:12px;color:var(--muted)">节点: ${esc(a.node_name || a.node_id)} (${esc(a.node_id)}) · 首次触发: ${fmtTime(a.first_seen)} · 最近: ${fmtTime(a.last_seen)} · 解决时间: ${fmtTime(a.resolved_at)}</p>
         <div style="margin:12px 0;padding:10px 12px;background:var(--bg);border-radius:var(--radius);font-size:13px">${esc(a.message)}</div>
         ${snapshot.length ? `<h4>指标快照</h4><table class="table"><thead><tr><th>指标</th><th>值</th></tr></thead><tbody>${snapshot.map(([k, v]) => `<tr><td><code>${esc(k)}</code></td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : ''}
-        <h4 style="margin-top:16px">可用对策（按推荐排序）</h4>
-        ${state.remedies.length ? `<ul style="list-style:none;margin:0;padding:0">${state.remedies.map(r => `
-          <li style="border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;background:var(--surface)">
-            <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
-              <strong style="font-size:13px">${esc(r.name)}</strong>
+        <h4 style="margin-top:16px">可用对策 ${isOperator ? '<span style="font-weight:400;color:var(--muted);font-size:11px">（勾选多选，拖动调整执行顺序）</span>' : ''}</h4>
+        ${state.remedies.length ? `<ul id="rm-list" style="list-style:none;margin:0;padding:0">${state.remedies.map(r => `
+          <li class="rm-row" data-rid="${esc(r.id)}" ${draggable ? 'draggable="true"' : ''} style="border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;background:var(--surface);cursor:${draggable ? 'grab' : 'default'}">
+            <div style="display:flex;align-items:center;gap:8px">
+              ${draggable ? `<input type="checkbox" class="rm-check" title="选择执行" style="accent-color:var(--accent)">` : ''}
+              ${draggable ? '<span class="rm-order" style="font-size:11px;color:var(--muted);min-width:16px;text-align:center">-</span>' : ''}
+              <strong style="font-size:13px;flex:1">${esc(r.name)}</strong>
               <span style="font-size:11px;color:var(--muted)">${esc(r.kind)} · 风险 ${esc(r.risk)} · ${r.source === 'user' ? '用户自定义' : r.source === 'builtin' ? '内置' : 'AI 生成'}${r.source === 'ai' && !r.reviewed ? ' · <span style="color:var(--warn)">待审核</span>' : ''}</span>
             </div>
-            <pre style="margin:8px 0 0;padding:8px;background:var(--bg);border-radius:var(--radius);font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;word-break:break-all;max-height:160px;overflow:auto">${esc(r.content)}</pre>
+            <pre style="margin:8px 0 0;padding:8px;background:var(--bg);border-radius:var(--radius);font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;word-break:break-all;max-height:140px;overflow:auto">${esc(r.content)}</pre>
             ${r.rollback ? `<div style="margin-top:6px;font-size:11px;color:var(--muted)">回滚: <code>${esc(r.rollback)}</code></div>` : ''}
-          </li>`).join('')}</ul>` : '<p style="color:var(--muted);font-size:12px">暂无对策，可在告警类型设置中补充</p>'}
+          </li>`).join('')}</ul>
+        ${isOperator ? `<div style="display:flex;gap:8px;align-items:center;margin:10px 0">
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="rm-stop-on-error" checked style="accent-color:var(--accent)"> 失败即停</label>
+          <span style="flex:1"></span>
+          <button class="btn btn-secondary btn-sm" id="rm-exec"><svg width="14" height="14" aria-hidden="true"><use href="#icon-play"/></svg> 按序执行</button>
+        </div>` : ''}` : '<p style="color:var(--muted);font-size:12px">暂无对策，可在告警类型设置中补充</p>'}
+        <div id="plan-area"></div>
+        <div id="plan-history"></div>
       </div>
     </div>`;
+
     document.body.appendChild(overlay);
     overlay.querySelector('#detail-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    // 拖拽排序 + 勾选顺序刷新
+    if (draggable) {
+      const list = overlay.querySelector('#rm-list');
+      let dragRow = null;
+      list.addEventListener('dragstart', (e) => {
+        const row = e.target.closest('.rm-row');
+        if (!row) return;
+        dragRow = row;
+        row.style.opacity = '0.5';
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      list.addEventListener('dragend', (e) => {
+        const row = e.target.closest('.rm-row');
+        if (row) row.style.opacity = '';
+        dragRow = null;
+      });
+      list.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const row = e.target.closest('.rm-row');
+        if (!row || row === dragRow) return;
+        const rect = row.getBoundingClientRect();
+        const after = (e.clientY - rect.top) > rect.height / 2;
+        if (after) row.after(dragRow); else row.before(dragRow);
+      });
+      const refreshOrder = () => {
+        [...list.querySelectorAll('.rm-row')].forEach((row, i) => {
+          row.querySelector('.rm-order').textContent = row.querySelector('.rm-check').checked ? (i + 1) : '-';
+        });
+      };
+      list.addEventListener('change', refreshOrder);
+      refreshOrder();
+    }
+
+    overlay.querySelector('#rm-exec')?.addEventListener('click', executePlan);
+    loadPlanHistory();
   }
 
   // ---------- 监控配置（admin） ----------

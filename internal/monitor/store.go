@@ -50,6 +50,10 @@ func OpenStore(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := s.EnsureRemedyRunTables(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return s, nil
 }
 

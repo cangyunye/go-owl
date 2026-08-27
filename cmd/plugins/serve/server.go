@@ -291,6 +291,8 @@ func (s *Server) setupRoutes() {
 		reader.GET("/alert-types", s.monitorHandler.ListAlertTypes)
 		reader.GET("/remedies", s.monitorHandler.ListRemedies)
 		reader.GET("/metrics", s.monitorHandler.QueryMetrics)
+		reader.GET("/alerts/:id/plans", s.monitorHandler.ListRemedyPlans)
+		reader.GET("/plans/:id", s.monitorHandler.GetRemedyPlan)
 
 		writer := auth.Group("", s.authHandler.RBACMiddleware(model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{
@@ -325,6 +327,8 @@ func (s *Server) setupRoutes() {
 			// 监控：告警处置（operator+）
 			operator.POST("/alerts/:id/ack", s.monitorHandler.AckAlert)
 			operator.POST("/alerts/:id/resolve", s.monitorHandler.ResolveAlert)
+			operator.POST("/alerts/:id/plans", s.monitorHandler.CreateRemedyPlan)
+			operator.POST("/plans/:id/stop", s.monitorHandler.StopRemedyPlan)
 		}
 
 		admin := auth.Group("", s.authHandler.RBACMiddleware(model.RoleAdmin))

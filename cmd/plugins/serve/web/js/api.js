@@ -491,4 +491,17 @@ export const api = {
     }
     return request('GET', `/metrics?${q}`);
   },
+
+  // ---------- 处置计划 ----------
+  createRemedyPlan: (alertId, data) =>
+    request('POST', `/alerts/${encodeURIComponent(alertId)}/plans`, data),
+
+  remedyPlan: (id) =>
+    request('GET', `/plans/${encodeURIComponent(id)}`),
+
+  remedyPlans: (alertId) =>
+    request('GET', `/alerts/${encodeURIComponent(alertId)}/plans`),
+
+  stopRemedyPlan: (id) =>
+    request('POST', `/plans/${encodeURIComponent(id)}/stop`, {}),
 };

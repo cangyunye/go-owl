@@ -284,6 +284,81 @@ func (h *MonitorHandler) SetSilence(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"silence_until": body.SilenceUntil})
 }
 
+// --- 处置计划（Remedy Run）---
+
+// CreateRemedyPlan 创建处置计划并异步执行（operator+）。
+// body: {remedy_ids: [..], stop_on_error?: bool}
+func (h *MonitorHandler) CreateRemedyPlan(c *gin.Context) {
+	var body struct {
+		RemedyIDs   []string `json:"remedy_ids"`
+		StopOnError *bool    `json:"stop_on_error"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求体非法: " + err.Error()})
+		return
+	}
+	if len(body.RemedyIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请至少选择一条对策"})
+		return
+	}
+	stopOnError := true
+	if body.StopOnError != nil {
+		stopOnError = *body.StopOnError
+	}
+	run, err := h.svc.StartRemedyRun(c.Param("id"), body.RemedyIDs, stopOnError, c.GetString("username"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"run": run})
+}
+
+// GetRemedyPlan 查询处置计划进度（reader）。
+func (h *MonitorHandler) GetRemedyPlan(c *gin.Context) {
+	run, exists, err := h.svc.Store.GetRemedyRun(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "处置计划不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"run": run})
+}
+
+// ListRemedyPlans 列出某告警的处置记录（reader）。
+func (h *MonitorHandler) ListRemedyPlans(c *gin.Context) {
+	runs, err := h.svc.Store.ListRemedyRunsByAlert(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": runs})
+}
+
+// StopRemedyPlan 停止处置计划（operator+）。
+func (h *MonitorHandler) StopRemedyPlan(c *gin.Context) {
+	run, exists, err := h.svc.Store.GetRemedyRun(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "处置计划不存在"})
+		return
+	}
+	if run.IsTerminal() {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "计划已结束，无需停止"})
+		return
+	}
+	if err := h.svc.Store.UpdateRemedyRunStatus(run.ID, owlmonitor.RunStopped); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // --- 内部辅助 ---
 
 // nodeNames 节点 id → name 映射（列表页展示用）。

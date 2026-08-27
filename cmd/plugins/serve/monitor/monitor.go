@@ -50,6 +50,7 @@ type Service struct {
 	Engine     *owlmonitor.Engine
 	Manager    *owlmonitor.AlertManager
 	Dispatcher *owlmonitor.Dispatcher
+	runner     *owlmonitor.RunExecutor
 	db         *sql.DB // settings 表访问（静默配置）
 	webURL     string
 
@@ -84,9 +85,87 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		Engine:     engine,
 		Manager:    manager,
 		Dispatcher: dispatcher,
+		runner:     owlmonitor.NewRunExecutor(owlmonitor.NewSSHExecerFactory(), resolveTarget(db)),
 		db:         db,
 		webURL:     webURL,
 	}, nil
+}
+
+// resolveTarget 按节点 ID 查询 nodes 表构造执行目标（含 SSH 凭据）。
+func resolveTarget(db *sql.DB) owlmonitor.TargetResolver {
+	return func(nodeID string) (*owlmonitor.Target, error) {
+		row := db.QueryRow(`SELECT id, name, address, port, user,
+			COALESCE(password, ''), COALESCE(ssh_key, ''), COALESCE(proxy_jump, '')
+			FROM nodes WHERE id = ?`, nodeID)
+		var t owlmonitor.Target
+		if err := row.Scan(&t.ID, &t.Name, &t.Address, &t.Port, &t.User,
+			&t.SSHPassword, &t.SSHKey, &t.ProxyJump); err != nil {
+			return nil, fmt.Errorf("monitor: 节点 %s 不存在或缺少连接信息: %w", nodeID, err)
+		}
+		return &t, nil
+	}
+}
+
+// StartRemedyRun 基于告警与对策快照创建处置计划并异步串行执行。
+func (s *Service) StartRemedyRun(alertID string, remedyIDs []string, stopOnError bool, createdBy string) (*owlmonitor.RemedyRun, error) {
+	alert, exists, err := s.Store.GetAlert(alertID)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, fmt.Errorf("告警 %s 不存在", alertID)
+	}
+
+	// 去重 + 校验对策属于该告警类型
+	seen := map[string]bool{}
+	steps := make([]owlmonitor.RemedyStep, 0, len(remedyIDs))
+	for _, id := range remedyIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		rm, ok, err := s.Store.GetRemedy(id)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("对策 %s 不存在", id)
+		}
+		if rm.AlertTypeID != alert.AlertTypeID {
+			return nil, fmt.Errorf("对策 %s 属于 %s，不适用于告警 %s", id, rm.AlertTypeID, alert.AlertTypeID)
+		}
+		steps = append(steps, owlmonitor.RemedyStep{
+			Order:    len(steps),
+			RemedyID: id,
+			Name:     rm.Name,
+			Kind:     rm.Kind,
+			Content:  rm.Content,
+			Rollback: rm.Rollback,
+			Status:   owlmonitor.StepPending,
+			NodeID:   alert.NodeID,
+		})
+	}
+	if len(steps) == 0 {
+		return nil, fmt.Errorf("未选择有效对策")
+	}
+
+	now := time.Now().Unix()
+	run := &owlmonitor.RemedyRun{
+		ID:          fmt.Sprintf("RUN-%d", now),
+		AlertID:     alertID,
+		NodeID:      alert.NodeID,
+		Status:      owlmonitor.RunPending,
+		StopOnError: stopOnError,
+		CreatedBy:   createdBy,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		Steps:       steps,
+	}
+	if err := s.Store.CreateRemedyRun(run); err != nil {
+		return nil, err
+	}
+	go func() { _ = s.runner.ExecuteRun(context.Background(), run.ID, s.Store) }()
+	return run, nil
 }
 
 // WebURL 返回告警处理入口链接前缀。
