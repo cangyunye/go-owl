@@ -447,3 +447,98 @@ func TestMonitorAPI_RemedyPlan_Validation(t *testing.T) {
 	w = authedPost(t, srv2, vt, "/api/v1/alerts/"+id+"/plans", map[string]any{"remedy_ids": []string{"RM-X"}})
 	require.Equal(t, 403, w.Code, "viewer 不应允许创建处置计划")
 }
+
+// TestMonitorAPI_RemedyPlan_ApprovalFlow 验证待审批计划：批准 → 恢复执行 → 完成。
+func TestMonitorAPI_RemedyPlan_ApprovalFlow(t *testing.T) {
+	srv, token := setupMonitorServer(t)
+
+	// 注册本机节点 + 种子告警
+	nodeReq, _ := json.Marshal(map[string]any{
+		"id": "local-test", "name": "本机", "address": "127.0.0.1",
+		"port": 22, "user": "local", "groups": []string{"web"},
+	})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/nodes", bytes.NewReader(nodeReq))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	srv.Router.ServeHTTP(w, req)
+	require.Equal(t, 201, w.Code, w.Body.String())
+	id := seedAlert(t, srv, "OWL-DSK-001", "local-test")
+
+	// 直接构造一个含待审批步骤的计划（模拟自愈管线产生）
+	now := time.Now().Unix()
+	run := &owlmonitor.RemedyRun{
+		ID: "RUN-APPR", AlertID: id, NodeID: "local-test",
+		Status: owlmonitor.RunWaitingApproval, StopOnError: true,
+		CreatedBy: "auto-heal", CreatedAt: now, UpdatedAt: now,
+		Steps: []owlmonitor.RemedyStep{
+			{Order: 0, RemedyID: "RM-APPR", Name: "待审批脚本", Kind: "script",
+				Content: "echo approved-ran", Status: owlmonitor.StepPendingApproval, NodeID: "local-test"},
+		},
+	}
+	require.NoError(t, srv.monitor.Store.CreateRemedyRun(run))
+
+	// 状态确认
+	w = authedGet(t, srv, token, "/api/v1/plans/RUN-APPR")
+	require.Equal(t, 200, w.Code)
+	var resp struct {
+		Run owlmonitor.RemedyRun `json:"run"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Equal(t, owlmonitor.RunWaitingApproval, resp.Run.Status)
+
+	// 批准
+	w = authedPost(t, srv, token, "/api/v1/plans/RUN-APPR/approve", nil)
+	require.Equal(t, 200, w.Code, w.Body.String())
+
+	// 轮询至完成
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		w = authedGet(t, srv, token, "/api/v1/plans/RUN-APPR")
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		if resp.Run.IsTerminal() {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	require.Equal(t, owlmonitor.RunDone, resp.Run.Status)
+	require.Equal(t, owlmonitor.StepSuccess, resp.Run.Steps[0].Status)
+	require.Contains(t, resp.Run.Steps[0].Output, "approved-ran", "批准后应真实执行")
+}
+
+// TestMonitorAPI_RemedyPlan_RejectFlow 验证拒绝后步骤跳过。
+func TestMonitorAPI_RemedyPlan_RejectFlow(t *testing.T) {
+	srv, token := setupMonitorServer(t)
+	id := seedAlert(t, srv, "OWL-DSK-001", "node-a")
+
+	now := time.Now().Unix()
+	run := &owlmonitor.RemedyRun{
+		ID: "RUN-REJ", AlertID: id, NodeID: "node-a",
+		Status: owlmonitor.RunWaitingApproval, StopOnError: true,
+		CreatedBy: "auto-heal", CreatedAt: now, UpdatedAt: now,
+		Steps: []owlmonitor.RemedyStep{
+			{Order: 0, RemedyID: "RM-X", Name: "待审批", Kind: "script",
+				Content: "echo x", Status: owlmonitor.StepPendingApproval},
+		},
+	}
+	require.NoError(t, srv.monitor.Store.CreateRemedyRun(run))
+
+	w := authedPost(t, srv, token, "/api/v1/plans/RUN-REJ/reject", nil)
+	require.Equal(t, 200, w.Code, w.Body.String())
+
+	deadline := time.Now().Add(5 * time.Second)
+	var resp struct {
+		Run owlmonitor.RemedyRun `json:"run"`
+	}
+	for time.Now().Before(deadline) {
+		w = authedGet(t, srv, token, "/api/v1/plans/RUN-REJ")
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		if resp.Run.IsTerminal() {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	require.Equal(t, owlmonitor.RunDone, resp.Run.Status)
+	require.Equal(t, owlmonitor.StepSkipped, resp.Run.Steps[0].Status)
+	require.Contains(t, resp.Run.Steps[0].Output, "拒绝")
+}

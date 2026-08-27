@@ -43,7 +43,7 @@ func waitPlanDone(t *testing.T, s *Store, runID string) RemedyRun {
 	for time.Now().Before(deadline) {
 		run, _, err := s.GetRemedyRun(runID)
 		require.NoError(t, err)
-		if run.IsTerminal() {
+		if run.IsTerminal() || run.Status == RunWaitingApproval {
 			return *run
 		}
 		time.Sleep(20 * time.Millisecond)

@@ -4,22 +4,24 @@ package monitor
 type RemedyRunStatus string
 
 const (
-	RunPending RemedyRunStatus = "pending" // 待执行
-	RunRunning RemedyRunStatus = "running" // 执行中
-	RunDone    RemedyRunStatus = "done"    // 全部完成
-	RunStopped RemedyRunStatus = "stopped" // 用户中止
-	RunFailed  RemedyRunStatus = "failed"  // 失败中止
+	RunPending         RemedyRunStatus = "pending"          // 待执行
+	RunRunning         RemedyRunStatus = "running"          // 执行中
+	RunWaitingApproval RemedyRunStatus = "waiting_approval" // 有待审批步骤
+	RunDone            RemedyRunStatus = "done"             // 全部完成
+	RunStopped         RemedyRunStatus = "stopped"          // 用户中止
+	RunFailed          RemedyRunStatus = "failed"           // 失败中止
 )
 
 // RemedyStepStatus 执行步骤状态。
 type RemedyStepStatus string
 
 const (
-	StepPending RemedyStepStatus = "pending"
-	StepRunning RemedyStepStatus = "running"
-	StepSuccess RemedyStepStatus = "success"
-	StepFailed  RemedyStepStatus = "failed"
-	StepSkipped RemedyStepStatus = "skipped" // 人工步骤（sop）或未执行
+	StepPending         RemedyStepStatus = "pending"
+	StepRunning         RemedyStepStatus = "running"
+	StepSuccess         RemedyStepStatus = "success"
+	StepFailed          RemedyStepStatus = "failed"
+	StepSkipped         RemedyStepStatus = "skipped"          // 人工步骤（sop）或未执行
+	StepPendingApproval RemedyStepStatus = "pending_approval" // 待人工审批
 )
 
 // RemedyStep 一条执行步骤（对策内容在执行时快照，避免对策被改后执行旧内容）。

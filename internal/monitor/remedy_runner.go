@@ -65,21 +65,35 @@ func (e *RunExecutor) ExecuteRun(ctx context.Context, runID string, store *Store
 			return e.skipRemaining(runID, current.Status, store)
 		}
 		st := &current.Steps[i]
-		// 已结束步骤（恢复执行场景）跳过
+		// 已结束步骤跳过
 		if st.Status == StepSuccess || st.Status == StepSkipped {
 			continue
+		}
+		// 审批屏障：遇到待审批步骤暂停整单，等待人工批准后恢复
+		if st.Status == StepPendingApproval {
+			break
 		}
 		if err := e.stepGate(ctx, current, st, store); err != nil {
 			return err
 		}
 	}
 
-	// 收尾：刷新最终状态
+	// 收尾：刷新最终状态（有待审批步骤 → 等待审批；否则完成）
 	final, _, err := store.GetRemedyRun(runID)
 	if err != nil {
 		return err
 	}
-	if final.Status == RunRunning || final.Status == RunPending {
+	if final.Status == RunRunning || final.Status == RunPending || final.Status == RunWaitingApproval {
+		hasApproval := false
+		for _, st := range final.Steps {
+			if st.Status == StepPendingApproval {
+				hasApproval = true
+				break
+			}
+		}
+		if hasApproval {
+			return store.UpdateRemedyRunStatus(runID, RunWaitingApproval)
+		}
 		return store.UpdateRemedyRunStatus(runID, RunDone)
 	}
 	return nil

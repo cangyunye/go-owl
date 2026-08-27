@@ -48,6 +48,7 @@ func (h *AutoHealer) Heal(ctx context.Context, alert *Alert, at AlertType, targe
 	now := h.now()
 	var steps []RemedyStep
 	executable := 0
+	approvalCount := 0
 	for i, ds := range plan.Steps {
 		st := RemedyStep{
 			Order:    i,
@@ -96,9 +97,9 @@ func (h *AutoHealer) Heal(ctx context.Context, alert *Alert, at AlertType, targe
 		case DecisionAuto:
 			executable++
 		case DecisionApproval:
-			st.Status = StepSkipped
-			st.Output = "需人工审批后执行（P2-M3 审批流）"
-			st.FinishedAt = now
+			approvalCount++
+			st.Status = StepPendingApproval
+			st.Output = "待人工审批（可在处置记录中批准后恢复执行）"
 		case DecisionHuman:
 			st.Status = StepSkipped
 			st.Output = "仅人工处置（类型/对策未放行或风险过高）"
@@ -106,7 +107,7 @@ func (h *AutoHealer) Heal(ctx context.Context, alert *Alert, at AlertType, targe
 		}
 		steps = append(steps, st)
 	}
-	if executable == 0 {
+	if executable == 0 && approvalCount == 0 {
 		// 全被拦截：仍记录一次「尝试」便于审计
 		if len(steps) == 0 {
 			return nil, nil
@@ -129,6 +130,8 @@ func (h *AutoHealer) Heal(ctx context.Context, alert *Alert, at AlertType, targe
 	}
 	if executable > 0 {
 		go func() { _ = h.runner.ExecuteRun(context.Background(), run.ID, h.store) }()
+	} else if approvalCount > 0 {
+		_ = h.store.UpdateRemedyRunStatus(run.ID, RunWaitingApproval)
 	} else {
 		_ = h.store.UpdateRemedyRunStatus(run.ID, RunDone)
 	}

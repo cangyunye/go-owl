@@ -359,6 +359,52 @@ func (h *MonitorHandler) StopRemedyPlan(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// ApproveRemedyPlan 批准处置计划中的待审批步骤并恢复执行（operator+）。
+func (h *MonitorHandler) ApproveRemedyPlan(c *gin.Context) {
+	run, exists, err := h.svc.Store.GetRemedyRun(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "处置计划不存在"})
+		return
+	}
+	if run.Status != owlmonitor.RunWaitingApproval {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "计划不在待审批状态"})
+		return
+	}
+	if err := h.svc.Store.ApproveRemedySteps(run.ID, time.Now().Unix()); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	h.svc.ExecuteRemedyRun(run.ID)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// RejectRemedyPlan 拒绝处置计划中的待审批步骤（operator+）。
+func (h *MonitorHandler) RejectRemedyPlan(c *gin.Context) {
+	run, exists, err := h.svc.Store.GetRemedyRun(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "处置计划不存在"})
+		return
+	}
+	if run.Status != owlmonitor.RunWaitingApproval {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "计划不在待审批状态"})
+		return
+	}
+	if err := h.svc.Store.RejectRemedySteps(run.ID, time.Now().Unix()); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	h.svc.ExecuteRemedyRun(run.ID)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // --- 内部辅助 ---
 
 // nodeNames 节点 id → name 映射（列表页展示用）。

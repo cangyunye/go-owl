@@ -174,6 +174,11 @@ func (s *Service) StartRemedyRun(alertID string, remedyIDs []string, stopOnError
 	return run, nil
 }
 
+// ExecuteRemedyRun 异步执行处置计划（审批恢复/拒绝收尾用）。
+func (s *Service) ExecuteRemedyRun(runID string) {
+	go func() { _ = s.runner.ExecuteRun(context.Background(), runID, s.Store) }()
+}
+
 // WebURL 返回告警处理入口链接前缀。
 func (s *Service) WebURL() string {
 	return s.webURL

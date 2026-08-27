@@ -329,6 +329,8 @@ func (s *Server) setupRoutes() {
 			operator.POST("/alerts/:id/resolve", s.monitorHandler.ResolveAlert)
 			operator.POST("/alerts/:id/plans", s.monitorHandler.CreateRemedyPlan)
 			operator.POST("/plans/:id/stop", s.monitorHandler.StopRemedyPlan)
+			operator.POST("/plans/:id/approve", s.monitorHandler.ApproveRemedyPlan)
+			operator.POST("/plans/:id/reject", s.monitorHandler.RejectRemedyPlan)
 		}
 
 		admin := auth.Group("", s.authHandler.RBACMiddleware(model.RoleAdmin))

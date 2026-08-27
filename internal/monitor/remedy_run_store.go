@@ -155,6 +155,57 @@ func (s *Store) listSteps(runID string) ([]RemedyStep, error) {
 	return steps, rows.Err()
 }
 
+// ApproveRemedySteps 批准全部待审批步骤（→ pending）并将整单置回待执行。
+func (s *Store) ApproveRemedySteps(runID string, by int64) error {
+	steps, err := s.listSteps(runID)
+	if err != nil {
+		return err
+	}
+	hasApproval := false
+	for _, st := range steps {
+		if st.Status != StepPendingApproval {
+			continue
+		}
+		hasApproval = true
+		if err := s.UpdateRemedyStep(runID, st.Order, func(s2 *RemedyStep) {
+			s2.Status = StepPending
+			s2.Output = "已批准（by " + fmt.Sprint(by) + "）"
+		}); err != nil {
+			return err
+		}
+	}
+	if !hasApproval {
+		return fmt.Errorf("monitor: 执行计划 %s 无待审批步骤", runID)
+	}
+	return s.UpdateRemedyRunStatus(runID, RunPending)
+}
+
+// RejectRemedySteps 拒绝全部待审批步骤（→ skipped）并置回待执行以便收尾。
+func (s *Store) RejectRemedySteps(runID string, by int64) error {
+	steps, err := s.listSteps(runID)
+	if err != nil {
+		return err
+	}
+	hasApproval := false
+	for _, st := range steps {
+		if st.Status != StepPendingApproval {
+			continue
+		}
+		hasApproval = true
+		if err := s.UpdateRemedyStep(runID, st.Order, func(s2 *RemedyStep) {
+			s2.Status = StepSkipped
+			s2.Output = "已拒绝（by " + fmt.Sprint(by) + "）"
+			s2.FinishedAt = time.Now().Unix()
+		}); err != nil {
+			return err
+		}
+	}
+	if !hasApproval {
+		return fmt.Errorf("monitor: 执行计划 %s 无待审批步骤", runID)
+	}
+	return s.UpdateRemedyRunStatus(runID, RunPending)
+}
+
 // UpdateRemedyRunStatus 更新整单状态。
 func (s *Store) UpdateRemedyRunStatus(id string, status RemedyRunStatus) error {
 	if _, err := s.db.Exec(`UPDATE remedy_runs SET status = ?, updated_at = ? WHERE id = ?`,

@@ -186,9 +186,9 @@ export function renderAlerts(render, navigate, user, api, shell) {
     const snapshot = (() => { try { return Object.entries(JSON.parse(a.metric_snapshot || '{}')); } catch { return []; } })();
 
     function planProgressHtml(plan) {
-      const RUN_TEXT = { pending: '待执行', running: '执行中', done: '已完成', stopped: '已停止', failed: '失败' };
-      const STEP_TEXT = { pending: '等待', running: '执行中', success: '成功', failed: '失败', skipped: '跳过' };
-      const STEP_COLOR = { pending: 'var(--muted)', running: 'var(--info)', success: 'var(--success)', failed: 'var(--danger)', skipped: 'var(--muted)' };
+      const RUN_TEXT = { pending: '待执行', running: '执行中', waiting_approval: '待审批', done: '已完成', stopped: '已停止', failed: '失败' };
+      const STEP_TEXT = { pending: '等待', running: '执行中', success: '成功', failed: '失败', skipped: '跳过', pending_approval: '待审批' };
+      const STEP_COLOR = { pending: 'var(--muted)', running: 'var(--info)', success: 'var(--success)', failed: 'var(--danger)', skipped: 'var(--muted)', pending_approval: 'var(--warn)' };
       const steps = (plan.steps || []).map(st => `
         <li style="display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;background:var(--bg)">
           <span style="min-width:18px;text-align:center;font-weight:600;color:var(--muted)">${st.order + 1}</span>
@@ -202,8 +202,11 @@ export function renderAlerts(render, navigate, user, api, shell) {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <strong style="font-size:13px">处置计划 <code>${esc(plan.id)}</code></strong>
           <span style="display:flex;gap:6px;align-items:center">
-            <span style="font-size:12px;font-weight:600;color:${plan.status === 'done' ? 'var(--success)' : plan.status === 'failed' || plan.status === 'stopped' ? 'var(--danger)' : 'var(--info)'}">${RUN_TEXT[plan.status] || esc(plan.status)}</span>
+            <span style="font-size:12px;font-weight:600;color:${plan.status === 'done' ? 'var(--success)' : plan.status === 'failed' || plan.status === 'stopped' ? 'var(--danger)' : plan.status === 'waiting_approval' ? 'var(--warn)' : 'var(--info)'}">${RUN_TEXT[plan.status] || esc(plan.status)}</span>
             ${plan.status === 'running' || plan.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-stop-plan="${esc(plan.id)}">停止</button>` : ''}
+            ${plan.status === 'waiting_approval' ? `
+              <button class="btn btn-secondary btn-sm" data-approve-plan="${esc(plan.id)}">批准执行</button>
+              <button class="btn btn-ghost btn-sm" data-reject-plan="${esc(plan.id)}">拒绝</button>` : ''}
           </span>
         </div>
         <ul style="list-style:none;margin:0;padding:0">${steps}</ul>
@@ -220,6 +223,17 @@ export function renderAlerts(render, navigate, user, api, shell) {
       area.querySelector('[data-stop-plan]')?.addEventListener('click', async (e) => {
         e.stopPropagation();
         try { await api.stopRemedyPlan(planId); } catch (err) { alert('停止失败: ' + (err.message || err)); }
+      });
+      area.querySelector('[data-approve-plan]')?.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try { await api.approveRemedyPlan(planId); } catch (err) { alert('批准失败: ' + (err.message || err)); }
+        loadPlanProgress(planId, area);
+      });
+      area.querySelector('[data-reject-plan]')?.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('拒绝后该步骤不会执行，确定？')) return;
+        try { await api.rejectRemedyPlan(planId); } catch (err) { alert('拒绝失败: ' + (err.message || err)); }
+        loadPlanProgress(planId, area);
       });
       if (plan && !['done', 'stopped', 'failed'].includes(plan.status)) {
         setTimeout(() => loadPlanProgress(planId, area), 1500);
@@ -254,7 +268,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
       let runs = [];
       try { runs = (await api.remedyPlans(a.id)).items || []; } catch {}
       if (!runs.length) { area.innerHTML = ''; return; }
-      const RUN_TEXT = { pending: '待执行', running: '执行中', done: '已完成', stopped: '已停止', failed: '失败' };
+      const RUN_TEXT = { pending: '待执行', running: '执行中', waiting_approval: '待审批', done: '已完成', stopped: '已停止', failed: '失败' };
       area.innerHTML = `<h4 style="margin-top:14px">处置历史</h4><ul style="list-style:none;margin:0;padding:0">${
         runs.map(r => `<li style="display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;font-size:12px;background:var(--bg)">
           <code>${esc(r.id)}</code><span style="color:var(--muted)">${r.steps ? r.steps.length : 0} 步</span>

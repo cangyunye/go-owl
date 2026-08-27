@@ -504,4 +504,10 @@ export const api = {
 
   stopRemedyPlan: (id) =>
     request('POST', `/plans/${encodeURIComponent(id)}/stop`, {}),
+
+  approveRemedyPlan: (id) =>
+    request('POST', `/plans/${encodeURIComponent(id)}/approve`, {}),
+
+  rejectRemedyPlan: (id) =>
+    request('POST', `/plans/${encodeURIComponent(id)}/reject`, {}),
 };
