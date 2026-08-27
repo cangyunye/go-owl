@@ -126,6 +126,9 @@ func (s *Store) GetNotifyChannel(id string) (NotifyChannel, bool, error) {
 
 // ListNotifyChannels 列出全部通知渠道。
 func (s *Store) ListNotifyChannels() ([]NotifyChannel, error) {
+	if err := s.EnsureNotifyTables(); err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(`SELECT id, kind, name, config, severity_min, alert_types, enabled, created_at
 		FROM notify_channels ORDER BY id`)
 	if err != nil {

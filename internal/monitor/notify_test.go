@@ -34,6 +34,11 @@ func webhookChannel(id string, severityMin Severity) NotifyChannel {
 func TestNotifyChannel_CRUD(t *testing.T) {
 	s := newTestStore(t)
 
+	// 空库读取不报错（表自动创建）
+	empty, err := s.ListNotifyChannels()
+	require.NoError(t, err)
+	require.Empty(t, empty)
+
 	ch := webhookChannel("CH-1", SeverityWarning)
 	ch.AlertTypes = "OWL-DSK-001,OWL-MEM-001"
 	require.NoError(t, s.UpsertNotifyChannel(ch))

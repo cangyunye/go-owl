@@ -46,6 +46,10 @@ func OpenStore(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := s.EnsureNotifyTables(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return s, nil
 }
 

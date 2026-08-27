@@ -64,6 +64,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         <div class="view-actions" id="alert-actions" style="display:flex;gap:8px;align-items:center">
           ${isAdmin ? `<button class="btn btn-ghost btn-sm ${mode === 'config' ? 'active' : ''}" id="toggle-config"><svg width="14" height="14" aria-hidden="true"><use href="#icon-settings"/></svg> 监控配置</button>` : ''}
           <button class="btn btn-secondary btn-sm" id="alert-refresh"><svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg> 刷新</button>
+          <span id="alert-count" style="font-size:12px;color:var(--muted)"></span>
         </div>
       </div>
       ${mode === 'list' ? `
@@ -134,8 +135,8 @@ export function renderAlerts(render, navigate, user, api, shell) {
       });
     }
     const totalPages = Math.max(1, Math.ceil(state.total / pageSize));
-    const info = document.getElementById('alert-actions');
-    if (info) info.innerHTML = `<span style="font-size:12px;color:var(--muted)">共 ${state.total} 条 · 第 ${state.page}/${totalPages} 页</span>`;
+    const info = document.getElementById('alert-count');
+    if (info) info.textContent = `共 ${state.total} 条 · 第 ${state.page}/${totalPages} 页`;
     renderPagination();
   }
 
@@ -207,9 +208,6 @@ export function renderAlerts(render, navigate, user, api, shell) {
     overlay.querySelector('#detail-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   }
-
-  renderView();
-}
 
   // ---------- 监控配置（admin） ----------
 
