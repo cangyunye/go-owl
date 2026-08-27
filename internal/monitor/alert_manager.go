@@ -31,6 +31,7 @@ type AlertManager struct {
 	recoverThreshold int            // 恢复所需连续未命中采样数，默认 3
 	escalateAfter    time.Duration  // warn 未处理升级时长，默认 1h
 	failThreshold    int            // 失联阈值（连续失败次数），默认 3
+	SilentUntil      int64          // 静默截止时间戳：静默期内不新建告警（已有实例正常流转）
 	now              func() int64
 	seq              int
 }
@@ -61,10 +62,13 @@ func (m *AlertManager) Tick(nodeID string, samples []Sample, types []AlertType) 
 		typeByID[at.ID] = at
 	}
 
-	// 1. 触发 → 开/刷新（活跃去重）
+	// 1. 触发 → 开/刷新（活跃去重）；静默期内跳过新建
 	for _, hit := range out.Triggered {
 		at, ok := typeByID[hit.AlertTypeID]
 		if !ok {
+			continue
+		}
+		if m.isSilenced(now) {
 			continue
 		}
 		key := ruleKey(nodeID, at.ID)
@@ -235,6 +239,11 @@ func (m *AlertManager) Resolve(id string) (*Alert, error) {
 		return nil, err
 	}
 	return a, nil
+}
+
+// isSilenced 静默期内不新建告警（已有实例仍刷新/恢复/升级）。
+func (m *AlertManager) isSilenced(now int64) bool {
+	return m.SilentUntil > 0 && now < m.SilentUntil
 }
 
 // buildAlertMessage 构造中文告警描述。

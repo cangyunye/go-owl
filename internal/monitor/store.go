@@ -165,7 +165,9 @@ func monthsInRange(from, to int64) []string {
 	cur := time.Date(start.Year(), start.Month(), 1, 0, 0, 0, 0, time.UTC)
 	endMonth := time.Date(end.Year(), end.Month(), 1, 0, 0, 0, 0, time.UTC)
 	var months []string
-	for !cur.After(endMonth) {
+	// 防御：范围上限 130 年（1970→2100），防止异常边界导致天文数字迭代
+	const maxMonths = 1560
+	for !cur.After(endMonth) && len(months) < maxMonths {
 		months = append(months, cur.Format("200601"))
 		cur = cur.AddDate(0, 1, 0)
 	}
