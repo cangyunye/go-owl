@@ -91,3 +91,67 @@ _Avoid_: literal string, hardcoded text
 Content originating from remote hosts or files (node names, command output,
 playbook YAML bodies). It is never translated — only character-encoded.
 _Avoid_: translated data, localized output
+
+## Monitoring (监控)
+
+The umbrella capability covering collection, alerting, remedies and
+notifications — the closed loop from "detect a problem" to "disposed and
+verified". See docs/design/04_MONITORING_ALERTING.md.
+
+## Metric (指标)
+
+A periodic numeric data point collected from a managed node, uniquely
+identified by (node, metric name, timestamp). Metrics are the input to alert
+rules. The node itself is never inferred — a metric without a node_id is
+meaningless.
+_Avoid_: 采样点, 监控点
+
+## Collector (采集器)
+
+A background task that periodically runs SSH collection commands against
+registered nodes and writes results into the metric store. Agentless — it
+reuses the node's existing SSH credentials; no agent is deployed on targets.
+_Avoid_: agent, 探针, 采集代理
+
+## Alert Type (告警类型)
+
+An identifiable class of problem, identified by a stable Alert ID
+(`OWL-<category>-<nnn>`), carrying a detection rule, default severity, and
+references to remedies. The Alert ID is the key used to look up applicable
+remedies — the type is identity, the rule is the detection expression.
+_Avoid_: 告警规则 (a rule is the detection expression, not the identity)
+
+## Alert (告警实例)
+
+One concrete occurrence of an Alert Type on one node, with a lifecycle status
+(open/acked/resolved) and a metric snapshot. At most one active Alert exists
+per (type, node); dedup is by partial unique index on non-resolved rows.
+_Avoid_: 告警事件, alert event
+
+## Remedy (对策)
+
+A disposal plan bound to an Alert Type: a script, a playbook, or a manual
+runbook (SOP). Distinguished by source (builtin / ai / user) and review
+status; user-supplied remedies outrank builtin ones for the same type.
+_Avoid_: 处理方案 (口语), runbook
+
+## Auto-Approval (自动执行放行)
+
+A per-Alert-Type switch deciding whether its remedies may execute unattended.
+**Off by default for every type**; only types explicitly configured by an
+admin are approved, and the approval action is audited.
+_Avoid_: 自愈开关, auto-run
+
+## Suppression (抑制)
+
+Within a window, the same (Alert Type, node) does not create a new Alert
+instance; the existing one's `last_seen` refreshes instead. Prevents alert
+flapping.
+_Avoid_: 去重 (dedup is a data-layer concern)
+
+## Retention (保留期)
+
+The retention period for metrics and alert records (default 30 days),
+enforced by a daily cleanup task that deletes expired rows and drops
+partition tables older than the cutoff.
+_Avoid_: 清理周期, cleanup interval

@@ -20,6 +20,7 @@
 | [01_TIMEOUT_SEPARATION.md](01_TIMEOUT_SEPARATION.md) | 超时分离机制设计 |
 | [02_RETRY_MECHANISM.md](02_RETRY_MECHANISM.md) | 重试机制设计 |
 | [03_ASYNC_EXECUTION.md](03_ASYNC_EXECUTION.md) | 异步执行设计 |
+| [04_MONITORING_ALERTING.md](04_MONITORING_ALERTING.md) | 智能监控与告警体系设计 |
 | [PLAYBOOK_ACTION_OPTIONS.md](PLAYBOOK_ACTION_OPTIONS.md) | Playbook 动作选项设计 |
 | [PLAYBOOK_TEMPLATE_SYSTEM.md](PLAYBOOK_TEMPLATE_SYSTEM.md) | Playbook 模板系统设计 |
 
@@ -49,6 +50,7 @@
 - [ ] TUI 交互式界面设计
 - [ ] 分布式执行设计
 - [ ] Web 管理界面设计
+- [ ] AI 处置闭环设计（Phase 2，监控告警体系的后半环）
 
 ---
 
