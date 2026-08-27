@@ -32,6 +32,7 @@ type Engine struct {
 	source       TargetSource
 	manager      *AlertManager
 	dispatcher   *Dispatcher
+	healer       *AutoHealer             // 自愈管线（nil = 关闭）
 	lastCounters map[string]counterPoint // node|metric → 上次累计计数（网卡速率）
 	mu           sync.Mutex
 }
@@ -65,6 +66,11 @@ func NewEngine(cfg EngineConfig, store *Store, collector *Collector, source Targ
 		dispatcher:   dispatcher,
 		lastCounters: make(map[string]counterPoint),
 	}
+}
+
+// SetAutoHealer 挂载自愈管线（告警触发且类型放行时自动处置）。
+func (e *Engine) SetAutoHealer(h *AutoHealer) {
+	e.healer = h
 }
 
 // Run 阻塞运行：立即执行一轮与清理，之后按 Interval 周期执行，24h 清理一次。
@@ -245,6 +251,15 @@ func (e *Engine) dispatch(ctx context.Context, events []AlertEvent, types []Aler
 			if !ok {
 				continue
 			}
+		}
+		// 自愈：新告警且类型已放行 → 走自愈管线（异步执行获准步骤）
+		if ev.Type == EventOpened && e.healer != nil && at.AutoApprove {
+			go func(ev AlertEvent, at AlertType, t Target) {
+				if _, err := e.healer.Heal(context.Background(), ev.Alert, at, &t); err != nil {
+					logger.Warn("自愈管线失败", logger.WithOperation("monitor_autoheal"),
+						logger.WithField("alert_id", ev.Alert.ID), logger.WithError(err))
+				}
+			}(ev, at, t)
 		}
 		webURL := e.cfg.WebURL + "/alerts/" + ev.Alert.ID
 		if errs := e.dispatcher.Notify(ctx, ev, at, t.Name, webURL); len(errs) > 0 {

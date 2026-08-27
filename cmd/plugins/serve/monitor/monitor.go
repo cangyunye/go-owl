@@ -69,6 +69,11 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 	collector := owlmonitor.NewCollector(owlmonitor.NewSSHExecerFactory())
 	manager := owlmonitor.NewAlertManager(store)
 	dispatcher := owlmonitor.NewDispatcher(store)
+	runner := owlmonitor.NewRunExecutor(owlmonitor.NewSSHExecerFactory(), resolveTarget(db))
+
+	// 自愈管线：规则推荐兜底（AI 建议器接入后经同一 Advisor 接口替换）
+	advisor := owlmonitor.NewRuleBasedAdvisor(store, 3)
+	healer := owlmonitor.NewAutoHealer(store, advisor, runner)
 
 	// 静默配置存于 settings 表（monitor.silence_until，0 = 不静默）
 	cfg := owlmonitor.EngineConfig{
@@ -79,13 +84,14 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		WebURL:        webURL,
 	}
 	engine := owlmonitor.NewEngine(cfg, store, collector, source, manager, dispatcher)
+	engine.SetAutoHealer(healer)
 
 	return &Service{
 		Store:      store,
 		Engine:     engine,
 		Manager:    manager,
 		Dispatcher: dispatcher,
-		runner:     owlmonitor.NewRunExecutor(owlmonitor.NewSSHExecerFactory(), resolveTarget(db)),
+		runner:     runner,
 		db:         db,
 		webURL:     webURL,
 	}, nil

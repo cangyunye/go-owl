@@ -157,3 +157,85 @@ func TestEngine_CleanupOnce(t *testing.T) {
 	require.Len(t, rows, 1)
 	require.InDelta(t, 2, rows[0].Value, 0.001)
 }
+
+// TestEngine_TickOnce_AutoHeal 验证告警触发 → 类型放行 → 自愈管线执行。
+func TestEngine_TickOnce_AutoHeal(t *testing.T) {
+	outputs := sampleOutputs()
+	// 高内存触发 OWL-MEM-001（duration=1 已由 newTestEngine 设置）
+	outputs["free -m"] = "              total        used        free      shared  buff/cache   available\nMem:          15891       15000        100         189         791         900\nSwap:          2047           0        2047\n"
+	eng, s := newTestEngine(t, []Target{{ID: "node-a"}}, outputs)
+
+	// 类型放行 + 低风险对策放行
+	at, _, err := s.GetAlertType("OWL-MEM-001")
+	require.NoError(t, err)
+	at.AutoApprove = true
+	require.NoError(t, s.UpsertAlertType(at))
+	require.NoError(t, s.UpsertRemedy(Remedy{
+		ID: "RM-HEAL", AlertTypeID: "OWL-MEM-001", Name: "清理缓存",
+		Kind: "script", Content: "echo heal-ok", Risk: "low",
+		Source: "user", Reviewed: true, AutoApprove: true,
+	}))
+
+	// 挂载自愈管线
+	fake := &remedyFakeExecer{}
+	runner := NewRunExecutor(&remedyFakeFactory{exec: fake}, func(id string) (*Target, error) {
+		return &Target{ID: id}, nil
+	})
+	healer := NewAutoHealer(s, NewRuleBasedAdvisor(s, 3), runner)
+	eng.SetAutoHealer(healer)
+
+	require.NoError(t, eng.TickOnce(context.Background()))
+
+	// 告警已开
+	al, exists, err := s.GetActiveAlert("OWL-MEM-001", "node-a")
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	// 自愈计划已创建并执行完成
+	deadline := time.Now().Add(5 * time.Second)
+	var run RemedyRun
+	for time.Now().Before(deadline) {
+		runs, err := s.ListRemedyRunsByAlert(al.ID)
+		require.NoError(t, err)
+		if len(runs) > 0 {
+			r, _, _ := s.GetRemedyRun(runs[0].ID)
+			run = *r
+			if run.IsTerminal() {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	require.Equal(t, RunDone, run.Status, "自愈计划应执行完成")
+	require.Equal(t, StepSuccess, run.Steps[0].Status)
+	fake.mu.Lock()
+	require.Equal(t, []string{"echo heal-ok"}, fake.executed, "自愈脚本应真实执行")
+	fake.mu.Unlock()
+}
+
+// TestEngine_TickOnce_NoAutoHealWithoutApproval 验证类型未放行时不触发自愈。
+func TestEngine_TickOnce_NoAutoHealWithoutApproval(t *testing.T) {
+	outputs := sampleOutputs()
+	outputs["free -m"] = "              total        used        free      shared  buff/cache   available\nMem:          15891       15000        100         189         791         900\nSwap:          2047           0        2047\n"
+	eng, s := newTestEngine(t, []Target{{ID: "node-a"}}, outputs)
+
+	fake := &remedyFakeExecer{}
+	runner := NewRunExecutor(&remedyFakeFactory{exec: fake}, func(id string) (*Target, error) {
+		return &Target{ID: id}, nil
+	})
+	healer := NewAutoHealer(s, NewRuleBasedAdvisor(s, 3), runner)
+	eng.SetAutoHealer(healer)
+
+	require.NoError(t, eng.TickOnce(context.Background()))
+
+	al, exists, err := s.GetActiveAlert("OWL-MEM-001", "node-a")
+	require.NoError(t, err)
+	require.True(t, exists, "告警照常触发")
+
+	runs, err := s.ListRemedyRunsByAlert(al.ID)
+	require.NoError(t, err)
+	require.Empty(t, runs, "类型未放行不应产生自愈计划")
+	fake.mu.Lock()
+	require.Empty(t, fake.executed)
+	fake.mu.Unlock()
+}

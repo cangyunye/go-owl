@@ -358,17 +358,19 @@ admin:    PUT  /api/v1/alert-types/:id   POST/PUT/DELETE /api/v1/remedies
 - 失败即停 / 失败继续可选；执行中可停止；对策内容执行时快照
 - 每步完成回写 `RecordExecution`，为 AI 推荐积累成功率数据
 
-**P2-M2（AI 处置引擎，待 LLM 凭据）**：AI 选对策 + 排序 + 现场生成脚本，闸门链：
+**P2-M2（AI 处置引擎，接口层 + 闸门链已完成，真实 LLM 待凭据）**：AI 选对策 + 排序 + 现场生成脚本，闸门链：
 
 ```
 告警触发 → AI 富化(根因解读) → 对策匹配 → 未命中则 AI 起草脚本
-  → ★语法闸门(bash -n / shellcheck / playbook --syntax-check)
-  → ★策略闸门(复用黑名单 + 禁自动清单)
-  → ★范围闸门(canary 1 台 → 批量)
-  → ★审批闸门(severity × risk × scope → auto / 审批 / 转人工)
-  → 执行(复用 exec 执行器，入历史库) → 验证(指标回落?) → 反馈对策库
+  → ★语法闸门(bash -n / YAML 校验，失败关闭)         ✅ 已实现
+  → ★策略闸门(复用黑名单 + 禁自动清单)              ✅ 已实现
+  → ★审批矩阵(severity×risk×scope → auto/审批/仅人工) ✅ 已实现
+  → ★执行(复用 RunExecutor，入历史库)               ✅ 已实现
+  → 反馈(RecordExecution)                            ✅ 已实现
 ```
 
+已落地：`DisposalAdvisor` 接口（AI 实现与规则兜底可插拔）、`RuleBasedAdvisor`、
+`AutoHealer` 管线、引擎接线（新告警且类型放行 → 自愈）。
 `internal/monitor` 只暴露「告警 → 上下文（指标快照+日志摘要）」与「处置结果回写」两个接口，
 AI 引擎在 `internal/ai` 扩展，二者不互相依赖。
 
