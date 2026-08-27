@@ -13,25 +13,26 @@ const (
 
 // Alert 告警实例：某节点上某告警类型的一次实际告警。
 type Alert struct {
-	ID             string
-	AlertTypeID    string
-	NodeID         string
-	Severity       Severity
-	Status         AlertStatus
-	Message        string
-	MetricSnapshot string // JSON：触发时指标快照
-	FirstSeen      int64
-	LastSeen       int64
-	ResolvedAt     int64
-	RemedyID       string
+	ID             string      `json:"id"`
+	AlertTypeID    string      `json:"alert_type_id"`
+	NodeID         string      `json:"node_id"`
+	Severity       Severity    `json:"severity"`
+	Status         AlertStatus `json:"status"`
+	Message        string      `json:"message"`
+	MetricSnapshot string      `json:"metric_snapshot"` // JSON：触发时指标快照
+	FirstSeen      int64       `json:"first_seen"`
+	LastSeen       int64       `json:"last_seen"`
+	ResolvedAt     int64       `json:"resolved_at"`
+	RemedyID       string      `json:"remedy_id"`
 }
 
-// AlertFilter 告警列表筛选。
+// AlertFilter 告警列表筛选。Status 为 "active" 时表示活跃（未解决）。
 type AlertFilter struct {
 	Status   AlertStatus
 	NodeID   string
 	Severity string
 	Limit    int
+	Offset   int
 }
 
 // NewAlertID 生成可读告警实例 ID：AL-<unix>-<序号>。

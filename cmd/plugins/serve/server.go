@@ -18,6 +18,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/handler"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
+	serveMonitor "github.com/cangyunye/go-owl/cmd/plugins/serve/monitor"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
@@ -71,6 +72,8 @@ type Server struct {
 	commands            *store.CommandStore
 	userCreatedHooks    []UserCreatedHook
 	shortcutHandler     *handler.ShortcutHandler
+	monitor             *serveMonitor.Service
+	monitorHandler      *handler.MonitorHandler
 }
 
 func NewServer(cfg *Config) *Server {
@@ -218,6 +221,14 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	s.logHandler = handler.NewLogHandler()
 	s.terminalHandler = handler.NewTerminalHandler(db, s.Auth)
 
+	// 监控服务：复用 serve 的 owl.db，提供告警/对策/通知/静默 API
+	monSvc, err := serveMonitor.Setup(s.Config.DBPath, db, "http://"+s.Config.ListenAddr)
+	if err != nil {
+		return nil, fmt.Errorf("init monitor service: %w", err)
+	}
+	s.monitor = monSvc
+	s.monitorHandler = handler.NewMonitorHandler(db, monSvc)
+
 	s.setupRoutes()
 
 	return creds, nil
@@ -274,6 +285,13 @@ func (s *Server) setupRoutes() {
 		reader.GET("/executions/:op_id/logs/archive", s.logHandler.Archive)
 		reader.GET("/executions/:op_id/logs/:node_id", s.logHandler.Download)
 
+		// 监控：告警与指标查询（viewer 可读）
+		reader.GET("/alerts", s.monitorHandler.ListAlerts)
+		reader.GET("/alerts/:id", s.monitorHandler.GetAlert)
+		reader.GET("/alert-types", s.monitorHandler.ListAlertTypes)
+		reader.GET("/remedies", s.monitorHandler.ListRemedies)
+		reader.GET("/metrics", s.monitorHandler.QueryMetrics)
+
 		writer := auth.Group("", s.authHandler.RBACMiddleware(model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{
 			writer.POST("/nodes", s.nodeHandler.Create)
@@ -303,6 +321,10 @@ func (s *Server) setupRoutes() {
 			operator.GET("/playbook/runs", s.playbookHandler.RunList)
 			operator.GET("/playbook/runs/:id", s.playbookHandler.RunGet)
 			operator.GET("/playbook/settings/path", s.playbookHandler.GetSettingsPath)
+
+			// 监控：告警处置（operator+）
+			operator.POST("/alerts/:id/ack", s.monitorHandler.AckAlert)
+			operator.POST("/alerts/:id/resolve", s.monitorHandler.ResolveAlert)
 		}
 
 		admin := auth.Group("", s.authHandler.RBACMiddleware(model.RoleAdmin))
@@ -322,6 +344,19 @@ func (s *Server) setupRoutes() {
 			admin.POST("/playbook/refresh", s.playbookHandler.Refresh)
 			admin.DELETE("/playbook/runs/:id", s.playbookHandler.RunCancel)
 			admin.DELETE("/history", s.historyHandler.Clean)
+
+			// 监控：配置管理（admin）
+			admin.PUT("/alert-types/:id", s.monitorHandler.UpdateAlertType)
+			admin.POST("/remedies", s.monitorHandler.UpsertRemedy)
+			admin.PUT("/remedies/:id", s.monitorHandler.UpsertRemedy)
+			admin.DELETE("/remedies/:id", s.monitorHandler.DeleteRemedy)
+			admin.GET("/notify-channels", s.monitorHandler.ListNotifyChannels)
+			admin.POST("/notify-channels", s.monitorHandler.UpsertNotifyChannel)
+			admin.PUT("/notify-channels/:id", s.monitorHandler.UpsertNotifyChannel)
+			admin.DELETE("/notify-channels/:id", s.monitorHandler.DeleteNotifyChannel)
+			admin.POST("/notify-channels/:id/test", s.monitorHandler.TestNotifyChannel)
+			admin.GET("/monitor/silence", s.monitorHandler.GetSilence)
+			admin.PUT("/monitor/silence", s.monitorHandler.SetSilence)
 		}
 	}
 
@@ -484,6 +519,10 @@ func (s *Server) Start() error {
 		if _, err := s.Init(); err != nil {
 			return err
 		}
+	}
+	// 启动监控采集循环（owl-serve 兼执行机）
+	if s.monitor != nil {
+		s.monitor.Start(context.Background())
 	}
 	return s.Router.Run(s.Config.ListenAddr)
 }

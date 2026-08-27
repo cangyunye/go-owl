@@ -20,10 +20,10 @@ type NotifyChannel struct {
 	CreatedAt   int64
 }
 
-// NotifyConfig 渠道配置（按 Kind 取对应子结构）。
+// NotifyConfig 渠道配置（按 Kind 取对应子结构），JSON 结构与存储一致。
 type NotifyConfig struct {
-	Email   *EmailConfig
-	Webhook *WebhookConfig
+	Email   *EmailConfig   `json:"email,omitempty"`
+	Webhook *WebhookConfig `json:"webhook,omitempty"`
 }
 
 // EmailConfig SMTP 邮件配置。
@@ -57,24 +57,12 @@ type NotifyPayload struct {
 	WebURL         string      `json:"web_url"`
 }
 
-// configJSON 内部 JSON 容器，兼容两种渠道类型。
-type configJSON struct {
-	Email   *EmailConfig   `json:"email,omitempty"`
-	Webhook *WebhookConfig `json:"webhook,omitempty"`
-}
-
 func (c NotifyConfig) marshal() ([]byte, error) {
-	return json.Marshal(configJSON{Email: c.Email, Webhook: c.Webhook})
+	return json.Marshal(c)
 }
 
 func (c *NotifyConfig) unmarshal(data []byte) error {
-	var box configJSON
-	if err := json.Unmarshal(data, &box); err != nil {
-		return err
-	}
-	c.Email = box.Email
-	c.Webhook = box.Webhook
-	return nil
+	return json.Unmarshal(data, c)
 }
 
 // EnsureNotifyTables 建通知渠道表（幂等）。

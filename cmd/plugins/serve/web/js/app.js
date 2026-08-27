@@ -11,6 +11,7 @@ import { renderSettings } from './pages/settings.js';
 import { renderUsers } from './pages/users.js';
 import { renderPlaybooks } from './pages/playbooks.js';
 import { renderHistory } from './pages/history.js';
+import { renderAlerts } from './pages/alerts.js';
 
 let currentCleanup = null;
 let shellRendered = false;
@@ -19,17 +20,18 @@ let currentViewId = null;
 const VIEW_TITLES = {
   dashboard: '仪表盘', nodes: '节点管理', exec: '命令执行',
   playbooks: '剧本管理', files: '文件传输', ai: 'AI 助手',
-  history: '任务历史', settings: '系统设置', users: '用户管理'
+  history: '任务历史', settings: '系统设置', users: '用户管理', alerts: '告警中心'
 };
 
 const PANEL_TITLES = {
   nodes: '节点分组', exec: '节点选择',
   playbooks: '剧本分类', files: '节点选择', ai: '对话上下文',
-  history: '过滤条件', settings: '系统配置', users: '用户角色'
+  history: '过滤条件', settings: '系统配置', users: '用户角色', alerts: '告警过滤'
 };
 
 const NAV_ITEMS = [
   { id: 'dashboard', icon: 'dashboard', label: '仪表盘' },
+  { id: 'alerts', icon: 'bell', label: '告警中心' },
   { id: 'nodes', icon: 'nodes', label: '节点管理' },
   { id: 'exec', icon: 'terminal', label: '命令执行' },
   { id: 'playbooks', icon: 'scroll', label: '剧本管理' },
@@ -313,6 +315,9 @@ function switchView(viewId, pushState) {
     case 'history':
       renderHistory(render, navigate, user, api, shell);
       break;
+    case 'alerts':
+      renderAlerts(render, navigate, user, api, shell);
+      break;
     case 'settings':
       renderSettings(render, navigate, user, api);
       break;
@@ -453,6 +458,8 @@ function router() {
 
   if (path === '/') {
     switchView('dashboard', false);
+  } else if (path === '/alerts') {
+    switchView('alerts', false);
   } else if (path === '/nodes') {
     switchView('nodes', false);
   } else if (termMatch) {

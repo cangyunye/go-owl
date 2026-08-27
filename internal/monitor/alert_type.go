@@ -1,7 +1,6 @@
 package monitor
 
 import (
-	"encoding/json"
 	"fmt"
 )
 
@@ -39,16 +38,16 @@ type RuleParams struct {
 
 // AlertType 告警类型：告警 ID 的载体，附带检测规则与处置开关。
 type AlertType struct {
-	ID              string
-	Category        string
-	Name            string
-	Description     string
-	DefaultSeverity Severity
-	DefaultParams   RuleParams
-	AutoApprove     bool // 自动执行放行，默认全关
-	Notifiable      bool
-	Enabled         bool
-	Builtin         bool
+	ID              string     `json:"id"`
+	Category        string     `json:"category"`
+	Name            string     `json:"name"`
+	Description     string     `json:"description"`
+	DefaultSeverity Severity   `json:"default_severity"`
+	DefaultParams   RuleParams `json:"default_params"`
+	AutoApprove     bool       `json:"auto_approve"` // 自动执行放行，默认全关
+	Notifiable      bool       `json:"notifiable"`
+	Enabled         bool       `json:"enabled"`
+	Builtin         bool       `json:"builtin"`
 }
 
 // builtinRegistry 内置告警类型种子（第一期 12 个）。
@@ -153,26 +152,6 @@ func FindAlertType(id string) (AlertType, bool) {
 		}
 	}
 	return AlertType{}, false
-}
-
-// MarshalJSON / UnmarshalJSON 供 store 持久化。
-func (at AlertType) MarshalJSON() ([]byte, error) {
-	return json.Marshal(struct {
-		ID              string     `json:"id"`
-		Category        string     `json:"category"`
-		Name            string     `json:"name"`
-		Description     string     `json:"description"`
-		DefaultSeverity Severity   `json:"default_severity"`
-		DefaultParams   RuleParams `json:"default_params"`
-		AutoApprove     bool       `json:"auto_approve"`
-		Notifiable      bool       `json:"notifiable"`
-		Enabled         bool       `json:"enabled"`
-		Builtin         bool       `json:"builtin"`
-	}{
-		ID: at.ID, Category: at.Category, Name: at.Name, Description: at.Description,
-		DefaultSeverity: at.DefaultSeverity, DefaultParams: at.DefaultParams,
-		AutoApprove: at.AutoApprove, Notifiable: at.Notifiable, Enabled: at.Enabled, Builtin: at.Builtin,
-	})
 }
 
 // AlertTypeID 辅助：格式化校验。

@@ -111,4 +111,18 @@ func TestStore_ListAlerts_Filter(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, n2, 1)
 	require.Equal(t, "AL-W", n2[0].ID)
+
+	// 活跃筛选（未解决）
+	active, err = s.ListAlerts(AlertFilter{Status: "active"})
+	require.NoError(t, err)
+	require.Len(t, active, 2)
+	total, err := s.CountAlerts(AlertFilter{Status: "active"})
+	require.NoError(t, err)
+	require.Equal(t, 2, total)
+
+	// 分页：limit 1 → 只取最优先的一条（critical 置顶）
+	page, err := s.ListAlerts(AlertFilter{Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, page, 1)
+	require.Equal(t, "AL-C", page[0].ID)
 }

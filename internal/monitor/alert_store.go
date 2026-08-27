@@ -224,11 +224,14 @@ func (s *Store) GetActiveAlert(typeID, nodeID string) (*Alert, bool, error) {
 }
 
 // ListAlerts 按筛选条件列出告警实例，级别降序 + 首次触发时间降序。
+// Status 为 "active" 时筛选未解决实例；支持 Limit/Offset 分页。
 func (s *Store) ListAlerts(f AlertFilter) ([]Alert, error) {
 	query := `SELECT id, alert_type_id, node_id, severity, status, message, metric_snapshot,
 		first_seen, last_seen, resolved_at, remedy_id FROM alerts WHERE 1=1`
 	var args []any
-	if f.Status != "" {
+	if f.Status == "active" {
+		query += ` AND status != 'resolved'`
+	} else if f.Status != "" {
 		query += ` AND status = ?`
 		args = append(args, string(f.Status))
 	}
@@ -244,6 +247,10 @@ func (s *Store) ListAlerts(f AlertFilter) ([]Alert, error) {
 	if f.Limit > 0 {
 		query += ` LIMIT ?`
 		args = append(args, f.Limit)
+		if f.Offset > 0 {
+			query += ` OFFSET ?`
+			args = append(args, f.Offset)
+		}
 	}
 
 	rows, err := s.db.Query(query, args...)
@@ -261,6 +268,31 @@ func (s *Store) ListAlerts(f AlertFilter) ([]Alert, error) {
 		out = append(out, *a)
 	}
 	return out, rows.Err()
+}
+
+// CountAlerts 按筛选条件统计告警数量（与 ListAlerts 同过滤语义）。
+func (s *Store) CountAlerts(f AlertFilter) (int, error) {
+	query := `SELECT COUNT(*) FROM alerts WHERE 1=1`
+	var args []any
+	if f.Status == "active" {
+		query += ` AND status != 'resolved'`
+	} else if f.Status != "" {
+		query += ` AND status = ?`
+		args = append(args, string(f.Status))
+	}
+	if f.NodeID != "" {
+		query += ` AND node_id = ?`
+		args = append(args, f.NodeID)
+	}
+	if f.Severity != "" {
+		query += ` AND severity = ?`
+		args = append(args, f.Severity)
+	}
+	var n int
+	if err := s.db.QueryRow(query, args...).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func scanAlert(r rowScanner) (*Alert, error) {

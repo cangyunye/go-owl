@@ -422,4 +422,73 @@ export const api = {
       }
     };
   },
+
+  // ---------- 监控告警 ----------
+  alerts: (params = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null || v === '') continue;
+      q.set(k, v);
+    }
+    return request('GET', `/alerts?${q}`);
+  },
+
+  alert: (id) =>
+    request('GET', `/alerts/${encodeURIComponent(id)}`),
+
+  alertAck: (id) =>
+    request('POST', `/alerts/${encodeURIComponent(id)}/ack`, {}),
+
+  alertResolve: (id) =>
+    request('POST', `/alerts/${encodeURIComponent(id)}/resolve`, {}),
+
+  alertTypes: () =>
+    request('GET', '/alert-types'),
+
+  updateAlertType: (id, data) =>
+    request('PUT', `/alert-types/${encodeURIComponent(id)}`, data),
+
+  remedies: (alertTypeId) => {
+    const q = alertTypeId ? `?alert_type_id=${encodeURIComponent(alertTypeId)}` : '';
+    return request('GET', `/remedies${q}`);
+  },
+
+  createRemedy: (data) =>
+    request('POST', '/remedies', data),
+
+  updateRemedy: (id, data) =>
+    request('PUT', `/remedies/${encodeURIComponent(id)}`, data),
+
+  deleteRemedy: (id) =>
+    request('DELETE', `/remedies/${encodeURIComponent(id)}`),
+
+  notifyChannels: () =>
+    request('GET', '/notify-channels'),
+
+  createNotifyChannel: (data) =>
+    request('POST', '/notify-channels', data),
+
+  updateNotifyChannel: (id, data) =>
+    request('PUT', `/notify-channels/${encodeURIComponent(id)}`, data),
+
+  deleteNotifyChannel: (id) =>
+    request('DELETE', `/notify-channels/${encodeURIComponent(id)}`),
+
+  testNotifyChannel: (id) =>
+    request('POST', `/notify-channels/${encodeURIComponent(id)}/test`, {}),
+
+  monitorSilence: () =>
+    request('GET', '/monitor/silence'),
+
+  setMonitorSilence: (until) =>
+    request('PUT', '/monitor/silence', { silence_until: until }),
+
+  metrics: (params = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null || v === '') continue;
+      q.set(k, v);
+    }
+    return request('GET', `/metrics?${q}`);
+  },
 };

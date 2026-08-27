@@ -9,20 +9,20 @@ import (
 // Remedy 对策：绑定告警类型的处置方案（脚本/剧本/人工指引）。
 // 来源优先级：user > builtin > ai（ai 须审核后方可推荐/自动执行）。
 type Remedy struct {
-	ID           string
-	AlertTypeID  string
-	Name         string
-	Kind         string // script | playbook | sop
-	Content      string
-	Risk         string // low | medium | high
-	Rollback     string
-	Source       string // builtin | ai | user
-	Reviewed     bool   // AI 生成须人工审核
-	AutoApprove  bool   // 该对策是否允许自动执行
-	ExecCount    int
-	SuccessCount int
-	CreatedAt    int64
-	UpdatedAt    int64
+	ID           string `json:"id"`
+	AlertTypeID  string `json:"alert_type_id"`
+	Name         string `json:"name"`
+	Kind         string `json:"kind"` // script | playbook | sop
+	Content      string `json:"content"`
+	Risk         string `json:"risk"` // low | medium | high
+	Rollback     string `json:"rollback"`
+	Source       string `json:"source"`       // builtin | ai | user
+	Reviewed     bool   `json:"reviewed"`     // AI 生成须人工审核
+	AutoApprove  bool   `json:"auto_approve"` // 该对策是否允许自动执行
+	ExecCount    int    `json:"exec_count"`
+	SuccessCount int    `json:"success_count"`
+	CreatedAt    int64  `json:"created_at"`
+	UpdatedAt    int64  `json:"updated_at"`
 }
 
 // CanAutoExecute 自动执行门槛：告警类型放行 AND 对策放行；AI 来源必须已审核。
