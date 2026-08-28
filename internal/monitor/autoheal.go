@@ -36,7 +36,13 @@ func NewAutoHealer(store *Store, advisor Advisor, runner *RunExecutor) *AutoHeal
 // Heal 对一条告警执行自愈管线并异步执行获准步骤。
 // 返回创建的处置计划；无任何可执行步骤时返回 nil（不创建）。
 func (h *AutoHealer) Heal(ctx context.Context, alert *Alert, at AlertType, target *Target) (*RemedyRun, error) {
-	req := DisposalRequest{Alert: alert, Type: at}
+	recs, err := h.store.RecommendedRemedies(alert.AlertTypeID)
+	if err != nil {
+		return nil, fmt.Errorf("monitor: 读取推荐对策失败: %w", err)
+	}
+	ctxStr := fmt.Sprintf("告警类型: %s（%s）\n节点: %s\n级别: %s\n消息: %s\n指标快照: %s",
+		alert.AlertTypeID, at.Name, alert.NodeID, alert.Severity, alert.Message, alert.MetricSnapshot)
+	req := DisposalRequest{Alert: alert, Type: at, Remedies: recs, Context: ctxStr}
 	plan, err := h.advisor.Advise(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("monitor: 生成处置建议失败: %w", err)

@@ -6,9 +6,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
+	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
 )
 
@@ -71,8 +74,8 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 	dispatcher := owlmonitor.NewDispatcher(store)
 	runner := owlmonitor.NewRunExecutor(owlmonitor.NewSSHExecerFactory(), resolveTarget(db))
 
-	// 自愈管线：规则推荐兜底（AI 建议器接入后经同一 Advisor 接口替换）
-	advisor := owlmonitor.NewRuleBasedAdvisor(store, 3)
+	// 自愈管线：配置可用时用 AI 建议器（LLM 失败自动降级规则兜底）
+	advisor := newAdvisor(store)
 	healer := owlmonitor.NewAutoHealer(store, advisor, runner)
 
 	// 静默配置存于 settings 表（monitor.silence_until，0 = 不静默）
@@ -95,6 +98,26 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		db:         db,
 		webURL:     webURL,
 	}, nil
+}
+
+// newAdvisor 按 ~/.owl/config.yaml 创建处置建议器：
+// AI 配置就绪 → AIAdvisor（LLM 失败降级规则兜底）；否则规则推荐。
+func newAdvisor(store *owlmonitor.Store) owlmonitor.Advisor {
+	ruleBased := owlmonitor.NewRuleBasedAdvisor(store, 3)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ruleBased
+	}
+	cfg, err := ai2.LoadConfig(filepath.Join(home, ".owl", "config.yaml"))
+	if err != nil || cfg.AI.APIKey == "" {
+		return ruleBased
+	}
+	client, err := ai2.CreateLLMClient(cfg)
+	if err != nil {
+		return ruleBased
+	}
+	return owlmonitor.NewAIAdvisor(client, store, 3)
 }
 
 // resolveTarget 按节点 ID 查询 nodes 表构造执行目标（含 SSH 凭据）。

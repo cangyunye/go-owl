@@ -23,7 +23,7 @@ type ApprovalInput struct {
 // DecideApproval 审批矩阵（安全优先）：
 // 1. 类型/对策未放行 → 仅人工（默认全关）
 // 2. 高风险 → 仅人工（永不自愈）
-// 3. AI 未审核 → 仅人工
+// 3. AI 未审核 → 待审批（人工在审批流中审核脚本后批准执行）
 // 4. critical 级别 → 审批（紧急操作必须人确认）
 // 5. 多节点 → 审批（canary 先行，批量须确认）
 // 6. 其余低/中风险单节点 → 自动
@@ -35,7 +35,7 @@ func DecideApproval(in ApprovalInput) Decision {
 		return DecisionHuman
 	}
 	if in.Source == "ai" && !in.Reviewed {
-		return DecisionHuman
+		return DecisionApproval
 	}
 	if in.Severity == SeverityCritical {
 		return DecisionApproval

@@ -28,13 +28,13 @@ func TestApprovalDecide_HighRisk(t *testing.T) {
 	require.Equal(t, DecisionHuman, DecideApproval(in), "高风险对策必须仅人工")
 }
 
-// TestApprovalDecide_AIUnreviewed 验证 AI 生成未审核 → 仅人工。
+// TestApprovalDecide_AIUnreviewed 验证 AI 生成未审核 → 待审批（进审批流人工审核）。
 func TestApprovalDecide_AIUnreviewed(t *testing.T) {
 	in := ApprovalInput{
 		Severity: SeverityWarning, Risk: "low", ScopeCount: 1,
 		TypeApproved: true, RemedyApproved: true, Source: "ai", Reviewed: false,
 	}
-	require.Equal(t, DecisionHuman, DecideApproval(in), "AI 未审核必须仅人工")
+	require.Equal(t, DecisionApproval, DecideApproval(in), "AI 未审核应进审批流待人工审核")
 }
 
 // TestApprovalDecide_Critical 验证 critical 必须人工审批（紧急不改动）。
