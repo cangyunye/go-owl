@@ -37,7 +37,9 @@ func NewHistoryCmd() *cobra.Command {
 		Use:   "history",
 		Short: i18n.T("history.cmd.short"),
 		Long:  i18n.T("history.cmd.long"),
-		Run:   runHistory,
+		// 运行期错误不应附带 usage 噪音
+		SilenceUsage: true,
+		RunE:         runHistory,
 	}
 
 	historyCmd.Flags().StringVar(&taskID, "task-id", "", i18n.T("history.flag_task_id"))
@@ -67,38 +69,10 @@ func NewCleanCmd() *cobra.Command {
 		Use:   "clean",
 		Short: i18n.T("history.clean.short"),
 		Long:  i18n.T("history.clean.long"),
-		Run: func(cmd *cobra.Command, args []string) {
-			logger.Init(nil)
-			_, err := history.NewDB(history.DefaultConfig())
-			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("history.err_db_init", err))
-				os.Exit(1)
-			}
-			defer logger.Sync()
-
-			if retentionDays <= 0 {
-				fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("history.clean.err_retention"))
-				os.Exit(1)
-			}
-
-			if !force {
-				fmt.Fprintln(cmd.OutOrStdout(), i18n.T("history.clean.confirm", i18n.F(retentionDays)))
-				fmt.Fprint(cmd.OutOrStdout(), i18n.T("history.clean.confirm_prompt"))
-				var confirm string
-				fmt.Scanln(&confirm)
-				if confirm != "y" && confirm != "Y" {
-					fmt.Fprintln(cmd.OutOrStdout(), i18n.T("history.clean.cancelled"))
-					return
-				}
-			}
-
-			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("history.clean.progress", i18n.F(retentionDays)))
-			err = history.Cleanup(retentionDays)
-			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("history.clean.err_cleanup", err))
-				os.Exit(1)
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("history.clean.done"))
+		// 运行期错误不应附带 usage 噪音
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runHistoryClean(cmd, retentionDays, force)
 		},
 	}
 
@@ -108,12 +82,50 @@ func NewCleanCmd() *cobra.Command {
 	return cleanCmd
 }
 
-func runHistory(cmd *cobra.Command, args []string) {
+// runHistoryClean 执行历史清理;错误经 RunE 返回(cobra 输出到 stderr),
+// 不再用 os.Exit 跳过 defer。
+func runHistoryClean(cmd *cobra.Command, retentionDays int, force bool) error {
 	logger.Init(nil)
 	_, err := history.NewDB(history.DefaultConfig())
 	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("history.err_db_init", err))
-		os.Exit(1)
+		return fmt.Errorf("%s", i18n.T("history.err_db_init", err))
+	}
+	defer logger.Sync()
+	defer func() {
+		if db := history.GetGlobalDB(); db != nil {
+			db.Close()
+		}
+	}()
+
+	if retentionDays <= 0 {
+		return fmt.Errorf("%s", i18n.T("history.clean.err_retention"))
+	}
+
+	out := cmd.OutOrStdout()
+	if !force {
+		fmt.Fprintln(out, i18n.T("history.clean.confirm", i18n.F(retentionDays)))
+		fmt.Fprint(out, i18n.T("history.clean.confirm_prompt"))
+		var confirm string
+		fmt.Scanln(&confirm)
+		if confirm != "y" && confirm != "Y" {
+			fmt.Fprintln(out, i18n.T("history.clean.cancelled"))
+			return nil
+		}
+	}
+
+	fmt.Fprintln(out, i18n.T("history.clean.progress", i18n.F(retentionDays)))
+	if err := history.Cleanup(retentionDays); err != nil {
+		return fmt.Errorf("%s", i18n.T("history.clean.err_cleanup", err))
+	}
+	fmt.Fprintln(out, i18n.T("history.clean.done"))
+	return nil
+}
+
+func runHistory(cmd *cobra.Command, args []string) error {
+	logger.Init(nil)
+	_, err := history.NewDB(history.DefaultConfig())
+	if err != nil {
+		return fmt.Errorf("%s", i18n.T("history.err_db_init", err))
 	}
 	defer logger.Sync()
 
@@ -144,16 +156,14 @@ func runHistory(cmd *cobra.Command, args []string) {
 
 	records, err := history.Query(opts)
 	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("history.err_query", err))
-		os.Exit(1)
+		return fmt.Errorf("%s", i18n.T("history.err_query", err))
 	}
 
 	w := cmd.OutOrStdout()
 	if outputFile != "" {
 		f, err := os.Create(outputFile)
 		if err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("history.err_output_file", err))
-			os.Exit(1)
+			return fmt.Errorf("%s", i18n.T("history.err_output_file", err))
 		}
 		defer f.Close()
 		w = f
@@ -171,6 +181,7 @@ func runHistory(cmd *cobra.Command, args []string) {
 	default:
 		printTable(w, records)
 	}
+	return nil
 }
 
 func parseDuration(s string) (time.Duration, error) {
