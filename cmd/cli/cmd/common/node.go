@@ -188,3 +188,8 @@ func GetNodeStore() NodeStore {
 func InitNodeStoreFromDB(db *sql.DB) {
 	globalStore = NewNodeStoreDB(db)
 }
+
+// SetNodeStore 直接替换全局节点存储(测试用:保存并恢复现场)
+func SetNodeStore(store NodeStore) {
+	globalStore = store
+}

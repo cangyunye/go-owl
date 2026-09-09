@@ -26,20 +26,36 @@ var (
 	version   = "1.3.0"
 	commitID  = "dev"
 	buildTime = "unknown"
+
+	// historyDB 由 PersistentPreRun 打开,Execute 退出前关闭;
+	// --help/--version 等纯展示路径不触发生命周期,不再无谓开库。
+	historyDB internalhistory.DBInterface
 )
 
 // Execute 执行根命令
 func Execute() error {
+	rootCmd := NewRootCmd()
+	err := rootCmd.Execute()
+	if historyDB != nil {
+		if cerr := historyDB.Close(); cerr != nil {
+			logger.Warn("failed to close history database", logger.WithError(cerr))
+		}
+		historyDB = nil
+	}
+	return err
+}
+
+// openHistoryDB 打开历史库并把节点存储升级为 DB-backed。
+// 失败时保留 common 包 init() 提供的内存存储并告警。
+func openHistoryDB() {
 	db, err := internalhistory.NewDB(internalhistory.DefaultConfig())
 	if db == nil || err != nil {
 		logger.Warn("failed to initialize database, falling back to in-memory node store", logger.WithError(err))
-	} else {
-		common.MigrateNodesJSONToDB(db.Connection())
-		common.InitNodeStoreFromDB(db.Connection())
+		return
 	}
-
-	rootCmd := NewRootCmd()
-	return rootCmd.Execute()
+	historyDB = db
+	common.MigrateNodesJSONToDB(db.Connection())
+	common.InitNodeStoreFromDB(db.Connection())
 }
 
 // NewRootCmd 创建根命令
@@ -50,6 +66,10 @@ func NewRootCmd() *cobra.Command {
 		Long:  i18n.T("root.long_help"),
 
 		Version: version,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			openHistoryDB()
+			return nil
+		},
 	}
 
 	// 添加子命令
