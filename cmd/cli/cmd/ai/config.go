@@ -52,7 +52,9 @@ func NewConfigInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: i18n.T("ai.config.init.short"),
 		Long:  i18n.T("ai.config.init.long"),
-		Run:   runConfigInit,
+		// 运行期错误(配置损坏等)不应附带 usage 噪音
+		SilenceUsage: true,
+		RunE:         runConfigInit,
 	}
 }
 
@@ -61,7 +63,9 @@ func NewConfigShowCmd() *cobra.Command {
 		Use:   "show",
 		Short: i18n.T("ai.config.show.short"),
 		Long:  i18n.T("ai.config.show.long"),
-		Run:   runConfigShow,
+		// 运行期错误(配置损坏等)不应附带 usage 噪音
+		SilenceUsage: true,
+		RunE:         runConfigShow,
 	}
 }
 
@@ -70,53 +74,54 @@ func NewConfigSetupCmd() *cobra.Command {
 		Use:   "setup",
 		Short: i18n.T("ai.config.setup.short"),
 		Long:  i18n.T("ai.config.setup.long"),
-		Run:   runConfigSetup,
+		// 运行期错误(配置损坏等)不应附带 usage 噪音
+		SilenceUsage: true,
+		RunE:         runConfigSetup,
 	}
 }
 
-func runConfigInit(cmd *cobra.Command, args []string) {
+func runConfigInit(cmd *cobra.Command, args []string) error {
+	out := cmd.OutOrStdout()
 	configPath := getConfigPath()
 
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
-		fmt.Printf("%s", i18n.T("ai.config.exists", configPath))
-		fmt.Println(i18n.T("ai.config.exists_hint"))
-		return
+		fmt.Fprintln(out, i18n.T("ai.config.exists", configPath))
+		fmt.Fprintln(out, i18n.T("ai.config.exists_hint"))
+		return nil
 	}
 
 	if err := createConfigDir(); err != nil {
-		fmt.Printf("%s", i18n.T("ai.config.err_mkdir", err))
-		os.Exit(1)
+		return fmt.Errorf("%s", i18n.T("ai.config.err_mkdir", err))
 	}
 
 	config := ai.DefaultConfig()
 
 	data, err := yaml.Marshal(config)
 	if err != nil {
-		fmt.Printf("%s", i18n.T("ai.config.err_marshal", err))
-		os.Exit(1)
+		return fmt.Errorf("%s", i18n.T("ai.config.err_marshal", err))
 	}
 
 	if err := os.WriteFile(configPath, data, 0600); err != nil {
-		fmt.Printf("%s", i18n.T("ai.config.err_write", err))
-		os.Exit(1)
+		return fmt.Errorf("%s", i18n.T("ai.config.err_write", err))
 	}
 
-	fmt.Printf("%s", i18n.T("ai.config.created", configPath))
-	fmt.Println()
-	fmt.Println(i18n.T("ai.config.next_steps"))
-	fmt.Println(i18n.T("ai.config.next_step1"))
-	fmt.Println(i18n.T("ai.config.next_step2"))
+	fmt.Fprintln(out, i18n.T("ai.config.created", configPath))
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, i18n.T("ai.config.next_steps"))
+	fmt.Fprintln(out, i18n.T("ai.config.next_step1"))
+	fmt.Fprintln(out, i18n.T("ai.config.next_step2"))
+	return nil
 }
 
-func runConfigShow(cmd *cobra.Command, args []string) {
+func runConfigShow(cmd *cobra.Command, args []string) error {
 	configPath := getConfigPath()
 	cfg, err := ai.LoadConfig(configPath)
 	if err != nil {
-		fmt.Printf("%s", i18n.T("ai.config.err_load", err))
-		os.Exit(1)
+		return fmt.Errorf("%s", i18n.T("ai.config.err_load", err))
 	}
 
-	fmt.Print(renderConfigShow(cfg, configPath))
+	fmt.Fprint(cmd.OutOrStdout(), renderConfigShow(cfg, configPath))
+	return nil
 }
 
 // renderConfigShow 渲染 show 输出（含配置路径），便于测试。
@@ -135,25 +140,25 @@ func renderConfigShow(cfg *ai.Config, configPath string) string {
 	return sb.String()
 }
 
-func runConfigSetup(cmd *cobra.Command, args []string) {
+func runConfigSetup(cmd *cobra.Command, args []string) error {
+	out := cmd.OutOrStdout()
 	configPath := getConfigPath()
 	reader := bufio.NewReader(os.Stdin)
 
 	cfg, err := runConfigSetupInteractive(reader, configPath)
 	if err != nil {
-		fmt.Printf("%s", i18n.T("ai.config.setup.err_interactive", err))
-		os.Exit(1)
+		return fmt.Errorf("%s", i18n.T("ai.config.setup.err_interactive", err))
 	}
 
 	if err := ai.SaveConfig(configPath, cfg); err != nil {
-		fmt.Printf("%s", i18n.T("ai.config.err_write", err))
-		os.Exit(1)
+		return fmt.Errorf("%s", i18n.T("ai.config.err_write", err))
 	}
 
-	fmt.Println()
-	fmt.Printf("%s", i18n.T("ai.config.setup.saved", configPath))
-	fmt.Println()
-	fmt.Println(i18n.T("ai.config.next_step2"))
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, i18n.T("ai.config.setup.saved", configPath))
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, i18n.T("ai.config.next_step2"))
+	return nil
 }
 
 // runConfigSetupInteractive 执行交互式供应商设置向导，返回合并后的配置。
