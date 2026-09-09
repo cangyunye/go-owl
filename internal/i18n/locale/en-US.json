@@ -11,7 +11,6 @@
   "common.not_found": "not found",
   "root.long_help": "owl is an intelligent Linux distributed operations tool, supporting:\n\n\t- Node management: node registry, groups, label management\n\t- Batch command execution: select targets by node, group, or label\n\t- Script transfer & execution: batch transfer and run shell scripts\n\t- Playbook execution: Ansible-like YAML playbook flow\n\t- File transfer: with P2P dissemination mode\n\t- AI assistant: perform ops via natural language",
   "root.error_prefix": "Error: %s",
-
   "common.conflict.err_detected": "Node data conflicts detected: %s conflicts in total",
   "common.conflict.banner": "⚠️  Node data conflicts detected!",
   "common.conflict.db_count": "\nDB nodes:      %s\n",
@@ -47,10 +46,8 @@
   "common.conflict.report_details": "\nConflict details:",
   "common.conflict.err_hint": "Use --sync-nodes to automatically overwrite the database with nodes.json, or run interactively to resolve conflicts one by one.",
   "common.conflict.err_generic": "Error: %v",
-
   "node.cmd.short": "Node management",
   "node.cmd.long": "Node management commands, supporting:\n\n- list: List nodes\n- add: Add a node\n- update: Update a node\n- remove: Remove a node\n- import: Import nodes from a file\n- export: Export nodes to a file\n- status: View node status\n- groups: Manage node groups\n- labels: Manage node labels\n- sample: Generate a sample node config file",
-
   "node.list.short": "List all nodes",
   "node.list.long": "List all registered nodes, filterable by group, label, and status.\n\nAvailable fields:\n  id, name, address, port, user, status, groups, labels, last_check\n\nExamples:\n  owl node list                           # list all nodes\n  owl node list --groups web              # list nodes in web group\n  owl node list --label env=prod          # list nodes with env=prod\n  owl node list --status online           # list online nodes\n  owl node list -o json                   # JSON output\n  owl node list --header id,address       # show only id and address columns\n  owl node list --header id,name,labels:60  # 3 columns, labels width 60\n  owl node list --header *                # show the default 8 fields\n  owl node list --header *,id              # default fields + id last\n  owl node list --header labels:60,*        # labels first, then other default fields",
   "node.list.flag_format": "Output format: table, json, yaml",
@@ -62,7 +59,6 @@
   "node.list.flag_header": "Custom display fields and widths (format: id,address,labels:60,*,id)",
   "node.list.err_list": "Error listing nodes: %v",
   "node.list.err_header": "Invalid header format: %s",
-
   "node.add.short": "Add a new node",
   "node.add.long": "Add a new node to the management list.\n\nExamples:\n  # Basic usage\n  owl node add node1 --name web-server-1 --address 192.168.1.10\n\n  # With port and user\n  owl node add node2 --name db-server-1 --address 192.168.1.20 --port 22 --user admin\n\n  # With groups and multiple labels\n  owl node add node3 --name app-server --address 192.168.1.30 --groups web,production --labels env=prod,appname=owl,region=us-east\n\n  # Using SSH key auth\n  owl node add node4 --name remote-server --address 192.168.1.40 --ssh-key ~/.ssh/id_rsa --labels env=staging,tier=backend",
   "node.add.flag_name": "Node name (required)",
@@ -86,7 +82,6 @@
   "node.add.field_proxyjump": "  ProxyJump:  %s",
   "node.add.field_groups": "  Groups:  %s",
   "node.add.field_labels": "  Labels:  %s",
-
   "node.update.short": "Update node info",
   "node.update.long": "Update existing node info, supporting partial field updates.\n\nExamples:\n  # Update node name\n  owl node update node1 --name new-name\n\n  # Update auth info\n  owl node update node1 --password \"new-password\"\n\n  # Update connection info\n  owl node update node1 --address 10.0.0.1 --port 2222\n\n  # Update groups and multiple labels\n  owl node update node1 --groups web,prod --labels env=prod,appname=owl,tier=backend\n\n  # Update status\n  owl node update node1 --status online",
   "node.update.flag_name": "Node name",
@@ -114,13 +109,11 @@
   "node.update.field_status": "  Status:     %s",
   "node.update.field_groups": "  Groups:     %s",
   "node.update.field_labels": "  Labels:     %s",
-
   "node.remove.short": "Remove node",
   "node.remove.long": "Remove one or more nodes from the management list.",
   "node.remove.failed": "Failed to remove node '%s': %v",
   "node.remove.ok": "Node '%s' removed successfully",
   "node.remove.summary": "\nRemoved: %s nodes, Failed: %s",
-
   "node.status.short": "View node status",
   "node.status.long": "View the status of one or all nodes.\n\nExamples:\n  owl node status node1\n  owl node status --all\n  owl node status --all -o json",
   "node.status.flag_all": "Show status of all nodes",
@@ -128,7 +121,6 @@
   "node.status.flag_no_color": "Disable color output",
   "node.status.err_list": "Error listing nodes: %v",
   "node.status.err_get": "Error: %v",
-
   "node.groups.short": "Manage node groups",
   "node.groups.long": "Manage node groups: add, remove, and list groups.\n\nExamples:\n  owl node groups add node1 web\n  owl node groups remove node1 web\n  owl node groups list\n  owl node groups show web",
   "node.groups.add.short": "Add node to group",
@@ -147,7 +139,6 @@
   "node.groups.err_list": "Error listing nodes: %v",
   "node.groups.err_get": "Error: %v",
   "node.groups.err_update": "Error updating node: %v",
-
   "node.labels.short": "Manage node labels",
   "node.labels.long": "Manage node labels: set, remove, and view labels.\n\nExamples:\n  owl node labels set node1 env=prod\n  owl node labels set node1 env=prod region=us-east  # multiple labels\n  owl node labels remove node1 env\n  owl node labels show node1",
   "node.labels.set.short": "Set node labels",
@@ -161,7 +152,6 @@
   "node.labels.show.title": "Labels for node '%s':",
   "node.labels.err_get": "Error: %v",
   "node.labels.err_update": "Error updating node: %v",
-
   "node.import.short": "Import nodes from file",
   "node.import.long": "Import node configs from a YAML or JSON file.\n\nExamples:\n  owl node import -f nodes.yaml\n  owl node import -f nodes.json --overwrite\n  owl node import -f nodes.yaml --skip-existing\n  owl node import --template > nodes.yaml",
   "node.import.flag_file": "Import file path (YAML/JSON)",
@@ -190,7 +180,6 @@
   "node.import.err_write": "Error: failed to write file: %v",
   "node.import.ok_exported": "Exported %s nodes to %s",
   "node.import.err_template": "Error: template generation failed: %v",
-
   "node.export.short": "Export nodes to file",
   "node.export.long": "Export node configs to a YAML or JSON file, filterable by node, label, and group.\n\nExamples:\n  owl node export -f nodes.yaml\n  owl node export -f nodes.json\n  owl node export --nodes node1,node2 > filtered.yaml\n  owl node export --groups web,production\n  owl node export --labels env=prod\n  owl node export > nodes.yaml",
   "node.export.flag_file": "Export file path",
@@ -198,7 +187,6 @@
   "node.export.flag_nodes": "Filter by node ID (comma-separated)",
   "node.export.flag_groups": "Filter by group (comma-separated)",
   "node.export.flag_labels": "Filter by label (format: key=value)",
-
   "node.ping.short": "Check if nodes are reachable",
   "node.ping.long": "Ping one or more nodes to check reachability. Use --all to check all nodes.",
   "node.ping.example": "# Ping a single node\n  owl node ping node1\n\n  # Ping multiple nodes\n  owl node ping node1 node2 node3\n\n  # Ping all nodes\n  owl node ping --all\n\n  # Set timeout and count\n  owl node ping --all --timeout 5s --count 3\n\n  # Ping 3 times and average\n  owl node ping node1 -n 3",
@@ -216,7 +204,6 @@
   "node.ping.reachable_single": "  ✓ %s (%s) - reachable (%v)\n",
   "node.ping.unreachable": "  ✗ %s (%s) - unreachable\n",
   "node.ping.summary": "\nSummary: %s reachable, %s unreachable, total %s\n",
-
   "node.sample.short": "Generate a sample node config file",
   "node.sample.long": "Generate a sample node config file at ~/.owl/sample_nodes.json\n\nThis command creates a sample_nodes.json file in the ~/.owl directory containing sample node configs for reference.\n\nExample:\n  owl node sample\n\nYou can edit the generated file to add custom nodes.",
   "node.sample.exists": "Sample config file already exists: %s",
@@ -228,7 +215,6 @@
   "node.sample.list_title": "\nThe file contains the following sample nodes:",
   "node.sample.list_item": "  - %s (%s:%s) [%s]",
   "node.sample.edit_hint": "\nYou can edit this file to add custom nodes.",
-
   "node.check.short": "Check node SSH connectivity (real SSH auth)",
   "node.check.long": "Check node connectivity via a real SSH handshake, supporting key and password auth.\nTries key auth first, falls back to password auth.\n\nYou can filter nodes by group and label, or only check nodes that failed the last connection.\n\nNote: unlike \"owl node ping\" (which only checks if the TCP port is open), check completes a full SSH authentication flow.",
   "node.check.example": "# Check a single node\n  owl node check node1\n\n  # Check multiple nodes\n  owl node check node1 node2 node3\n\n  # Check all nodes\n  owl node check --all\n\n  # Only check nodes in the web group\n  owl node check --groups web\n\n  # Only check nodes with env=prod label\n  owl node check --label env=prod\n\n  # Only check nodes that failed last connection\n  owl node check --failed\n\n  # Combined filter: web group + prod env + only failed\n  owl node check --groups web --label env=prod --failed\n\n  # Adjust workers and timeout\n  owl node check --all --workers 10 --timeout 30s",
@@ -263,15 +249,12 @@
   "node.check.err_home_dir": "cannot resolve home directory: %w",
   "node.check.err_read_key": "failed to read key file: %w",
   "node.check.err_parse_key": "failed to parse key: %w",
-
   "playbook.cmd.short": "Playbook management",
   "playbook.cmd.long": "Playbook management commands, supporting:\n\n- list: List playbooks\n- validate: Validate playbook syntax\n- run: Execute a playbook",
-
   "playbook.list.short": "List playbooks",
   "playbook.list.long": "List all available playbook files.\n\nExamples:\n  owl playbook list\n  owl playbook list --library ./playbooks/\n  owl playbook list --library /etc/owl/playbooks/ -o json",
   "playbook.list.flag_library": "Playbook library directory (default: ~/.owl/playbooks)",
   "playbook.list.flag_format": "Output format: table, json, yaml",
-
   "playbook.new.short": "Create a Playbook from a template",
   "playbook.new.long": "Create a Playbook file from a template.\n\nExamples:\n  owl playbook new --from=utility/healthcheck/http --var url=http://example.com\n  owl playbook new --from=utility/healthcheck/http -o ./my-check.yaml",
   "playbook.new.flag_from": "Template name (required)",
@@ -286,7 +269,6 @@
   "playbook.new.prompt_param": "Parameter %s",
   "playbook.new.prompt_param_desc": " (%s)",
   "playbook.new.prompt_param_default": " [default: %v]",
-
   "playbook.run.short": "Execute a playbook",
   "playbook.run.long": "Execute an Ansible-style YAML playbook.\n\nExamples:\n  owl playbook run site.yml\n  owl playbook run site.yml --tags nginx,mysql\n  owl playbook run site.yml --extra-vars \"version=1.2.3\"\n  owl playbook run site.yml --check",
   "playbook.run.flag_nodes": "Target node IDs (comma-separated)",
@@ -325,13 +307,11 @@
   "playbook.run.warn_label": "Warning: failed to query nodes by label: %v\n",
   "playbook.run.warn_list": "Warning: failed to get node list: %v\n",
   "playbook.run.sample_start": "\nExecuting sample playbook...",
-
   "playbook.scaffold.short": "Output a Playbook scaffold",
   "playbook.scaffold.long": "Output a commented Playbook scaffold to stdout.\n\nExamples:\n  owl playbook scaffold\n  owl playbook scaffold --type command > ./playbooks/my-playbook.yaml\n\nAvailable types:\n  basic    - Generic scaffold\n",
   "playbook.scaffold.flag_type": "Scaffold type: ",
   "playbook.scaffold.err": "Error: %v\n",
   "playbook.scaffold.err_unknown_type": "Unknown scaffold type: %s (available: basic, %s)",
-
   "playbook.state.cmd.short": "View execution status",
   "playbook.state.cmd.long": "View Playbook run history and step-level execution status",
   "playbook.state.list.short": "List run history",
@@ -358,7 +338,6 @@
   "playbook.state.err_steps": "Error: failed to query step status: %v\n",
   "playbook.state.no_steps": "No step status records",
   "playbook.state.resume_hint": "💡 Resume execution: owl playbook run <playbook> --nodes <nodes> --resume\n",
-
   "playbook.validate.short": "Validate playbook syntax",
   "playbook.validate.long": "Validate the YAML syntax of Ansible-style playbooks.\n\nExamples:\n  owl playbook validate site.yml\n  owl playbook validate ./playbooks/*.yml\n  owl playbook validate a.yml b.yml",
   "playbook.validate.usage": "Usage: owl playbook validate <playbook-file> [files...]",
@@ -366,7 +345,6 @@
   "playbook.validate.examples": "Examples:",
   "playbook.validate.valid": "  ✅ %s: valid\n",
   "playbook.validate.invalid": "  ❌ %s: %v\n",
-
   "playbook.template.cmd.short": "Template management",
   "playbook.template.cmd.long": "Playbook template management commands",
   "playbook.template.create.short": "Interactively create a playbook template",
@@ -403,21 +381,18 @@
   "playbook.template.invalid_choice": "❌ Please enter a valid number (1-%s), or q to quit\n",
   "playbook.template.task_name": "Task %s",
   "playbook.template.task_added": "✅ Added task: %s (%s)\n",
-
   "playbook.template.list.short": "List available templates",
   "playbook.template.list.err_load": "Failed to load templates: %v\n",
   "playbook.template.list.title": "Available Playbook templates:",
   "playbook.template.list.builtin": "📦 Built-in templates:",
   "playbook.template.list.user": "👤 User templates:",
   "playbook.template.list.empty": "  (empty)",
-
   "playbook.template.export.short": "Export a template locally",
   "playbook.template.export.flag_to": "Export target directory (default: ~/.owl/templates/)",
   "playbook.template.export.err_get": "Failed to get template: %v\n",
   "playbook.template.export.err_mkdir": "Failed to create directory: %v\n",
   "playbook.template.export.err_write": "Failed to write file: %v\n",
   "playbook.template.export.ok": "✅ Template exported: %s\n",
-
   "playbook.template.info.short": "View template details",
   "playbook.template.info.err_get": "Failed to get template: %v\n",
   "playbook.template.info.name": "Template: %s\n",
@@ -429,10 +404,8 @@
   "playbook.template.info.tasks": "Tasks:",
   "playbook.template.info.task_item": "  %s. %s (%s)\n",
   "playbook.template.info.yaml_title": "--- YAML content ---",
-
   "exec.cmd.short": "Command and script execution",
   "exec.cmd.long": "Command and script execution, supporting:\n\n- run: Execute shell commands\n- script: Execute script files\n\nNote: use \"owl playbook\" for playbook execution",
-
   "exec.run.short": "Execute shell commands",
   "exec.run.long": "Execute a shell command on specified nodes with automatic connection management.\n\nExamples:\n  owl exec run uptime --nodes node1,node2\n  owl exec run \"df -h\" --groups web\n  owl exec run \"systemctl status nginx\" --label env=prod\n  owl exec run uptime --status online\n  owl exec run \"sleep 30\" --timeout 10s\n  owl exec run \"uptime\" --format json\n  owl exec run \"df -h\" --format detail\n  owl exec run \"sleep 5\" --connect-timeout 5s --command-timeout 30s\n  owl exec run \"curl api.example.com\" --retry 3 --retry-interval 2s\n  owl exec run \"long-running-script.sh\" --async\n  owl exec run \"uptime\" --nodes node1 --debug\n  owl exec run \"uptime\" --nodes node1 --serial  # serial execution",
   "exec.run.flag_nodes": "Target node IDs (comma-separated)",
@@ -827,38 +800,6 @@
   "session.attach.help_broadcast": "  /broadcast - Broadcast mode",
   "session.attach.hint_local": "💡 Tip: Commands starting with / run locally",
   "session.attach.hint_remote": "          Other commands are sent to the SSH session",
-  "async.cmd.short": "Manage asynchronous tasks",
-  "async.cmd.long": "Manage tasks executed asynchronously, including viewing status, waiting for completion, cancelling tasks and more.\n\nExamples:\n  owl async list\n  owl async status <task-id>\n  owl async wait <task-id>\n  owl async cancel <task-id>\n  owl async cleanup",
-  "async.list.short": "List all asynchronous tasks",
-  "async.list.no_tasks": "No running asynchronous tasks",
-  "async.list.col_task_id": "Task ID",
-  "async.list.col_node": "Node",
-  "async.list.col_status": "Status",
-  "async.list.col_start_time": "Start Time",
-  "async.status.short": "View task status",
-  "async.status.not_found": "Task not found: %s\n",
-  "async.status.task_id": "Task ID: %s\n",
-  "async.status.node": "Node: %s\n",
-  "async.status.command": "Command: %s\n",
-  "async.status.status": "Status: %s\n",
-  "async.status.start_time": "Start time: %s\n",
-  "async.status.end_time": "End time: %s\n",
-  "async.status.duration": "Duration: %s\n",
-  "async.status.pid": "Process PID: %s\n",
-  "async.status.exit_code": "Exit code: %s\n",
-  "async.status.error": "Error: %v\n",
-  "async.wait.short": "Wait for a task to complete",
-  "async.wait.completed": "Task %s already completed, status: %s\n",
-  "async.wait.waiting": "Waiting for task %s to complete...\n",
-  "async.wait.removed": "Task has been removed",
-  "async.wait.done": "Task %s completed, status: %s\n",
-  "async.wait.status_running": "Status: %s (running...)\n",
-  "async.wait.flag_poll_interval": "Polling interval",
-  "async.cancel.short": "Cancel a task",
-  "async.cancel.failed": "Failed to cancel task: %v\n",
-  "async.cancel.done": "Task %s cancelled\n",
-  "async.cleanup.short": "Clean up completed tasks",
-  "async.cleanup.done": "Completed tasks have been cleaned up",
   "metrics.cmd.short": "node_exporter monitoring",
   "metrics.cmd.long": "Collect system monitoring data from node_exporter endpoints with a top-like dynamic refresh view.",
   "metrics.watch.short": "Monitor node_exporter endpoints in real time",

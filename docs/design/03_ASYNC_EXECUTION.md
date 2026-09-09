@@ -697,6 +697,12 @@ func init() {
 
 #### 3.3.5 cmd/cli/cmd/async/async.go（新增）
 
+> **状态更新(2026-09-09,已移除)**:该子命令的任务记录仅存在于各进程内存
+> (`async.NewAsyncTaskManager` 无持久化),跨进程永远查不到 `owl exec --async`
+> 的任务,自引入起从未真正可用,已随评审移除。详见
+> `docs/review/2026-09-09-cli-review.md`;跨进程任务查询待任务状态持久化后重建。
+> 下方为历史设计,仅作存档。
+
 ```bash
 owl async list              # 列出异步任务
 owl async status <task-id>  # 查看任务状态
@@ -725,6 +731,10 @@ owl exec run "nohup long_script.sh" --async --poll-interval=0
 
 ### 4.2 异步任务管理
 
+> **状态更新(2026-09-09)**:`owl async` 子命令已移除(跨进程内存态,从未真正
+> 可用)。异步任务由 `owl exec --async` 在启动进程内轮询管理,进程退出后任务
+> 状态不再可查。以下为历史设计,仅作存档。
+
 ```bash
 # 列出异步任务
 owl async list
@@ -751,6 +761,9 @@ owl exec run "heavy_script.sh" --nodes=node1,node2,node3 --async --poll-interval
 # 等待所有任务完成
 owl async wait-all --tasks=task-1,task-2,task-3 --poll-interval=30s
 ```
+
+> **状态更新(2026-09-09)**:`owl async wait-all` 属本设计文档构想,从未实现;
+> 批量异步任务只能在 `owl exec --async` 启动进程内通过轮询观察。
 
 ## 5. 风险评估
 

@@ -187,13 +187,8 @@ owl exec run "systemctl restart myapp" --nodes web-01,web-02
 ### 异步执行
 
 ```bash
-# 后台异步执行长任务
+# 后台异步执行长任务(任务在启动进程内轮询,进程退出后任务状态不再可查)
 owl exec run "long-task.sh" --nodes web-01 --async
-
-# 查看异步任务
-owl async list
-owl async status <task-id>
-owl async wait <task-id>
 ```
 
 ### 剧本编排

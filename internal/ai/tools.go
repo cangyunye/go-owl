@@ -565,28 +565,24 @@ func (e *CLIExecutor) PlaybookStateShow(ctx context.Context, p PlaybookStateShow
 	return &PlaybookStateShowResult{Text: result}, nil
 }
 
+// errAsyncUnavailable:owl async 子命令已移除(2026-09-09 评审:其内存态实现
+// 跨进程不可见,从未真正可用)。异步任务由 `owl exec --async` 在启动进程内轮询,
+// 进程结束后任务即失效。此处向 LLM 返回可操作的指引,风格与 web 端
+// WebExecutor 的存根(handler/aiexecutor.go)保持一致。
+func errAsyncUnavailable() error {
+	return fmt.Errorf("异步任务查询/管理已停用:任务由 `owl exec --async` 在启动进程内轮询,进程结束后即失效,暂不支持跨进程查询或取消")
+}
+
 func (e *CLIExecutor) AsyncList(ctx context.Context) (*AsyncListResult, error) {
-	result, err := runOwlCommand(ctx, []string{"async", "list", "--no-color"})
-	if err != nil {
-		return nil, err
-	}
-	return &AsyncListResult{Text: result}, nil
+	return nil, errAsyncUnavailable()
 }
 
 func (e *CLIExecutor) AsyncStatus(ctx context.Context, p AsyncStatusParams) (*AsyncStatusResult, error) {
-	result, err := runOwlCommand(ctx, []string{"async", "status", p.TaskID, "--no-color"})
-	if err != nil {
-		return nil, err
-	}
-	return &AsyncStatusResult{Text: result}, nil
+	return nil, errAsyncUnavailable()
 }
 
 func (e *CLIExecutor) AsyncCancel(ctx context.Context, p AsyncStatusParams) (*AsyncCancelResult, error) {
-	result, err := runOwlCommand(ctx, []string{"async", "cancel", p.TaskID, "--no-color"})
-	if err != nil {
-		return nil, err
-	}
-	return &AsyncCancelResult{Text: result}, nil
+	return nil, errAsyncUnavailable()
 }
 
 func (e *CLIExecutor) SettingsShow(ctx context.Context) (*SettingsShowResult, error) {

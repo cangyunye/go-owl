@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/ai"
-	"github.com/cangyunye/go-owl/cmd/cli/cmd/async"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/exec"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/file"
@@ -61,9 +60,8 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(settings.NewSettingsCmd())
 	rootCmd.AddCommand(ai.NewAICmd())
 	rootCmd.AddCommand(history.NewHistoryCmd())
-	rootCmd.AddCommand(session.NewCmd())
-	rootCmd.AddCommand(async.NewAsyncCmd())
-	rootCmd.AddCommand(serve.NewServeCmd())
+		rootCmd.AddCommand(session.NewCmd())
+		rootCmd.AddCommand(serve.NewServeCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 	registerTUI(rootCmd)
 

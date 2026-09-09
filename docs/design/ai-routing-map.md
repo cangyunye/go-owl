@@ -79,7 +79,7 @@ Agent.executeToolCall → ToolRegistry 白名单 → Tool.Validate → Tool.Exec
 | playbook_template_list / info / export | playbook template list/info/export | 否 |
 | playbook_scaffold | playbook scaffold | 否 |
 | playbook_state_list / show | playbook state list/show | 否 |
-| async_list / status / cancel | async list / status / cancel | cancel 是 |
+| async_list / status / cancel | 已降级:工具保留,返回停用指引(`owl async` 子命令已于 2026-09-09 移除) | cancel 是 |
 | settings_show / set | settings show / set | set 是 |
 | history_list / clean | history / history clean | clean 是 |
 

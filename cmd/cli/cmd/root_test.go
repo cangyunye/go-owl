@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/testutil"
 
 	_ "modernc.org/sqlite"
 )
@@ -32,7 +33,7 @@ func TestRootCmdHasSubcommands(t *testing.T) {
 		names[c.Name()] = true
 	}
 
-	expected := append([]string{"node", "exec", "file", "playbook", "settings", "ai", "history", "session", "async", "serve", "metrics"}, extraRootCommands...)
+	expected := append([]string{"node", "exec", "file", "playbook", "settings", "ai", "history", "session", "serve", "metrics"}, extraRootCommands...)
 	for _, name := range expected {
 		if !names[name] {
 			t.Errorf("expected subcommand %q in root command", name)
@@ -41,4 +42,10 @@ func TestRootCmdHasSubcommands(t *testing.T) {
 	if len(names) != len(expected) {
 		t.Errorf("expected %d subcommands, got %d", len(expected), len(names))
 	}
+}
+
+func TestRootCmdHasNoAsyncSubcommand(t *testing.T) {
+	rootCmd := NewRootCmd()
+
+	testutil.AssertCommandNotExists(t, rootCmd, "async")
 }
