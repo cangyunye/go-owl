@@ -46,11 +46,11 @@ CLI 整体工程质量在同类项目中属扎实水平:
 
 1. **129 处 `os.Exit`**(非测试代码)散布在各命令 `Run` 中,绕过 cobra 错误机制、跳过 defer,导致错误路径不可测试。应分批迁移到 `RunE` + 返回 error。
 2. **错误信息打到 stdout**:`cmd/ai/config.go:87,95,100,115,149` 等用 `fmt.Printf` 输出错误;node/ai/async/file/history 多处直接 `fmt.Print*` 而非 `cmd.ErrOrStderr()`(playbook 系列是正确范本)。
-3. **硬编码用户可见文案,违反 CONTEXT.md i18n 规则**:
-   - `cmd/history/history.go:74-101`(clean 确认流、错误信息全为硬编码英文)
-   - `cmd/history/history.go:115,147,155`(runHistory 错误信息)
-   - `cmd/settings/target.go:59-91`(target 展示/保存文案)
-   - `owl-serve`(cmd/owl-serve/main.go)帮助文本硬编码中文,且无 version 注入,与 CLI 体系割裂
+3. **硬编码用户可见文案,违反 CONTEXT.md i18n 规则**(本轮 B3 已修复 history/settings;余下见各项):
+   - `cmd/history/history.go`(clean 确认流、错误信息全为硬编码英文)✅ 已修复
+   - `cmd/settings/target.go`(target 展示/保存文案)✅ 已修复
+   - `cmd/settings/show.go`(show 展示文案,实施中发现)✅ 已修复
+   - `owl-serve`(cmd/owl-serve/main.go)帮助文本硬编码中文,且无 version 注入,与 CLI 体系割裂(后续)
 4. **测试断言依赖具体中文文案**:`cmd/serve/serve_test.go:16-18` 断言 `Short == "启动 OWL Web 管理控制台"`,依赖 i18n 源语言为中文的巧合;应改为与 `i18n.T("serve.cmd.short")` 比较。
 5. **flag 冗余**:`exec run` 的 `--parallel`(默认 true)与 `--serial`(默认 false)为同一概念两个人口;`--group` 废弃别名的"注册 + MarkHidden"模式在 exec/file/playbook/settings 等 5 处重复,应收敛为公共 helper。
 
@@ -61,15 +61,17 @@ CLI 整体工程质量在同类项目中属扎实水平:
 3. **CI 只有 release workflow**,无测试 workflow;Makefile 的 test 目标未接入 CI。
 4. **共享 DB 双写风险**:CLI 与 web 控制台直接共享 `~/.owl/owl.db` 的 nodes 表,SQLite 并发写依赖 busy timeout,长事务场景可能互踩(监控体系上线后 web 写入频率上升,值得观察)。
 
-## 本轮处置(2026-09-09)
+## 本轮处置(2026-09-09,已完成)
 
-| 批次 | 内容 |
-|---|---|
-| B1 | 移除 `owl async` 子命令(含 root 注册、root_test、文档同步、locale async.* 键清理);CLI AI async_list/status/cancel 工具降级为优雅文案 |
-| B2 | DB 生命周期:初始化移至 PersistentPreRun(`--help`/`--version` 不再开库),退出前 Close |
-| B3 | i18n 违规清理:history clean / settings target 文案迁入 locale;serve_test 断言去中文依赖 |
-| B4 | ai/config.go 等错误输出改 stderr |
-| B5 | RunE 试点:history clean 去 os.Exit |
+| 批次 | 内容 | 提交 |
+|---|---|---|
+| B1 | 移除 `owl async` 子命令(含 root 注册、root_test、文档同步、locale async.* 键清理);CLI AI async_list/status/cancel 工具降级为优雅文案;web 端确认不受影响 | `fix(cli): 移除跨进程不可见的 owl async 子命令` |
+| B2 | DB 生命周期:初始化移至 PersistentPreRun(`--help`/`--version` 不再开库),Execute 返回前 Close | `fix(cli): 历史库按需初始化` |
+| B3 | i18n 违规清理:history clean/run、settings target/show(28 个新 locale 键)并迁移 cmd 输出流;serve_test 断言去中文依赖 | `refactor(cli): 修复 settings/history 违反 i18n 规则的硬编码文案` |
+| B4 | ai config init/show/setup 迁移 RunE + SilenceUsage,错误改走 stderr | `refactor(cli): ai config 子命令迁移 RunE` |
+| B5 | history clean/run 迁移 RunE 去 os.Exit,新增运行期行为测试 | `refactor(cli): history clean/run 迁移 RunE` |
+
+**结果**:CLI 非测试代码 `os.Exit` 从 129 处降至 117 处;新增 4 个行为测试文件(root 生命周期 ×2、settings i18n ×2、ai config 流 ×2、history clean 运行期 ×2);E2E 冒烟通过(help/version 不建库、async 报 unknown command、clean 校验错误走 stderr 且 exit 1、settings 双语言输出)。
 
 ## 后续改进路线图(按优先级)
 
