@@ -38,6 +38,7 @@ func NewSettingsTargetCmd() *cobra.Command {
 }
 
 func runSettingsTarget(cmd *cobra.Command, args []string) {
+	out := cmd.OutOrStdout()
 	settings := loadSettings()
 
 	hasChange := false
@@ -56,38 +57,38 @@ func runSettingsTarget(cmd *cobra.Command, args []string) {
 	}
 
 	if !hasChange {
-		fmt.Println("Default Target Settings:")
-		fmt.Println("=========================")
+		fmt.Fprintln(out, i18n.T("settings.target.show_header"))
+		fmt.Fprintln(out, "=========================")
 		if settings.Target.Groups != "" {
-			fmt.Printf("  Groups: %s\n", settings.Target.Groups)
+			fmt.Fprintln(out, i18n.T("settings.target.field_groups", settings.Target.Groups))
 		}
 		if settings.Target.Label != "" {
-			fmt.Printf("  Label:  %s\n", settings.Target.Label)
+			fmt.Fprintln(out, i18n.T("settings.target.field_label", settings.Target.Label))
 		}
 		if settings.Target.Nodes != "" {
-			fmt.Printf("  Nodes:  %s\n", settings.Target.Nodes)
+			fmt.Fprintln(out, i18n.T("settings.target.field_nodes", settings.Target.Nodes))
 		}
 		if settings.Target.Groups == "" && settings.Target.Label == "" && settings.Target.Nodes == "" {
-			fmt.Println("  (no default target set)")
+			fmt.Fprintln(out, i18n.T("settings.target.show_none"))
 		}
-		fmt.Println("\nTip: use --groups, --label, or --nodes to set default targets.")
+		fmt.Fprintln(out, i18n.T("settings.target.show_tip"))
 		return
 	}
 
 	if err := saveSettings(settings); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to save settings: %v\n", err)
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("settings.target.err_save", err))
 		os.Exit(1)
 	}
 
-	fmt.Println("Default Target Settings (saved):")
-	fmt.Println("================================")
+	fmt.Fprintln(out, i18n.T("settings.target.show_saved_header"))
+	fmt.Fprintln(out, "================================")
 	if settings.Target.Groups != "" {
-		fmt.Printf("  Groups: %s\n", settings.Target.Groups)
+		fmt.Fprintln(out, i18n.T("settings.target.field_groups", settings.Target.Groups))
 	}
 	if settings.Target.Label != "" {
-		fmt.Printf("  Label:  %s\n", settings.Target.Label)
+		fmt.Fprintln(out, i18n.T("settings.target.field_label", settings.Target.Label))
 	}
 	if settings.Target.Nodes != "" {
-		fmt.Printf("  Nodes:  %s\n", settings.Target.Nodes)
+		fmt.Fprintln(out, i18n.T("settings.target.field_nodes", settings.Target.Nodes))
 	}
 }

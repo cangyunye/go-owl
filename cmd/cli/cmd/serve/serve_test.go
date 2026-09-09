@@ -5,6 +5,7 @@ import (
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/serve"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/testutil"
+	"github.com/cangyunye/go-owl/internal/i18n"
 )
 
 func TestServeCmdExists(t *testing.T) {
@@ -13,8 +14,9 @@ func TestServeCmdExists(t *testing.T) {
 	if cmd.Use != "serve" {
 		t.Errorf("expected Use 'serve', got '%s'", cmd.Use)
 	}
-	if cmd.Short != "启动 OWL Web 管理控制台" {
-		t.Errorf("expected Short '启动 OWL Web 管理控制台', got '%s'", cmd.Short)
+	// 与 i18n 键值比较,不依赖具体源语言文案
+	if cmd.Short != i18n.T("serve.cmd.short") {
+		t.Errorf("expected Short i18n.T(serve.cmd.short)=%q, got %q", i18n.T("serve.cmd.short"), cmd.Short)
 	}
 }
 

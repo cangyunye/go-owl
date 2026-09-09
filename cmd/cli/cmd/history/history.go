@@ -71,34 +71,34 @@ func NewCleanCmd() *cobra.Command {
 			logger.Init(nil)
 			_, err := history.NewDB(history.DefaultConfig())
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to initialize history DB: %v\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("history.err_db_init", err))
 				os.Exit(1)
 			}
 			defer logger.Sync()
 
 			if retentionDays <= 0 {
-				fmt.Fprintf(os.Stderr, "Retention days must be greater than 0\n")
+				fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("history.clean.err_retention"))
 				os.Exit(1)
 			}
 
 			if !force {
-				fmt.Printf("This will delete all history records older than %d days.\n", retentionDays)
-				fmt.Print("Are you sure? (y/N): ")
+				fmt.Fprintln(cmd.OutOrStdout(), i18n.T("history.clean.confirm", i18n.F(retentionDays)))
+				fmt.Fprint(cmd.OutOrStdout(), i18n.T("history.clean.confirm_prompt"))
 				var confirm string
 				fmt.Scanln(&confirm)
 				if confirm != "y" && confirm != "Y" {
-					fmt.Println("Operation cancelled.")
+					fmt.Fprintln(cmd.OutOrStdout(), i18n.T("history.clean.cancelled"))
 					return
 				}
 			}
 
-			fmt.Printf("Cleaning up history older than %d days...\n", retentionDays)
+			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("history.clean.progress", i18n.F(retentionDays)))
 			err = history.Cleanup(retentionDays)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Cleanup failed: %v\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("history.clean.err_cleanup", err))
 				os.Exit(1)
 			}
-			fmt.Println("Cleanup completed successfully!")
+			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("history.clean.done"))
 		},
 	}
 
@@ -112,7 +112,7 @@ func runHistory(cmd *cobra.Command, args []string) {
 	logger.Init(nil)
 	_, err := history.NewDB(history.DefaultConfig())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize history DB: %v\n", err)
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("history.err_db_init", err))
 		os.Exit(1)
 	}
 	defer logger.Sync()
@@ -144,7 +144,7 @@ func runHistory(cmd *cobra.Command, args []string) {
 
 	records, err := history.Query(opts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Query failed: %v\n", err)
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("history.err_query", err))
 		os.Exit(1)
 	}
 
@@ -152,7 +152,7 @@ func runHistory(cmd *cobra.Command, args []string) {
 	if outputFile != "" {
 		f, err := os.Create(outputFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create output file: %v\n", err)
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", i18n.T("history.err_output_file", err))
 			os.Exit(1)
 		}
 		defer f.Close()

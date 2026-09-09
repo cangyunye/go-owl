@@ -22,38 +22,39 @@ func NewSettingsShowCmd() *cobra.Command {
 }
 
 func runSettingsShow(cmd *cobra.Command, args []string) {
+	out := cmd.OutOrStdout()
 	settings := getCurrentSettings()
 
-	fmt.Println("Current Settings (from ~/.owl/config.yaml):")
-	fmt.Println("============================================")
-	fmt.Println()
-	fmt.Println("Output:")
-	fmt.Printf("  Format: %s\n", settings.Output.Format)
-	fmt.Printf("  Color:  %v\n", settings.Output.Color)
-	fmt.Println()
-	fmt.Println("Default:")
-	fmt.Printf("  Timeout:  %s\n", settings.Default.Timeout)
-	fmt.Printf("  Parallel: %v\n", settings.Default.Parallel)
+	fmt.Fprintln(out, i18n.T("settings.show.header"))
+	fmt.Fprintln(out, "============================================")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, i18n.T("settings.show.output_label"))
+	fmt.Fprintln(out, i18n.T("settings.show.field_format", settings.Output.Format))
+	fmt.Fprintln(out, i18n.T("settings.show.field_color", settings.Output.Color))
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, i18n.T("settings.show.default_label"))
+	fmt.Fprintln(out, i18n.T("settings.show.field_timeout", settings.Default.Timeout))
+	fmt.Fprintln(out, i18n.T("settings.show.field_parallel", settings.Default.Parallel))
 	if settings.Default.Group != "" {
-		fmt.Printf("  Group:    %s\n", settings.Default.Group)
+		fmt.Fprintln(out, i18n.T("settings.show.field_group", settings.Default.Group))
 	}
 	if len(settings.Default.Labels) > 0 {
-		fmt.Printf("  Labels:   %s\n", FormatLabels(settings.Default.Labels))
+		fmt.Fprintln(out, i18n.T("settings.show.field_labels", FormatLabels(settings.Default.Labels)))
 	}
-	fmt.Println()
-	fmt.Println("Target:")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, i18n.T("settings.show.target_label"))
 	if settings.Target.Groups != "" || settings.Target.Label != "" || settings.Target.Nodes != "" {
 		if settings.Target.Groups != "" {
-			fmt.Printf("  Groups: %s\n", settings.Target.Groups)
+			fmt.Fprintln(out, i18n.T("settings.target.field_groups", settings.Target.Groups))
 		}
 		if settings.Target.Label != "" {
-			fmt.Printf("  Label:  %s\n", settings.Target.Label)
+			fmt.Fprintln(out, i18n.T("settings.target.field_label", settings.Target.Label))
 		}
 		if settings.Target.Nodes != "" {
-			fmt.Printf("  Nodes:  %s\n", settings.Target.Nodes)
+			fmt.Fprintln(out, i18n.T("settings.target.field_nodes", settings.Target.Nodes))
 		}
 	} else {
-		fmt.Println("  (no default target set)")
+		fmt.Fprintln(out, i18n.T("settings.target.show_none"))
 	}
 }
 
