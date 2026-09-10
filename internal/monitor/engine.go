@@ -112,7 +112,7 @@ func (e *Engine) TickOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("monitor: 读取告警类型失败: %w", err)
 	}
-	e.manager.SilentUntil = e.cfg.SilenceUntil()
+	e.manager.SetSilentUntil(e.cfg.SilenceUntil())
 
 	sem := make(chan struct{}, e.cfg.Concurrency)
 	var wg sync.WaitGroup

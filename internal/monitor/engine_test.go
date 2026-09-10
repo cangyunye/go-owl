@@ -2,6 +2,8 @@ package monitor
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -238,4 +240,51 @@ func TestEngine_TickOnce_NoAutoHealWithoutApproval(t *testing.T) {
 	fake.mu.Lock()
 	require.Empty(t, fake.executed)
 	fake.mu.Unlock()
+}
+
+// alwaysFailExecer 让全部采集命令失败，使 collectNode 走失联分支。
+type alwaysFailExecer struct{}
+
+func (alwaysFailExecer) Execute(command string, timeout time.Duration) (int, string, error) {
+	return 1, "", errors.New("collect failed")
+}
+
+// TestEngine_TickOnce_ConcurrentAlertState 回归多节点并发采集下告警状态的并发安全：
+// Engine.TickOnce 以 Concurrency 起 goroutine，collectNode 会并发调用
+// AlertManager.MarkCollectFail/MarkCollectOK/Tick 与 RuleEngine.Tick，
+// 二者的共享 map 若无保护会触发运行期 fatal error（concurrent map writes）。
+// 需以 -race 运行才稳定暴露。
+func TestEngine_TickOnce_ConcurrentAlertState(t *testing.T) {
+	s := newTestStore(t)
+	for _, id := range []string{"OWL-MEM-001", "OWL-DSK-001"} {
+		at, _, err := s.GetAlertType(id)
+		require.NoError(t, err)
+		at.DefaultParams.Duration = 1
+		require.NoError(t, s.UpsertAlertType(at))
+	}
+
+	c := NewCollector(&fakeFactory{exec: alwaysFailExecer{}})
+	c.now = func() int64 { return 1750000000 }
+	m := NewAlertManager(s)
+	m.now = func() int64 { return 1750000000 }
+	d := NewDispatcher(s)
+	d.retries = 1
+	d.delay = 0
+
+	targets := make([]Target, 0, 16)
+	for i := 0; i < 16; i++ {
+		targets = append(targets, Target{ID: fmt.Sprintf("node-%02d", i), Name: fmt.Sprintf("n%d", i)})
+	}
+	eng := NewEngine(EngineConfig{
+		Interval:      time.Minute,
+		RetentionDays: 30,
+		Concurrency:   10,
+		SilenceUntil:  func() int64 { return 0 },
+	}, s, c, fakeSource{targets: targets}, m, d)
+
+	// 连续多轮：failCounts/recoverCounts 每轮均被并发写入。
+	// 采集全失败会返回聚合错误，此处只关注并发安全（-race）。
+	for i := 0; i < 5; i++ {
+		_ = eng.TickOnce(context.Background())
+	}
 }

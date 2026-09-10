@@ -3,6 +3,7 @@ package monitor
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -23,7 +24,12 @@ type AlertEvent struct {
 
 // AlertManager 告警生命周期管理器：开/刷新（去重）/自动恢复/升级/失联。
 // 规则评估由 RuleEngine 完成，管理器负责持久化与状态转换。
+//
+// mu 保护 recoverCounts/failCounts/seq/silentUntil：Engine.TickOnce 以
+// Concurrency>1 并发逐节点采集，这些共享状态必须串行访问，否则会触发
+// 运行期 fatal error（concurrent map writes），整个进程无法恢复。
 type AlertManager struct {
+	mu               sync.Mutex
 	store            *Store
 	engine           *RuleEngine
 	recoverCounts    map[string]int // node|typeID → 连续未命中次数
@@ -31,7 +37,7 @@ type AlertManager struct {
 	recoverThreshold int            // 恢复所需连续未命中采样数，默认 3
 	escalateAfter    time.Duration  // warn 未处理升级时长，默认 1h
 	failThreshold    int            // 失联阈值（连续失败次数），默认 3
-	SilentUntil      int64          // 静默截止时间戳：静默期内不新建告警（已有实例正常流转）
+	silentUntil      int64          // 静默截止时间戳：静默期内不新建告警（已有实例正常流转）
 	now              func() int64
 	seq              int
 }
@@ -53,6 +59,9 @@ func NewAlertManager(store *Store) *AlertManager {
 // Tick 对单节点推进一轮：评估规则 → 开/刷新告警 → 恢复检测 → 升级检查。
 // types 为当前启用的告警类型（调用方从存储加载）。
 func (m *AlertManager) Tick(nodeID string, samples []Sample, types []AlertType) ([]AlertEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	out := m.engine.Tick(nodeID, samples, types)
 	now := m.now()
 	var events []AlertEvent
@@ -156,6 +165,9 @@ func (m *AlertManager) Tick(nodeID string, samples []Sample, types []AlertType) 
 
 // MarkCollectFail 节点采集失败一次；连续失败达阈值时开 OWL-OSS-001 失联告警。
 func (m *AlertManager) MarkCollectFail(nodeID string) ([]AlertEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.failCounts[nodeID]++
 	if m.failCounts[nodeID] < m.failThreshold {
 		return nil, nil
@@ -187,6 +199,9 @@ func (m *AlertManager) MarkCollectFail(nodeID string) ([]AlertEvent, error) {
 
 // MarkCollectOK 节点采集成功：清除失败计数并解决失联告警。
 func (m *AlertManager) MarkCollectOK(nodeID string) ([]AlertEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	delete(m.failCounts, nodeID)
 	m.engine.Reset(nodeID)
 
@@ -241,9 +256,17 @@ func (m *AlertManager) Resolve(id string) (*Alert, error) {
 	return a, nil
 }
 
+// SetSilentUntil 更新静默截止时间戳（Engine 每轮采集前调用）。
+func (m *AlertManager) SetSilentUntil(until int64) {
+	m.mu.Lock()
+	m.silentUntil = until
+	m.mu.Unlock()
+}
+
 // isSilenced 静默期内不新建告警（已有实例仍刷新/恢复/升级）。
+// 调用方须持有 m.mu（当前仅 Tick 在锁内调用）。
 func (m *AlertManager) isSilenced(now int64) bool {
-	return m.SilentUntil > 0 && now < m.SilentUntil
+	return m.silentUntil > 0 && now < m.silentUntil
 }
 
 // buildAlertMessage 构造中文告警描述。

@@ -3,6 +3,7 @@ package monitor
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // EvalResult 单条规则对一批采样的评估结果。
@@ -102,7 +103,10 @@ type TickOutcome struct {
 }
 
 // RuleEngine 状态化规则引擎：维护每 (node, alert_type) 的连续命中计数。
+// RuleEngine 逐节点的规则持续计数。counts 在并发采集下被多个 goroutine
+// 同时读写，必须持 mu 访问。
 type RuleEngine struct {
+	mu     sync.Mutex
 	counts map[string]int
 }
 
@@ -116,6 +120,9 @@ func ruleKey(nodeID, typeID string) string { return nodeID + "|" + typeID }
 // Tick 对单节点一批采样推进一轮评估：
 // 命中规则计数 +1，未命中清零；计数达到规则 Duration 时进入 Triggered。
 func (e *RuleEngine) Tick(nodeID string, samples []Sample, types []AlertType) TickOutcome {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	out := TickOutcome{Matched: make(map[string]bool)}
 	for _, at := range types {
 		if !at.Enabled {
@@ -142,6 +149,9 @@ func (e *RuleEngine) Tick(nodeID string, samples []Sample, types []AlertType) Ti
 
 // Reset 清空某节点的全部计数（节点失联/恢复后调用）。
 func (e *RuleEngine) Reset(nodeID string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	for k := range e.counts {
 		if strings.HasPrefix(k, nodeID+"|") {
 			delete(e.counts, k)
