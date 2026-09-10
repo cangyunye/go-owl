@@ -392,31 +392,41 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
+  // 取 WebSocket 建连票据（一次性，60 秒有效）
+  wsTicket: () => request('POST', '/ws/ticket'),
+
+  // 建连改用一次性票据：长期 JWT 不再出现在 URL 中（避免进反代日志/浏览器历史）。
+  // 保持同步签名返回句柄，票据异步获取，未取到则保持断开。
   connectWebSocket(onMessage) {
-    const token = localStorage.getItem('token');
-    if (!token) return null;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${protocol}//${window.location.host}/api/v1/ws?token=${token}`;
-    let ws = new WebSocket(url);
+    let ws = null;
+    let closed = false;
     let reconnectTimer = null;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (onMessage) onMessage(msg);
-      } catch {}
+    const open = () => {
+      if (closed) return;
+      wsTicket().then((res) => {
+        if (closed) return;
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws?ticket=${encodeURIComponent(res.ticket)}`);
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (onMessage) onMessage(msg);
+          } catch {}
+        };
+        ws.onclose = () => {
+          if (closed) return;
+          reconnectTimer = setTimeout(open, 3000);
+        };
+        ws.onerror = () => { if (ws) ws.close(); };
+      }).catch(() => { /* 取票据失败（未登录等）：保持断开 */ });
     };
 
-    ws.onclose = () => {
-      reconnectTimer = setTimeout(() => {
-        api.connectWebSocket(onMessage);
-      }, 3000);
-    };
-
-    ws.onerror = () => { ws.close(); };
+    open();
 
     return {
       close: () => {
+        closed = true;
         if (reconnectTimer) clearTimeout(reconnectTimer);
         if (ws) ws.close();
       }

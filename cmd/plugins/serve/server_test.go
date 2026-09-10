@@ -209,7 +209,7 @@ func TestServer_WebSocketUpgradeAndBroadcast(t *testing.T) {
 	_, err := srv.Init()
 	require.NoError(t, err)
 
-	token, err := srv.Auth.GenerateToken("admin", "admin")
+	ticket, err := srv.wsTickets.Issue("admin", "admin")
 	require.NoError(t, err)
 
 	s := httptest.NewServer(srv.Router)
@@ -218,7 +218,7 @@ func TestServer_WebSocketUpgradeAndBroadcast(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, s.URL+"/api/v1/ws?token="+token, nil)
+	conn, _, err := websocket.Dial(ctx, s.URL+"/api/v1/ws?ticket="+ticket, nil)
 	require.NoError(t, err)
 	defer conn.CloseNow()
 
@@ -260,9 +260,15 @@ func TestServer_WebSocketRequiresAuth(t *testing.T) {
 	assert.Equal(t, 400, w.Code)
 
 	w2 := httptest.NewRecorder()
-	req2, _ := http.NewRequest("GET", "/api/v1/ws?token=badtoken", nil)
+	req2, _ := http.NewRequest("GET", "/api/v1/ws?ticket=badticket", nil)
 	srv.Router.ServeHTTP(w2, req2)
 	assert.Equal(t, 401, w2.Code)
+
+	// 旧的 ?token= 已不再被接受(缺 ticket 视为 400)
+	w3 := httptest.NewRecorder()
+	req3, _ := http.NewRequest("GET", "/api/v1/ws?token=badtoken", nil)
+	srv.Router.ServeHTTP(w3, req3)
+	assert.Equal(t, 400, w3.Code)
 }
 
 func TestServer_ServesMarkedJS(t *testing.T) {

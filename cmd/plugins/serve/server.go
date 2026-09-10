@@ -69,6 +69,7 @@ type Server struct {
 	keyManager          *handler.KeyManager
 	aiHandler           *handler.AIHandler
 	wsHub               *handler.WSHub
+	wsTickets           *handler.WSTicketManager
 	historyHandler      *handler.HistoryHandler
 	logHandler          *handler.LogHandler
 	History             *store.HistoryStore
@@ -157,6 +158,7 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	s.nodeHandler = handler.NewNodeHandler(db)
 	s.settingsHandler = handler.NewSettingsHandler(db)
 	s.wsHub = handler.NewWSHub()
+	s.wsTickets = handler.NewWSTicketManager()
 	s.execHandler = handler.NewExecHandler(db, s.Tasks, s.wsHub)
 
 	playbookStore := store.NewPlaybookStore(db)
@@ -228,7 +230,7 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	webExecutor.PlaybookHandler = s.playbookHandler
 	s.historyHandler = handler.NewHistoryHandler(s.History)
 	s.logHandler = handler.NewLogHandler()
-	s.terminalHandler = handler.NewTerminalHandler(db, s.Auth)
+	s.terminalHandler = handler.NewTerminalHandler(db, s.wsTickets)
 
 	// 监控服务：复用 serve 的 owl.db，提供告警/对策/通知/静默 API
 	monSvc, err := serveMonitor.Setup(s.Config.DBPath, db, "http://"+s.Config.ListenAddr)
@@ -256,12 +258,14 @@ func (s *Server) setupRoutes() {
 	// API routes
 	s.Router.GET("/api/v1/health", handler.Health)
 	s.Router.POST("/api/v1/login", s.authHandler.Login)
-	s.Router.GET("/api/v1/ws", s.wsHub.WsHandler(s.authHandler))
+	s.Router.GET("/api/v1/ws", s.wsHub.WsHandler(s.wsTickets))
 	s.Router.GET("/api/v1/session/terminal", s.terminalHandler.Terminal)
 
 	auth := s.Router.Group("/api/v1", s.authHandler.AuthMiddleware())
 	{
 		auth.GET("/me", s.authHandler.Me)
+		// WebSocket 建连票据：前端先取一次性 ticket，再以 ?ticket= 建连
+		auth.POST("/ws/ticket", s.wsTickets.IssueHandler())
 
 		// 快捷命令:所有已登录用户可管理自己的(个人数据)
 		auth.GET("/shortcuts", s.shortcutHandler.List)

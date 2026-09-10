@@ -44,10 +44,17 @@ export function renderTerminal(render, navigate, user, api, nodeId) {
     if (fitAddon) fitAddon.fit();
     term.focus();
 
-    function connect() {
-      const token = localStorage.getItem('token');
+    async function connect() {
+      let ticket;
+      try {
+        const res = await api.wsTicket();
+        ticket = res.ticket;
+      } catch (e) {
+        setStatus('取连接票据失败', 'var(--danger)');
+        return;
+      }
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const url = `${protocol}//${window.location.host}/api/v1/session/terminal?node_id=${encodeURIComponent(nodeId)}&token=${encodeURIComponent(token)}&cols=${term.cols}&rows=${term.rows}`;
+      const url = `${protocol}//${window.location.host}/api/v1/session/terminal?node_id=${encodeURIComponent(nodeId)}&ticket=${encodeURIComponent(ticket)}&cols=${term.cols}&rows=${term.rows}`;
       setStatus('连接中…');
       ws = new WebSocket(url);
       ws.onopen = () => setStatus('已连接', 'var(--success)');

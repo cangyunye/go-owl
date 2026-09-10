@@ -110,20 +110,21 @@ func (h *WSHub) BroadcastHistoryUpdate() {
 	h.Broadcast(WSMessage{Type: "history_update", Data: nil})
 }
 
-func (h *WSHub) WsHandler(authService *AuthHandler) gin.HandlerFunc {
+// WsHandler 建立监控 WebSocket 连接。认证走 ?ticket= 一次性票据
+// （POST /ws/ticket 签发），不再接受长期 JWT，避免凭证进入反代日志与浏览器历史。
+func (h *WSHub) WsHandler(tickets *WSTicketManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := c.Query("token")
-		if token == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "token required"})
+		ticket := c.Query("ticket")
+		if ticket == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "ticket required"})
 			return
 		}
-
-		claims, err := authService.auth.ValidateToken(token)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid token"})
+		_, role, ok := tickets.Redeem(ticket)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid ticket"})
 			return
 		}
-		if _, ok := roleHierarchy[claims.Role]; !ok {
+		if _, known := roleHierarchy[string(role)]; !known {
 			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "unknown role"})
 			return
 		}

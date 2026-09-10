@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/ssh"
 	"nhooyr.io/websocket"
@@ -17,12 +16,13 @@ import (
 )
 
 type TerminalHandler struct {
-	db   *sql.DB
-	auth *service.AuthService
+	db      *sql.DB
+	tickets *WSTicketManager
 }
 
-func NewTerminalHandler(db *sql.DB, auth *service.AuthService) *TerminalHandler {
-	return &TerminalHandler{db: db, auth: auth}
+// NewTerminalHandler 的 tickets 为建连凭证来源（POST /ws/ticket 签发的一次性票据）。
+func NewTerminalHandler(db *sql.DB, tickets *WSTicketManager) *TerminalHandler {
+	return &TerminalHandler{db: db, tickets: tickets}
 }
 
 type termMessage struct {
@@ -42,17 +42,17 @@ func writeTermMsg(ctx context.Context, conn *websocket.Conn, msg termMessage) {
 }
 
 func (h *TerminalHandler) Terminal(c *gin.Context) {
-	token := c.Query("token")
-	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "token required"})
+	ticket := c.Query("ticket")
+	if ticket == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "ticket required"})
 		return
 	}
-	claims, err := h.auth.ValidateToken(token)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid token"})
+	_, role, ok := h.tickets.Redeem(ticket)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid ticket"})
 		return
 	}
-	if roleHierarchy[claims.Role] < roleHierarchy["operator"] {
+	if roleHierarchy[string(role)] < roleHierarchy["operator"] {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "operator role required"})
 		return
 	}

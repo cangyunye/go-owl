@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"nhooyr.io/websocket"
@@ -96,12 +96,11 @@ func TestWSHub_MultipleClients(t *testing.T) {
 	}
 }
 
-func TestWSHandler_NoToken(t *testing.T) {
+func TestWSHandler_NoTicket(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	hub := NewWSHub()
-	auth := NewAuthHandler(nil, nil)
-	r.GET("/ws", hub.WsHandler(auth))
+	r.GET("/ws", hub.WsHandler(NewWSTicketManager()))
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/ws", nil)
@@ -109,16 +108,14 @@ func TestWSHandler_NoToken(t *testing.T) {
 	require.Equal(t, 400, w.Code)
 }
 
-func TestWSHandler_InvalidToken(t *testing.T) {
+func TestWSHandler_InvalidTicket(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	hub := NewWSHub()
-	as := service.NewAuthService("test-secret-32byte-long-string!!")
-	auth := NewAuthHandler(nil, as)
-	r.GET("/ws", hub.WsHandler(auth))
+	r.GET("/ws", hub.WsHandler(NewWSTicketManager()))
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/ws?token=badtoken", nil)
+	req, _ := http.NewRequest("GET", "/ws?ticket=badticket", nil)
 	r.ServeHTTP(w, req)
 	require.Equal(t, 401, w.Code)
 }
@@ -127,11 +124,10 @@ func TestWSHandler_UpgradeAndBroadcast(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	hub := NewWSHub()
-	as := service.NewAuthService("test-secret-32byte-long-string!!")
-	auth := NewAuthHandler(nil, as)
-	token, err := as.GenerateToken("admin", "admin")
+	tm := NewWSTicketManager()
+	ticket, err := tm.Issue("admin", model.RoleAdmin)
 	require.NoError(t, err)
-	r.GET("/ws", hub.WsHandler(auth))
+	r.GET("/ws", hub.WsHandler(tm))
 
 	s := httptest.NewServer(r)
 	defer s.Close()
@@ -139,7 +135,7 @@ func TestWSHandler_UpgradeAndBroadcast(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, s.URL+"/ws?token="+token, nil)
+	conn, _, err := websocket.Dial(ctx, s.URL+"/ws?ticket="+ticket, nil)
 	require.NoError(t, err)
 	defer conn.CloseNow()
 
