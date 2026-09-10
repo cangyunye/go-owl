@@ -446,7 +446,7 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	if len(blocked) > 0 {
 		c.JSON(http.StatusForbidden, gin.H{
 			"code":    http.StatusForbidden,
-			"message": "危险命令已被黑名单拦截; 如确需执行请带 danger_confirmed=true 重新提交",
+			"message": "blocked by command blacklist; resubmit with danger_confirmed=true to override",
 			"blocked": true,
 			"matches": blocked,
 		})

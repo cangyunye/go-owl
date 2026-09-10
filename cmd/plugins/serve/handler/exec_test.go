@@ -803,7 +803,7 @@ func TestExecCreate_ScriptMode_StagingRef_Blacklist(t *testing.T) {
 	})
 
 	require.Equal(t, http.StatusForbidden, w.Code)
-	assert.True(t, strings.Contains(w.Body.String(), "危险命令已被黑名单拦截"))
+	assert.True(t, strings.Contains(w.Body.String(), "blocked by command blacklist"))
 }
 
 func TestResolveStagingScriptRef_RejectDotPaths(t *testing.T) {

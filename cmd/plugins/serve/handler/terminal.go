@@ -83,7 +83,7 @@ func (h *TerminalHandler) Terminal(c *gin.Context) {
 
 	client, err := (&sshExecutor{db: h.db}).dialNode(ctx, nodeID)
 	if err != nil {
-		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "连接失败: " + err.Error() + "\r\n"})
+		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "connect failed: " + err.Error() + "\r\n"})
 		writeTermMsg(ctx, conn, termMessage{Type: "exit", Code: 1})
 		return
 	}
@@ -91,7 +91,7 @@ func (h *TerminalHandler) Terminal(c *gin.Context) {
 
 	session, err := client.NewSession()
 	if err != nil {
-		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "创建会话失败: " + err.Error() + "\r\n"})
+		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "create session failed: " + err.Error() + "\r\n"})
 		writeTermMsg(ctx, conn, termMessage{Type: "exit", Code: 1})
 		return
 	}
@@ -103,26 +103,26 @@ func (h *TerminalHandler) Terminal(c *gin.Context) {
 		ssh.TTY_OP_OSPEED: 14400,
 	}
 	if err := session.RequestPty("xterm-256color", rows, cols, modes); err != nil {
-		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "请求终端失败: " + err.Error() + "\r\n"})
+		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "request pty failed: " + err.Error() + "\r\n"})
 		writeTermMsg(ctx, conn, termMessage{Type: "exit", Code: 1})
 		return
 	}
 
 	stdin, err := session.StdinPipe()
 	if err != nil {
-		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "标准输入管道失败: " + err.Error() + "\r\n"})
+		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "stdin pipe failed: " + err.Error() + "\r\n"})
 		writeTermMsg(ctx, conn, termMessage{Type: "exit", Code: 1})
 		return
 	}
 	stdout, err := session.StdoutPipe()
 	if err != nil {
-		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "标准输出管道失败: " + err.Error() + "\r\n"})
+		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "stdout pipe failed: " + err.Error() + "\r\n"})
 		writeTermMsg(ctx, conn, termMessage{Type: "exit", Code: 1})
 		return
 	}
 
 	if err := session.Shell(); err != nil {
-		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "启动 shell 失败: " + err.Error() + "\r\n"})
+		writeTermMsg(ctx, conn, termMessage{Type: "output", Data: "start shell failed: " + err.Error() + "\r\n"})
 		writeTermMsg(ctx, conn, termMessage{Type: "exit", Code: 1})
 		return
 	}
