@@ -137,6 +137,27 @@ func (s *TaskStore) UpdateStatus(ctx context.Context, id string, status TaskStat
 	return err
 }
 
+// UpdateStatusGuarded 与 UpdateStatus 相同，但当任务已处于 cancelled 时不做任何写入。
+// 执行 goroutine 的进度与终态写入都必须走这里，否则会覆盖人工取消。
+// 返回 applied=false 表示因任务已取消而跳过写入。
+func (s *TaskStore) UpdateStatusGuarded(ctx context.Context, id string, status TaskStatus, output string, exitCode *int) (bool, error) {
+	now := time.Now().UTC()
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE tasks SET status = ?, output = ?, exit_code = ?, updated_at = ?,
+		started_at = CASE WHEN started_at IS NULL AND ? = 'running' THEN ? ELSE started_at END,
+		completed_at = CASE WHEN ? IN ('completed','failed','cancelled') THEN ? ELSE completed_at END
+		WHERE id = ? AND status <> 'cancelled'`,
+		status, output, exitCode, now, status, now, status, now, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 func (s *TaskStore) ListByNode(ctx context.Context, nodeID string, status TaskStatus) ([]*Task, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at

@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
@@ -43,6 +44,11 @@ type ExecHandler struct {
 	History *store.HistoryStore
 	checker *blacklist.Checker
 	LogWriter *logfile.NodeLogWriter
+
+	// runMu 保护 runCancels：执行 goroutine 登记取消句柄，Cancel 据此中断
+	// 在途 SSH 会话（只改 DB 状态不会让远端命令停下来）。
+	runMu      sync.Mutex
+	runCancels map[string]context.CancelFunc
 }
 
 func newBlacklistChecker() *blacklist.Checker {
@@ -56,12 +62,70 @@ func newBlacklistChecker() *blacklist.Checker {
 
 func NewExecHandler(db *sql.DB, ts *store.TaskStore, hub *WSHub) *ExecHandler {
 	return &ExecHandler{
-		db:      db,
-		task:    ts,
-		exec:    &sshExecutor{db: db},
-		hub:     hub,
-		checker: newBlacklistChecker(),
+		db:         db,
+		task:       ts,
+		exec:       &sshExecutor{db: db},
+		hub:        hub,
+		checker:    newBlacklistChecker(),
+		runCancels: make(map[string]context.CancelFunc),
 	}
+}
+
+// parseTimeout 解析请求中的超时字符串（如 "30s"）；空串或非法值返回 0（不设限）。
+func parseTimeout(s string) time.Duration {
+	if s == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return 0
+	}
+	return d
+}
+
+// executorFor 返回本次执行使用的执行器：请求带 connect_timeout 时按该值复制
+// 一份 SSH 执行器（共享实例被并发任务复用时不能改其超时）。测试注入的假
+// 执行器原样返回。
+func (h *ExecHandler) executorFor(cfg ExecConfig) Executor {
+	d := parseTimeout(cfg.ConnectTimeout)
+	if d <= 0 {
+		return h.exec
+	}
+	if se, ok := h.exec.(*sshExecutor); ok {
+		clone := *se
+		clone.connectTimeout = d
+		return &clone
+	}
+	return h.exec
+}
+
+func (h *ExecHandler) registerCancel(taskID string, cancel context.CancelFunc) {
+	h.runMu.Lock()
+	h.runCancels[taskID] = cancel
+	h.runMu.Unlock()
+}
+
+func (h *ExecHandler) unregisterCancel(taskID string) {
+	h.runMu.Lock()
+	delete(h.runCancels, taskID)
+	h.runMu.Unlock()
+}
+
+// cancelRun 中断指定任务的在途执行，返回是否命中（未执行的任务无需中断）。
+func (h *ExecHandler) cancelRun(taskID string) bool {
+	h.runMu.Lock()
+	cancel, ok := h.runCancels[taskID]
+	h.runMu.Unlock()
+	if ok {
+		cancel()
+	}
+	return ok
+}
+
+// writeRunning 写入执行进度；任务已被取消时返回 false（取消优先于执行结果）。
+func (h *ExecHandler) writeRunning(ctx context.Context, taskID, output string) bool {
+	applied, err := h.task.UpdateStatusGuarded(ctx, taskID, store.TaskStatusRunning, output, nil)
+	return err == nil && applied
 }
 
 type execRequest struct {
@@ -538,6 +602,8 @@ func (h *ExecHandler) Cancel(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "cancel failed"})
 		return
 	}
+	// 仅写 DB 状态不会让远端命令停下来，必须中断在途执行的上下文
+	h.cancelRun(id)
 	c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
 }
 
@@ -545,7 +611,12 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 	if h.exec == nil {
 		return
 	}
-	ctx := context.Background()
+	// 可取消上下文：Cancel 经它中断在途 SSH 会话；取消状态也不会被终态覆盖。
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.registerCancel(taskID, cancel)
+	defer h.unregisterCancel(taskID)
+
 	start := time.Now()
 	task, err := h.task.Get(ctx, taskID)
 	if err != nil {
@@ -555,13 +626,12 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 	debug := func(format string, args ...interface{}) {
 		if cfg.Debug {
 			msg := fmt.Sprintf("[DEBUG] "+format, args...)
-			h.task.UpdateStatus(ctx, taskID, store.TaskStatusRunning,
-				task.Output+"\n"+msg, task.ExitCode)
+			h.writeRunning(ctx, taskID, task.Output+"\n"+msg)
 		}
 	}
 
-	if err := h.task.UpdateStatus(ctx, taskID, store.TaskStatusRunning, "", nil); err != nil {
-		return
+	if !h.writeRunning(ctx, taskID, "") {
+		return // 已被取消：不再覆盖状态
 	}
 	task, err = h.task.Get(ctx, taskID)
 	if err != nil || task == nil {
@@ -593,6 +663,10 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 	var exitCode int
 
 	for attempt := 0; attempt <= retryCount; attempt++ {
+		if ctx.Err() != nil {
+			lastError = ctx.Err()
+			break
+		}
 		if attempt > 0 {
 			debug("重试 %d/%d (等待 %v)...", attempt, retryCount, retryInterval)
 			time.Sleep(retryInterval)
@@ -619,13 +693,14 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 		if cfg.Debug {
 			errMsg = fmt.Sprintf("所有 %d 次尝试均失败: %s", retryCount+1, errMsg)
 		}
-		h.updateTaskStatus(ctx, taskID, store.TaskStatusFailed, outputStr+errMsg, &exitCode)
+		applied := h.updateTaskStatus(ctx, taskID, store.TaskStatusFailed, outputStr+errMsg, &exitCode)
 		h.writeExecutionLog(task, exitCode, output, errMsg, time.Since(start))
 		h.recordCommandExecution(ctx, task, exitCode, output, errMsg, time.Since(start).Milliseconds(), false)
 		h.updateOpStatus(ctx, task.RecordID)
-		task, _ = h.task.Get(ctx, taskID)
-		if h.hub != nil {
-			h.hub.BroadcastTaskUpdate(task)
+		if applied {
+			if task, _ = h.task.Get(ctx, taskID); h.hub != nil {
+				h.hub.BroadcastTaskUpdate(task)
+			}
 		}
 		return
 	}
@@ -639,24 +714,28 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 			task.NodeID, task.Command, exitCode, output)
 	}
 
-	h.updateTaskStatus(ctx, taskID, store.TaskStatusCompleted, outputStr, &exitCode)
+	applied := h.updateTaskStatus(ctx, taskID, store.TaskStatusCompleted, outputStr, &exitCode)
 	h.writeExecutionLog(task, exitCode, outputStr, "", time.Since(start))
 	h.recordCommandExecution(ctx, task, exitCode, outputStr, "", time.Since(start).Milliseconds(), true)
 	h.updateOpStatus(ctx, task.RecordID)
-	task, _ = h.task.Get(ctx, taskID)
-	if h.hub != nil {
-		h.hub.BroadcastTaskUpdate(task)
+	if applied {
+		if task, _ = h.task.Get(ctx, taskID); h.hub != nil {
+			h.hub.BroadcastTaskUpdate(task)
+		}
 	}
 }
 
 // updateTaskStatus 带有限重试的状态落库,规避 sqlite 并发写瞬时锁冲突。
-func (h *ExecHandler) updateTaskStatus(ctx context.Context, taskID string, status store.TaskStatus, output string, exitCode *int) {
+// 已取消的任务不会被覆盖（返回 false 表示写入被取消守卫跳过）。
+func (h *ExecHandler) updateTaskStatus(ctx context.Context, taskID string, status store.TaskStatus, output string, exitCode *int) bool {
 	for attempt := 0; attempt < 5; attempt++ {
-		if err := h.task.UpdateStatus(ctx, taskID, status, output, exitCode); err == nil {
-			return
+		applied, err := h.task.UpdateStatusGuarded(ctx, taskID, status, output, exitCode)
+		if err == nil {
+			return applied
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	return false
 }
 
 type streamResult struct {
@@ -666,18 +745,26 @@ type streamResult struct {
 
 // streamExecute 以 ExecuteStream 方式执行单条命令：逐行广播到 WS(task_output)
 // 并累积到任务输出，保证前端能实时看到执行输出。
+// cfg.CommandTimeout 生效于此：超时后断开 SSH 会话并返回超时错误。
 func (h *ExecHandler) streamExecute(ctx context.Context, taskID, nodeID, command string, cfg ExecConfig) (string, int, error) {
+	if d := parseTimeout(cfg.CommandTimeout); d > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, d)
+		defer cancel()
+	}
+	exec := h.executorFor(cfg)
+
 	outputCh := make(chan OutputLine, 256)
 	resCh := make(chan streamResult, 1)
 	go func() {
-		code, err := h.exec.ExecuteStream(ctx, nodeID, buildExecCommand(command, cfg), outputCh)
+		code, err := exec.ExecuteStream(ctx, nodeID, buildExecCommand(command, cfg), outputCh)
 		resCh <- streamResult{code: code, err: err}
 	}()
 
 	var buf strings.Builder
 	var lastFlush time.Time
 	flush := func() {
-		h.task.UpdateStatus(ctx, taskID, store.TaskStatusRunning, buf.String(), nil)
+		h.writeRunning(ctx, taskID, buf.String())
 	}
 	defer flush()
 	appendLine := func(line OutputLine) {
@@ -689,8 +776,15 @@ func (h *ExecHandler) streamExecute(ctx context.Context, taskID, nodeID, command
 		// 限频落库:逐行写库在并发执行时会放大 sqlite 锁竞争,实时性以 WS 广播承担
 		if time.Since(lastFlush) >= 150*time.Millisecond {
 			lastFlush = time.Now()
-			h.task.UpdateStatus(ctx, taskID, store.TaskStatusRunning, buf.String(), nil)
+			h.writeRunning(ctx, taskID, buf.String())
 		}
+	}
+	// finish 统一出口：命令超时优先于底层 SSH 断开错误上报
+	finish := func(code int, err error) (string, int, error) {
+		if ctx.Err() == context.DeadlineExceeded {
+			return buf.String(), -1, fmt.Errorf("命令执行超时（command_timeout=%s）", cfg.CommandTimeout)
+		}
+		return buf.String(), code, err
 	}
 
 	for {
@@ -698,7 +792,7 @@ func (h *ExecHandler) streamExecute(ctx context.Context, taskID, nodeID, command
 		case line, ok := <-outputCh:
 			if !ok {
 				res := <-resCh
-				return buf.String(), res.code, res.err
+				return finish(res.code, res.err)
 			}
 			appendLine(line)
 		case res := <-resCh:
@@ -706,11 +800,11 @@ func (h *ExecHandler) streamExecute(ctx context.Context, taskID, nodeID, command
 				select {
 				case line, ok := <-outputCh:
 					if !ok {
-						return buf.String(), res.code, res.err
+						return finish(res.code, res.err)
 					}
 					appendLine(line)
 				default:
-					return buf.String(), res.code, res.err
+					return finish(res.code, res.err)
 				}
 			}
 		}

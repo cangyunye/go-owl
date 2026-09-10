@@ -844,3 +844,117 @@ func TestExecCreate_ScriptMode_StagingRef_MissingFile(t *testing.T) {
 	assert.Equal(t, 400, w.Code)
 	assert.True(t, strings.Contains(w.Body.String(), "script not found in staging"))
 }
+
+// blockingExecutor 阻塞到 ctx 结束，用于验证命令超时与任务取消。
+type blockingExecutor struct {
+	started  chan struct{}
+	canceled chan struct{}
+}
+
+func newBlockingExecutor() *blockingExecutor {
+	return &blockingExecutor{started: make(chan struct{}, 1), canceled: make(chan struct{}, 1)}
+}
+
+func (b *blockingExecutor) Execute(ctx context.Context, _, _ string) (string, int, error) {
+	<-ctx.Done()
+	return "", -1, ctx.Err()
+}
+
+func (b *blockingExecutor) ExecuteStream(ctx context.Context, _, _ string, _ chan<- OutputLine) (int, error) {
+	select {
+	case b.started <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	select {
+	case b.canceled <- struct{}{}:
+	default:
+	}
+	return -1, ctx.Err()
+}
+
+// TestExecuteTask_CommandTimeout 验证 command_timeout 真正生效：
+// 挂起的命令在超时后必须终止（修复前该参数无任何消费方，任务永久 running）。
+func TestExecuteTask_CommandTimeout(t *testing.T) {
+	_, h := execTestSetup(t)
+	h.exec = newBlockingExecutor()
+
+	task, err := h.task.Create(t.Context(), "test-node", "sleep 999")
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		h.executeTask(task.ID, ExecConfig{Command: "sleep 999", NoRetry: true, CommandTimeout: "80ms"})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("command_timeout 未生效：executeTask 未在超时后返回")
+	}
+
+	got, err := h.task.Get(t.Context(), task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, store.TaskStatusFailed, got.Status)
+	assert.Contains(t, got.Output, "命令执行超时")
+}
+
+// TestCancel_InterruptsExecutionAndIsNotOverwritten 验证 DELETE /tasks/:id 真正中断
+// 在途执行，且取消状态不被执行 goroutine 的终态写入覆盖（修复前会覆盖为 failed）。
+func TestCancel_InterruptsExecutionAndIsNotOverwritten(t *testing.T) {
+	_, h := execTestSetup(t)
+	router := execRBACRouter(t, h)
+	exec := newBlockingExecutor()
+	h.exec = exec
+
+	task, err := h.task.Create(t.Context(), "test-node", "sleep 999")
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		h.executeTask(task.ID, ExecConfig{Command: "sleep 999", NoRetry: true})
+		close(done)
+	}()
+
+	select {
+	case <-exec.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("执行器未启动")
+	}
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/api/v1/tasks/"+task.ID, nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken())
+	router.ServeHTTP(w, req)
+	require.Equal(t, 200, w.Code)
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("取消未中断在途执行")
+	}
+	select {
+	case <-exec.canceled:
+	default:
+		t.Fatal("执行上下文未被取消，远端命令不会被中断")
+	}
+
+	got, err := h.task.Get(t.Context(), task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, store.TaskStatusCancelled, got.Status, "取消状态不应被执行终态覆盖")
+}
+
+// TestExecutorFor_ConnectTimeout 验证 connect_timeout 下发到执行器，且不污染共享实例。
+func TestExecutorFor_ConnectTimeout(t *testing.T) {
+	_, h := execTestSetup(t)
+	h.exec = &sshExecutor{db: h.db}
+
+	assert.Same(t, h.exec, h.executorFor(ExecConfig{}), "未指定 connect_timeout 时复用共享执行器")
+
+	got := h.executorFor(ExecConfig{ConnectTimeout: "3s"})
+	se, ok := got.(*sshExecutor)
+	require.True(t, ok)
+	assert.Equal(t, 3*time.Second, se.connectTimeout)
+	assert.NotSame(t, h.exec, got, "指定 connect_timeout 时必须复制，避免并发任务互相改超时")
+}

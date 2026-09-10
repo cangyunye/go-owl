@@ -16,7 +16,8 @@ import (
 const sshConnectTimeout = 10 * time.Second
 
 type sshExecutor struct {
-	db *sql.DB
+	db             *sql.DB
+	connectTimeout time.Duration // 请求级连接超时；0 表示使用 sshConnectTimeout
 }
 
 type nodeSSHInfo struct {
@@ -53,12 +54,16 @@ func (e *sshExecutor) dialNode(ctx context.Context, nodeID string) (*owlssh.Clie
 		return nil, fmt.Errorf("resolve node: %w", err)
 	}
 	addr := net.JoinHostPort(info.Address, strconv.Itoa(info.Port))
+	timeout := e.connectTimeout
+	if timeout <= 0 {
+		timeout = sshConnectTimeout
+	}
 	return owlssh.Dial(ctx, addr, owlssh.DialOptions{
 		User:           info.User,
 		Password:       info.Password,
 		KeyContent:     info.SSHKey,
 		ProxyJump:      info.ProxyJump,
-		ConnectTimeout: sshConnectTimeout,
+		ConnectTimeout: timeout,
 	})
 }
 
@@ -99,6 +104,19 @@ func (e *sshExecutor) ExecuteStream(ctx context.Context, nodeID, command string,
 		return -1, fmt.Errorf("ssh session: %w", err)
 	}
 	defer session.Close()
+
+	// session.Wait() 不响应 ctx；ctx 取消/超时时必须主动断开连接，
+	// 否则命令超时设置无法真正终止远端命令，任务会一直挂住。
+	watchDone := make(chan struct{})
+	defer close(watchDone)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = session.Close()
+			_ = client.Close()
+		case <-watchDone:
+		}
+	}()
 
 	stdout, err := session.StdoutPipe()
 	if err != nil {
