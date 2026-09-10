@@ -147,11 +147,6 @@ type execRequest struct {
 	Force           string            `json:"force,omitempty"`
 	DangerConfirmed bool              `json:"danger_confirmed"`
 
-	Async             bool   `json:"async"`
-	AsyncMaxPollCount int    `json:"async_max_poll_count"`
-	AsyncPollInterval string `json:"async_poll_interval"`
-	AsyncRemoteDir    string `json:"async_remote_dir"`
-	AsyncTimeout      string `json:"async_timeout"`
 	Format            string `json:"format"`
 	Debug             bool   `json:"debug"`
 	Parallel          bool   `json:"parallel"`
@@ -162,16 +157,12 @@ type execRequest struct {
 	NoRetry           bool   `json:"no_retry"`
 	ConnectTimeout    string `json:"connect_timeout"`
 	CommandTimeout    string `json:"command_timeout"`
-	Timeout           string `json:"timeout"`
-	NoColor           bool   `json:"no_color"`
-	Silent            bool   `json:"silent"`
 }
 
 type ExecConfig struct {
 	Command          string
 	NodeIDs          []string
 	Force            bool
-	Async            bool
 	Format           string
 	Debug            bool
 	Parallel         bool
@@ -181,8 +172,6 @@ type ExecConfig struct {
 	NoRetry          bool
 	ConnectTimeout   string
 	CommandTimeout   string
-	NoColor          bool
-	Silent           bool
 
 	ScriptContent string
 	ScriptName    string
@@ -410,7 +399,6 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		Command:          command,
 		NodeIDs:          nodeIDs,
 		Force:            req.Force == "true",
-		Async:            req.Async,
 		Format:           req.Format,
 		Debug:            req.Debug,
 		Parallel:         !req.Serial,
@@ -420,8 +408,6 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		NoRetry:          req.NoRetry,
 		ConnectTimeout:   req.ConnectTimeout,
 		CommandTimeout:   req.CommandTimeout,
-		NoColor:          req.NoColor,
-		Silent:           req.Silent,
 		ScriptContent:    scriptContent,
 		ScriptName:       scriptName,
 		ScriptArgs:       req.ScriptArgs,

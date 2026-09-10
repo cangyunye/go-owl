@@ -533,7 +533,6 @@ export function renderExec(render, navigate, user, api, shell) {
   function buildExecPayload() {
     const nodeIDs = Array.from(selectedNodes);
     const cmd = document.getElementById('cmd-input').value.trim();
-    const isAsync = document.getElementById('async-toggle')?.checked || false;
     const isSerial = document.getElementById('mode-serial')?.checked || false;
     const isDebug = document.getElementById('debug-toggle')?.checked || false;
     const retryCount = parseInt(document.getElementById('retry-count')?.value) || 3;
@@ -571,7 +570,6 @@ export function renderExec(render, navigate, user, api, shell) {
       payload.command = cmd;
     }
 
-    if (isAsync) payload.async = true;
     if (isSerial) payload.serial = true;
     if (isDebug) payload.debug = true;
     if (retryCount !== 3) payload.retry = retryCount;
@@ -602,7 +600,6 @@ export function renderExec(render, navigate, user, api, shell) {
     }
 
     const nodeIDs = Array.from(selectedNodes);
-    const isAsync = document.getElementById('async-toggle')?.checked || false;
 
     let targetCount = 0;
     try {
@@ -620,7 +617,7 @@ export function renderExec(render, navigate, user, api, shell) {
     clearTerminal();
     const dl = document.getElementById('exec-log-downloads');
     if (dl) dl.style.display = 'none';
-    const modeLabel = (isAsync ? '[异步]' : '') + (execMode === 'script' ? '[脚本]' : '');
+    const modeLabel = execMode === 'script' ? '[脚本]' : '';
     appendTerminal(`${modeLabel}正在连接 ${nodeIDs.length === 0 ? '全部匹配' : nodeIDs.length + ' 个'} 节点…`, 'ts');
 
     try {
@@ -646,7 +643,7 @@ export function renderExec(render, navigate, user, api, shell) {
           appendTerminal(`[${esc(t.node_id)}] 任务: ${esc(t.id)}`, 'out');
         });
       }
-      appendTerminal(isAsync ? '提交成功，等待异步完成…' : '等待实时输出…', 'ts');
+      appendTerminal('等待实时输出…', 'ts');
 
       if (wsCleanup) wsCleanup.close();
       const finished = new Set();
@@ -806,11 +803,6 @@ free -m</textarea>
               <button class="active" id="mode-parallel" data-mode="parallel">并行</button>
               <button id="mode-serial" data-mode="serial">串行</button>
             </div>
-            <label class="toggle-row">
-              <input type="checkbox" id="async-toggle">
-              <span class="toggle-track"><span class="toggle-thumb"></span></span>
-              <span style="font-size:12px;color:var(--muted)">异步执行</span>
-            </label>
           </div>
         </div>
 

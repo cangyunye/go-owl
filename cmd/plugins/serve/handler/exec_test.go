@@ -19,9 +19,9 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/gin-gonic/gin"
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 )
@@ -262,7 +262,7 @@ func TestExecCreate_ByLabel(t *testing.T) {
 		('app-b', 'app-b', '10.0.1.2', 22, 'root', 'online', '{"env":"stg","tier":"frontend"}')`)
 
 	w := execPOST(t, router, map[string]interface{}{
-		"labels": map[string]string{"env": "prod"},
+		"labels":  map[string]string{"env": "prod"},
 		"command": "uptime",
 	})
 
@@ -943,6 +943,20 @@ func TestCancel_InterruptsExecutionAndIsNotOverwritten(t *testing.T) {
 	got, err := h.task.Get(t.Context(), task.ID)
 	require.NoError(t, err)
 	assert.Equal(t, store.TaskStatusCancelled, got.Status, "取消状态不应被执行终态覆盖")
+}
+
+// TestExecCreate_LegacyDeadParamsIgnored 确认清理无消费方参数后，旧客户端仍带
+// 这些字段发请求不会失败（JSON 未知字段被忽略），行为与清理前一致。
+func TestExecCreate_LegacyDeadParamsIgnored(t *testing.T) {
+	_, h := execTestSetup(t)
+	router := execRBACRouter(t, h)
+
+	w := execPOST(t, router, map[string]interface{}{
+		"node_ids": []string{"test-node"}, "command": "uptime",
+		"async": true, "async_timeout": "10s", "timeout": "5s",
+		"no_color": true, "silent": true,
+	})
+	require.Equal(t, 202, w.Code)
 }
 
 // TestExecutorFor_ConnectTimeout 验证 connect_timeout 下发到执行器，且不污染共享实例。
