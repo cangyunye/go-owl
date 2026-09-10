@@ -52,7 +52,7 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 | 监控单测(engine_test.go 等) | 有 `TickOnce` 覆盖,但未启用 `-race`、并发度低,长期未暴露 |
 | internal/monitor(上轮预告的下一评审区域) | 根因所在;因影响面为进程崩溃,提前到本轮必修 |
 
-**处置决定**:本轮必修。为 `AlertManager` 补齐互斥保护覆盖全部共享状态,并新增 `-race` 并发回归测试(用多节点 + 全部采集失败复现原崩溃)。
+**处置决定** ✅ 已修复(B1):为 `AlertManager` 与 `RuleEngine` 补齐互斥保护覆盖全部共享状态(含 `SilentUntil` 改为经 `SetSilentUntil` 访问),并新增 `-race` 并发回归测试(16 节点采集全失败、Concurrency=10 连续 5 轮)。
 
 #### P0-2 前端"连接超时/命令超时"控件不生效(超时参数从未接线)
 
@@ -64,7 +64,7 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 
 **后果**:用户按界面设置超时后,挂起的远端命令(`sleep`、`tail -f`、交互式程序)永不终止——任务长期停留在 `running`,SSH 会话与 goroutine 一并滞留;前端给出的超时承诺是无效承诺。
 
-**处置决定**:本轮必修(接线上限:把命令/连接超时解析后传入执行器,以 `context.WithTimeout` 真正中断)。
+**处置决定** ✅ 已修复(B2):`streamExecute` 以 `context.WithTimeout` 施加 `command_timeout`,`ExecuteStream` 在 ctx 结束后主动关闭 session/client 解除 `Wait` 阻塞,超时统一上报"命令执行超时（command_timeout=...）";`connect_timeout` 经 `executorFor` 复制执行器下发。
 
 #### P0-3 任务取消不生效:取消状态被后续执行结果覆盖
 
@@ -74,7 +74,7 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 
 **后果**:管理员点"取消"后远端命令继续执行到结束,且审计上最终呈现的失败/成功掩盖了人的取消意图。
 
-**处置决定**:本轮必修(执行侧登记可取消句柄、状态写入加"非 cancelled"前置条件、终态不覆盖取消)。
+**处置决定** ✅ 已修复(B2):`ExecHandler` 登记任务取消句柄,`Cancel` 真正中断在途 SSH 会话;新增 `TaskStore.UpdateStatusGuarded`,执行进度与终态写入在任务已取消时跳过,取消状态不再被 `failed/completed` 覆盖。
 
 #### P0-4 最后管理员可被删除/降级,且无应用内恢复(可复现失管)
 
@@ -84,17 +84,17 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 
 **后果**:一次误操作即可让整个部署失去管理入口(用户/设置/节点删除/监控配置全部不可达)。
 
-**处置决定**:本轮必修(禁止删除或降级最后一个 admin;Delete 补 404 语义)。
+**处置决定** ✅ 已修复(B3):降级或删除最后一个 admin 返回 409;`Delete` 补 404(目标不存在不再返回 200)。
 
 ### P1 — 规范一致性
 
-1. **响应约定不统一**:全量 339 处 `c.JSON` 中,错误响应基本统一为 `{code,message}`,但成功响应形态各异——`{data:...}`(node/history/playbook)、裸对象(`c.JSON(200, task)`、`SettingResponse`、`DiskInfo`)、`{token,user}`(login)、`{models:...}`(ai)、`{deleted,logs_removed}`(history Clean)、`{status:"deleted"/"cancelled"}`(staging Delete / task Cancel),另有 `user.go:224` 成功也带 `code:200` 而别处成功不带。缺统一的响应封装层。
-2. **内部错误细节回传客户端**:约 40 处把 `err.Error()` 直接写进 message,典型集中在 `handler/monitor.go`(30 处),另有 `exec.go:253,268,280,301`、`playbook.go:68,140,209,260,265,345`、`transfer.go:103`、`ai.go:176,367,385`、`node_seed.go:202`。暴露 SQL/文件系统/上游 provider 细节。
-3. **服务端 API 文案语言不统一**:`handler/monitor.go` 约 30 处 message 全为中文硬编码(`"查询告警失败: ..."`、"告警不存在"),而其余 handler 全英文;`exec.go:333` 中文;`terminal.go:85-124` 中文错误串。服务端目前无 i18n 机制,至少应统一到单一语言并与 CLI 轮确立的规范对齐。
-4. **`settings` 接口暴露并允许覆写 `jwt_secret`**:`List`(settings.go:29-46)按 `SELECT key,value FROM settings` 全量返回——实测 `GET /settings` 与 `GET /settings/jwt_secret` 均 200 并返回签名密钥原文;`Set`(settings.go:63-96)只校验 `staging_dir`/`staging_min_free`,其余键(含 `jwt_secret`)原样 upsert。运行中的 `AuthService` 已缓存旧密钥,覆写暂无即时效果,但重启后会使全部既有 token 失效,语义混乱。建议敏感键脱敏/拒读拒写。
-5. **无优雅停机与资源释放**:`Start()` 直接 `Router.Run()`(server.go:523-534),无 `http.Server` + 信号处理;`Server.Init` 打开的 `*sql.DB` **从不 Close**;`history.NewDB(...)` 的句柄被丢弃(server.go:127 `if _, err := ...`);`monitor.Stop()` 定义后**无任何调用方**(monitor/monitor.go:218)。实测 SIGTERM 后退出码 143、日志无任何停机记录,在途任务与落库被硬中断。
-6. **exec 死参数族(上轮路线图第 6 项,本轮确认)**:`async`、`async_max_poll_count`、`async_poll_interval`、`async_remote_dir`、`async_timeout`、`timeout`、`no_color`、`silent` 在 serve 内均无消费方(exec.go:86-101 定义,349-360 部分赋值后无人读取)。前端 `async-toggle` 实际上靠"后端恒为后台执行 + 前端轮询/WS"而"碰巧可用",但参数本身是死代码。
-7. **用户管理其余缺口**:上面 P0-4 之外,`Update` 允许把任意用户改为任意合法角色(含把自己提为 admin,admin 本身无妨);`Delete` 无存在性判断(见 P0-4)。
+1. **响应约定不统一**:全量 339 处 `c.JSON` 中,错误响应基本统一为 `{code,message}`,但成功响应形态各异——`{data:...}`(node/history/playbook)、裸对象(`c.JSON(200, task)`、`SettingResponse`、`DiskInfo`)、`{token,user}`(login)、`{models:...}`(ai)、`{deleted,logs_removed}`(history Clean)、`{status:"deleted"/"cancelled"}`(staging Delete / task Cancel),另有 `user.go:224` 成功也带 `code:200` 而别处成功不带。缺统一的响应封装层。(后续)
+2. **内部错误细节回传客户端** ✅ 已修复(监控 handler 部分):`handler/monitor.go` 约 30 处(含 500 类直接回传 `err.Error()`)已收敛为 `internalErr(public, err)`——对外只给短英文描述,细节仅记服务端日志;其余文件仍待处理:`exec.go:253,268,280,301`、`playbook.go:68,140,209,260,265,345`、`transfer.go:103`、`ai.go:176,367,385`、`node_seed.go:202`。
+3. **服务端 API 文案语言不统一** ✅ 已修复(监控 handler 部分):`handler/monitor.go` 的校验类与业务类文案已统一为英文;`exec.go:333`、`terminal.go:85-124` 仍为中文,服务端整体仍无 i18n 机制。(后续)
+4. **`settings` 接口暴露并允许覆写 `jwt_secret`** ✅ 已修复:新增 `sensitiveSettings` 黑名单,List 过滤、Get/Set 返回 403,并补测试。
+5. **无优雅停机与资源释放** ✅ 已修复:`Serve(ctx)` 改用 `http.Server` + `signal.NotifyContext`,停机时停监控、10s drain、依次关闭 monitor/history/serve 三处数据库连接;实测 SIGTERM 退出码由 143 变为 0。
+6. **exec 死参数族(上轮路线图第 6 项,本轮确认)**:`async`、`async_max_poll_count`、`async_poll_interval`、`async_remote_dir`、`async_timeout`、`timeout`、`no_color`、`silent` 在 serve 内均无消费方(exec.go:86-101 定义,349-360 部分赋值后无人读取)。前端 `async-toggle` 实际上靠"后端恒为后台执行 + 前端轮询/WS"而"碰巧可用",但参数本身是死代码。(后续;`connect_timeout`/`command_timeout` 已在 B2 接线,不再是死参数)
+7. **用户管理其余缺口**:上面 P0-4 之外,`Update` 允许把任意用户改为任意合法角色(admin 改他人角色属预期,未做额外限制);`Delete` 的存在性判断已随 P0-4 补齐 ✅。
 8. **token 无撤销,角色变更有 24h 滞后**:`AuthMiddleware` 只校验 JWT 签名与过期(auth.go:84-105),不查库;`Claims.Role` 是签发时快照。**实测**:把自己降级为 viewer 后,旧 token 仍能 `GET /settings`(200)——被降级/被删除的用户在 token 到期(24h)前保留原权限。
 9. **`/api/v1/ws` 丢弃身份且关闭来源校验**:`claims` 取到后被 `_ = claims` 丢弃(ws.go:121-126),任意已登录用户(含 viewer)可连;`InsecureSkipVerify: true`(ws.go:129)关闭 Origin 校验;订阅后 `Broadcast` 把全部 `task_output`/`task_update` 下发给所有连接(ws.go:77-111),无任何按用户/按任务的作用域过滤。与"viewer 可读全量任务"的既有设计一致,但缺作用域控制。
 10. **AI 会话密钥无回收 + 明文回退**:`KeyManager.Cleanup`(ai_keys.go:98-106)定义后**无调用方**,每个 `GET /ai/session-key` 生成的 2048 位 RSA 私钥常驻内存,map 无界增长;`Decrypt` 保留 `__plain__:` 前缀的明文回退分支(ai_keys.go:68-76),客户端无 WebCrypto 时 API key 以 base64 明文经网络传输。
@@ -120,29 +120,40 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 | 批次 | 内容 | 提交 |
 |---|---|---|
 | — | 评审报告 | `docs(serve): 新增 Web 端评审报告` |
-| B1 | P0-1 监控并发写 map 崩溃:AlertManager 补互斥 + `-race` 并发回归测试 | `fix(serve): 修复监控采集并发写 map 导致的进程崩溃` |
-| B2 | P0-2/P0-3 执行语义:命令/连接超时接线生效;取消登记可取消句柄、终态不覆盖取消 | `fix(serve): 命令超时接线并让任务取消真正生效` |
+| B1 | P0-1 监控采集并发写 map 崩溃:AlertManager/RuleEngine 补互斥,`SilentUntil` 经锁访问,新增 `-race` 并发回归测试 | `fix(serve): 修复监控采集并发写 map 导致的进程崩溃` |
+| B2 | P0-2/P0-3 执行语义:`command_timeout`/`connect_timeout` 接线生效;取消登记可取消句柄、中断在途 SSH 会话、终态不覆盖取消 | `fix(serve): 命令超时接线并让任务取消真正生效` |
 | B3 | P0-4 管理员生命周期:禁止删除/降级最后一个 admin;Delete 补 404 | `fix(serve): 增加最后管理员保护` |
-| B4 | P1-2/P1-3 monitor 文案与错误信息:统一英文、收敛 `err.Error()` 外泄 | `refactor(serve): 统一监控接口错误响应` |
-| B5 | P1-4 敏感键:settings 对 `jwt_secret` 拒读拒写 | `fix(serve): settings 接口屏蔽 jwt_secret` |
-| B6 | P1-6 死参数:清理 exec 无消费方的 async/timeout/no_color/silent 参数族 | `refactor(serve): 清理 exec 死参数` |
+| B4 | P1-4 敏感键:settings 屏蔽 `jwt_secret`(List 过滤、Get/Set 403) | `fix(serve): settings 接口屏蔽 jwt_secret` |
+| B5 | P1-5 优雅停机:http.Server + 信号处理,drain 后关闭 monitor/history/serve 三处数据库连接 | `fix(serve): 增加优雅停机并释放数据库连接` |
+| B6 | P1-2/P1-3(监控部分) 错误响应统一:`internalErr` 收敛 500 类细节外泄,校验/业务文案改英文 | `refactor(serve): 统一监控接口错误响应` |
 
-**结果**:待各批次完成后回填(提交引用与量化指标)。
+**结果**:
+
+- P0 四项全部修复;imports 与 `internal/monitor` 相关的根因(并发写 map)一并消除
+- 新增 12 个行为/回归测试:B1 并发竞态 ×1、B2 超时/取消/连接超时 ×3、B3 最后管理员 ×4、B4 敏感键 ×1、B5 优雅停机 ×1、B6 错误响应 ×2;`go test -race ./...` 两个模块全绿
+- E2E 实证(每项均为修复前后对照):
+  - **崩溃**:按 AGENTS.md 的 seed 50 节点流程,进程在 111s 后 `fatal error: concurrent map writes`、退出码 2 → 修复后跨采集轮次**存活**,`fatal error` 计数 0
+  - **超时**:`command_timeout=5s` 修复前 ~10s 才结束(硬编码 connect 超时)、无超时语义 → 修复后 **5s 准时终止**并返回"命令执行超时"
+  - **取消**:`DELETE /tasks/:id` 修复前 21s 后被 `failed` 覆盖 → 修复后 21s **仍为 cancelled**,且执行上下文被中断
+  - **停机**:SIGTERM 修复前退出码 143、日志无停机记录 → 修复后**退出码 0**、日志记录 draining
+  - **敏感键**:`GET/PUT /settings/jwt_secret` 修复前 200 返回密钥原文 → 修复后 **403**,List 不含该键
+  - **管理员**:修复前降级/删除唯一 admin 均成功(需 `--reset-admin` 救回) → 修复后 **409**,系统仍可用;`DELETE` 不存在用户由 200 变 **404**
+  - 鉴权矩阵:无 token 401、viewer 读 200 / 写 403
 
 ## 后续改进路线图(按优先级)
 
-1. **优雅停机**:改用 `http.Server` + `signal.NotifyContext`,停机时停监控、关 DB(含 `history.NewDB` 句柄),给在途请求 drain 时间(P1-5)
+1. **通用错误响应收敛**:把 B6 的 `internalErr` 模式推广到 exec/playbook/transfer/ai/node_seed(约 15 处 `err.Error()` 外泄),并抽公共响应封装统一成功体形态(P1-1/P1-2)
 2. **token 撤销机制**:引入 token 版本号/`jti` 或短 TTL + refresh,使降级/删除/改密即时生效(P1-8)
-3. **响应与文案统一**:抽公共响应封装(`ok(c,data)` / `fail(c,status,msg)`)并把服务端 message 收敛到单一语言,纳入 i18n 或英文常量(P1-1/P1-3)
+3. **exec 死参数清理**:移除 `async*`/`timeout`/`no_color`/`silent`,并明确前端 `async-toggle` 的语义(或直接移除该开关)(P1-6)
 4. **AI 会话密钥生命周期**:接定时 `Cleanup` 或改为按需短周期密钥;评估移除 `__plain__:` 明文回退(P1-10)
-5. **批量写接口权限复核**:`/nodes/seed` 收归 admin 或改为仅 dev 模式注册(P1-16)
-6. **`/nodes/import`、`/nodes/batch/groups` 权限复核**与导入内容校验(P1-16)
-7. **登录防爆破**:失败计数 + 指数退避或锁定(P1-15)
-8. **owl-serve 版本注入与文案对齐 CLI**(P1-14,上轮路线图第 4 项)
-9. **playbook 模板名白名单校验**(P1-11)
-10. **`format=json` 用 `encoding/json` 正确编码**(P1-13)
-11. **凭据静态加密 / OS keychain**(P2-1,与 CLI 轮合并考虑)
-12. **HTTP 访问日志与 keychain/审计**(P2-5)
+5. **批量写接口权限复核**:`/nodes/seed` 收归 admin 或改为仅 dev 模式注册;`/nodes/import`、`/nodes/batch/groups` 同并复核(P1-16)
+6. **登录防爆破**:失败计数 + 指数退避或锁定(P1-15)
+7. **playbook 模板名白名单校验**(P1-11)
+8. **`format=json` 用 `encoding/json` 正确编码**(P1-13)
+9. **owl-serve 版本注入与文案对齐 CLI**(P1-14,上轮路线图第 4 项)
+10. **`/ws` 作用域与来源校验**:按用户/任务过滤广播,恢复 Origin 校验(P1-9)
+11. **staging 上传显式 `filepath.Base`**,与 playbook Upload 保持防御一致(P1-17)
+12. **凭据静态加密 / OS keychain**(P2-1,与 CLI 轮合并考虑);**HTTP 访问日志**(P2-5)
 
 ## 下一评审区域建议
 
