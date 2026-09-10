@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,11 +11,39 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 )
+
+// TestServer_Serve_GracefulShutdown 验证 ctx 取消后 Serve 优雅退出并关闭数据库。
+// 修复前 Start 直接 Router.Run()，无信号处理、DB 永不关闭（SIGTERM 退出码 143）。
+func TestServer_Serve_GracefulShutdown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+
+	// Router 非 nil 以避免触发完整的 Init（本测试只验证生命周期）
+	s := &Server{Config: &Config{ListenAddr: "127.0.0.1:0"}, DB: db, Router: gin.New()}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ctx) }()
+
+	time.Sleep(150 * time.Millisecond) // 等监听就绪
+	cancel()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err, "优雅停机应返回 nil")
+	case <-time.After(15 * time.Second):
+		t.Fatal("Serve 未在 ctx 取消后退出")
+	}
+
+	assert.Error(t, db.Ping(), "停机后数据库应已关闭")
+}
 
 func TestServerInit_SyncsManualPlaybooksOnStartup(t *testing.T) {
 	home, err := os.UserHomeDir()

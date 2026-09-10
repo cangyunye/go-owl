@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -218,6 +219,16 @@ func (s *Service) Start(ctx context.Context) {
 func (s *Service) Stop() {
 	if s.cancel != nil {
 		s.cancel()
+	}
+}
+
+// Close 停止采集循环并关闭指标库连接（进程退出前调用）。
+func (s *Service) Close() {
+	s.Stop()
+	if s.Store != nil {
+		if err := s.Store.Close(); err != nil {
+			log.Printf("monitor: 关闭指标库失败: %v", err)
+		}
 	}
 }
 

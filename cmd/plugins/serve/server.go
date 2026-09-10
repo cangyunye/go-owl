@@ -7,14 +7,18 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
 	"math/big"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/handler"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
@@ -70,6 +74,7 @@ type Server struct {
 	History             *store.HistoryStore
 	terminalHandler     *handler.TerminalHandler
 	commands            *store.CommandStore
+	historyDB           history.DBInterface
 	userCreatedHooks    []UserCreatedHook
 	shortcutHandler     *handler.ShortcutHandler
 	monitor             *serveMonitor.Service
@@ -124,9 +129,11 @@ func (s *Server) Init() (*AdminCredentials, error) {
 		return nil, fmt.Errorf("init settings: %w", err)
 	}
 
-	if _, err := history.NewDB(history.DefaultConfig()); err != nil {
+	histDB, err := history.NewDB(history.DefaultConfig())
+	if err != nil {
 		return nil, fmt.Errorf("init shared history db: %w", err)
 	}
+	s.historyDB = histDB
 
 	// JWT secret
 	secret, err := getOrCreateJWTSecret(context.Background(), db, s.Config.DBPath)
@@ -520,7 +527,15 @@ func (s *Server) devStaticFS() fs.FS {
 	return os.DirFS(filepath.Join(wd, "web"))
 }
 
+// Start 启动 HTTP 服务与监控采集循环，收到 SIGINT/SIGTERM 后优雅停机。
 func (s *Server) Start() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return s.Serve(ctx)
+}
+
+// Serve 在 ctx 生命周期内提供服务：ctx 取消后停止监控、drain 在途请求并释放资源。
+func (s *Server) Serve(ctx context.Context) error {
 	if s.Router == nil {
 		if _, err := s.Init(); err != nil {
 			return err
@@ -528,9 +543,50 @@ func (s *Server) Start() error {
 	}
 	// 启动监控采集循环（owl-serve 兼执行机）
 	if s.monitor != nil {
-		s.monitor.Start(context.Background())
+		s.monitor.Start(ctx)
 	}
-	return s.Router.Run(s.Config.ListenAddr)
+
+	srv := &http.Server{Addr: s.Config.ListenAddr, Handler: s.Router}
+	errCh := make(chan error, 1)
+	go func() {
+		err := srv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		errCh <- err
+	}()
+
+	select {
+	case err := <-errCh:
+		s.Close()
+		return err
+	case <-ctx.Done():
+		log.Println("owl-serve: shutdown signal received, draining...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("owl-serve: graceful shutdown failed: %v", err)
+		}
+		s.Close()
+		return <-errCh
+	}
+}
+
+// Close 释放服务资源：停止监控采集并关闭 monitor/history/serve 三处数据库连接。
+func (s *Server) Close() {
+	if s.monitor != nil {
+		s.monitor.Close()
+	}
+	if s.historyDB != nil {
+		if err := s.historyDB.Close(); err != nil {
+			log.Printf("owl-serve: close history db: %v", err)
+		}
+	}
+	if s.DB != nil {
+		if err := s.DB.Close(); err != nil {
+			log.Printf("owl-serve: close db: %v", err)
+		}
+	}
 }
 
 func copySamplePlaybooks(dir string) {
