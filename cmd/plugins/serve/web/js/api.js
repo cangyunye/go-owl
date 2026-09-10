@@ -404,7 +404,7 @@ export const api = {
 
     const open = () => {
       if (closed) return;
-      wsTicket().then((res) => {
+      api.wsTicket().then((res) => {
         if (closed) return;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws?ticket=${encodeURIComponent(res.ticket)}`);
