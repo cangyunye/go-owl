@@ -312,7 +312,6 @@ func (s *Server) setupRoutes() {
 			writer.POST("/nodes/import", s.nodeHandler.Import)
 			writer.POST("/nodes/ping", s.nodeHandler.Ping)
 			writer.POST("/nodes/check", s.nodeHandler.Check)
-			writer.POST("/nodes/seed", s.nodeHandler.Seed)
 		}
 
 		operator := auth.Group("", s.authHandler.RBACMiddleware(model.RoleOperator, model.RoleAdmin))
@@ -345,6 +344,8 @@ func (s *Server) setupRoutes() {
 		admin := auth.Group("", s.authHandler.RBACMiddleware(model.RoleAdmin))
 		{
 			admin.DELETE("/nodes/:id", s.nodeHandler.Delete)
+			// seed 是测试/演示用的批量造数工具（50 条 mock 节点），不下放给 editor
+			admin.POST("/nodes/seed", s.nodeHandler.Seed)
 			admin.DELETE("/tasks/:id", s.execHandler.Cancel)
 			admin.DELETE("/staging/:name", s.stagingHandler.Delete)
 			admin.GET("/settings", s.settingsHandler.List)

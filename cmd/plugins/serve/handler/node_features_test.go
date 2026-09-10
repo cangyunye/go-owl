@@ -52,7 +52,7 @@ func featuresTestSetup(t *testing.T) (*sql.DB, *NodeHandler, *gin.Engine) {
 	injectRBAC(db, router, "POST", "/api/v1/nodes/import", model.RoleEditor, h.Import)
 	injectRBAC(db, router, "POST", "/api/v1/nodes/ping", model.RoleEditor, h.Ping)
 	injectRBAC(db, router, "POST", "/api/v1/nodes/check", model.RoleEditor, h.Check)
-	injectRBAC(db, router, "POST", "/api/v1/nodes/seed", model.RoleEditor, h.Seed)
+	injectRBAC(db, router, "POST", "/api/v1/nodes/seed", model.RoleAdmin, h.Seed)
 
 	return db, h, router
 }
@@ -834,7 +834,7 @@ nodes:
 func TestSeed_CreatesFiftyNodes(t *testing.T) {
 	db, _, router := featuresTestSetup(t)
 
-	w := authRequest(t, router, "POST", "/api/v1/nodes/seed", nil, "editor")
+	w := authRequest(t, router, "POST", "/api/v1/nodes/seed", nil, "admin")
 	assert.Equal(t, 200, w.Code)
 
 	var resp struct {
@@ -865,7 +865,7 @@ func TestSeed_CreatesFiftyNodes(t *testing.T) {
 func TestSeed_IdempotentSkipsExisting(t *testing.T) {
 	_, h, router := featuresTestSetup(t)
 
-	w := authRequest(t, router, "POST", "/api/v1/nodes/seed", nil, "editor")
+	w := authRequest(t, router, "POST", "/api/v1/nodes/seed", nil, "admin")
 	assert.Equal(t, 200, w.Code)
 
 	var first struct {
@@ -875,7 +875,7 @@ func TestSeed_IdempotentSkipsExisting(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &first)
 	assert.Equal(t, 50, first.Created)
 
-	w = authRequest(t, router, "POST", "/api/v1/nodes/seed", nil, "editor")
+	w = authRequest(t, router, "POST", "/api/v1/nodes/seed", nil, "admin")
 	assert.Equal(t, 200, w.Code)
 
 	var second struct {
@@ -889,4 +889,12 @@ func TestSeed_IdempotentSkipsExisting(t *testing.T) {
 	var count int
 	h.db.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&count)
 	assert.Equal(t, 53, count)
+}
+
+// TestSeed_EditorForbidden seed 是批量造数工具,不下放给 editor。
+func TestSeed_EditorForbidden(t *testing.T) {
+	_, _, router := featuresTestSetup(t)
+
+	w := authRequest(t, router, "POST", "/api/v1/nodes/seed", nil, "editor")
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
