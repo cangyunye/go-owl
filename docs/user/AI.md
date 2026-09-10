@@ -154,6 +154,7 @@ owl ai --session sess-abc123
 owl ai "查询所有节点" --verbose
 ```
 
+<!-- TODO(screenshot): 此处补充终端截图（见 ../serve-web-ui.md 附录） -->
 ### 示例输出
 
 ```

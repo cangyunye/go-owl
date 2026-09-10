@@ -44,6 +44,7 @@ owl node list --format json
 | `--status` | 按状态筛选（online/offline） |
 | `--format` | 输出格式（table/json/yaml） |
 
+<!-- TODO(screenshot): 此处补充终端截图（见 ../serve-web-ui.md 附录） -->
 ### 示例输出
 
 ```

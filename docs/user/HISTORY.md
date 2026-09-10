@@ -50,6 +50,7 @@ owl history --output report.json
 | `--output` | 输出到文件 |
 | `--verbose` | 显示详细信息 |
 
+<!-- TODO(screenshot): 此处补充终端截图（见 ../serve-web-ui.md 附录） -->
 ### 示例输出
 
 ```

@@ -70,6 +70,7 @@ owl file upload large-file.dat --nodes node1,node2 --parallel=false
 owl file upload backup.tar.gz --nodes web-01 --no-overwrite
 ```
 
+<!-- TODO(screenshot): 此处补充终端截图（见 ../serve-web-ui.md 附录） -->
 ### 示例输出
 
 ```

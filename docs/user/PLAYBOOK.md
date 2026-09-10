@@ -35,6 +35,7 @@ owl playbook list --format json
 | `--groups` | 按分组筛选 |
 | `--format` | 输出格式 |
 
+<!-- TODO(screenshot): 此处补充终端截图（见 ../serve-web-ui.md 附录） -->
 ### 示例输出
 
 ```

@@ -25,6 +25,7 @@ owl settings - 设置管理
 owl settings show
 ```
 
+<!-- TODO(screenshot): 此处补充终端截图（见 ../serve-web-ui.md 附录） -->
 ### 示例输出
 
 ```

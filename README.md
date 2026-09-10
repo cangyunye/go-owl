@@ -39,7 +39,8 @@ make install                      # 安装到 ~/.local/bin
 make help                         # 查看全部目标
 ```
 
-## 🎉 快速开始
+## 🎉 快速开始<!-- TODO(screenshot): 本节 6 个小节的命令输出建议逐一补充终端截图（见 docs/serve-web-ui.md 附录） -->
+
 
 ### 🐣 1. 节点管理
 
@@ -153,6 +154,7 @@ owl ai config show
 | **AI 助手** | [AI.md](docs/user/AI.md) | 智能运维辅助 |
 | **历史记录** | [HISTORY.md](docs/user/HISTORY.md) | 执行历史查看 |
 | **TUI 界面** | [TUI.md](docs/user/TUI.md) | `owl tui` 终端界面（Nodes/Exec/File/AI 面板） |
+| **Web 控制台** | [serve-web-ui.md](docs/serve-web-ui.md) | owl-serve Web 界面图解（含截图） |
 
 ## 🛠️ 使用示例
 

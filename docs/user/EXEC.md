@@ -68,6 +68,7 @@ owl exec run "uptime" --format json
 owl exec run "df -h" --format detail
 ```
 
+<!-- TODO(screenshot): 此处补充终端截图（见 ../serve-web-ui.md 附录） -->
 ### 示例输出
 
 **simple 格式**:

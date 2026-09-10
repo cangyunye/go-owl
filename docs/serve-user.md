@@ -36,6 +36,8 @@ owl serve
 2. 生成 JWT 密钥（持久化到数据库中）
 3. 创建 admin 用户，随机密码输出到 stdout：
 
+<!-- TODO(screenshot): 此处补充终端截图：owl-serve 首次启动输出（URL/Username/Password） -->
+
 ```
 URL:      http://127.0.0.1:8080
 Username: admin
@@ -55,6 +57,8 @@ owl serve --reset-admin
 ```
 
 输出：
+
+<!-- TODO(screenshot): 此处补充终端截图：owl-serve --reset-admin 输出 -->
 
 ```
 Admin password has been reset.
@@ -261,6 +265,8 @@ GET /api/v1/tasks?page=1&page_size=50
 | admin | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## 前端 SPA
+
+> 各页面功能截图详见 [serve-web-ui.md](serve-web-ui.md)。
 
 | 路由 | 页面 | 说明 |
 |------|------|------|

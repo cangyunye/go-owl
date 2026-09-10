@@ -65,6 +65,7 @@ owl session attach web-01 web-02 web-03 --mode multi
 
 其他命令直接发送到远程节点执行。
 
+<!-- TODO(screenshot): 此处补充终端截图（见 ../serve-web-ui.md 附录） -->
 ### 示例输出
 
 ```

@@ -2,6 +2,7 @@
 
 `owl tui` 是全屏交互式终端界面（bubbletea 实现），在终端里完成节点管理、批量命令执行、文件传输和 AI 对话，无需记忆命令行参数。
 
+<!-- TODO(screenshot): 此处补充 TUI 界面截图（Nodes/Exec/File/AI 面板，见 ../serve-web-ui.md 附录） -->
 ## 构建与启动
 
 TUI 组件通过构建标签门控，默认构建不包含：
