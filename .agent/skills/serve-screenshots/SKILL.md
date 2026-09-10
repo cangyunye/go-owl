@@ -5,8 +5,8 @@ description: owl-serve Web 控制台截图重拍工作流。当前端 UI 变更�
 
 # owl-serve 截图工作流（serve-screenshots）
 
-维护 [docs/serve-web-ui.md](../../docs/serve-web-ui.md) 的截图（`docs/images/serve/01-login.png` ... `26-theme-warm.png`）。
-本目录脚本：`seed_demo_data.py`（准备演示数据）、`capture.py`（采集 26 张图）。
+维护 [docs/serve-web-ui.md](../../../docs/serve-web-ui.md) 的截图（`docs/images/serve/01-login.png` ... `26-theme-warm.png`）。
+配套脚本位于 `scripts/serve-screenshots/`：`seed_demo_data.py`（准备演示数据）、`capture.py`（采集 26 张图）。
 
 ## 使用时机
 
