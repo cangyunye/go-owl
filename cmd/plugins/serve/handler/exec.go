@@ -181,6 +181,57 @@ type ExecConfig struct {
 	ScriptKeep    bool
 }
 
+// checkExplicitNodes 校验显式指定的节点 ID 都存在，缺失的以业务错误返回
+// （消息面向用户）。其余节点选择错误可能携带 DB 细节，调用方应按内部错误处理。
+func checkExplicitNodes(ctx context.Context, db *sql.DB, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	uniq := make([]string, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			uniq = append(uniq, id)
+		}
+	}
+	if len(uniq) == 0 {
+		return nil
+	}
+	args := make([]any, len(uniq))
+	placeholders := make([]string, len(uniq))
+	for i, id := range uniq {
+		args[i] = id
+		placeholders[i] = "?"
+	}
+	rows, err := db.QueryContext(ctx, `SELECT id FROM nodes WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	found := make(map[string]bool, len(uniq))
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		found[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	var missing []string
+	for _, id := range uniq {
+		if !found[id] {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		return bizErr("node not found: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
 func resolveNodeIDs(ctx context.Context, db *sql.DB, req execRequest) ([]string, error) {
 	sel := nodeselect.NewSelector(&dbNodeSource{db: db})
 
@@ -246,15 +297,15 @@ func resolveScriptContent(req execRequest, stagingDir string) (content string, n
 	if req.ScriptURL != "" {
 		resp, err := http.Get(req.ScriptURL)
 		if err != nil {
-			return "", "", fmt.Errorf("fetch script url: %w", err)
+			return "", "", bizErr("fetch script url: %v", err)
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return "", "", fmt.Errorf("fetch script url: status %d", resp.StatusCode)
+			return "", "", bizErr("fetch script url: status %d", resp.StatusCode)
 		}
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return "", "", fmt.Errorf("read script url: %w", err)
+			return "", "", bizErr("read script url: %v", err)
 		}
 		name = req.ScriptName
 		if name == "" {
@@ -268,29 +319,29 @@ func resolveScriptContent(req execRequest, stagingDir string) (content string, n
 	if req.ScriptRef != "" {
 		return resolveStagingScriptRef(stagingDir, req.ScriptRef)
 	}
-	return "", "", fmt.Errorf("script_content, script_url or script_ref is required")
+	return "", "", bizErr("script_content, script_url or script_ref is required")
 }
 
 // resolveStagingScriptRef 从中转站目录读取脚本内容；
 // 文件名复用 scriptNameRe 白名单（仅 [A-Za-z0-9._-]），天然禁止 / 与 ..，防路径穿越。
 func resolveStagingScriptRef(dir, ref string) (string, string, error) {
 	if !scriptNameRe.MatchString(ref) || ref == "." || ref == ".." {
-		return "", "", fmt.Errorf("invalid script_ref %q: only [A-Za-z0-9._-] allowed", ref)
+		return "", "", bizErr("invalid script_ref %q: only [A-Za-z0-9._-] allowed", ref)
 	}
 	path := filepath.Join(dir, ref)
 	fi, err := os.Lstat(path)
 	if err != nil {
-		return "", "", fmt.Errorf("script not found in staging: %s", ref)
+		return "", "", bizErr("script not found in staging: %s", ref)
 	}
 	if fi.IsDir() {
-		return "", "", fmt.Errorf("script_ref %q is a directory", ref)
+		return "", "", bizErr("script_ref %q is a directory", ref)
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return "", "", fmt.Errorf("read staging script: %w", err)
+		return "", "", bizErr("read staging script: %v", err)
 	}
 	if len(b) == 0 {
-		return "", "", fmt.Errorf("staging script %q is empty", ref)
+		return "", "", bizErr("staging script %q is empty", ref)
 	}
 	return string(b), ref, nil
 }
@@ -302,9 +353,20 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// 显式指定的节点先做存在性预检：缺失的以业务错误返回明确的 node not found，
+	// 其余选择错误（可能含 DB 细节）走 internal 路径。
+	explicit := req.NodeIDs
+	if len(explicit) == 0 && req.NodeID != "" {
+		explicit = []string{req.NodeID}
+	}
+	if err := checkExplicitNodes(c.Request.Context(), h.db, explicit); err != nil {
+		respondErr(c, http.StatusBadRequest, "resolve target nodes failed", err)
+		return
+	}
+
 	nodeIDs, err := resolveNodeIDs(c.Request.Context(), h.db, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		respondErr(c, http.StatusBadRequest, "resolve target nodes failed", err)
 		return
 	}
 	if len(nodeIDs) == 0 {
@@ -319,7 +381,7 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	if isScript {
 		content, name, err := resolveScriptContent(req, stagingDirFromDB(h.db))
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+			respondErr(c, http.StatusBadRequest, "invalid script request", err)
 			return
 		}
 		scriptContent = content
@@ -331,7 +393,7 @@ func (h *ExecHandler) Create(c *gin.Context) {
 			scriptDest = "/tmp"
 		}
 		if err := validateScriptTarget(scriptDest, scriptName); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+			respondErr(c, http.StatusBadRequest, "invalid script request", err)
 			return
 		}
 	} else {
@@ -815,13 +877,13 @@ var (
 // 防止未加引号拼入 shell 命令时注入元字符（如 ; | $()）。
 func validateScriptTarget(dest, name string) error {
 	if !strings.HasPrefix(dest, "/") || !scriptDestRe.MatchString(dest) {
-		return fmt.Errorf("invalid script_dest %q: must be an absolute path containing only [A-Za-z0-9._/-]", dest)
+		return bizErr("invalid script_dest %q: must be an absolute path containing only [A-Za-z0-9._/-]", dest)
 	}
 	if strings.Contains(dest, "..") {
-		return fmt.Errorf("invalid script_dest %q: \"..\" is not allowed", dest)
+		return bizErr("invalid script_dest %q: \"..\" is not allowed", dest)
 	}
 	if !scriptNameRe.MatchString(name) || name == "." || name == ".." {
-		return fmt.Errorf("invalid script_name %q: only [A-Za-z0-9._-] allowed", name)
+		return bizErr("invalid script_name %q: only [A-Za-z0-9._-] allowed", name)
 	}
 	return nil
 }

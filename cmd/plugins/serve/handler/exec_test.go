@@ -205,7 +205,7 @@ func TestExecCreate_NodeNotFound(t *testing.T) {
 	router := execRBACRouter(t, h)
 	w := execPOST(t, router, map[string]string{"node_id": "nonexistent", "command": "uptime"})
 	assert.Equal(t, 400, w.Code)
-	assert.Contains(t, w.Body.String(), "节点不存在")
+	assert.Contains(t, w.Body.String(), "node not found: nonexistent")
 }
 
 func TestExecCreate_ScriptMode(t *testing.T) {
@@ -1007,4 +1007,23 @@ func TestExecuteTask_JSONFormatIsValidJSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(got.Output), &parsed), "输出应为合法 JSON: %s", got.Output)
 	assert.Equal(t, "test-node", parsed.NodeID)
 	assert.Contains(t, parsed.Output, `"hi"`)
+}
+
+// TestExecCreate_DBFailureDoesNotLeak 节点选择/查询的内部错误不得把 DB 细节回传。
+func TestExecCreate_DBFailureDoesNotLeak(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	require.NoError(t, db.Close()) // 关库:预检查询即失败
+
+	ts := store.NewTaskStore(db)
+	h := NewExecHandler(db, ts, nil)
+	h.exec = &mockExecutor{output: "ok\n", exitCode: 0}
+	router := execRBACRouter(t, h)
+
+	w := execPOST(t, router, map[string]string{"node_id": "n1", "command": "uptime"})
+	assert.Equal(t, 400, w.Code)
+	assert.Contains(t, w.Body.String(), "resolve target nodes failed")
+	assert.NotContains(t, w.Body.String(), "database is closed")
+	assert.NotContains(t, w.Body.String(), "sql:")
 }

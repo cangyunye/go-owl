@@ -100,7 +100,7 @@ func (h *TransferHandler) submit(c *gin.Context, req *transferRequest) {
 		opts := nodeselect.SelectOptions{Groups: req.Groups, Labels: req.Labels}
 		nodes, err := sel.SelectIntersect(c.Request.Context(), opts)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+			respondErr(c, http.StatusBadRequest, "resolve target nodes failed", err)
 			return
 		}
 		for _, n := range nodes {
