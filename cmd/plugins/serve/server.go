@@ -245,7 +245,7 @@ func (s *Server) Init() (*AdminCredentials, error) {
 
 func (s *Server) setupRoutes() {
 	s.Router = gin.New()
-	s.Router.Use(gin.Recovery())
+	s.Router.Use(gin.Recovery(), accessLog())
 	// 不信任任何代理头：登录限流按 ClientIP 计数，若默认"信任所有代理"，
 	// 攻击者可用伪造的 X-Forwarded-For 轮换来源绕过限流。反向代理部署时
 	// 需显式配置受信代理地址。
