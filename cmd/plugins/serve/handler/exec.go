@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -693,8 +694,16 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 
 	outputStr := output
 	if cfg.Format == "json" {
-		outputStr = fmt.Sprintf(`{"node_id":"%s","command":"%s","exit_code":%d,"output":%s}`,
-			task.NodeID, task.Command, exitCode, output)
+		payload, jerr := json.Marshal(map[string]interface{}{
+			"node_id":   task.NodeID,
+			"command":   task.Command,
+			"exit_code": exitCode,
+			"output":    output,
+		})
+		if jerr != nil {
+			payload = []byte(`{"error":"marshal output failed"}`)
+		}
+		outputStr = string(payload)
 	} else if cfg.Format == "detail" {
 		outputStr = fmt.Sprintf("Node: %s\nCommand: %s\nExit Code: %d\n---\n%s",
 			task.NodeID, task.Command, exitCode, output)

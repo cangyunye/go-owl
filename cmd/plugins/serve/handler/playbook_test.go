@@ -629,3 +629,41 @@ tasks:
 	assert.Contains(t, run.Warnings[0], "upload-missing")
 	assert.Contains(t, run.Warnings[0], "missing.bin")
 }
+
+// TestPlaybookCreate_RejectsUnsafeName 模板名不得拼出 library 目录之外的路径。
+func TestPlaybookCreate_RejectsUnsafeName(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`)
+	require.NoError(t, err)
+	library := t.TempDir()
+	_, err = db.Exec(`INSERT INTO settings (key, value) VALUES ('playbook_library_path', ?)`, library)
+	require.NoError(t, err)
+
+	ps := store.NewPlaybookStore(db)
+	require.NoError(t, ps.Init(t.Context()))
+	rs := store.NewPlaybookRunStore(db)
+	require.NoError(t, rs.Init(t.Context()))
+	h := NewPlaybookHandler(db, ps, rs, store.NewNodeStore(db), nil)
+
+	gin.SetMode(gin.TestMode)
+	post := func(body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest("POST", "/api/v1/playbook/template", strings.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h.Create(c)
+		return w
+	}
+
+	for _, name := range []string{"../evil", "a/b", "..", ".", `..\evil`, "bad name"} {
+		w := post(fmt.Sprintf(`{"name":%q,"tasks":[]}`, name))
+		assert.Equalf(t, http.StatusBadRequest, w.Code, "name=%q 应被拒绝", name)
+	}
+
+	w := post(`{"name":"ok-name","tasks":[{"name":"main","action":"command","args":{"cmd":"echo hi"}}]}`)
+	require.Equal(t, http.StatusCreated, w.Code)
+	_, err = os.Stat(filepath.Join(library, "ok-name.yaml"))
+	assert.NoError(t, err, "合法名应正常写入 library")
+}

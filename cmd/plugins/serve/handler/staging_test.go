@@ -293,3 +293,25 @@ func TestStagingUpload_InsufficientSpace(t *testing.T) {
 	rec := multipartUpload(t, router, token, "bigfile.dat", "some data")
 	assert.Equal(t, 507, rec.Code)
 }
+
+// TestStagingUpload_TraversalFilenameStaysInStagingDir 上传文件名带路径时
+// 只能落在中转站目录内（显式 filepath.Base，不依赖标准库净化）。
+func TestStagingUpload_TraversalFilenameStaysInStagingDir(t *testing.T) {
+	_, h, dir := stagingTestDB(t)
+	router := stagingRouter(t, h,
+		[]model.Role{model.RoleOperator}, []model.Role{model.RoleAdmin}, []model.Role{model.RoleViewer})
+
+	w := multipartUpload(t, router, testTokenOp(t), "../../escape.sh", "echo hi")
+	require.Equal(t, http.StatusAccepted, w.Code)
+
+	var resp struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "escape.sh", resp.Name, "文件名应取 basename")
+	assert.True(t, strings.HasPrefix(resp.Path, dir), "落盘路径必须在 staging 目录内: %s", resp.Path)
+
+	_, err := os.Stat(filepath.Join(dir, "escape.sh"))
+	assert.NoError(t, err, "文件应写在中转站目录中")
+}

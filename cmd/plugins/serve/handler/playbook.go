@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -70,6 +71,10 @@ func (h *PlaybookHandler) Create(c *gin.Context) {
 	}
 	if req.Name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "name is required"})
+		return
+	}
+	if !playbookNameRe.MatchString(req.Name) || req.Name == "." || req.Name == ".." {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid name: only [A-Za-z0-9._-] allowed"})
 		return
 	}
 	if req.Version == "" {
@@ -152,6 +157,10 @@ func (h *PlaybookHandler) Create(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{"data": created, "file_path": outputPath})
 }
+
+// playbookNameRe 限制模板文件名：仅 [A-Za-z0-9._-]，防止 req.Name 经
+// filepath.Join 拼出 library 目录之外的路径。
+var playbookNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 const maxPlaybookUploadSize = 2 * 1024 * 1024 // 2MB
 

@@ -97,7 +97,8 @@ func (h *StagingHandler) Upload(c *gin.Context) {
 	}
 	defer file.Close()
 
-	name := header.Filename
+	// 显式取 base name：不依赖标准库对 multipart 文件名的净化，防路径穿越
+	name := filepath.Base(header.Filename)
 	size := header.Size
 
 	if size == 0 {

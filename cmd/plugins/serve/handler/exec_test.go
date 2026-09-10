@@ -972,3 +972,39 @@ func TestExecutorFor_ConnectTimeout(t *testing.T) {
 	assert.Equal(t, 3*time.Second, se.connectTimeout)
 	assert.NotSame(t, h.exec, got, "指定 connect_timeout 时必须复制，避免并发任务互相改超时")
 }
+
+// echoExecutor 回显指定内容，用于验证 format=json 输出的编码。
+type echoExecutor struct{ out string }
+
+func (e *echoExecutor) Execute(_ context.Context, _, _ string) (string, int, error) {
+	return e.out, 0, nil
+}
+
+func (e *echoExecutor) ExecuteStream(_ context.Context, _, _ string, ch chan<- OutputLine) (int, error) {
+	ch <- OutputLine{NodeID: "test-node", Line: e.out, Type: "stdout"}
+	close(ch)
+	return 0, nil
+}
+
+// TestExecuteTask_JSONFormatIsValidJSON format=json 时输出必须是合法 JSON：
+// 此前用 fmt.Sprintf 拼接，输出含引号/换行时会产出非法 JSON。
+func TestExecuteTask_JSONFormatIsValidJSON(t *testing.T) {
+	_, h := execTestSetup(t)
+	h.exec = &echoExecutor{out: `he said "hi" then left`}
+
+	task, err := h.task.Create(t.Context(), "test-node", "echo")
+	require.NoError(t, err)
+	h.executeTask(task.ID, ExecConfig{Command: "echo", NoRetry: true, Format: "json"})
+
+	got, err := h.task.Get(t.Context(), task.ID)
+	require.NoError(t, err)
+	var parsed struct {
+		NodeID   string `json:"node_id"`
+		Command  string `json:"command"`
+		ExitCode int    `json:"exit_code"`
+		Output   string `json:"output"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(got.Output), &parsed), "输出应为合法 JSON: %s", got.Output)
+	assert.Equal(t, "test-node", parsed.NodeID)
+	assert.Contains(t, parsed.Output, `"hi"`)
+}
