@@ -88,7 +88,7 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 
 ### P1 — 规范一致性
 
-1. **响应约定不统一**:错误侧已收敛 ✅(C1 引入 `businessError`/`respondErr`,400 类不再透传原始 error);成功响应形态仍各异——`{data:...}`(node/history/playbook)、裸对象(`c.JSON(200, task)`、`SettingResponse`、`DiskInfo`)、`{token,user}`(login)、`{deleted,logs_removed}`(history Clean)、`{status:"deleted"/"cancelled"}`(staging Delete / task Cancel),另有 `user.go:224` 成功也带 `code:200`。(后续)
+1. **响应约定不统一** ✅ 已修复(动作类,收窄版):C1 收敛错误侧后,顺位 3(评审确认方案 B)确立成功体约定并落 helper——对象 `{data}`(ok)、动作 `{"ok":true,"message"}`(okAction),13 处动作响应归一,`{code:200,...}` 离群清零;history Clean 迁移为标准包裹(前端同批适配)。裸对象/`{items,total}` 与 `{data,meta}` 并存等**既有 GET 形态有意保留**(前端按字段直读,全量改形波及 90+ 前端消费点,收益仅一致性;列为方案 A 前置,暂不做)。
 2. **内部错误细节回传客户端** ✅ 已修复:`internalErr(public, err)` 从 monitor 推广到 ai/exec/node_seed/playbook(B7);C1 进一步错误类型化(`businessError`/`respondErr`),400 类也只透传业务消息,原始 error 不再出 handler。仍透传的两处为有意保留:playbook Refresh(管理员刚配置的 library 路径自查信息)与 ai.go 502(provider 诊断)。
 3. **服务端 API 文案语言不统一** ✅ 已修复:monitor(B6)、其余 handler(B7)、黑名单提示与终端错误前缀(C2)均已统一英文;`internal/control/blacklist` 的中文文案属 CLI 共享层不在其列。服务端是否接入 i18n 机制列为可选项(见路线图)。
 4. **`settings` 接口暴露并允许覆写 `jwt_secret`** ✅ 已修复:新增 `sensitiveSettings` 黑名单,List 过滤、Get/Set 返回 403,并补测试。
