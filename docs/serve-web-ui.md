@@ -9,6 +9,9 @@
 - 模拟节点 SSH 不可达，因此部分截图中的任务状态为「失败」，属预期现象
 - 所有截图存于 `docs/images/serve/`
 
+> 截图可通过工作流一键重拍（前端 UI 变更后）：见 `.claude/skills/serve-screenshots/SKILL.md`，
+> 脚本位于 `scripts/serve-screenshots/`（`seed_demo_data.py` 准备演示数据，`capture.py` 采集并自校验 26 张图）。
+
 ---
 
 ## 1. 登录
