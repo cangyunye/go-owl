@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -20,6 +21,15 @@ type MonitorHandler struct {
 // NewMonitorHandler 创建监控 handler。
 func NewMonitorHandler(db *sql.DB, svc *monitorSvc.Service) *MonitorHandler {
 	return &MonitorHandler{db: db, svc: svc}
+}
+
+// internalErr 统一 500 类错误文案：对外只给短英文描述，内部错误细节仅记服务端日志
+// （此前直接把 err.Error() 回传，泄露 SQL/文件系统等实现细节）。
+func internalErr(public string, err error) string {
+	if err != nil {
+		log.Printf("monitor api: %s: %v", public, err)
+	}
+	return public
 }
 
 // AlertView 告警视图（附类型中文名与节点名）。
@@ -48,12 +58,12 @@ func (h *MonitorHandler) ListAlerts(c *gin.Context) {
 
 	alerts, err := h.svc.Store.ListAlerts(filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询告警失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query alerts failed", err)})
 		return
 	}
 	total, err := h.svc.Store.CountAlerts(filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "统计告警失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("count alerts failed", err)})
 		return
 	}
 	names := h.nodeNames()
@@ -70,17 +80,17 @@ func (h *MonitorHandler) GetAlert(c *gin.Context) {
 	id := c.Param("id")
 	a, exists, err := h.svc.Store.GetAlert(id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询告警失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query alerts failed", err)})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "告警不存在"})
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "alert not found"})
 		return
 	}
 	view := h.toView(*a, h.nodeNames())
 	remedies, err := h.svc.Store.RecommendedRemedies(a.AlertTypeID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询对策失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query remedies failed", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"alert": view, "remedies": remedies})
@@ -110,7 +120,7 @@ func (h *MonitorHandler) ResolveAlert(c *gin.Context) {
 func (h *MonitorHandler) ListAlertTypes(c *gin.Context) {
 	types, err := h.svc.Store.ListAlertTypes()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询告警类型失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query alert types failed", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": types})
@@ -120,12 +130,12 @@ func (h *MonitorHandler) ListAlertTypes(c *gin.Context) {
 func (h *MonitorHandler) UpdateAlertType(c *gin.Context) {
 	var at owlmonitor.AlertType
 	if err := c.ShouldBindJSON(&at); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求体非法: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": internalErr("invalid request body", err)})
 		return
 	}
 	at.ID = c.Param("id")
 	if err := h.svc.Store.UpsertAlertType(at); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新告警类型失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("update alert type failed", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"item": at})
@@ -135,7 +145,7 @@ func (h *MonitorHandler) UpdateAlertType(c *gin.Context) {
 func (h *MonitorHandler) ListRemedies(c *gin.Context) {
 	recs, err := h.svc.Store.ListRemedies(c.Query("alert_type_id"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询对策失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query remedies failed", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": recs})
@@ -145,18 +155,18 @@ func (h *MonitorHandler) ListRemedies(c *gin.Context) {
 func (h *MonitorHandler) UpsertRemedy(c *gin.Context) {
 	var r owlmonitor.Remedy
 	if err := c.ShouldBindJSON(&r); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求体非法: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": internalErr("invalid request body", err)})
 		return
 	}
 	if id := c.Param("id"); id != "" {
 		r.ID = id
 	}
 	if r.ID == "" || r.AlertTypeID == "" || r.Name == "" || r.Kind == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少必填字段(id/alert_type_id/name/kind)"})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "missing required fields (id/alert_type_id/name/kind)"})
 		return
 	}
 	if err := h.svc.Store.UpsertRemedy(r); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "写入对策失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("save remedy failed", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"item": r})
@@ -175,7 +185,7 @@ func (h *MonitorHandler) DeleteRemedy(c *gin.Context) {
 func (h *MonitorHandler) ListNotifyChannels(c *gin.Context) {
 	chs, err := h.svc.Store.ListNotifyChannels()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询通知渠道失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query notify channels failed", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": chs})
@@ -185,18 +195,18 @@ func (h *MonitorHandler) ListNotifyChannels(c *gin.Context) {
 func (h *MonitorHandler) UpsertNotifyChannel(c *gin.Context) {
 	var ch owlmonitor.NotifyChannel
 	if err := c.ShouldBindJSON(&ch); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求体非法: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": internalErr("invalid request body", err)})
 		return
 	}
 	if id := c.Param("id"); id != "" {
 		ch.ID = id
 	}
 	if ch.ID == "" || ch.Kind == "" || ch.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少必填字段(id/kind/name)"})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "missing required fields (id/kind/name)"})
 		return
 	}
 	if err := h.svc.Store.UpsertNotifyChannel(ch); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "写入通知渠道失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("save notify channel failed", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"item": ch})
@@ -205,7 +215,7 @@ func (h *MonitorHandler) UpsertNotifyChannel(c *gin.Context) {
 // DeleteNotifyChannel 删除通知渠道（admin）。
 func (h *MonitorHandler) DeleteNotifyChannel(c *gin.Context) {
 	if err := h.svc.Store.DeleteNotifyChannel(c.Param("id")); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -215,11 +225,11 @@ func (h *MonitorHandler) DeleteNotifyChannel(c *gin.Context) {
 func (h *MonitorHandler) TestNotifyChannel(c *gin.Context) {
 	ch, exists, err := h.svc.Store.GetNotifyChannel(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "渠道不存在"})
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "channel not found"})
 		return
 	}
 	ctx := c.Request.Context()
@@ -236,7 +246,7 @@ func (h *MonitorHandler) QueryMetrics(c *gin.Context) {
 	nodeID := c.Query("node_id")
 	metric := c.Query("metric")
 	if nodeID == "" || metric == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少 node_id/metric"})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "missing node_id/metric"})
 		return
 	}
 	from, _ := strconv.ParseInt(c.Query("from"), 10, 64)
@@ -249,7 +259,7 @@ func (h *MonitorHandler) QueryMetrics(c *gin.Context) {
 	}
 	samples, err := h.svc.Store.QuerySamples(nodeID, metric, from, to)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询指标失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query metrics failed", err)})
 		return
 	}
 	type point struct {
@@ -274,11 +284,11 @@ func (h *MonitorHandler) SetSilence(c *gin.Context) {
 		SilenceUntil int64 `json:"silence_until"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求体非法: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": internalErr("invalid request body", err)})
 		return
 	}
 	if err := h.svc.SetSilenceUntil(body.SilenceUntil); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"silence_until": body.SilenceUntil})
@@ -294,11 +304,11 @@ func (h *MonitorHandler) CreateRemedyPlan(c *gin.Context) {
 		StopOnError *bool    `json:"stop_on_error"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求体非法: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": internalErr("invalid request body", err)})
 		return
 	}
 	if len(body.RemedyIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请至少选择一条对策"})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "select at least one remedy"})
 		return
 	}
 	stopOnError := true
@@ -317,11 +327,11 @@ func (h *MonitorHandler) CreateRemedyPlan(c *gin.Context) {
 func (h *MonitorHandler) GetRemedyPlan(c *gin.Context) {
 	run, exists, err := h.svc.Store.GetRemedyRun(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "处置计划不存在"})
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "remedy plan not found"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"run": run})
@@ -331,7 +341,7 @@ func (h *MonitorHandler) GetRemedyPlan(c *gin.Context) {
 func (h *MonitorHandler) ListRemedyPlans(c *gin.Context) {
 	runs, err := h.svc.Store.ListRemedyRunsByAlert(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": runs})
@@ -341,19 +351,19 @@ func (h *MonitorHandler) ListRemedyPlans(c *gin.Context) {
 func (h *MonitorHandler) StopRemedyPlan(c *gin.Context) {
 	run, exists, err := h.svc.Store.GetRemedyRun(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "处置计划不存在"})
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "remedy plan not found"})
 		return
 	}
 	if run.IsTerminal() {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "计划已结束，无需停止"})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "plan already finished"})
 		return
 	}
 	if err := h.svc.Store.UpdateRemedyRunStatus(run.ID, owlmonitor.RunStopped); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -363,15 +373,15 @@ func (h *MonitorHandler) StopRemedyPlan(c *gin.Context) {
 func (h *MonitorHandler) ApproveRemedyPlan(c *gin.Context) {
 	run, exists, err := h.svc.Store.GetRemedyRun(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "处置计划不存在"})
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "remedy plan not found"})
 		return
 	}
 	if run.Status != owlmonitor.RunWaitingApproval {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "计划不在待审批状态"})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "plan is not pending approval"})
 		return
 	}
 	if err := h.svc.Store.ApproveRemedySteps(run.ID, time.Now().Unix()); err != nil {
@@ -386,15 +396,15 @@ func (h *MonitorHandler) ApproveRemedyPlan(c *gin.Context) {
 func (h *MonitorHandler) RejectRemedyPlan(c *gin.Context) {
 	run, exists, err := h.svc.Store.GetRemedyRun(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "处置计划不存在"})
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "remedy plan not found"})
 		return
 	}
 	if run.Status != owlmonitor.RunWaitingApproval {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "计划不在待审批状态"})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "plan is not pending approval"})
 		return
 	}
 	if err := h.svc.Store.RejectRemedySteps(run.ID, time.Now().Unix()); err != nil {

@@ -11,8 +11,32 @@ import (
 	"time"
 
 	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMonitorAPI_ValidationErrorIsEnglish 校验监控 API 的校验类错误文案统一为英文。
+func TestMonitorAPI_ValidationErrorIsEnglish(t *testing.T) {
+	srv, token := setupMonitorServer(t)
+
+	w := authedGet(t, srv, token, "/api/v1/metrics")
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "missing node_id/metric")
+}
+
+// TestMonitorAPI_500DoesNotLeakInternalError 校验 5xx 不把内部错误细节回传客户端：
+// 底层报错（如 sql: database is closed）只应进服务端日志。
+func TestMonitorAPI_500DoesNotLeakInternalError(t *testing.T) {
+	srv, token := setupMonitorServer(t)
+	require.NoError(t, srv.monitor.Store.Close())
+
+	w := authedGet(t, srv, token, "/api/v1/alerts")
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "query alerts failed")
+	body := w.Body.String()
+	assert.NotContains(t, body, "database is closed")
+	assert.NotContains(t, body, "sql:")
+}
 
 // setupMonitorServer 启动带监控服务的测试服务器，返回 srv 与 admin token。
 func setupMonitorServer(t *testing.T) (*Server, string) {
