@@ -548,6 +548,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		s.monitor.Start(ctx)
 	}
 
+	// 回收过期的 AI 会话密钥：每次 /ai/session-key 都会生成一把 2048 位 RSA
+	// 私钥，不回收则常驻内存无界增长。
+	if s.keyManager != nil {
+		go s.cleanupKeySessions(ctx)
+	}
+
 	srv := &http.Server{Addr: s.Config.ListenAddr, Handler: s.Router}
 	errCh := make(chan error, 1)
 	go func() {
@@ -571,6 +577,24 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 		s.Close()
 		return <-errCh
+	}
+}
+
+// cleanupKeySessions 周期回收过期的 AI 会话密钥，直到 ctx 结束。
+func (s *Server) cleanupKeySessions(ctx context.Context) {
+	const (
+		interval = 10 * time.Minute
+		maxAge   = time.Hour
+	)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.keyManager.Cleanup(maxAge)
+		}
 	}
 }
 

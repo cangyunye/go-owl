@@ -72,7 +72,8 @@ func (h *TerminalHandler) Terminal(c *gin.Context) {
 		rows = 24
 	}
 
-	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	// nil options 即保留 nhooyr 默认的同源校验（无 Origin 头时放行非浏览器客户端）
+	conn, err := websocket.Accept(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}

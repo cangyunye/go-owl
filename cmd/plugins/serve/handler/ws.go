@@ -123,11 +123,14 @@ func (h *WSHub) WsHandler(authService *AuthHandler) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid token"})
 			return
 		}
-		_ = claims
+		if _, ok := roleHierarchy[claims.Role]; !ok {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "unknown role"})
+			return
+		}
 
-		conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
-			InsecureSkipVerify: true,
-		})
+		// 不关闭来源校验：保留 nhooyr 默认的同源检查（无 Origin 头时放行非浏览器
+		// 客户端），阻断跨站页面用受害者浏览器建立 WebSocket。
+		conn, err := websocket.Accept(c.Writer, c.Request, nil)
 		if err != nil {
 			return
 		}
