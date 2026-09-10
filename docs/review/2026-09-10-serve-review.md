@@ -88,9 +88,9 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 
 ### P1 — 规范一致性
 
-1. **响应约定不统一**:全量 339 处 `c.JSON` 中,错误响应基本统一为 `{code,message}`,但成功响应形态各异——`{data:...}`(node/history/playbook)、裸对象(`c.JSON(200, task)`、`SettingResponse`、`DiskInfo`)、`{token,user}`(login)、`{models:...}`(ai)、`{deleted,logs_removed}`(history Clean)、`{status:"deleted"/"cancelled"}`(staging Delete / task Cancel),另有 `user.go:224` 成功也带 `code:200` 而别处成功不带。缺统一的响应封装层。(后续)
-2. **内部错误细节回传客户端** ✅ 已修复:`internalErr(public, err)` 已从 monitor 推广到 ai/exec/node_seed/playbook(B7),500 类错误一律不外泄细节、仅记服务端日志。仅剩 400 类业务错误仍透传原始 error(如 exec 的节点选择错误,其中混有"节点不存在"这类用户可见语义),彻底拆分需先做错误类型化(见路线图)。
-3. **服务端 API 文案语言不统一** ✅ 已修复(监控 handler 部分):`handler/monitor.go` 的校验类与业务类文案已统一为英文;`exec.go:333`、`terminal.go:85-124` 仍为中文,服务端整体仍无 i18n 机制。(后续)
+1. **响应约定不统一**:错误侧已收敛 ✅(C1 引入 `businessError`/`respondErr`,400 类不再透传原始 error);成功响应形态仍各异——`{data:...}`(node/history/playbook)、裸对象(`c.JSON(200, task)`、`SettingResponse`、`DiskInfo`)、`{token,user}`(login)、`{deleted,logs_removed}`(history Clean)、`{status:"deleted"/"cancelled"}`(staging Delete / task Cancel),另有 `user.go:224` 成功也带 `code:200`。(后续)
+2. **内部错误细节回传客户端** ✅ 已修复:`internalErr(public, err)` 从 monitor 推广到 ai/exec/node_seed/playbook(B7);C1 进一步错误类型化(`businessError`/`respondErr`),400 类也只透传业务消息,原始 error 不再出 handler。仍透传的两处为有意保留:playbook Refresh(管理员刚配置的 library 路径自查信息)与 ai.go 502(provider 诊断)。
+3. **服务端 API 文案语言不统一** ✅ 已修复:monitor(B6)、其余 handler(B7)、黑名单提示与终端错误前缀(C2)均已统一英文;`internal/control/blacklist` 的中文文案属 CLI 共享层不在其列。服务端是否接入 i18n 机制列为可选项(见路线图)。
 4. **`settings` 接口暴露并允许覆写 `jwt_secret`** ✅ 已修复:新增 `sensitiveSettings` 黑名单,List 过滤、Get/Set 返回 403,并补测试。
 5. **无优雅停机与资源释放** ✅ 已修复:`Serve(ctx)` 改用 `http.Server` + `signal.NotifyContext`,停机时停监控、10s drain、依次关闭 monitor/history/serve 三处数据库连接;实测 SIGTERM 退出码由 143 变为 0。
 6. **exec 死参数族(上轮路线图第 6 项,本轮确认)** ✅ 已修复(B8):`async*`/`timeout`/`no_color`/`silent` 已从 `execRequest`/`ExecConfig` 移除,前端"异步执行"开关同步删除(执行本就是后台任务 + WS 实时输出);`connect_timeout`/`command_timeout` 已在 B2 接线保留。
@@ -101,7 +101,7 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 11. **playbook 模板名未校验即拼路径** ✅ 已修复(B12):`req.Name` 改为 `^[A-Za-z0-9._-]+$` 白名单并拒绝 `.`/`..`,非法名 400;实测 `../../evil` 被拒、产物仅落在配置的 library 目录内。
 12. **任务状态写失败被静默丢弃**:`updateTaskStatus` 重试 5 次后直接 `return`(exec.go:652-660),不记日志、不告知——SQLite 锁竞争下任务可能永久停留在 `running` 而无人知晓。
 13. **`format=json` 输出非法 JSON** ✅ 已修复(B12):改用 `encoding/json` 编码,输出含引号/换行时仍为合法 JSON(新增测试断言可被 `json.Unmarshal`)。
-14. **owl-serve 帮助文本硬编码中文且无 version 注入**(上轮 P1-3 遗留):`cmd/owl-serve/main.go:18-29` 的 `Short/Long` 为中文硬编码,与 CLI 的 i18n 体系割裂;二进制无版本信息。
+14. **owl-serve 帮助文本硬编码中文且无 version 注入**(上轮 P1-3 遗留) ✅ 已修复(C5):Short/Long/flag 描述改用 internal/i18n 的 `serve.*` 键与 CLI 共目录;新增 version/commitID/buildTime 注入点,`--version` 与启动横幅均携带;Makefile 的 `SERVE_LDFLAGS` 接入 build-serve 与 build 的 serve 分支。
 15. **登录无防爆破** ✅ 已修复(B13):按"用户名+来源 IP"计数,连续失败 5 次后按 2^n 退避(2s 起、上限 5min),成功登录清零,限流时返回 429 + `Retry-After`;同时 `SetTrustedProxies(nil)` 关闭 gin"信任所有代理"的默认,避免伪造 `X-Forwarded-For` 轮换来源绕过按 IP 限流。
 16. **`/nodes/seed` 与批量写落在 editor 组** ✅ 已修复(B11):`/nodes/seed` 收归 admin(实测 editor 403、admin 200)。`/nodes/import`、`/nodes/batch/groups` 经复核**保留 editor**——它们与逐条新建/编辑等价,属编辑角色的预期能力,仅批量形式不同。
 17. **staging 上传依赖标准库净化,与 playbook 不一致** ✅ 已修复(B12):改为显式 `filepath.Base`,不再依赖标准库行为;新增"带路径文件名仍落中转站目录"回归测试(注:标准库本就净化,此改动是防御一致性而非修复已存在的穿越)。
@@ -112,7 +112,7 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 2. **服务端 SSRF 面**:exec 的 `script_url` 由服务端 `http.Get` 拉取(exec.go:193,operator+);监控通知渠道测试同理由服务端发请求(admin)。operator 本可执行命令,风险有限,但服务端网络位置与操作者不同,值得收敛(如仅允许白名单 scheme/网段)。
 3. **query 参数传 token**:`/ws`、`/session/terminal` 以 `?token=` 传 JWT(ws.go:115,terminal.go:45),可能进入反向代理访问日志与浏览器历史;当前服务端无访问日志(见 P2-5),风险主要来自外部反代。
 4. **JWT 密钥派生**:`sha256(dbPath+随机盐)` 后存 settings 表(server.go:426-451),拿到库文件即可离线伪造任意用户 token(与 P2-1 同源)。
-5. **HTTP 层无请求审计**:`gin.New()` 仅挂 `gin.Recovery()`,无 Logger/审计中间件(server.go:238-239),访问行为不可追溯(操作审计另有 history 表,但 HTTP 层空白)。
+5. **HTTP 层无请求审计** ✅ 已修复(C3):`accessLog` 中间件记录 方法/URI/状态码/耗时/来源 IP;`/ws`、`/session/terminal` 的 `?token=` 落日志前替换为 `***`。
 6. **共享 owl.db 多连接池并存**:serve、history、monitor 各自 `sql.Open` 同一文件(monitor 已 `SetMaxOpenConns(1)`,serve 侧未限制),CLI 再叠加一个写入方;均有 busy_timeout,但长事务下仍可能互踩(上轮 P2-4 延续)。
 
 ## 本轮处置(2026-09-10,已完成)
@@ -133,6 +133,10 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 | B11 | P1-16 `/nodes/seed` 收归 admin | `fix(serve): /nodes/seed 收归 admin` |
 | B12 | P1-11/P1-13/P1-17 playbook 名白名单、`format=json` 正规编码、staging 显式 basename | `fix(serve): playbook 模板名校验、staging 显式取 basename、format=json 正规编码` |
 | B13 | P1-15 登录失败限流(用户名+IP,2^n 退避)+ 关闭信任所有代理头 | `fix(serve): 登录失败限流` |
+| C1 | P1-2 余项 错误类型化:`businessError`/`respondErr`,400 类只透传业务消息 | `refactor(serve): 错误类型化,400 类响应不再透传原始 error` |
+| C2 | P1-3 余项 服务端自有文案统一英文(黑名单提示、终端错误前缀) | `refactor(serve): 服务端自有文案统一英文` |
+| C3 | P2-5 HTTP 访问日志,query 中 token 脱敏 | `fix(serve): 增加 HTTP 访问日志(query 中 token 脱敏)` |
+| C5 | P1-14 owl-serve 版本注入 + 帮助文案接入 i18n(上轮遗留) | `fix(serve): owl-serve 版本注入,帮助文案对齐 CLI` |
 
 **结果**:
 
@@ -153,20 +157,23 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 - 覆盖的实证:降级即时生效(editor 降级后旧 token 401,重启后仍 401,重登按新角色 403/200)、跨源握手 101→403、`/nodes/seed` editor 403、非法 playbook 名 400 且无越界产物、5 次错密码后 429 + `Retry-After`
 - 两个模块 `go test -race ./...` 全绿
 
+第三批(C1–C5)结果:
+
+- 新增 9 个测试:C1 错误类型化 ×2(业务消息、关库不泄露)、C3 访问日志 ×3、C5 版本/文案/flag 对齐 ×3;另更新黑名单与节点不存在两处断言
+- 覆盖的实证:400 类内部错误不再含 DB 细节;日志中 token 显示为 `token=%2A%2A%2A`;`owl-serve --version` 输出注入的版本/提交/构建时间,横幅带版本
+- 有意保留:`__plain__:` 明文回退(局域网 HTTP 场景唯一路径)、ai.go 502 与 playbook Refresh 的透传(管理员自查诊断)、`/nodes/import|batch/groups` 保持 editor
+
 ## 后续改进路线图(按优先级)
 
-已完成:B1–B13(见上表)。以下为剩余项:
+已完成:B1–B13、C1–C3、C5(见上表)。以下为剩余项:
 
-1. **错误类型化与响应封装**:区分业务错误/内部错误,使 400 类错误也能安全收敛;抽公共响应封装统一成功体形态(`{data:...}` 与裸对象混用)(P1-1/P1-2 余项)
-2. **服务端文案与 i18n**:`exec.go:333` 黑名单提示、`terminal.go:85-124` 仍为中文;服务端整体无 i18n 机制,建议统一英文常量或接入 `internal/i18n`(P1-3 余项)
-3. **owl-serve 版本注入与文案对齐 CLI**(P1-14,上轮路线图第 4 项)
-4. **`/ws` 按用户/任务作用域过滤**:当前广播按连接全量下发(P1-9 余项)
-5. **AI API key 传输与 `__plain__:` 回退**:根治需 HTTPS/反代,`__plain__:` 现状为局域网 HTTP 访问的唯一路径(P1-10 余项)
-6. **SSRF 面收敛**:exec `script_url` 与通知渠道测试的服务端出网可加白名单(P2-2)
-7. **凭据静态加密 / OS keychain**(P2-1,与 CLI 轮合并考虑)
-8. **HTTP 访问日志/审计中间件**(P2-5)
-9. **`?token=` 传参改走子协议或一次性票据**,避免进反代日志与浏览器历史(P2-3)
-10. **共享 owl.db 多连接池写并发演练**(P2-6)
+1. **成功响应封装统一**:`{data:...}` 与裸对象、`{status:...}` 混用,抽公共 `ok(c,data)` 收敛(P1-1 余项)
+2. **`/ws` 按用户/任务作用域过滤**:当前广播按连接全量下发(P1-9 余项)
+3. **服务端 i18n 机制(可选)**:文案已统一英文;若需多语言再接入 `internal/i18n`(P1-3 余项)
+4. **SSRF 面收敛**:exec `script_url` 与通知渠道测试的服务端出网可加白名单(P2-2)
+5. **凭据静态加密 / OS keychain**(P2-1,与 CLI 轮合并考虑)
+6. **`?token=` 传参改走子协议或一次性票据**(P2-3)
+7. **共享 owl.db 多连接池写并发演练**(P2-6)
 
 ## 下一评审区域建议
 
