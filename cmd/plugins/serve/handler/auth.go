@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,12 +18,14 @@ type AuthHandler struct {
 	users *store.UserStore
 	auth  *service.AuthService
 
+	// limiter 限制连续失败的登录尝试（用户名+来源 IP）
+	limiter *loginLimiter
 	// revocations 为 nil 时不做撤销校验（测试与未启用撤销的构造路径）
 	revocations *authRevocations
 }
 
 func NewAuthHandler(users *store.UserStore, auth *service.AuthService) *AuthHandler {
-	return &AuthHandler{users: users, auth: auth}
+	return &AuthHandler{users: users, auth: auth, limiter: newLoginLimiter()}
 }
 
 // EnableRevocation 启用令牌撤销校验并从 settings 载入已有撤销记录。
@@ -50,8 +53,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	limitKey := req.Username + "|" + c.ClientIP()
+	if wait := h.limiter.RetryAfter(limitKey); wait > 0 {
+		c.Header("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		c.JSON(http.StatusTooManyRequests, gin.H{"code": 429, "message": "too many failed attempts, try again later"})
+		return
+	}
+
 	user, err := h.users.FindByUsername(c.Request.Context(), req.Username)
 	if err == sql.ErrNoRows {
+		h.limiter.Fail(limitKey)
 		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid credentials"})
 		return
 	}
@@ -61,9 +72,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	if !h.auth.VerifyPassword(user.PasswordHash, req.Password) {
+		h.limiter.Fail(limitKey)
 		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid credentials"})
 		return
 	}
+	h.limiter.Reset(limitKey)
 
 	token, err := h.auth.GenerateToken(user.Username, string(user.Role))
 	if err != nil {

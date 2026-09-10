@@ -8,14 +8,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/gin-gonic/gin"
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func newTestAuth(t *testing.T) (*AuthHandler, *store.UserStore, *sql.DB) {
@@ -184,4 +185,101 @@ func TestMeEndpoint_NoToken(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, 401, w.Code)
+}
+
+// loginRouter 构造登录路由（含限流）。
+func loginRouter(t *testing.T, h *AuthHandler) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/api/v1/login", h.Login)
+	return r
+}
+
+func doLogin(t *testing.T, r *gin.Engine, username, password string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	body := `{"username":"` + username + `","password":"` + password + `"}`
+	req, _ := http.NewRequest("POST", "/api/v1/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	return w
+}
+
+// TestLogin_RateLimitedAfterRepeatedFailures 连续失败达到阈值后限流：
+// 即使随后提交正确密码也返回 429（修复前可无限次暴力尝试）。
+func TestLogin_RateLimitedAfterRepeatedFailures(t *testing.T) {
+	h, us, _ := newTestAuth(t)
+	hash, _ := h.auth.HashPassword("secret123")
+	require.NoError(t, us.Create(context.Background(), &model.User{
+		Username: "admin", PasswordHash: hash, Role: model.RoleAdmin,
+	}))
+	r := loginRouter(t, h)
+
+	for i := 0; i < 5; i++ {
+		require.Equalf(t, http.StatusUnauthorized, doLogin(t, r, "admin", "wrong").Code, "第 %d 次失败应为 401", i+1)
+	}
+
+	w := doLogin(t, r, "admin", "secret123")
+	assert.Equal(t, http.StatusTooManyRequests, w.Code, "达到阈值后正确密码也应被限流")
+	assert.NotEmpty(t, w.Header().Get("Retry-After"))
+}
+
+// TestLogin_SuccessResetsFailures 登录成功清零失败计数。
+func TestLogin_SuccessResetsFailures(t *testing.T) {
+	h, us, _ := newTestAuth(t)
+	hash, _ := h.auth.HashPassword("secret123")
+	require.NoError(t, us.Create(context.Background(), &model.User{
+		Username: "admin", PasswordHash: hash, Role: model.RoleAdmin,
+	}))
+	r := loginRouter(t, h)
+
+	for i := 0; i < 4; i++ {
+		require.Equal(t, http.StatusUnauthorized, doLogin(t, r, "admin", "wrong").Code)
+	}
+	require.Equal(t, http.StatusOK, doLogin(t, r, "admin", "secret123").Code)
+
+	// 清零后再失败 4 次仍未达阈值
+	for i := 0; i < 4; i++ {
+		assert.Equal(t, http.StatusUnauthorized, doLogin(t, r, "admin", "wrong").Code)
+	}
+}
+
+// TestLogin_RateLimitIsPerUsername 限流按用户名隔离，不牵连其他账号。
+func TestLogin_RateLimitIsPerUsername(t *testing.T) {
+	h, us, _ := newTestAuth(t)
+	ctx := context.Background()
+	hash, _ := h.auth.HashPassword("secret123")
+	require.NoError(t, us.Create(ctx, &model.User{Username: "alice", PasswordHash: hash, Role: model.RoleViewer}))
+	require.NoError(t, us.Create(ctx, &model.User{Username: "bob", PasswordHash: hash, Role: model.RoleViewer}))
+	r := loginRouter(t, h)
+
+	for i := 0; i < 5; i++ {
+		require.Equal(t, http.StatusUnauthorized, doLogin(t, r, "alice", "wrong").Code)
+	}
+	require.Equal(t, http.StatusTooManyRequests, doLogin(t, r, "alice", "secret123").Code)
+	assert.Equal(t, http.StatusOK, doLogin(t, r, "bob", "secret123").Code, "其他账号不受影响")
+}
+
+// TestLoginLimiter_BackoffGrows 退避时长随失败次数指数增长并有上限。
+func TestLoginLimiter_BackoffGrows(t *testing.T) {
+	l := newLoginLimiter()
+	now := time.Now()
+	l.now = func() time.Time { return now }
+
+	for i := 0; i < loginFailThreshold; i++ {
+		l.Fail("k")
+	}
+	assert.Equal(t, loginBaseBackoff, l.RetryAfter("k"))
+
+	l.Fail("k")
+	assert.Equal(t, 2*loginBaseBackoff, l.RetryAfter("k"))
+
+	for i := 0; i < 20; i++ {
+		l.Fail("k")
+	}
+	assert.Equal(t, loginMaxBackoff, l.RetryAfter("k"), "退避应有上限")
+
+	now = now.Add(loginMaxBackoff + time.Second)
+	assert.Zero(t, l.RetryAfter("k"), "退避窗口结束后应放行")
 }
