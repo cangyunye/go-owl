@@ -9,6 +9,7 @@ build/*
 .claude/
 .opencode/
 .trae/
+.zcode/
 admin.txt
 frontend-design/
 .reasonix-tmp/
