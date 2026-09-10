@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
@@ -36,7 +38,69 @@ func userTestSetup(t *testing.T) (*store.UserStore, *gin.Engine) {
 	auth.Use(ah.AuthMiddleware())
 	admin := auth.Group("", ah.RBACMiddleware(model.RoleAdmin))
 	admin.GET("/users", uh.List)
+	admin.PUT("/users/:id", uh.Update)
+	admin.DELETE("/users/:id", uh.Delete)
 	return us, r
+}
+
+// userMutation 以 admin 身份发起 PUT/DELETE。
+func userMutation(t *testing.T, r *gin.Engine, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken())
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func TestUserDelete_NotFound(t *testing.T) {
+	_, r := userTestSetup(t)
+	w := userMutation(t, r, "DELETE", "/api/v1/users/9999", "")
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestUserDelete_LastAdmin_Refused(t *testing.T) {
+	us, r := userTestSetup(t)
+	ctx := context.Background()
+	admin := &model.User{Username: "admin1", Role: model.RoleAdmin}
+	require.NoError(t, us.Create(ctx, admin))
+	require.NoError(t, us.Create(ctx, &model.User{Username: "viewer1", Role: model.RoleViewer}))
+
+	w := userMutation(t, r, "DELETE", "/api/v1/users/"+strconv.FormatInt(admin.ID, 10), "")
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	_, err := us.FindByID(ctx, admin.ID)
+	assert.NoError(t, err, "最后一个 admin 必须仍然存在")
+}
+
+func TestUserDelete_AdminAllowedWhenAnotherExists(t *testing.T) {
+	us, r := userTestSetup(t)
+	ctx := context.Background()
+	a1 := &model.User{Username: "admin1", Role: model.RoleAdmin}
+	a2 := &model.User{Username: "admin2", Role: model.RoleAdmin}
+	require.NoError(t, us.Create(ctx, a1))
+	require.NoError(t, us.Create(ctx, a2))
+
+	w := userMutation(t, r, "DELETE", "/api/v1/users/"+strconv.FormatInt(a1.ID, 10), "")
+	assert.Equal(t, http.StatusOK, w.Code)
+	_, err := us.FindByID(ctx, a1.ID)
+	assert.Error(t, err, "非最后一个 admin 应可删除")
+}
+
+func TestUserUpdate_DemoteLastAdmin_Refused(t *testing.T) {
+	us, r := userTestSetup(t)
+	ctx := context.Background()
+	admin := &model.User{Username: "admin1", Role: model.RoleAdmin}
+	require.NoError(t, us.Create(ctx, admin))
+	require.NoError(t, us.Create(ctx, &model.User{Username: "viewer1", Role: model.RoleViewer}))
+
+	w := userMutation(t, r, "PUT", "/api/v1/users/"+strconv.FormatInt(admin.ID, 10), `{"role":"viewer"}`)
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	got, err := us.FindByID(ctx, admin.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.RoleAdmin, got.Role, "最后一个 admin 不得被降级")
 }
 
 func userGET(t *testing.T, r *gin.Engine, path string) *httptest.ResponseRecorder {

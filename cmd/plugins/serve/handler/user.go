@@ -59,6 +59,19 @@ func toUserResponse(u *model.User) userResponse {
 	}
 }
 
+// isLastAdmin 判断目标用户是否为当前唯一的管理员：删掉/降级他系统将失去
+// 全部管理入口，且应用内无法恢复（ensureAdmin 仅在用户表为空时补建）。
+func (h *UserHandler) isLastAdmin(ctx context.Context, target *model.User) (bool, error) {
+	if target == nil || target.Role != model.RoleAdmin {
+		return false, nil
+	}
+	counts, err := h.users.CountByRole(ctx)
+	if err != nil {
+		return false, err
+	}
+	return counts[model.RoleAdmin] <= 1, nil
+}
+
 func (h *UserHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
@@ -187,6 +200,17 @@ func (h *UserHandler) Update(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid role"})
 			return
 		}
+		if req.Role != model.RoleAdmin {
+			last, err := h.isLastAdmin(c.Request.Context(), user)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
+				return
+			}
+			if last {
+				c.JSON(http.StatusConflict, gin.H{"code": 409, "message": "cannot demote the last admin"})
+				return
+			}
+		}
 		user.Role = req.Role
 	}
 	if req.DisplayName != "" {
@@ -213,6 +237,26 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid user id"})
+		return
+	}
+
+	user, err := h.users.FindByID(c.Request.Context(), id)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "user not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
+		return
+	}
+
+	last, err := h.isLastAdmin(c.Request.Context(), user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
+		return
+	}
+	if last {
+		c.JSON(http.StatusConflict, gin.H{"code": 409, "message": "cannot delete the last admin"})
 		return
 	}
 
