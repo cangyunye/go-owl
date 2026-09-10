@@ -658,7 +658,7 @@ func sqliteDSN(dbPath string) string {
 	if strings.Contains(dbPath, "?") {
 		return dbPath
 	}
-	return dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL"
+	return dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=ON"
 }
 
 func (s *Server) ResetAdmin() (*AdminCredentials, error) {

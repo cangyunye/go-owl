@@ -35,15 +35,18 @@ func NewDB(config *Config) (DBInterface, error) {
 
 	ensureDBDir(dbPath)
 
-	conn, err := sql.Open("sqlite", dbPath)
+	// PRAGMA 必须经 DSN 注入:连接池的每个新连接都会带上配置。
+	// 仅对新连接 Exec PRAGMA 只作用于单个池化连接,后续连接没有 busy_timeout,
+	// 与 serve/monitor 并发写同一个 owl.db 时会立即报 SQLITE_BUSY
+	// (2026-09-10 并发演练实测 CLI 写失败率 ~14%)。
+	dsn := dbPath
+	if !strings.Contains(dbPath, "?") {
+		dsn += "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=ON"
+	}
+	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
-
-	// SQLite3 配置
-	_, _ = conn.Exec("PRAGMA journal_mode=WAL")
-	_, _ = conn.Exec("PRAGMA synchronous=NORMAL")
-	_, _ = conn.Exec("PRAGMA foreign_keys=ON")
 
 	db := &SQLite3{
 		conn: conn,
