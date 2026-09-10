@@ -199,7 +199,7 @@ func (h *NodeHandler) Seed(c *gin.Context) {
 			spec.id, spec.name, spec.address, 22, spec.user, string(groupsJSON), string(labelsJSON), now, now,
 		)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "seed failed: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("seed failed", err)})
 			return
 		}
 		if n, _ := res.RowsAffected(); n > 0 {

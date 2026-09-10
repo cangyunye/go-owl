@@ -173,7 +173,7 @@ func (h *AIHandler) Chat(c *gin.Context) {
 	durationMs := time.Since(startTime).Milliseconds()
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("ai request failed", err)})
 		return
 	}
 

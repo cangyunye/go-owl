@@ -2,7 +2,6 @@ package handler
 
 import (
 	"database/sql"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -21,15 +20,6 @@ type MonitorHandler struct {
 // NewMonitorHandler 创建监控 handler。
 func NewMonitorHandler(db *sql.DB, svc *monitorSvc.Service) *MonitorHandler {
 	return &MonitorHandler{db: db, svc: svc}
-}
-
-// internalErr 统一 500 类错误文案：对外只给短英文描述，内部错误细节仅记服务端日志
-// （此前直接把 err.Error() 回传，泄露 SQL/文件系统等实现细节）。
-func internalErr(public string, err error) string {
-	if err != nil {
-		log.Printf("monitor api: %s: %v", public, err)
-	}
-	return public
 }
 
 // AlertView 告警视图（附类型中文名与节点名）。

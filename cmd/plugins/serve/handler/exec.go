@@ -362,7 +362,7 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	}
 	users, err := loadNodeUsers(c.Request.Context(), h.db)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query node users failed: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query node users failed", err)})
 		return
 	}
 

@@ -65,7 +65,7 @@ type createTemplateTask struct {
 func (h *PlaybookHandler) Create(c *gin.Context) {
 	var req createTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": internalErr("invalid request body", err)})
 		return
 	}
 	if req.Name == "" {
@@ -137,7 +137,7 @@ func (h *PlaybookHandler) Create(c *gin.Context) {
 
 	_, _, err = h.playbooks.SyncFromDir(c.Request.Context(), libraryPath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "sync failed: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("sync playbooks failed", err)})
 		return
 	}
 
@@ -206,7 +206,7 @@ func (h *PlaybookHandler) Upload(c *gin.Context) {
 	out.Close()
 
 	if _, _, err := h.playbooks.SyncFromDir(c.Request.Context(), libraryPath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "sync failed: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("sync playbooks failed", err)})
 		return
 	}
 
@@ -257,12 +257,12 @@ func (h *PlaybookHandler) Edit(c *gin.Context) {
 		// 但编辑接口必须能打开，让用户修复
 		data, rerr := os.ReadFile(pb.FilePath)
 		if rerr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "read playbook failed: " + rerr.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("read playbook failed", rerr)})
 			return
 		}
 		var raw pbexec.Playbook
 		if yerr := yaml.Unmarshal(data, &raw); yerr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "parse playbook failed: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("parse playbook failed", err)})
 			return
 		}
 		h.renderEditResponse(c, &raw, category)
