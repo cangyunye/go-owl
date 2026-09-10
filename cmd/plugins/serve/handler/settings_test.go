@@ -310,3 +310,58 @@ func TestSettings_NonAdminForbidden(t *testing.T) {
 	r.ServeHTTP(w, req)
 	assert.Equal(t, 403, w.Code)
 }
+
+// TestSettings_JWTSecretNotAccessible 验证 jwt_secret 不经 API 读出或写入：
+// 它是会话令牌的签名密钥，读出来可离线伪造任意账号，写进去会使全部 token 失效。
+func TestSettings_JWTSecretNotAccessible(t *testing.T) {
+	db, h := settingsTestSetup(t)
+	gin.SetMode(gin.TestMode)
+	router := settingsRBACRouter(t, h)
+
+	_, err := db.Exec(`INSERT INTO settings (key, value) VALUES ('jwt_secret', 'super-secret')`)
+	require.NoError(t, err)
+
+	as := service.NewAuthService("test-secret-32byte-long-string!!")
+	token, _ := as.GenerateToken("admin", "admin")
+	auth := "Bearer " + token
+
+	t.Run("List 不返回", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/api/v1/settings", nil)
+		req.Header.Set("Authorization", auth)
+		router.ServeHTTP(w, req)
+		require.Equal(t, 200, w.Code)
+		var resp struct {
+			Data []SettingResponse `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		for _, s := range resp.Data {
+			assert.NotEqual(t, "jwt_secret", s.Key, "签名密钥不得出现在设置列表")
+		}
+		assert.NotContains(t, w.Body.String(), "super-secret")
+	})
+
+	t.Run("GET 拒绝", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/api/v1/settings/jwt_secret", nil)
+		req.Header.Set("Authorization", auth)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 403, w.Code)
+		assert.NotContains(t, w.Body.String(), "super-secret")
+	})
+
+	t.Run("PUT 拒绝且值不变", func(t *testing.T) {
+		var buf bytes.Buffer
+		json.NewEncoder(&buf).Encode(map[string]string{"value": "attacker-controlled"})
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("PUT", "/api/v1/settings/jwt_secret", &buf)
+		req.Header.Set("Authorization", auth)
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 403, w.Code)
+
+		var got string
+		require.NoError(t, db.QueryRow(`SELECT value FROM settings WHERE key = 'jwt_secret'`).Scan(&got))
+		assert.Equal(t, "super-secret", got, "签名密钥不得被覆写")
+	})
+}
