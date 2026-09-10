@@ -28,10 +28,12 @@ VERSION     ?= $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null || echo 0
 
 CLI_MAIN    := ./cmd/cli
 SERVE_MAIN  := ./cmd/owl-serve
+SERVE_PKG   := github.com/cangyunye/go-owl/cmd/owl-serve
 PKG         := github.com/cangyunye/go-owl/cmd/cli/cmd
 COMMIT_ID   := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_TIME  := $(shell date '+%Y-%m-%d %H:%M:%S')
 LDFLAGS     := -ldflags "-s -w -X '$(PKG).version=$(VERSION)' -X '$(PKG).commitID=$(COMMIT_ID)' -X '$(PKG).buildTime=$(BUILD_TIME)'"
+SERVE_LDFLAGS := -ldflags "-s -w -X '$(SERVE_PKG).version=$(VERSION)' -X '$(SERVE_PKG).commitID=$(COMMIT_ID)' -X '$(SERVE_PKG).buildTime=$(BUILD_TIME)'"
 
 ALL_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 HOST_PLATFORM := $(shell $(GO) env GOOS)/$(shell $(GO) env GOARCH)
@@ -76,7 +78,7 @@ else
 	$(call cross_build,$(LDFLAGS),$(CLI_MAIN),owl)
 endif
 ifneq (,$(filter serve,$(COMPS)))
-	$(call cross_build,,$(SERVE_MAIN),owl-serve)
+	$(call cross_build,$(SERVE_LDFLAGS),$(SERVE_MAIN),owl-serve)
 endif
 ifneq (,$(filter gscp,$(COMPS)))
 	@$(MAKE) --no-print-directory build-gscp PLATFORMS='$(PLATFORMS)'
@@ -86,7 +88,7 @@ build/all: ## 全部平台 × 全部组件
 	@$(MAKE) --no-print-directory build PLATFORMS='$(ALL_PLATFORMS)' WITH=serve,metrics,tui,gscp
 
 build-serve: ## 编译 Web 控制台 owl-serve（纯 Go，可交叉编译）
-	$(call cross_build,,$(SERVE_MAIN),owl-serve)
+	$(call cross_build,$(SERVE_LDFLAGS),$(SERVE_MAIN),owl-serve)
 
 build-metrics: ## 编译带 metrics 功能的 owl CLI（可选插件，需兄弟目录 ../go-owl-metrics）
 	$(metrics_check)

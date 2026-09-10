@@ -13,5 +13,6 @@ admin.txt
 frontend-design/
 .reasonix-tmp/
 owl-serve
+!cmd/owl-serve/
 .superpowers/
 

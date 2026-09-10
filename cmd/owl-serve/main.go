@@ -6,27 +6,38 @@ import (
 	"os"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
+// 构建注入：make build-serve / build 的 SERVE_LDFLAGS
+//   go build -ldflags "-X main.version=1.2.3 -X main.commitID=abc1234" ./cmd/owl-serve
+var (
+	version   = "dev"
+	commitID  = "unknown"
+	buildTime = "unknown"
+)
+
 func main() {
+	if err := newRootCmd().Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func newRootCmd() *cobra.Command {
 	var (
-		port        int
-		host        string
-		dev         bool
-		resetAdmin  bool
-		aiDebug     bool
+		port       int
+		host       string
+		dev        bool
+		resetAdmin bool
+		aiDebug    bool
 	)
 
 	rootCmd := &cobra.Command{
-		Use:   "owl-serve",
-		Short: "OWL Web 管理控制台服务",
-		Long: `启动 OWL 的 Web 管理控制台，提供基于浏览器的节点管理和操作界面。
-
-功能：
-- 节点浏览、搜索和管理
-- 基于角色的多用户访问控制
-- RESTful JSON API`,
+		Use:     "owl-serve",
+		Short:   i18n.T("serve.cmd.short"),
+		Long:    i18n.T("serve.cmd.long"),
+		Version: fmt.Sprintf("%s (commit %s, built %s)", version, commitID, buildTime),
 		Run: func(cmd *cobra.Command, args []string) {
 			dbPath := resolveDBPath()
 
@@ -59,12 +70,13 @@ func main() {
 			}
 
 			if creds != nil {
+				fmt.Printf("OWL Console %s\n", version)
 				fmt.Printf("URL:      http://%s:%d\n", host, port)
 				fmt.Printf("Username: %s\n", creds.Username)
 				fmt.Printf("Password: %s\n", creds.Password)
 				fmt.Println("")
-			} else if !resetAdmin {
-				fmt.Printf("OWL Console starting at http://%s:%d\n", host, port)
+			} else {
+				fmt.Printf("OWL Console %s starting at http://%s:%d\n", version, host, port)
 			}
 
 			if err := srv.Start(); err != nil {
@@ -73,13 +85,11 @@ func main() {
 		},
 	}
 
-	rootCmd.Flags().IntVarP(&port, "port", "p", 8080, "HTTP port")
-	rootCmd.Flags().StringVar(&host, "host", "127.0.0.1", "HTTP host")
-	rootCmd.Flags().BoolVar(&dev, "dev", false, "Development mode (frontend from filesystem)")
-	rootCmd.Flags().BoolVar(&resetAdmin, "reset-admin", false, "Reset admin password")
-	rootCmd.Flags().BoolVar(&aiDebug, "ai-debug", false, "Enable AI debug mode (logs full prompt/reply text)")
+	rootCmd.Flags().IntVarP(&port, "port", "p", 8080, i18n.T("serve.flag_port"))
+	rootCmd.Flags().StringVar(&host, "host", "127.0.0.1", i18n.T("serve.flag_host"))
+	rootCmd.Flags().BoolVar(&dev, "dev", false, i18n.T("serve.flag_dev"))
+	rootCmd.Flags().BoolVar(&resetAdmin, "reset-admin", false, i18n.T("serve.flag_reset_admin"))
+	rootCmd.Flags().BoolVar(&aiDebug, "ai-debug", false, i18n.T("serve.flag_ai_debug"))
 
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
-	}
+	return rootCmd
 }
