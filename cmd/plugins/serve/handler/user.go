@@ -279,5 +279,5 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		h.RevokeTokens(c.Request.Context(), user.Username)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "deleted"})
+	okAction(c, "deleted")
 }

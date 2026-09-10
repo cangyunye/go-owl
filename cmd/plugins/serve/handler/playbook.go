@@ -568,7 +568,7 @@ func (h *PlaybookHandler) RunCancel(c *gin.Context) {
 		return
 	}
 	h.runs.UpdateStatus(c.Request.Context(), id, model.RunStatusCancelled, "cancelled by user")
-	c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
+	okAction(c, "cancelled")
 }
 
 func (h *PlaybookHandler) executePlaybookRun(runID string) {

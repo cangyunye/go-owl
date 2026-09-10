@@ -163,7 +163,7 @@ func (h *HistoryHandler) Clean(c *gin.Context) {
 		return
 	}
 	logsRemoved := cleanExecutionLogs(days)
-	c.JSON(http.StatusOK, gin.H{"deleted": deleted, "logs_removed": logsRemoved})
+	ok(c, gin.H{"deleted": deleted, "logs_removed": logsRemoved})
 }
 
 // cleanExecutionLogs 删除 ~/.owl/logs/executions 下最后写入早于 N 天的批次目录,

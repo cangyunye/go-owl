@@ -127,7 +127,7 @@ func (h *ShortcutHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "not found"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "deleted"})
+	okAction(c, "deleted")
 }
 
 type reorderRequest struct {
@@ -149,5 +149,5 @@ func (h *ShortcutHandler) Reorder(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "reorder failed"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "ok"})
+	okAction(c, "reordered")
 }

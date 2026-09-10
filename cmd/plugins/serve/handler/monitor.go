@@ -168,7 +168,7 @@ func (h *MonitorHandler) DeleteRemedy(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	okAction(c, "deleted")
 }
 
 // ListNotifyChannels 通知渠道列表（admin，含 SMTP 等敏感配置）。
@@ -208,7 +208,7 @@ func (h *MonitorHandler) DeleteNotifyChannel(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	okAction(c, "deleted")
 }
 
 // TestNotifyChannel 测试发送（admin）。
@@ -228,7 +228,7 @@ func (h *MonitorHandler) TestNotifyChannel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	okAction(c, "test sent")
 }
 
 // QueryMetrics 指标查询（reader）：node_id + metric + [from, to]。
@@ -356,7 +356,7 @@ func (h *MonitorHandler) StopRemedyPlan(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	okAction(c, "stopped")
 }
 
 // ApproveRemedyPlan 批准处置计划中的待审批步骤并恢复执行（operator+）。
@@ -379,7 +379,7 @@ func (h *MonitorHandler) ApproveRemedyPlan(c *gin.Context) {
 		return
 	}
 	h.svc.ExecuteRemedyRun(run.ID)
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	okAction(c, "approved")
 }
 
 // RejectRemedyPlan 拒绝处置计划中的待审批步骤（operator+）。
@@ -402,7 +402,7 @@ func (h *MonitorHandler) RejectRemedyPlan(c *gin.Context) {
 		return
 	}
 	h.svc.ExecuteRemedyRun(run.ID)
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	okAction(c, "rejected")
 }
 
 // --- 内部辅助 ---

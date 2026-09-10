@@ -653,7 +653,7 @@ func (h *ExecHandler) Cancel(c *gin.Context) {
 	}
 	// 仅写 DB 状态不会让远端命令停下来，必须中断在途执行的上下文
 	h.cancelRun(id)
-	c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
+	okAction(c, "cancelled")
 }
 
 func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {

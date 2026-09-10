@@ -224,10 +224,12 @@ func TestHistoryClean_AdminOnly(t *testing.T) {
 	r.ServeHTTP(w, req)
 	require.Equal(t, 200, w.Code)
 	var resp struct {
-		Deleted int64 `json:"deleted"`
+		Data struct {
+			Deleted int64 `json:"deleted"`
+		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, int64(1), resp.Deleted)
+	assert.Equal(t, int64(1), resp.Data.Deleted)
 }
 
 func TestCleanExecutionLogs(t *testing.T) {

@@ -226,7 +226,7 @@ func TestNodeDelete_Success(t *testing.T) {
 
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	assert.Equal(t, "deleted", resp["status"])
+	assert.Equal(t, true, resp["ok"])
 
 	// Verify it's actually gone
 	var count int

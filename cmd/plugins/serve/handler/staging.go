@@ -215,7 +215,7 @@ func (h *StagingHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	okAction(c, "deleted")
 }
 
 func (h *StagingHandler) DiskInfo(c *gin.Context) {

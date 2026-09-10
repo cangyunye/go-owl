@@ -230,7 +230,7 @@ export function renderHistory(render, navigate, user, api, shell) {
         const n = parseInt(days, 10);
         if (!n || n <= 0) { alert('请输入正整数天数'); return; }
         if (!confirm(`确认清理 ${n} 天之前的历史记录？此操作不可撤销。`)) return;
-        try { const res = await api.historyClean(n); alert(`已清理 ${res.deleted} 条记录`); load(); }
+        try { const res = await api.historyClean(n); alert(`已清理 ${res.data.deleted} 条记录`); load(); }
         catch { alert('清理失败'); }
       });
     }

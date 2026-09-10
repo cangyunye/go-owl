@@ -500,7 +500,7 @@ func (h *NodeHandler) Delete(c *gin.Context) {
 		return
 	}
 	h.recordNodeManage(c, "node delete "+id, []string{id})
-	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	okAction(c, "deleted")
 }
 
 func keys(set map[string]bool) []string {
