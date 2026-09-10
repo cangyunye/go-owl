@@ -17,6 +17,9 @@ type UserHandler struct {
 	users         *store.UserStore
 	auth          *service.AuthService
 	OnUserCreated func(ctx context.Context, userID int64)
+	// RevokeTokens 由 server 接线：改角色/改密码/删除账号后撤销该用户已签发的
+	// token（JWT 内的角色是签发快照，不撤销则旧权限会保留到过期）。
+	RevokeTokens func(ctx context.Context, username string)
 }
 
 func NewUserHandler(users *store.UserStore, auth *service.AuthService) *UserHandler {
@@ -195,6 +198,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
+	privilegesChanged := (req.Role != "" && req.Role != user.Role) || req.Password != ""
 	if req.Role != "" {
 		if !validRoles[req.Role] {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid role"})
@@ -230,6 +234,11 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
+	// 角色或密码变更后，此前签发的 token 立即失效（须重新登录换取新权限）
+	if privilegesChanged && h.RevokeTokens != nil {
+		h.RevokeTokens(c.Request.Context(), user.Username)
+	}
+
 	c.JSON(http.StatusOK, toUserResponse(user))
 }
 
@@ -263,6 +272,11 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	if err := h.users.Delete(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "delete failed"})
 		return
+	}
+
+	// 账号已删除：其已签发的 token 必须立即失效
+	if h.RevokeTokens != nil {
+		h.RevokeTokens(c.Request.Context(), user.Username)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "deleted"})

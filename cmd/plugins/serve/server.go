@@ -149,8 +149,10 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	}
 
 	s.authHandler = handler.NewAuthHandler(s.Users, s.Auth)
+	s.authHandler.EnableRevocation(context.Background(), db)
 	s.userHandler = handler.NewUserHandler(s.Users, s.Auth)
 	s.userHandler.OnUserCreated = s.runUserCreatedHooks
+	s.userHandler.RevokeTokens = s.authHandler.RevokeUserTokens
 	s.shortcutHandler = handler.NewShortcutHandler(s.commands, s.Users)
 	s.nodeHandler = handler.NewNodeHandler(db)
 	s.settingsHandler = handler.NewSettingsHandler(db)
@@ -675,6 +677,11 @@ func (s *Server) ResetAdmin() (*AdminCredentials, error) {
 	if err != nil {
 		return nil, fmt.Errorf("recreate admin: %w", err)
 	}
+
+	// 密码已重置：旧 token 一律失效（用户名未变，签发时间早于此刻的都会被拒）
+	revoker := handler.NewAuthHandler(users, auth)
+	revoker.EnableRevocation(context.Background(), db)
+	revoker.RevokeUserTokens(context.Background(), "admin")
 
 	return &AdminCredentials{Username: "admin", Password: password}, nil
 }

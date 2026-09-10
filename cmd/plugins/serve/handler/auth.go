@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
@@ -14,10 +16,26 @@ import (
 type AuthHandler struct {
 	users *store.UserStore
 	auth  *service.AuthService
+
+	// revocations 为 nil 时不做撤销校验（测试与未启用撤销的构造路径）
+	revocations *authRevocations
 }
 
 func NewAuthHandler(users *store.UserStore, auth *service.AuthService) *AuthHandler {
 	return &AuthHandler{users: users, auth: auth}
+}
+
+// EnableRevocation 启用令牌撤销校验并从 settings 载入已有撤销记录。
+// 启用后，改角色/改密码/删除账号会使此前的 token 立即失效。
+func (h *AuthHandler) EnableRevocation(ctx context.Context, db *sql.DB) {
+	h.revocations = newAuthRevocations(ctx, db)
+}
+
+// RevokeUserTokens 撤销指定用户名下已签发的全部 token。
+func (h *AuthHandler) RevokeUserTokens(ctx context.Context, username string) {
+	if h.revocations != nil {
+		_ = h.revocations.Revoke(ctx, username)
+	}
 }
 
 type loginRequest struct {
@@ -95,6 +113,10 @@ func (h *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid or expired token"})
 			return
 		}
+		if h.revocations.isRevoked(claims.Username, tokenIssuedAt(claims)) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "token revoked"})
+			return
+		}
 
 		c.Set("claims", claims)
 		c.Set("username", claims.Username)
@@ -102,6 +124,14 @@ func (h *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 		c.Set("user_id", claims.Username)
 		c.Next()
 	}
+}
+
+// tokenIssuedAt 取 token 的签发时刻；缺失时返回零值（撤销校验会从严拒绝）。
+func tokenIssuedAt(claims *service.Claims) time.Time {
+	if claims.IssuedAt == nil {
+		return time.Time{}
+	}
+	return claims.IssuedAt.Time
 }
 
 var roleHierarchy = map[string]int{

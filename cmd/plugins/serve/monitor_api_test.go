@@ -105,6 +105,15 @@ func authedPut(t *testing.T, srv *Server, token, path string, payload any) *http
 	return w
 }
 
+func authedDelete(t *testing.T, srv *Server, token, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", path, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	srv.Router.ServeHTTP(w, req)
+	return w
+}
+
 func seedAlert(t *testing.T, srv *Server, typeID, nodeID string) string {
 	t.Helper()
 	now := time.Now().Unix()
