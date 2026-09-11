@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cangyunye/go-owl/internal/secrets"
 	owlssh "github.com/cangyunye/go-owl/internal/ssh"
 	gossh "golang.org/x/crypto/ssh"
 )
@@ -45,7 +46,26 @@ func (e *sshExecutor) getNodeInfo(nodeID string) (*nodeSSHInfo, error) {
 		info.SSHKey = key.String
 	}
 	info.ProxyJump = jump.String
+	if err := decryptNodeSSHInfo(&info); err != nil {
+		return nil, err
+	}
 	return &info, nil
+}
+
+// decryptNodeSSHInfo 就地解密节点凭据(存储层经 internal/secrets 加密,
+// 无前缀的存量明文原样通过)。所有从 nodes 表读凭据的路径都必须调用。
+func decryptNodeSSHInfo(info *nodeSSHInfo) error {
+	pw, err := secrets.Decrypt(info.Password)
+	if err != nil {
+		return fmt.Errorf("node %s: %w", info.Address, err)
+	}
+	key, err := secrets.Decrypt(info.SSHKey)
+	if err != nil {
+		return fmt.Errorf("node %s: %w", info.Address, err)
+	}
+	info.Password = pw
+	info.SSHKey = key
+	return nil
 }
 
 func (e *sshExecutor) dialNode(ctx context.Context, nodeID string) (*owlssh.Client, error) {

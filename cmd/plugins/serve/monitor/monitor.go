@@ -14,6 +14,7 @@ import (
 
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
+	"github.com/cangyunye/go-owl/internal/secrets"
 )
 
 // NodesTargetSource 从 serve 的 nodes 表读取采集目标（含 SSH 凭据）。
@@ -42,6 +43,16 @@ func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 		if err := rows.Scan(&t.ID, &t.Name, &t.Address, &t.Port, &t.User,
 			&t.SSHPassword, &t.SSHKey, &t.ProxyJump); err != nil {
 			return nil, fmt.Errorf("monitor: 扫描节点失败: %w", err)
+		}
+		if pw, err := secrets.Decrypt(t.SSHPassword); err != nil {
+			return nil, fmt.Errorf("monitor: 节点 %s 凭据解密失败: %w", t.ID, err)
+		} else {
+			t.SSHPassword = pw
+		}
+		if key, err := secrets.Decrypt(t.SSHKey); err != nil {
+			return nil, fmt.Errorf("monitor: 节点 %s 凭据解密失败: %w", t.ID, err)
+		} else {
+			t.SSHKey = key
 		}
 		targets = append(targets, t)
 	}
@@ -131,6 +142,16 @@ func resolveTarget(db *sql.DB) owlmonitor.TargetResolver {
 		if err := row.Scan(&t.ID, &t.Name, &t.Address, &t.Port, &t.User,
 			&t.SSHPassword, &t.SSHKey, &t.ProxyJump); err != nil {
 			return nil, fmt.Errorf("monitor: 节点 %s 不存在或缺少连接信息: %w", nodeID, err)
+		}
+		if pw, err := secrets.Decrypt(t.SSHPassword); err != nil {
+			return nil, fmt.Errorf("monitor: 节点 %s 凭据解密失败: %w", nodeID, err)
+		} else {
+			t.SSHPassword = pw
+		}
+		if key, err := secrets.Decrypt(t.SSHKey); err != nil {
+			return nil, fmt.Errorf("monitor: 节点 %s 凭据解密失败: %w", nodeID, err)
+		} else {
+			t.SSHKey = key
 		}
 		return &t, nil
 	}

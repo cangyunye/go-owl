@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	"github.com/cangyunye/go-owl/internal/secrets"
 	owlssh "github.com/cangyunye/go-owl/internal/ssh"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -361,10 +362,21 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		labelsJSON = []byte("{}")
 	}
 
+	encPw, encErr := secrets.Encrypt(req.Password)
+	if encErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("encrypt credentials failed", encErr)})
+		return
+	}
+	encKey, encErr := secrets.Encrypt(req.SSHKey)
+	if encErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("encrypt credentials failed", encErr)})
+		return
+	}
+
 	_, err := h.db.Exec(
 		`INSERT INTO nodes (id, name, address, port, user, password, ssh_key, status, groups, labels, proxy_jump, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		req.ID, req.Name, req.Address, req.Port, req.User,
-		req.Password, req.SSHKey, req.Status,
+		encPw, encKey, req.Status,
 		string(groupsJSON), string(labelsJSON), req.ProxyJump,
 		now, now,
 	)
@@ -434,12 +446,22 @@ func (h *NodeHandler) Update(c *gin.Context) {
 		args = append(args, *req.User)
 	}
 	if req.Password != nil {
+		enc, encErr := secrets.Encrypt(*req.Password)
+		if encErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("encrypt credentials failed", encErr)})
+			return
+		}
 		setClauses = append(setClauses, "password = ?")
-		args = append(args, *req.Password)
+		args = append(args, enc)
 	}
 	if req.SSHKey != nil {
+		enc, encErr := secrets.Encrypt(*req.SSHKey)
+		if encErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("encrypt credentials failed", encErr)})
+			return
+		}
 		setClauses = append(setClauses, "ssh_key = ?")
-		args = append(args, *req.SSHKey)
+		args = append(args, enc)
 	}
 	if req.Status != nil {
 		setClauses = append(setClauses, "status = ?")
@@ -916,6 +938,11 @@ func (h *NodeHandler) Check(c *gin.Context) {
 		if key.Valid {
 			n.SSHKey = key.String
 		}
+		info := nodeSSHInfo{Address: n.Address, Password: n.Password, SSHKey: n.SSHKey}
+		if err := decryptNodeSSHInfo(&info); err != nil {
+			continue
+		}
+		n.Password, n.SSHKey = info.Password, info.SSHKey
 		nodes = append(nodes, n)
 	}
 

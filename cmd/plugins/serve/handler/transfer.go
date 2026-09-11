@@ -226,6 +226,9 @@ func resolveNodeSSH(db *sql.DB, nodeID string) (*nodeSSHInfo, error) {
 	if key.Valid {
 		info.SSHKey = key.String
 	}
+	if err := decryptNodeSSHInfo(&info); err != nil {
+		return nil, err
+	}
 	return &info, nil
 }
 
