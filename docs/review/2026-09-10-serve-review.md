@@ -96,7 +96,7 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 6. **exec 死参数族(上轮路线图第 6 项,本轮确认)** ✅ 已修复(B8):`async*`/`timeout`/`no_color`/`silent` 已从 `execRequest`/`ExecConfig` 移除,前端"异步执行"开关同步删除(执行本就是后台任务 + WS 实时输出);`connect_timeout`/`command_timeout` 已在 B2 接线保留。
 7. **用户管理其余缺口** ✅ 已修复:`Delete` 的存在性判断随 P0-4 补齐;改角色/改密码/删除账号后的 token 失效随 B9 解决(见 P1-8)。`Update` 允许 admin 改任意用户角色属预期,未额外限制。
 8. **token 无撤销,角色变更有 24h 滞后** ✅ 已修复(B9):新增 `authRevocations`(撤销时刻持久化在 settings),`AuthMiddleware` 比较 `IssuedAt` 即可判定,无需每请求查库;改角色/改密码/删除账号与 `--reset-admin` 都会撤销旧 token。判定从紧——`IssuedAt` 为秒级精度,采用"签发时刻不晚于撤销时刻即失效",不留同秒绕过窗口(代价:撤销当秒内重登可能拿到立即失效的 token,重试即可)。
-9. **`/api/v1/ws` 丢弃身份且关闭来源校验** ✅ 部分修复(B10):`/ws` 与 `/session/terminal` 恢复 nhooyr 默认同源校验(跨源握手由 101 变 403),`/ws` 的未知角色改为 403 fail-closed。仍保留:广播按连接全量下发(与"viewer 可读全量任务"的既有设计一致),未做按用户/按任务的作用域过滤;`?token=` 传参仍在(P2-3)。
+9. **`/api/v1/ws` 丢弃身份且关闭来源校验** ✅ 已修复(B10 同源校验/未知角色 fail-closed;顺位 1 改一次性票据)。作用域过滤经评估(2026-09-11)**接受现状**:广播的 task_output/task_update 等数据 viewer 经 REST(GET /tasks/:id 含 command+output、history detail、日志下载)本可全部读到,WS 只是主动推送,无 REST 之外的保密边界;按角色收窄零保密增益且破坏 viewer 实时视图,订阅制各页需求拼起来仍等价全量。唯一推翻条件:产品将 viewer 改为"受限自助角色"时 REST+WS 一起重做授权模型。
 10. **AI 会话密钥无回收 + 明文回退** ✅ 部分修复(B10):`Server.Serve` 增加 10 分钟周期回收(`Cleanup(1h)`),随 ctx 停止,避免 map 无界增长。`__plain__:` 明文回退**有意保留**——浏览器仅在安全上下文暴露 `crypto.subtle`,局域网内用 `http://<IP>` 访问时该分支是唯一可用路径;移除会让这类部署无法配置 API key。根治需 HTTPS(见路线图)。
 11. **playbook 模板名未校验即拼路径** ✅ 已修复(B12):`req.Name` 改为 `^[A-Za-z0-9._-]+$` 白名单并拒绝 `.`/`..`,非法名 400;实测 `../../evil` 被拒、产物仅落在配置的 library 目录内。
 12. **任务状态写失败被静默丢弃**:`updateTaskStatus` 重试 5 次后直接 `return`(exec.go:652-660),不记日志、不告知——SQLite 锁竞争下任务可能永久停留在 `running` 而无人知晓。
@@ -109,7 +109,7 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 ### P2 — 关注项(本轮不动)
 
 1. **SSH 凭据明文入库**:`nodes.password`/`ssh_key` 明文存于 `~/.owl/owl.db`(monitor 采集也读同一批凭据),库文件泄露即等于全部节点凭据泄露;读接口已排除凭据,但静态存储未加密(与 CLI 轮 P2-1 同源)。
-2. **服务端 SSRF 面**:exec 的 `script_url` 由服务端 `http.Get` 拉取(exec.go:193,operator+);监控通知渠道测试同理由服务端发请求(admin)。operator 本可执行命令,风险有限,但服务端网络位置与操作者不同,值得收敛(如仅允许白名单 scheme/网段)。
+2. **服务端 SSRF 面**(2026-09-11 评估后**接受现状**):exec 的 `script_url` 由服务端 `http.Get` 拉取(exec.go,operator+);监控通知渠道测试同理由服务端发请求(admin)。从内网制品服务器拉脚本属核心场景,拒绝私网/环回地址对该场景是反向优化,operator 本就持有节点 shell,服务端出网不构成额外授权边界。
 3. **query 参数传 token**:`/ws`、`/session/terminal` 以 `?token=` 传 JWT(ws.go:115,terminal.go:45),可能进入反向代理访问日志与浏览器历史;当前服务端无访问日志(见 P2-5),风险主要来自外部反代。
 4. **JWT 密钥派生**:`sha256(dbPath+随机盐)` 后存 settings 表(server.go:426-451),拿到库文件即可离线伪造任意用户 token(与 P2-1 同源)。
 5. **HTTP 层无请求审计** ✅ 已修复(C3):`accessLog` 中间件记录 方法/URI/状态码/耗时/来源 IP;`/ws`、`/session/terminal` 的 `?token=` 落日志前替换为 `***`。
@@ -165,15 +165,19 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 
 ## 后续改进路线图(按优先级)
 
-已完成:B1–B13、C1–C3、C5(见上表)。以下为剩余项:
+已完成/已处置:B1–B13、C1–C3、C5,以及:一次性票据(顺位 1)、共享 owl.db 并发演练与 CLI DSN 修复(顺位 2)、
+动作类响应收敛(顺位 3)、SSRF 接受现状(顺位 4)、/ws 作用域接受现状(顺位 5)。
 
-1. **成功响应封装统一**:`{data:...}` 与裸对象、`{status:...}` 混用,抽公共 `ok(c,data)` 收敛(P1-1 余项)
-2. **`/ws` 按用户/任务作用域过滤**:当前广播按连接全量下发(P1-9 余项)
-3. **服务端 i18n 机制(可选)**:文案已统一英文;若需多语言再接入 `internal/i18n`(P1-3 余项)
-4. **SSRF 面收敛**:exec `script_url` 与通知渠道测试的服务端出网可加白名单(P2-2)
-5. **凭据静态加密 / OS keychain**(P2-1,与 CLI 轮合并考虑)
-6. **`?token=` 传参改走子协议或一次性票据**(P2-3)
-7. **共享 owl.db 多连接池写并发演练**(P2-6)
+剩余:
+
+1. **凭据静态加密**(P2-1,设计中):`nodes.password`/`nodes.ssh_key` 经 AES-256-GCM 加密,
+   `OWL_ENC_KEY` 环境变量开启,`enc:v1:` 前缀兼容存量明文,CLI/serve 同钥互读;详见设计记录
+2. **`/ws` 作用域过滤**:评估后接受现状,仅当 viewer 角色语义变更时随 REST 授权模型一起重做(P1-9 余项)
+3. **SSRF 收敛**:评估后接受现状(P2-2)
+4. **AI API key 传输与 `__plain__:` 回退**:保留;根治需 HTTPS/反代(P1-10 余项)
+5. **服务端 i18n 机制(可选)**:文案已统一英文,多语言需求出现再接 internal/i18n(P1-3 余项)
+6. **notify 渠道配置的密码字段加密**(凭据加密二期)
+7. **HTTP 访问日志保留策略与脱敏扩展**(如 ticket 也脱敏)(P2-5 后续)
 
 ## 下一评审区域建议
 
