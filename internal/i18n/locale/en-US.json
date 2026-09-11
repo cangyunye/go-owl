@@ -900,5 +900,10 @@
   "settings.show.field_parallel": "  Parallel: %v",
   "settings.show.field_group": "  Group:    %s",
   "settings.show.field_labels": "  Labels:   %s",
-  "settings.show.target_label": "Target:"
+  "settings.show.target_label": "Target:",
+  "node.reencrypt.short": "Encrypt plaintext credentials in the nodes table in place",
+  "node.reencrypt.long": "Encrypt unencrypted password/ssh_key values in the nodes table.\n\nRequires the OWL_ENC_KEY environment variable (base64-encoded 32-byte key).\nOnly encrypts; other data is untouched. Safe to re-run (encrypted values are skipped).",
+  "node.reencrypt.done": "Encrypted %s plaintext credentials",
+  "node.reencrypt.no_key": "OWL_ENC_KEY is not set; encryption is disabled, refusing to run",
+  "node.reencrypt.no_db": "database is not initialized"
 }

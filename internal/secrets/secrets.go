@@ -22,11 +22,15 @@ import (
 // Prefix 是加密值的存储前缀,兼作格式版本号。
 const Prefix = "enc:v1:"
 
-// keyEnvName 是加密钥匙的环境变量名。
-const keyEnvName = "OWL_ENC_KEY"
+// KeyEnvName 是加密钥匙的环境变量名。
+const KeyEnvName = "OWL_ENC_KEY"
 
-// loadKey 从环境变量加载 32 字节 AES 密钥;未设置时返回 (nil, false, nil)。
-func loadKey() ([]byte, bool, error) {
+// keyEnvName 是加密钥匙的环境变量名。
+const keyEnvName = KeyEnvName
+
+// LoadKey 从环境变量加载 32 字节 AES 密钥。
+// 返回 (key, enabled, err):未设置时 enabled=false;格式非法时返回错误。
+func LoadKey() ([]byte, bool, error) {
 	raw := strings.TrimSpace(os.Getenv(keyEnvName))
 	if raw == "" {
 		return nil, false, nil
@@ -52,7 +56,7 @@ func gcm(key []byte) (cipher.AEAD, error) {
 // Encrypt 加密明文凭据;未设置 OWL_ENC_KEY 时原样返回明文(加密关闭)。
 // 已带前缀的输入原样返回(幂等,避免重复加密)。
 func Encrypt(plain string) (string, error) {
-	key, enabled, err := loadKey()
+	key, enabled, err := LoadKey()
 	if err != nil {
 		return "", err
 	}
@@ -80,7 +84,7 @@ func Decrypt(stored string) (string, error) {
 	if !strings.HasPrefix(stored, Prefix) {
 		return stored, nil
 	}
-	key, enabled, err := loadKey()
+	key, enabled, err := LoadKey()
 	if err != nil {
 		return "", err
 	}

@@ -27,6 +27,7 @@ func NewNodeCmd() *cobra.Command {
 	nodeCmd.AddCommand(NewSampleCmd())
 	nodeCmd.AddCommand(NewPingCmd())
 	nodeCmd.AddCommand(NewCheckCmd())
+	nodeCmd.AddCommand(NewReencryptCmd())
 
 	return nodeCmd
 }

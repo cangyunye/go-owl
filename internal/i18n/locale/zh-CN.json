@@ -901,5 +901,10 @@
   "settings.show.field_parallel": "  并行: %v",
   "settings.show.field_group": "  默认分组: %s",
   "settings.show.field_labels": "  标签: %s",
-  "settings.show.target_label": "目标:"
+  "settings.show.target_label": "目标:",
+  "node.reencrypt.short": "把 nodes 表中的明文凭据就地加密",
+  "node.reencrypt.long": "将 nodes 表中未加密的 password/ssh_key 就地加密。\n\n要求已设置环境变量 OWL_ENC_KEY(base64 编码的 32 字节密钥)。\n该命令只加密,不改动其他数据;可重复执行(已加密的自动跳过)。",
+  "node.reencrypt.done": "已加密 %s 个明文凭据",
+  "node.reencrypt.no_key": "未设置 OWL_ENC_KEY,加密处于关闭状态,拒绝执行",
+  "node.reencrypt.no_db": "数据库未初始化"
 }
