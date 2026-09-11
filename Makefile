@@ -23,13 +23,20 @@ SHELL       := /bin/sh
 GO          ?= go
 BUILD_DIR   := build
 # 自动跟随最近 git tag（如 v1.0.0 → 1.0.0）；无 git/无 tag 时回退 0.16.0；可用 make VERSION=x 覆盖
-# 注意: $${v\#v} 中 \# 转义,否则 GNU make 把 # 当注释起点吞掉 $(shell) 右括号
-VERSION     ?= $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null || echo 0.16.0); echo $${v\#v})
+# 注意: 不能用 $${v\#v} 去 v 前缀 —— \# 会被原样传给 /bin/sh, dash 报 Bad substitution
+# (stderr), stdout 为空 → 版本号静默注入空值, owl --version 报 unknown flag。
+# 改用 sed 去 v 前缀, 失败回退由 ifeq 兜底。
+VERSION     := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+ifeq ($(VERSION),)
+VERSION     := 0.16.0
+endif
 
 CLI_MAIN    := ./cmd/cli
 SERVE_MAIN  := ./cmd/owl-serve
-SERVE_PKG   := github.com/cangyunye/go-owl/cmd/owl-serve
 PKG         := github.com/cangyunye/go-owl/cmd/cli/cmd
+# owl-serve 是 package main: -X 的导入路径必须是 main(与 main.go 注释一致),
+# 用完整模块路径时 go1.26 链接器不匹配,版本注入静默失效(实测踩坑)
+SERVE_PKG   := main
 COMMIT_ID   := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_TIME  := $(shell date '+%Y-%m-%d %H:%M:%S')
 LDFLAGS     := -ldflags "-s -w -X '$(PKG).version=$(VERSION)' -X '$(PKG).commitID=$(COMMIT_ID)' -X '$(PKG).buildTime=$(BUILD_TIME)'"
