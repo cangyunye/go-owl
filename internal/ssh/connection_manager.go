@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os/user"
 	"strings"
+
+	"github.com/cangyunye/go-owl/internal/secrets"
 )
 
 // ConnectionInfo 连接信息
@@ -33,6 +35,19 @@ func (ci *ConnectionInfo) GetUser() string {
 // ResolveConnection 解析连接信息
 // 优先级：节点配置 > SSH config > 当前用户
 func ResolveConnection(nodeID, nodeAddress string, nodePort int, nodeUser, nodeKeyFile, nodePassword string, sshConfigPath string) (*ConnectionInfo, error) {
+	// 节点凭据在库中可能是 enc:v1: 密文(CLI 执行链路从 nodes 表原样加载),
+	// 在此统一解密:明文/已解密值原样透传(幂等);缺/错钥匙返回明确错误,
+	// 而不是带着密文去 SSH 握手后报出误导性的认证失败。
+	var err error
+	nodePassword, err = secrets.Decrypt(nodePassword)
+	if err != nil {
+		return nil, fmt.Errorf("node %s: %w", nodeID, err)
+	}
+	nodeKeyFile, err = secrets.Decrypt(nodeKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("node %s: %w", nodeID, err)
+	}
+
 	info := &ConnectionInfo{
 		Address:  nodeAddress,
 		Port:     nodePort,
