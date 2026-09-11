@@ -166,6 +166,8 @@ func TestSettingsShow(t *testing.T) {
 	TestIntegrationEnabled(t)
 
 	cmd := exec.Command("owl", "settings", "show")
+	// 固定英文 locale:断言依赖 en-US 文案(Output:),避免随机器 LANG 变化
+	cmd.Env = append(os.Environ(), "OWL_LANG=en-US")
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
