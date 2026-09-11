@@ -170,8 +170,10 @@ OWL_DB_PATH=.reviewtmp/repro.db ./owl-serve --port 18082 &
 
 剩余:
 
-1. **凭据静态加密**(P2-1,设计中):`nodes.password`/`nodes.ssh_key` 经 AES-256-GCM 加密,
-   `OWL_ENC_KEY` 环境变量开启,`enc:v1:` 前缀兼容存量明文,CLI/serve 同钥互读;详见设计记录
+1. **凭据静态加密**(P2-1) ✅ 完成:internal/secrets(AES-256-GCM,`enc:v1:` 前缀兼容存量明文),
+   `OWL_ENC_KEY` 开关;serve 写加密/读解密接线 + CLI NodeStore 接线 + `owl node reencrypt` 迁移命令;
+   跨进程 E2E:CLI 写密文落库、同钥 serve 解密正常、错钥明确报错无泄露(提交 133c9b8/5ac5819/fcabf64)。
+   二期:notify 渠道 JSON 配置内的密码字段;`~/.owl/nodes.json` 侧文件仍是明文凭据落点(见下)
 2. **`/ws` 作用域过滤**:评估后接受现状,仅当 viewer 角色语义变更时随 REST 授权模型一起重做(P1-9 余项)
 3. **SSRF 收敛**:评估后接受现状(P2-2)
 4. **AI API key 传输与 `__plain__:` 回退**:保留;根治需 HTTPS/反代(P1-10 余项)
