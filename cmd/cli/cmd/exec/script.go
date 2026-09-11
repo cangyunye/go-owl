@@ -58,6 +58,21 @@ func NewScriptCmd() *cobra.Command {
 	return scriptCmd
 }
 
+// validateScriptArg 校验脚本参数:URL 直通;--inline 模式参数是脚本内容,
+// 不做文件检查;其余视为本地脚本文件,必须存在。
+func validateScriptArg(arg string) error {
+	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+		return nil
+	}
+	if scriptInline {
+		return nil
+	}
+	if _, err := os.Stat(arg); err != nil {
+		return err
+	}
+	return nil
+}
+
 // scriptFlags
 var (
 	scriptNodes   string
@@ -89,12 +104,10 @@ func runScript(cmd *cobra.Command, args []string) {
 
 	handleExecNodeConflicts()
 
-	// 检查脚本文件是否存在
-	if !(len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://")) {
-		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-			fmt.Fprintln(os.Stderr, i18n.T("exec.script.err_script_not_found", scriptPath))
-			os.Exit(1)
-		}
+	// 校验脚本参数(URL 直通 / --inline 视为内容 / 本地文件须存在)
+	if validateScriptArg(scriptPath) != nil {
+		fmt.Fprintln(os.Stderr, i18n.T("exec.script.err_script_not_found", scriptPath))
+		os.Exit(1)
 	}
 
 	// 获取目标节点
@@ -127,12 +140,15 @@ func runScript(cmd *cobra.Command, args []string) {
 		fmt.Println(i18n.T("exec.script.skip_blacklist"))
 	} else {
 		var scriptContent []byte
-		if len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://") {
+		if strings.HasPrefix(scriptPath, "http://") || strings.HasPrefix(scriptPath, "https://") {
 			resp, fetchErr := http.Get(scriptPath)
 			if fetchErr == nil {
 				defer resp.Body.Close()
 				scriptContent, _ = io.ReadAll(resp.Body)
 			}
+		} else if scriptInline {
+			// 内联模式:参数本身就是脚本内容,同样纳入黑名单检查
+			scriptContent = []byte(scriptPath)
 		} else {
 			scriptContent, _ = os.ReadFile(scriptPath)
 		}

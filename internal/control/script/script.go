@@ -51,12 +51,16 @@ func (e *ScriptExecutor) ExecuteScript(scriptPath string, targets []string, opts
 
 	// 检查脚本类型
 	isURL := strings.HasPrefix(scriptPath, "http://") || strings.HasPrefix(scriptPath, "https://")
-	var content []byte
-	var err error
-
 	if isURL {
 		return nil, fmt.Errorf("URL 脚本尚未支持")
+	}
+
+	var content []byte
+	if opts.Inline {
+		// --inline: 参数本身就是脚本内容,不读本地文件
+		content = []byte(scriptPath)
 	} else {
+		var err error
 		content, err = os.ReadFile(scriptPath)
 		if err != nil {
 			return nil, fmt.Errorf("读取脚本文件失败: %w", err)
