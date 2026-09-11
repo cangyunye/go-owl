@@ -33,6 +33,9 @@ func TestSetupSession_WithExplicitConfig(t *testing.T) {
 }
 
 func TestSetupSession_NilConfigLoadsFileOrDefault(t *testing.T) {
+	// 密闭:不依赖真实 ~/.owl/config.yaml——真实环境里该文件可能被
+	// serve/settings 流程写入无 ai.provider 的内容,导致默认值断言失败
+	t.Setenv("HOME", t.TempDir())
 	agent, cfg, err := SetupSession(testStore(t), nil, false)
 	if err != nil {
 		t.Fatalf("SetupSession: %v", err)
