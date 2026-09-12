@@ -1,5 +1,5 @@
 export function renderNodes(render, navigate, user, api, shell) {
-  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', status: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '', pingResults: {}, checkResults: {}, selectedIds: [], expandedId: null };
+  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', status: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '', pingResults: {}, checkResults: {}, selectedIds: [], expandedId: null, groupCounts: {} };
   const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
   const canExec = ['admin', 'operator'].includes(user.role);
   const isAdmin = user.role === 'admin';
@@ -32,6 +32,7 @@ export function renderNodes(render, navigate, user, api, shell) {
     for (const g of ((state.filters && state.filters.groups) || [])) seen[g] = true;
     state.allGroups = Object.keys(seen).sort();
     loadPanelGroups();
+    loadGroupCounts(false);
   }
 
   function loadPanelGroups() {
@@ -40,22 +41,39 @@ export function renderNodes(render, navigate, user, api, shell) {
     const q = state.groupSearch.toLowerCase();
     const filtered = state.allGroups.filter(g => !q || g.toLowerCase().includes(q));
     list.innerHTML = `
-      <li style="padding:6px 10px">
+      <div style="padding:6px 10px">
         <input type="text" id="groupSearchInput" placeholder="搜索分组…" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);font-size:12px;outline:none" value="${esc(state.groupSearch)}">
-      </li>
+      </div>
+      <div class="group-chips">
       ${filtered.map(g => {
-        const checked = state.selectedGroups.includes(g);
-        return `<li class="panel-item" data-group="${esc(g)}" role="option" aria-selected="${checked}">
-          <label>
-            <input type="checkbox" class="group-check" value="${esc(g)}" ${checked ? 'checked' : ''}>
-            <span class="dot" style="background:${checked ? 'var(--accent)' : 'var(--muted)'}"></span>
-            <span class="group-text">${esc(g)}</span>
-          </label>
-        </li>`;
+        const active = state.selectedGroups.includes(g);
+        const count = state.groupCounts[g];
+        return `<button type="button" class="group-chip ${tagColor(g)} ${active ? 'selected' : ''}" data-group="${esc(g)}" aria-pressed="${active}" title="${esc(g)} · ${count == null ? '…' : count + ' 个节点'}">
+          <span class="dot"></span><span class="group-text">${esc(g)}</span><span class="count">${count == null ? '…' : count}</span>
+        </button>`;
       }).join('')}
+      </div>
     `;
     document.getElementById('groupSearchInput')?.addEventListener('input', onGroupSearchInput);
-    document.querySelectorAll('.group-check').forEach(cb => cb.addEventListener('change', onGroupCheckChange));
+    list.querySelectorAll('.group-chip').forEach(chip => chip.addEventListener('click', () => toggleGroupSelect(chip.dataset.group)));
+  }
+
+  let groupCountsAt = 0;
+  async function loadGroupCounts(force) {
+    const now = Date.now();
+    if (!force && now - groupCountsAt < 10000) return;
+    groupCountsAt = now;
+    try {
+      const res = await api.nodes({ page: 1, page_size: 1000 });
+      const counts = {};
+      (res.data || []).forEach(n => (n.groups || []).forEach(g => { counts[g] = (counts[g] || 0) + 1; }));
+      state.groupCounts = counts;
+      document.querySelectorAll('#panelList .group-chip').forEach(chip => {
+        const c = counts[chip.dataset.group];
+        chip.querySelector('.count').textContent = c == null ? '…' : c;
+        chip.title = chip.dataset.group + ' · ' + (c == null ? '…' : c) + ' 个节点';
+      });
+    } catch { /* 计数拉取失败不阻塞面板 */ }
   }
 
   async function loadNodes() {
@@ -158,12 +176,11 @@ export function renderNodes(render, navigate, user, api, shell) {
     }, 100);
   }
 
-  function onGroupCheckChange(e) {
-    const g = e.target.value;
-    if (e.target.checked) {
-      if (!state.selectedGroups.includes(g)) state.selectedGroups.push(g);
-    } else {
+  function toggleGroupSelect(g) {
+    if (state.selectedGroups.includes(g)) {
       state.selectedGroups = state.selectedGroups.filter(x => x !== g);
+    } else {
+      state.selectedGroups.push(g);
     }
     loadPanelGroups();
     state.page = 1;
@@ -205,6 +222,7 @@ export function renderNodes(render, navigate, user, api, shell) {
       hideAddModal();
       state.page = 1;
       await loadNodes();
+      loadGroupCounts(true);
     } catch (e) {
       document.getElementById('add-error').textContent = e.message;
     }
@@ -273,6 +291,7 @@ export function renderNodes(render, navigate, user, api, shell) {
       await api.updateNode(n.id, data);
       hideEditModal();
       await loadNodes();
+      loadGroupCounts(true);
     } catch (e) { document.getElementById('edit-error').textContent = e.message; }
     btn.disabled = false; btn.textContent = '保存';
   }
@@ -354,7 +373,7 @@ export function renderNodes(render, navigate, user, api, shell) {
           : { ...(node?.labels || {}), ...newLabels };
         return api.updateNode(id, { labels });
       }));
-      hideLabelModal(); await loadNodes();
+      hideLabelModal(); await loadNodes(); loadGroupCounts(true);
     } catch (e) { document.getElementById('label-error').textContent = e.message; }
     btn.disabled = false; btn.textContent = '确定';
   }
@@ -365,7 +384,7 @@ export function renderNodes(render, navigate, user, api, shell) {
     if (!confirm(`确定删除 ${ids.length} 个节点？此操作不可撤销。`)) return;
     try {
       await Promise.all(ids.map(id => api.deleteNode(id)));
-      window.clearSelection(); await loadNodes();
+      window.clearSelection(); await loadNodes(); loadGroupCounts(true);
     } catch (e) { alert('删除失败: ' + e.message); }
   }
 

@@ -227,9 +227,9 @@ export function renderExec(render, navigate, user, api, shell) {
     if (!container) return;
     container.innerHTML = allGroups.map(g => {
       const active = activeGroups.includes(g);
-      return `<span class="node-chip ${active ? 'selected' : ''}" data-group="${esc(g)}">${esc(g)}</span>`;
+      return `<button type="button" class="group-chip ${tagColor(g)} ${active ? 'selected' : ''}" data-group="${esc(g)}" aria-pressed="${active}">${esc(g)}</button>`;
     }).join('');
-    container.querySelectorAll('.node-chip').forEach(chip => {
+    container.querySelectorAll('.group-chip').forEach(chip => {
       chip.addEventListener('click', () => toggleGroup(chip.dataset.group));
     });
   }

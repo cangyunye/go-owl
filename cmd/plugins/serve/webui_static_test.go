@@ -94,3 +94,38 @@ func TestWebUITagBuckets_TwelveAndLabelOutline(t *testing.T) {
 	assert.Contains(t, nodes, `class="tag tag-out ${tagColor(`,
 		"label chips must render with the tag-out outline variant")
 }
+
+// 分组筛选升级为彩色胶囊：色点常驻该组彩虹色相（与列表徽章同源 tagColor），
+// 选中态整颗组色填充；去掉原生 checkbox；chip 上带节点计数；
+// exec 页分组筛选同样换用 .group-chip 与节点管理视觉统一。
+func TestWebUIGroupFilterChips(t *testing.T) {
+	css := readWebFile(t, "web/css/app.css")
+	assert.Contains(t, css, ".group-chips {", "chip flow container must exist")
+	assert.Contains(t, css, ".group-chip {", "group chip style must exist")
+	assert.Contains(t, css, ".group-chip.selected {",
+		"selected state must be styled")
+	assert.Contains(t, css, "background: color-mix(in oklch, oklch(62% var(--tag-c) var(--tag-h))",
+		"selected chip must fill with the group's own hue via color-mix")
+	assert.Contains(t, css, ".group-chip .count {",
+		"per-group node count badge must be styled")
+
+	nodes := readWebFile(t, "web/js/pages/nodes.js")
+	assert.NotContains(t, nodes, "group-check",
+		"native checkbox group filter must be removed")
+	assert.Contains(t, nodes, `class="group-chip`,
+		"group filter must render as colored chips")
+	assert.Contains(t, nodes, "${tagColor(g)}",
+		"chip must carry the group's hue bucket class")
+	assert.Contains(t, nodes, "aria-pressed",
+		"chip must expose pressed state for a11y")
+	assert.Contains(t, nodes, "loadGroupCounts",
+		"per-group node counts must be loaded")
+	assert.Contains(t, nodes, "groupCounts",
+		"counts must be kept in state and rendered")
+
+	exec := readWebFile(t, "web/js/pages/exec.js")
+	assert.Contains(t, exec, `class="group-chip`,
+		"exec group filter must use the same group-chip style")
+	assert.NotContains(t, exec, `<span class="node-chip ${active ? 'selected' : ''}" data-group=`,
+		"exec group filter must stop borrowing node-chip styling")
+}

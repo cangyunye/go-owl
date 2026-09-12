@@ -122,7 +122,7 @@ function renderShell() {
     <div class="panel-header" id="panelTitle">
       <span>导航</span>
     </div>
-    <ul class="panel-list" id="panelList"></ul>
+    <div class="panel-list" id="panelList"></div>
   </aside>
   <button class="panel-toggle" id="panelToggle" title="折叠面板" aria-label="折叠面板">
     <svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg>
