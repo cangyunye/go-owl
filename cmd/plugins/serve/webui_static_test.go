@@ -26,3 +26,24 @@ func TestWebUITagColors_ThemeAdaptive(t *testing.T) {
 	assert.NotContains(t, css, "background: oklch(62% 0.18 290 / 0.25)",
 		"dark-theme-hardcoded tag backgrounds must be replaced (tag-r6)")
 }
+
+// 深色主题 --muted 亮度 55% 对 12% 背景对比度约 4.2:1，低于 WCAG AA(4.5:1)，
+// 且 muted 大量用于 11-12px 小字；提亮到 63%（约 5.8:1）。
+// light-sky 主题 accent 色相 150 与 success(145) 几乎同色相，
+// 主按钮/链接与成功徽章无法区分；accent 系列整体移到 250 天蓝，
+// 背景的薄荷绿色调（低饱和 140/150）保留。
+func TestWebUIContrast_MutedAAAndLightSkyAccent(t *testing.T) {
+	css := readWebFile(t, "web/css/app.css")
+
+	assert.Contains(t, css, "--muted:       oklch(63% 0.015 250);",
+		"dark-theme muted must be lightened to ~5.8:1 contrast")
+	assert.NotContains(t, css, "oklch(55% 0.015 250)",
+		"old below-AA muted value must go")
+
+	assert.Contains(t, css, "--accent:      oklch(52% 0.18 250);",
+		"light-sky accent must move off the success hue to sky blue 250")
+	assert.NotContains(t, css, "oklch(58% 0.22 150)",
+		"old light-sky accent / chat-user / sidebar-hover values must be replaced")
+	assert.Contains(t, css, "--success:     oklch(56% 0.18 145);",
+		"success green must stay for status semantics")
+}
