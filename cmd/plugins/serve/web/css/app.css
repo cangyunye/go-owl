@@ -13,6 +13,7 @@
   --warn:        oklch(68% 0.16 85);
   --danger:      oklch(58% 0.20 25);
   --info:        oklch(62% 0.12 220);
+  --tag-fg-l:    75%;
   --text:        var(--fg);
   --text-muted:  var(--muted);
   --primary:     var(--accent);
@@ -59,6 +60,7 @@ html[data-theme="light-sky"] {
   --warn:        oklch(66% 0.16 85);
   --danger:      oklch(56% 0.22 25);
   --info:        oklch(60% 0.14 140);
+  --tag-fg-l:    40%;
   --text:        var(--fg);
   --text-muted:  var(--muted);
   --primary:     var(--accent);
@@ -90,6 +92,7 @@ html[data-theme="dark-warm"] {
   --warn:        oklch(66% 0.16 85);
   --danger:      oklch(56% 0.22 25);
   --info:        oklch(60% 0.14 220);
+  --tag-fg-l:    40%;
   --text:        var(--fg);
   --text-muted:  var(--muted);
   --primary:     var(--accent);
@@ -1155,13 +1158,19 @@ tr:hover td { background: var(--surface-2); }
 .tag-yellow { background: color-mix(in oklch, var(--warn) 25%, var(--surface)); color: var(--warn); }
 .tag-red { background: color-mix(in oklch, var(--danger) 25%, var(--surface)); color: var(--danger); }
 .tag-gray { background: var(--surface-2); color: var(--muted); }
-.tag-r0 { background: oklch(65% 0.18 25 / 0.25); color: oklch(72% 0.18 25); }
-.tag-r1 { background: oklch(68% 0.18 55 / 0.25); color: oklch(75% 0.18 55); }
-.tag-r2 { background: oklch(72% 0.16 85 / 0.25); color: oklch(78% 0.16 85); }
-.tag-r3 { background: oklch(68% 0.16 145 / 0.25); color: oklch(74% 0.16 145); }
-.tag-r4 { background: oklch(66% 0.14 190 / 0.25); color: oklch(72% 0.14 190); }
-.tag-r5 { background: color-mix(in oklch, var(--accent) 25%, var(--surface)); color: var(--accent); }
-.tag-r6 { background: oklch(62% 0.18 290 / 0.25); color: oklch(68% 0.18 290); }
+/* 彩虹标签：每个色桶只声明色相/饱和度，背景经 color-mix 混入 var(--surface)、
+   文字亮度走 --tag-fg-l（:root 75%，浅色主题 40%），保证三套主题下对比度都达标 */
+.tag-r0 { --tag-h: 25;  --tag-c: 0.18; }
+.tag-r1 { --tag-h: 55;  --tag-c: 0.17; }
+.tag-r2 { --tag-h: 85;  --tag-c: 0.16; }
+.tag-r3 { --tag-h: 145; --tag-c: 0.16; }
+.tag-r4 { --tag-h: 190; --tag-c: 0.14; }
+.tag-r5 { --tag-h: 255; --tag-c: 0.18; }
+.tag-r6 { --tag-h: 290; --tag-c: 0.18; }
+.tag-r0, .tag-r1, .tag-r2, .tag-r3, .tag-r4, .tag-r5, .tag-r6 {
+  background: color-mix(in oklch, oklch(62% var(--tag-c) var(--tag-h)) 25%, var(--surface));
+  color: oklch(var(--tag-fg-l) var(--tag-c) var(--tag-h));
+}
 
 .status-badge {
   display: inline-block;
