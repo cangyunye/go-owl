@@ -1805,24 +1805,33 @@ tr:hover td { background: var(--surface-2); }
 }
 .node-selector::-webkit-scrollbar { width: 4px; }
 .node-selector::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+/* 节点选择 chip 与 group-chip 同款胶囊语言：状态点用类驱动，
+   选中态 accent 填充（节点无组色语义，选中=主色与全站一致） */
 .node-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
   padding: 4px 10px;
-  border-radius: 6px;
-  background: var(--surface-2);
+  border-radius: 999px;
+  background: var(--surface);
   border: 1px solid var(--border);
-  font-size: var(--fs-xs);
+  color: var(--fg);
+  font: var(--fs-xs)/1.4 var(--font-body);
   cursor: pointer;
   transition: all var(--transition);
 }
 .node-chip:hover { border-color: var(--accent-dim); }
 .node-chip.selected {
-  border-color: var(--accent);
-  background: var(--surface-active);
+  border-color: color-mix(in oklch, var(--accent) 55%, transparent);
+  background: color-mix(in oklch, var(--accent) 20%, var(--surface));
+  color: var(--accent);
 }
-.node-chip .dot { width: 6px; height: 6px; border-radius: 50%; }
+.node-chip .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.node-chip .dot.st-online { background: var(--success); }
+.node-chip .dot.st-offline { background: var(--muted); }
+.node-chip .dot.st-warn { background: var(--warn); }
+.node-chip.selected .dot { background: currentColor; }
 
 /* Panel node list */
 .panel-node-list {
@@ -1836,7 +1845,7 @@ tr:hover td { background: var(--surface-2); }
 }
 .panel-node-list::-webkit-scrollbar { width: 4px; }
 .panel-node-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-.panel-node-list .node-chip { font-size: var(--fs-xs); padding: 3px 8px; }
+.panel-node-list .node-chip { padding: 3px 9px; }
 .panel-node-footer {
   border-top: 1px solid var(--border);
   padding: 8px 0 0;

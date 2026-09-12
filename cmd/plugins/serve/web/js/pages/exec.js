@@ -134,10 +134,10 @@ export function renderExec(render, navigate, user, api, shell) {
     }
     container.innerHTML = allNodes.map(n => {
       const selected = selectedNodes.has(n.id);
-      const dotColor = n.status === 'online' ? 'var(--success)' : n.status === 'offline' ? 'var(--muted)' : 'var(--warn)';
-      return `<span class="node-chip ${selected ? 'selected' : ''}" data-id="${esc(n.id)}">
-        <span class="dot" style="background:${dotColor}"></span>${esc(n.name || n.id)}
-      </span>`;
+      const st = n.status === 'online' ? 'st-online' : n.status === 'offline' ? 'st-offline' : 'st-warn';
+      return `<button type="button" class="node-chip ${selected ? 'selected' : ''}" data-id="${esc(n.id)}" aria-pressed="${selected}">
+        <span class="dot ${st}"></span>${esc(n.name || n.id)}
+      </button>`;
     }).join('');
 
     container.querySelectorAll('.node-chip').forEach(chip => {
