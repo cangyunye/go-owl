@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -46,4 +47,26 @@ func TestWebUIContrast_MutedAAAndLightSkyAccent(t *testing.T) {
 		"old light-sky accent / chat-user / sidebar-hover values must be replaced")
 	assert.Contains(t, css, "--success:     oklch(56% 0.18 145);",
 		"success green must stay for status semantics")
+}
+
+// 字号收敛为 token：下限提到 12px（消灭 10/11px 小字），
+// 层级 xs12/sm13/md14/lg16/xl18/2xl24，便于全局调节与密度切换；
+// 表格单元格启用 tabular-nums 对齐数字列。
+func TestWebUIFontTokens(t *testing.T) {
+	css := readWebFile(t, "web/css/app.css")
+
+	for _, tok := range []string{"--fs-xs:", "--fs-sm:", "--fs-md:", "--fs-lg:", "--fs-xl:", "--fs-2xl:"} {
+		assert.Contains(t, css, tok, "font scale token %s must be defined", tok)
+	}
+	assert.Contains(t, css, "font-size: var(--fs-",
+		"font-size declarations must use the scale tokens")
+
+	for _, n := range []string{"10", "11", "12", "13", "14", "15", "16", "17", "18", "20", "22", "24"} {
+		assert.NotContains(t, css, "font-size: "+n+"px",
+			"hardcoded %spx font-size must use a token", n)
+		assert.NotContains(t, css, "font-size:"+n+"px",
+			"hardcoded %spx font-size must use a token", n)
+	}
+	assert.GreaterOrEqual(t, strings.Count(css, "tabular-nums"), 2,
+		"tabular-nums must cover stat values and table cells")
 }
