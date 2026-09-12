@@ -1170,13 +1170,24 @@ tr:hover td { background: var(--surface-2); }
 .tag-r0 { --tag-h: 25;  --tag-c: 0.18; }
 .tag-r1 { --tag-h: 55;  --tag-c: 0.17; }
 .tag-r2 { --tag-h: 85;  --tag-c: 0.16; }
-.tag-r3 { --tag-h: 145; --tag-c: 0.16; }
-.tag-r4 { --tag-h: 190; --tag-c: 0.14; }
-.tag-r5 { --tag-h: 255; --tag-c: 0.18; }
-.tag-r6 { --tag-h: 290; --tag-c: 0.18; }
-.tag-r0, .tag-r1, .tag-r2, .tag-r3, .tag-r4, .tag-r5, .tag-r6 {
+.tag-r3 { --tag-h: 115; --tag-c: 0.15; }
+.tag-r4 { --tag-h: 145; --tag-c: 0.16; }
+.tag-r5 { --tag-h: 175; --tag-c: 0.14; }
+.tag-r6 { --tag-h: 205; --tag-c: 0.13; }
+.tag-r7 { --tag-h: 235; --tag-c: 0.15; }
+.tag-r8 { --tag-h: 265; --tag-c: 0.17; }
+.tag-r9 { --tag-h: 295; --tag-c: 0.16; }
+.tag-r10 { --tag-h: 325; --tag-c: 0.16; }
+.tag-r11 { --tag-h: 355; --tag-c: 0.17; }
+.tag-r0, .tag-r1, .tag-r2, .tag-r3, .tag-r4, .tag-r5, .tag-r6,
+.tag-r7, .tag-r8, .tag-r9, .tag-r10, .tag-r11 {
   background: color-mix(in oklch, oklch(62% var(--tag-c) var(--tag-h)) 25%, var(--surface));
   color: oklch(var(--tag-fg-l) var(--tag-c) var(--tag-h));
+}
+/* 标签（key:value）用描边变体：与分组实心 chip 形成形状区分，不依赖色相 */
+.tag-out {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, oklch(62% var(--tag-c) var(--tag-h)) 45%, transparent);
 }
 
 .status-badge {

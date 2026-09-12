@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -69,4 +70,27 @@ func TestWebUIFontTokens(t *testing.T) {
 	}
 	assert.GreaterOrEqual(t, strings.Count(css, "tabular-nums"), 2,
 		"tabular-nums must cover stat values and table cells")
+}
+
+// 7 个色相桶对 11+ 个分组必然哈希碰撞，且 r1/r2 同为黄系难以区分，
+// 扩到 12 桶（每 30° 一档）；标签 chip 用 tag-out 描边变体与分组实心
+// chip 形成形状区分，不再单纯依赖颜色。
+func TestWebUITagBuckets_TwelveAndLabelOutline(t *testing.T) {
+	css := readWebFile(t, "web/css/app.css")
+	for i := 0; i < 12; i++ {
+		assert.Contains(t, css, fmt.Sprintf(".tag-r%d { --tag-h:", i),
+			"tag hue bucket r%d must be defined", i)
+	}
+	assert.Contains(t, css, ".tag-out {",
+		"outline variant for label chips must exist")
+
+	for _, name := range []string{"nodes.js", "exec.js", "files.js"} {
+		src := readWebFile(t, "web/js/pages/"+name)
+		assert.Contains(t, src, "% 12", "%s tagColor must hash into 12 hue buckets", name)
+		assert.NotContains(t, src, "% 7)", "%s must not keep the 7-bucket hash", name)
+	}
+
+	nodes := readWebFile(t, "web/js/pages/nodes.js")
+	assert.Contains(t, nodes, `class="tag tag-out ${tagColor(`,
+		"label chips must render with the tag-out outline variant")
 }

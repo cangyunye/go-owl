@@ -13,7 +13,7 @@ export function renderNodes(render, navigate, user, api, shell) {
     edit: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-edit"/></svg>',
     del: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-x"/></svg>'
   };
-  function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 7); }
+  function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 12); }
   function statusClass(s) { return 'status-badge status-' + (s || 'unknown'); }
   function statusDot(s) {
     if (s === 'online') return '<span class="status-dot online"></span>';
@@ -80,7 +80,7 @@ export function renderNodes(render, navigate, user, api, shell) {
       list.innerHTML = state.nodes.map(n => {
         const checked = state.selectedIds.includes(n.id);
         const groups = (n.groups || []).map(g => `<span class="tag ${tagColor(g)}">${esc(g)}</span>`).join('');
-        const labels = n.labels ? Object.entries(n.labels).map(([k, v]) => `<span class="tag ${tagColor(k + ':' + v)}">${esc(k)}:${esc(v)}</span>`).join('') : '';
+        const labels = n.labels ? Object.entries(n.labels).map(([k, v]) => `<span class="tag tag-out ${tagColor(k + ':' + v)}">${esc(k)}:${esc(v)}</span>`).join('') : '';
         const onlineLabel = n.status === 'online' ? '刚刚' : n.last_seen ? timeAgo(n.last_seen) : '-';
         const pingResult = state.pingResults[n.id];
         const checkResult = state.checkResults[n.id];
