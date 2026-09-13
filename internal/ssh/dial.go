@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +19,7 @@ type DialOptions struct {
 	Password       string
 	KeyFile        string
 	KeyContent     string             // 内联 PEM 私钥
-	ProxyJump      string             // 跳板机 "host" 或 "host:port"
+	ProxyJump      string             // 跳板机 "[user@]host" 或 "[user@]host:port"
 	ConnectTimeout time.Duration      // 连接超时，<=0 时默认 10s
 	AuthMethods    []gossh.AuthMethod // 非空时直接使用，跳过内建认证链；跳板连接同样使用
 }
@@ -42,7 +43,10 @@ func (c *Client) Close() error {
 
 // Dial 建立 SSH 连接。认证链：密钥文件/内联密钥优先，密码兜底，
 // 两者皆无时尝试默认密钥（~/.ssh/id_ed25519 等）。
-// ProxyJump 非空时先连跳板机，再经跳板 direct-tcpip 转发到目标。
+// ProxyJump 非空时先连跳板机，再经跳板 direct-tcpip 转发到目标。跳板机
+// 支持 "[user@]host[:port]" 指定独立用户；且在目标认证链之外追加本机默认
+// 密钥——覆盖"跳板密钥认证 + 目标密码认证"组合（目标仅密码时默认密钥
+// 不会进入跳板链）。跳板不支持独立密码（凭据串不落库）。
 // 返回的错误为 *SSHAuthError 或 *ConnectionError。
 func Dial(ctx context.Context, addr string, opts DialOptions) (*Client, error) {
 	timeout := opts.ConnectTimeout
@@ -70,16 +74,25 @@ func Dial(ctx context.Context, addr string, opts DialOptions) (*Client, error) {
 	}
 
 	if opts.ProxyJump != "" {
-		jumpAddr := opts.ProxyJump
+		jumpUser, jumpAddr := splitJumpSpec(opts.ProxyJump)
 		if _, _, err := net.SplitHostPort(jumpAddr); err != nil {
 			jumpAddr = net.JoinHostPort(jumpAddr, "22")
 		}
+		// 跳板认证链：目标链 + 本机默认密钥。目标仅密码（或显式密钥）时
+		// 默认密钥不会进入目标链，跳板若只收公钥则需要这里补上；
+		// 目标链本就源自默认密钥（无密码无密钥）时不重复追加。
+		jumpAuths := auths
+		if len(opts.AuthMethods) == 0 && !(opts.KeyFile == "" && opts.KeyContent == "" && opts.Password == "") {
+			if signers := tryDefaultKeys(); len(signers) > 0 {
+				jumpAuths = append(append([]gossh.AuthMethod{}, auths...), gossh.PublicKeys(signers...))
+			}
+		}
 		jump, err := Dial(ctx, jumpAddr, DialOptions{
-			User:           opts.User,
+			User:           firstNonEmpty(jumpUser, opts.User),
 			Password:       opts.Password,
 			KeyFile:        opts.KeyFile,
 			KeyContent:     opts.KeyContent,
-			AuthMethods:    opts.AuthMethods,
+			AuthMethods:    jumpAuths,
 			ConnectTimeout: opts.ConnectTimeout,
 		})
 		if err != nil {
@@ -193,6 +206,26 @@ func connErr(addr string, cause error) *ConnectionError {
 		errType = ErrorTypeConnection
 	}
 	return &ConnectionError{NodeID: addr, ErrorType: errType, Stderr: msg, Cause: cause}
+}
+
+// splitJumpSpec 解析跳板机描述 "[user@]host[:port]"，返回独立用户名
+// （未指定时为空串，调用方回退到目标用户）与地址。
+func splitJumpSpec(spec string) (user, addr string) {
+	addr = spec
+	if i := strings.Index(addr, "@"); i > 0 {
+		user = addr[:i]
+		addr = addr[i+1:]
+	}
+	return user, addr
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // buildDialAuth 构建认证方法列表：密钥文件 > 内联密钥 > 密码（含 keyboard-interactive）> 默认密钥
