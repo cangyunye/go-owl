@@ -156,6 +156,11 @@ func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) e
 	}
 
 	// 采集成功（含部分成功）
+	if err != nil {
+		logger.Warn("节点部分采集命令失败（指标可能缺失）",
+			logger.WithOperation("monitor_collect"),
+			logger.WithField("node_id", t.ID), logger.WithError(err))
+	}
 	events, merr := e.manager.MarkCollectOK(t.ID)
 	if merr != nil {
 		return merr
