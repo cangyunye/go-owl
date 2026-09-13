@@ -35,3 +35,20 @@ func TestParseDF_Inodes(t *testing.T) {
 		{NodeID: "node-a", Metric: "disk.inodes./", TS: 1750000000, Value: 3},
 	}, samples)
 }
+
+// TestParseDF_SkipsUnparseableRows 验证百分比不可解析的行（如虚拟文件系统
+// 的 IUse% 为 "-"）被跳过而非整体失败——否则一条坏行会丢弃全部挂载点指标。
+func TestParseDF_SkipsUnparseableRows(t *testing.T) {
+	raw := `Filesystem       Inodes   IUsed    IFree IUse% Mounted on
+none            2036745       5  2036740    1% /usr/lib/modules
+drivers              999 -999001  1000000     - /usr/lib/wsl/drivers
+/dev/nvme0n1p2 12845056  296247 12548809    3% /
+`
+
+	samples, err := ParseDF(raw, "node-a", 1750000000, "disk.inodes")
+	require.NoError(t, err)
+	require.Equal(t, []Sample{
+		{NodeID: "node-a", Metric: "disk.inodes./usr/lib/modules", TS: 1750000000, Value: 1},
+		{NodeID: "node-a", Metric: "disk.inodes./", TS: 1750000000, Value: 3},
+	}, samples)
+}

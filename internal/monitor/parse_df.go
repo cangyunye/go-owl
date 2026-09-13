@@ -26,7 +26,9 @@ func ParseDF(raw, nodeID string, ts int64, prefix string) ([]Sample, error) {
 		pctStr := strings.TrimSuffix(fields[4], "%")
 		pct, err := strconv.ParseFloat(pctStr, 64)
 		if err != nil {
-			return nil, fmt.Errorf("df: 第 %d 行解析百分比失败: %w", i+1, err)
+			// 虚拟文件系统（如 WSL drivers 挂载）的 IUse% 可能为 "-"：
+			// 跳过该行，不因单行坏数据丢弃其余挂载点的指标
+			continue
 		}
 		mount := fields[5]
 		samples = append(samples, Sample{
