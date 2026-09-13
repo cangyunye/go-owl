@@ -198,12 +198,18 @@ func (m *AlertManager) MarkCollectFail(nodeID string) ([]AlertEvent, error) {
 }
 
 // MarkCollectOK 节点采集成功：清除失败计数并解决失联告警。
+// 仅在"失联 → 恢复"转换瞬间 Reset 规则计数（清除断档期陈旧计数）；
+// Engine 每个成功 tick 都会调用本方法，稳态下不得清空，
+// 否则 duration≥2 的持续窗口永远无法满足（计数每轮被清零）。
 func (m *AlertManager) MarkCollectOK(nodeID string) ([]AlertEvent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	wasFailing := m.failCounts[nodeID] > 0
 	delete(m.failCounts, nodeID)
-	m.engine.Reset(nodeID)
+	if wasFailing {
+		m.engine.Reset(nodeID)
+	}
 
 	existing, exists, err := m.store.GetActiveAlert("OWL-OSS-001", nodeID)
 	if err != nil {

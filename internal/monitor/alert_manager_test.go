@@ -59,6 +59,34 @@ func TestAlertManager_OpenRefreshResolve(t *testing.T) {
 	require.Equal(t, int64(1000), got.ResolvedAt)
 }
 
+// TestAlertManager_MarkCollectOK_KeepsDurationWindow 验证周期性采集成功回调
+// 不清空规则连续命中计数：Engine 每个成功 tick 都会调 MarkCollectOK，若其
+// 无条件 Reset 规则计数，duration≥2 的规则将永远无法满足持续窗口。
+func TestAlertManager_MarkCollectOK_KeepsDurationWindow(t *testing.T) {
+	s := newTestStore(t)
+	m := NewAlertManager(s)
+	types := diskRuleTypes() // duration=2
+	samples := highDiskSamples(95)
+
+	// 失联 → 恢复：转换瞬间允许 Reset 一次（清除断档期的陈旧计数）
+	_, err := m.MarkCollectFail("n1")
+	require.NoError(t, err)
+	_, err = m.MarkCollectOK("n1")
+	require.NoError(t, err)
+
+	// 模拟 Engine 稳态循环：OK → Tick → OK → Tick ...
+	_, err = m.MarkCollectOK("n1")
+	require.NoError(t, err)
+	_, err = m.Tick("n1", samples, types) // 计数 1，未达窗口
+	require.NoError(t, err)
+	_, err = m.MarkCollectOK("n1") // 稳态成功回调：不得清计数
+	require.NoError(t, err)
+	events, err := m.Tick("n1", samples, types) // 计数 2 → 触发
+	require.NoError(t, err)
+	require.Len(t, events, 1, "稳态 OK 回调不应清空 duration 窗口计数")
+	require.Equal(t, EventOpened, events[0].Type)
+}
+
 // TestAlertManager_Ack 验证人工确认：open → acked。
 func TestAlertManager_Ack(t *testing.T) {
 	s := newTestStore(t)
