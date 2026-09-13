@@ -5,11 +5,13 @@ package monitor
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
@@ -28,9 +30,11 @@ func NewNodesTargetSource(db *sql.DB) *NodesTargetSource {
 }
 
 // ListTargets 列出全部已注册节点为采集目标。
+// label monitor.services（逗号分隔的 unit 名）映射为采集的受监控服务列表。
 func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 	rows, err := s.db.Query(`SELECT id, name, address, port, user,
-		COALESCE(password, ''), COALESCE(ssh_key, ''), COALESCE(proxy_jump, '')
+		COALESCE(password, ''), COALESCE(ssh_key, ''), COALESCE(proxy_jump, ''),
+		COALESCE(labels, '{}')
 		FROM nodes`)
 	if err != nil {
 		return nil, fmt.Errorf("monitor: 读取节点列表失败: %w", err)
@@ -40,10 +44,12 @@ func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 	var targets []owlmonitor.Target
 	for rows.Next() {
 		var t owlmonitor.Target
+		var labels string
 		if err := rows.Scan(&t.ID, &t.Name, &t.Address, &t.Port, &t.User,
-			&t.SSHPassword, &t.SSHKey, &t.ProxyJump); err != nil {
+			&t.SSHPassword, &t.SSHKey, &t.ProxyJump, &labels); err != nil {
 			return nil, fmt.Errorf("monitor: 扫描节点失败: %w", err)
 		}
+		t.Services = servicesFromLabels(labels)
 		if pw, err := secrets.Decrypt(t.SSHPassword); err != nil {
 			return nil, fmt.Errorf("monitor: 节点 %s 凭据解密失败: %w", t.ID, err)
 		} else {
@@ -57,6 +63,29 @@ func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 		targets = append(targets, t)
 	}
 	return targets, rows.Err()
+}
+
+// servicesFromLabels 从节点 labels JSON 中读取 monitor.services
+//（逗号分隔的受监控服务 unit 列表），非法 JSON 视为未配置。
+func servicesFromLabels(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var m map[string]string
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return nil
+	}
+	v := strings.TrimSpace(m["monitor.services"])
+	if v == "" {
+		return nil
+	}
+	var out []string
+	for _, s := range strings.Split(v, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // Service 监控服务（serve 集成）：持有核心组件与生命周期。

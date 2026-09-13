@@ -11,11 +11,13 @@ import (
 
 // fakeExecer 按命令返回固定输出，模拟远端节点。
 type fakeExecer struct {
-	outputs map[string]string
-	fail    map[string]bool
+	outputs  map[string]string
+	fail     map[string]bool
+	executed []string
 }
 
 func (f *fakeExecer) Execute(command string, timeout time.Duration) (int, string, error) {
+	f.executed = append(f.executed, command)
 	if f.fail[command] {
 		return 1, "", &execErr{cmd: command}
 	}
@@ -42,6 +44,8 @@ func sampleOutputs() map[string]string {
 		"LC_ALL=C free -m":          "              total        used        free      shared  buff/cache   available\nMem:          15891        2352        2419         189       11120       12902\nSwap:          2047           0        2047\n",
 		"cat /proc/net/dev":         "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n  eth0: 1000000000  500000    0    0    0     0          0         0  50000000  250000    0    0    0     0       0          0\n",
 		"LC_ALL=C ss -s":            "Total: 128 (kernel 96)\nTCP:   12 (estab 4, closed 3, orphaned 0, timewait 5, transports 12), \n",
+		"journalctl -p err -q --no-pager -o json --since=-5min | wc -l":          "3\n",
+		"journalctl -k -q --no-pager --since=-5min | grep -ciE \"out of memory|oom-kill|killed process\" || true": "0\n",
 		"cat /proc/uptime":          "12345.67 23456.78\n",
 		"nproc":                     "8\n",
 		"systemctl is-active nginx": "active\n",
@@ -91,6 +95,58 @@ func TestCollector_CollectAll(t *testing.T) {
 	require.InDelta(t, 50000000, byMetric["net.tx_bytes.eth0"], 0.001)
 	require.InDelta(t, 4, byMetric["net.tcp_estab"], 0.001)
 	require.InDelta(t, 5, byMetric["net.tcp_timewait"], 0.001)
+	require.InDelta(t, 3, byMetric["err.journal_errors"], 0.001)
+	require.InDelta(t, 0, byMetric["err.oom"], 0.001)
+}
+
+// TestCollector_SvcMetricsOnlyWithServices 验证 svc 步骤仅在目标配置了
+// 受监控服务（Target.Services）时执行；默认附加 ssh/sshd，别名/坏名过滤。
+func TestCollector_SvcMetricsOnlyWithServices(t *testing.T) {
+	// 未配置服务：不执行 systemctl 命令、无 svc 指标
+	exec := &fakeExecer{outputs: sampleOutputs()}
+	f := &fakeFactory{exec: exec}
+	c := NewCollector(f)
+	c.now = func() int64 { return 1750000000 }
+
+	samples, err := c.Collect(context.Background(), &Target{ID: "node-a"})
+	require.NoError(t, err)
+	for _, s := range samples {
+		require.False(t, strings.HasPrefix(s.Metric, "svc."), "未配置服务不应产出 svc 指标")
+	}
+	for _, cmd := range exec.executed {
+		require.NotContains(t, cmd, "systemctl", "未配置服务不应执行 systemctl 命令")
+	}
+
+	// 配置服务：产出 svc 指标；恶意 unit 名被白名单过滤
+	exec2 := &fakeExecer{outputs: sampleOutputs()}
+	c2 := NewCollector(&fakeFactory{exec: exec2})
+	c2.now = func() int64 { return 1750000000 }
+
+	samples, err = c2.Collect(context.Background(), &Target{ID: "node-a", Services: []string{" nginx "}})
+	require.NoError(t, err)
+	byMetric := map[string]float64{}
+	for _, s := range samples {
+		byMetric[s.Metric] = s.Value
+	}
+	_, hasSsh := byMetric["svc.active.ssh"]
+	require.False(t, hasSsh, "未在列表中的 ssh 不应被采集（opt-in 语义）")
+
+	// 恶意 unit 名被过滤；合法名进入命令
+	exec3 := &fakeExecer{outputs: sampleOutputs()}
+	c3 := NewCollector(&fakeFactory{exec: exec3})
+	c3.now = func() int64 { return 1750000000 }
+	_, err = c3.Collect(context.Background(), &Target{ID: "node-a", Services: []string{"cron", "bad name;rm -rf"}})
+	require.NoError(t, err)
+
+	var svcCmd string
+	for _, cmd := range exec3.executed {
+		if strings.Contains(cmd, "systemctl") {
+			svcCmd = cmd
+		}
+	}
+	require.NotEmpty(t, svcCmd)
+	require.Contains(t, svcCmd, "cron")
+	require.NotContains(t, svcCmd, "bad name", "非法 unit 名不得进入命令")
 }
 
 // TestCollector_OneCommandFails 验证单条命令失败不影响其余命令的采集：
