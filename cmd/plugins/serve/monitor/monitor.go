@@ -119,13 +119,18 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 	advisor := newAdvisor(store)
 	healer := owlmonitor.NewAutoHealer(store, advisor, runner)
 
-	// 静默配置存于 settings 表（monitor.silence_until，0 = 不静默）
+	// 静默配置存于 settings 表（monitor.silence_until，0 = 不静默）；
+	// warn 升级时长存于 settings 表（monitor.escalate_after_minutes，浮点分钟，
+	// 未设置/非法 = 默认 1h），每轮采集前重读，支持运行期调整
 	cfg := owlmonitor.EngineConfig{
 		Interval:      time.Minute,
 		RetentionDays: 30,
 		Concurrency:   10,
 		SilenceUntil:  func() int64 { return readSilenceUntil(db) },
-		WebURL:        webURL,
+		EscalateAfter: func() time.Duration {
+			return time.Duration(readEscalateAfterMinutes(db) * float64(time.Minute))
+		},
+		WebURL: webURL,
 	}
 	engine := owlmonitor.NewEngine(cfg, store, collector, source, manager, dispatcher)
 	engine.SetAutoHealer(healer)
@@ -302,6 +307,20 @@ func readSilenceUntil(db *sql.DB) int64 {
 		return 0
 	}
 	return n
+}
+
+// readEscalateAfterMinutes 读取 warn 升级时长（浮点分钟；未设置/非法/<=0
+// 返回 0，调用方据此保持默认值）。支持小数便于测试（如 0.05 = 3 秒）。
+func readEscalateAfterMinutes(db *sql.DB) float64 {
+	var v string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.escalate_after_minutes'`).Scan(&v); err != nil {
+		return 0
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil || f <= 0 {
+		return 0
+	}
+	return f
 }
 
 func writeSilenceUntil(db *sql.DB, until int64) error {

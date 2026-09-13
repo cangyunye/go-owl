@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -85,6 +86,41 @@ func TestAlertManager_MarkCollectOK_KeepsDurationWindow(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, events, 1, "稳态 OK 回调不应清空 duration 窗口计数")
 	require.Equal(t, EventOpened, events[0].Type)
+}
+
+// TestAlertManager_SetEscalateAfter 验证升级时长可在运行期调整：
+// 缩短后 warn 未处理按新时长升级；传 0/负值忽略（保留当前值）。
+func TestAlertManager_SetEscalateAfter(t *testing.T) {
+	s := newTestStore(t)
+	m := NewAlertManager(s)
+	base := int64(1000)
+	m.now = func() int64 { return base }
+
+	memSamples := func(v float64) []Sample {
+		return []Sample{{NodeID: "n1", Metric: "mem.used_pct", TS: 1, Value: v}}
+	}
+	events, err := m.Tick("n1", memSamples(95), memRuleTypes())
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, EventOpened, events[0].Type)
+
+	// 5 分钟后仍在触发：默认 1h 内不升级
+	m.now = func() int64 { return base + 300 }
+	events, err = m.Tick("n1", memSamples(96), memRuleTypes())
+	require.NoError(t, err)
+	require.Empty(t, events)
+
+	// 缩短为 1 分钟后：累计超时 → 升级
+	m.SetEscalateAfter(time.Minute)
+	m.now = func() int64 { return base + 1300 }
+	events, err = m.Tick("n1", memSamples(97), memRuleTypes())
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, EventEscalated, events[0].Type)
+
+	// 非法值忽略：不改变当前配置
+	m.SetEscalateAfter(0)
+	m.SetEscalateAfter(-time.Minute)
 }
 
 // TestAlertManager_Ack 验证人工确认：open → acked。

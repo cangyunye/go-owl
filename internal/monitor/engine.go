@@ -21,7 +21,10 @@ type EngineConfig struct {
 	RetentionDays int           // 指标/告警保留天数，默认 30
 	Concurrency   int           // 并发采集节点数，默认 10
 	SilenceUntil  func() int64  // 全局静默截止时间戳（0 = 不静默）
-	WebURL        string        // 告警处理入口链接前缀
+	// EscalateAfter 返回 warn 未处理升级为 critical 的时长（nil 或 <=0 =
+	// 保持默认 1h）；每轮采集前求值，支持运行期经 settings 调整
+	EscalateAfter func() time.Duration
+	WebURL        string // 告警处理入口链接前缀
 }
 
 // Engine 监控引擎：周期采集 → 入库 → 规则评估 → 告警 → 通知，每日清理。
@@ -113,6 +116,11 @@ func (e *Engine) TickOnce(ctx context.Context) error {
 		return fmt.Errorf("monitor: 读取告警类型失败: %w", err)
 	}
 	e.manager.SetSilentUntil(e.cfg.SilenceUntil())
+	if e.cfg.EscalateAfter != nil {
+		if d := e.cfg.EscalateAfter(); d > 0 {
+			e.manager.SetEscalateAfter(d)
+		}
+	}
 
 	sem := make(chan struct{}, e.cfg.Concurrency)
 	var wg sync.WaitGroup

@@ -269,6 +269,17 @@ func (m *AlertManager) SetSilentUntil(until int64) {
 	m.mu.Unlock()
 }
 
+// SetEscalateAfter 更新 warn 未处理升级为 critical 的时长
+//（Engine 每轮采集前调用；d<=0 时忽略，保留当前值/默认 1h）。
+// 可经 settings 键 monitor.escalate_after_minutes 在运行期调整。
+func (m *AlertManager) SetEscalateAfter(d time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if d > 0 {
+		m.escalateAfter = d
+	}
+}
+
 // isSilenced 静默期内不新建告警（已有实例仍刷新/恢复/升级）。
 // 调用方须持有 m.mu（当前仅 Tick 在锁内调用）。
 func (m *AlertManager) isSilenced(now int64) bool {
