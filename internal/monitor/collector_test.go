@@ -37,14 +37,33 @@ func (f *fakeFactory) NewExecer(t *Target) (Execer, error) {
 func sampleOutputs() map[string]string {
 	return map[string]string{
 		"cat /proc/loadavg":         "0.52 0.47 0.41 2/345 12345\n",
-		"df -P":                     "Filesystem     1024-blocks    Used Available Capacity Mounted on\n/dev/sda1 205113712 85641132 108722116 45% /\n",
-		"df -Pi":                    "Filesystem     Inodes IUsed IFree IUse% Mounted on\n/dev/sda1 12845056 296247 12548809 3% /\n",
-		"free -m":                   "              total        used        free      shared  buff/cache   available\nMem:          15891        2352        2419         189       11120       12902\nSwap:          2047           0        2047\n",
+		"LC_ALL=C df -P":            "Filesystem     1024-blocks    Used Available Capacity Mounted on\n/dev/sda1 205113712 85641132 108722116 45% /\n",
+		"LC_ALL=C df -Pi":           "Filesystem     Inodes IUsed IFree IUse% Mounted on\n/dev/sda1 12845056 296247 12548809 3% /\n",
+		"LC_ALL=C free -m":          "              total        used        free      shared  buff/cache   available\nMem:          15891        2352        2419         189       11120       12902\nSwap:          2047           0        2047\n",
 		"cat /proc/net/dev":         "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n  eth0: 1000000000  500000    0    0    0     0          0         0  50000000  250000    0    0    0     0       0          0\n",
-		"ss -s":                     "Total: 128 (kernel 96)\nTCP:   12 (estab 4, closed 3, orphaned 0, timewait 5, transports 12), \n",
+		"LC_ALL=C ss -s":            "Total: 128 (kernel 96)\nTCP:   12 (estab 4, closed 3, orphaned 0, timewait 5, transports 12), \n",
 		"cat /proc/uptime":          "12345.67 23456.78\n",
 		"nproc":                     "8\n",
 		"systemctl is-active nginx": "active\n",
+	}
+}
+
+// TestCollector_CommandsLocalePinned 验证 locale 敏感的采集命令固定 C locale：
+// 非 C locale 节点（如中文系统）的本地化表头会导致解析失败且被静默跳过。
+func TestCollector_CommandsLocalePinned(t *testing.T) {
+	pinned := map[string]bool{
+		"LC_ALL=C df -P":   false,
+		"LC_ALL=C df -Pi":  false,
+		"LC_ALL=C free -m": false,
+		"LC_ALL=C ss -s":   false,
+	}
+	for _, step := range collectSteps {
+		if _, ok := pinned[step.command]; ok {
+			pinned[step.command] = true
+		}
+	}
+	for cmd, found := range pinned {
+		require.True(t, found, "采集命令 %q 必须以固定 locale 的形式注册", cmd)
 	}
 }
 
@@ -79,7 +98,7 @@ func TestCollector_CollectAll(t *testing.T) {
 func TestCollector_OneCommandFails(t *testing.T) {
 	f := &fakeFactory{exec: &fakeExecer{
 		outputs: sampleOutputs(),
-		fail:    map[string]bool{"ss -s": true},
+		fail:    map[string]bool{"LC_ALL=C ss -s": true},
 	}}
 	c := NewCollector(f)
 	c.now = func() int64 { return 1750000000 }
@@ -87,7 +106,6 @@ func TestCollector_OneCommandFails(t *testing.T) {
 	samples, err := c.Collect(context.Background(), &Target{ID: "node-a"})
 	require.Error(t, err, "部分失败应返回错误以暴露失败命令")
 	require.Contains(t, err.Error(), "ss -s")
-
 	byMetric := map[string]float64{}
 	for _, s := range samples {
 		byMetric[s.Metric] = s.Value

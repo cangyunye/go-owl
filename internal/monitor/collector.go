@@ -56,18 +56,20 @@ type collectStep struct {
 }
 
 // collectSteps 首批采集命令表（可后续扩展 svc.*/err.* 等）。
+// locale 敏感命令（df/free/ss）强制 LC_ALL=C：非 C locale 节点的本地化
+// 表头（如中文「文件系统」「内存：」）会使解析器失配，且部分失败被静默跳过。
 var collectSteps = []collectStep{
 	{name: "loadavg", command: "cat /proc/loadavg", required: true, parse: ParseLoadavg},
 	{name: "nproc", command: "nproc", parse: ParseNproc},
-	{name: "df-usage", command: "df -P", parse: func(raw, n string, ts int64) ([]Sample, error) {
+	{name: "df-usage", command: "LC_ALL=C df -P", parse: func(raw, n string, ts int64) ([]Sample, error) {
 		return ParseDF(raw, n, ts, "disk.usage")
 	}},
-	{name: "df-inodes", command: "df -Pi", parse: func(raw, n string, ts int64) ([]Sample, error) {
+	{name: "df-inodes", command: "LC_ALL=C df -Pi", parse: func(raw, n string, ts int64) ([]Sample, error) {
 		return ParseDF(raw, n, ts, "disk.inodes")
 	}},
-	{name: "free", command: "free -m", parse: ParseFree},
+	{name: "free", command: "LC_ALL=C free -m", parse: ParseFree},
 	{name: "netdev", command: "cat /proc/net/dev", parse: ParseNetDev},
-	{name: "ss", command: "ss -s", parse: ParseSS},
+	{name: "ss", command: "LC_ALL=C ss -s", parse: ParseSS},
 }
 
 // Collect 对目标节点执行一轮采集，返回全部成功解析的指标。

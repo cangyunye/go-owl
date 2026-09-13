@@ -57,7 +57,7 @@ func (f fakeSource) ListTargets() ([]Target, error) { return f.targets, nil }
 func TestEngine_TickOnce_CollectAndAlert(t *testing.T) {
 	outputs := sampleOutputs()
 	// 高内存：used_pct = (15891-900)/15891 = 94.3% > 90%
-	outputs["free -m"] = "              total        used        free      shared  buff/cache   available\nMem:          15891       15000        100         189         791         900\nSwap:          2047           0        2047\n"
+	outputs["LC_ALL=C free -m"] = "              total        used        free      shared  buff/cache   available\nMem:          15891       15000        100         189         791         900\nSwap:          2047           0        2047\n"
 	eng, s := newTestEngine(t, []Target{{ID: "node-a", Name: "web-01"}}, outputs)
 
 	require.NoError(t, eng.TickOnce(context.Background()))
@@ -164,7 +164,7 @@ func TestEngine_CleanupOnce(t *testing.T) {
 func TestEngine_TickOnce_AutoHeal(t *testing.T) {
 	outputs := sampleOutputs()
 	// 高内存触发 OWL-MEM-001（duration=1 已由 newTestEngine 设置）
-	outputs["free -m"] = "              total        used        free      shared  buff/cache   available\nMem:          15891       15000        100         189         791         900\nSwap:          2047           0        2047\n"
+	outputs["LC_ALL=C free -m"] = "              total        used        free      shared  buff/cache   available\nMem:          15891       15000        100         189         791         900\nSwap:          2047           0        2047\n"
 	eng, s := newTestEngine(t, []Target{{ID: "node-a"}}, outputs)
 
 	// 类型放行 + 低风险对策放行
@@ -218,7 +218,7 @@ func TestEngine_TickOnce_AutoHeal(t *testing.T) {
 // TestEngine_TickOnce_NoAutoHealWithoutApproval 验证类型未放行时不触发自愈。
 func TestEngine_TickOnce_NoAutoHealWithoutApproval(t *testing.T) {
 	outputs := sampleOutputs()
-	outputs["free -m"] = "              total        used        free      shared  buff/cache   available\nMem:          15891       15000        100         189         791         900\nSwap:          2047           0        2047\n"
+	outputs["LC_ALL=C free -m"] = "              total        used        free      shared  buff/cache   available\nMem:          15891       15000        100         189         791         900\nSwap:          2047           0        2047\n"
 	eng, s := newTestEngine(t, []Target{{ID: "node-a"}}, outputs)
 
 	fake := &remedyFakeExecer{}
