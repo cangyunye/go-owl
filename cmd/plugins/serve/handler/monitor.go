@@ -436,5 +436,6 @@ func (h *MonitorHandler) toView(a owlmonitor.Alert, names map[string]string) Ale
 }
 
 func (h *MonitorHandler) webURL() string {
-	return "http://" + h.svc.WebURL()
+	// svc.WebURL() 已是完整 URL（如 http://127.0.0.1:8080），勿再拼协议前缀
+	return h.svc.WebURL()
 }
