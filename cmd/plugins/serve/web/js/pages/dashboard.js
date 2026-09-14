@@ -1,21 +1,28 @@
 export function renderDashboard(render, navigate, user, api, shell) {
   let stats = { total: 0, online: 0, offline: 0, warn: 0 };
   let recentTasks = [];
+  let recentAlerts = [];
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
   function timeAgo(t) { if (!t) return '-'; const s = Math.floor((Date.now() - new Date(t).getTime())/1000); if (s<60) return s+'s'; if (s<3600) return Math.floor(s/60)+'m'; return Math.floor(s/3600)+'h'; }
+  function alertTimeAgo(sec) { if (!sec) return '-'; const s = Math.floor(Date.now()/1000 - sec); if (s<60) return s+'秒前'; if (s<3600) return Math.floor(s/60)+'分钟前'; if (s<86400) return Math.floor(s/3600)+'小时前'; return Math.floor(s/86400)+'天前'; }
+
+  const ALERT_STATUS_TEXT = { open: '待处理', acked: '已确认', resolved: '已解决' };
+  const ALERT_SEV_CLS = { critical: 'critical', warn: 'warn', info: 'info' };
 
   async function loadAll() {
     try {
-      const [statsRes, taskRes] = await Promise.all([
+      const [statsRes, taskRes, alertRes] = await Promise.all([
         api.nodeStats(),
-        api.tasks({ page: 1, page_size: 5 })
+        api.tasks({ page: 1, page_size: 5 }),
+        api.alerts({ limit: 6 }).catch(() => ({ items: [] }))
       ]);
       stats.total = statsRes.total || 0;
       stats.online = statsRes.online || 0;
       stats.offline = statsRes.offline || 0;
       stats.warn = statsRes.warn || 0;
       recentTasks = taskRes.data || [];
+      recentAlerts = alertRes.items || [];
     } catch {}
     renderCards();
     updateTopbar();
@@ -51,6 +58,7 @@ export function renderDashboard(render, navigate, user, api, shell) {
 
     renderDonut();
     renderTasks();
+    renderRecentAlerts();
   }
 
   function renderDonut() {
@@ -99,6 +107,29 @@ export function renderDashboard(render, navigate, user, api, shell) {
         </li>`;
       }).join('');
     }
+  }
+
+  function renderRecentAlerts() {
+    const list = document.getElementById('recent-alerts');
+    if (!list) return;
+    if (!recentAlerts.length) {
+      list.innerHTML = '<li class="alert-item"><div class="al-info"><div class="al-name" style="color:var(--muted)">暂无监控记录</div><div class="al-meta">节点触发告警后将显示在这里</div></div></li>';
+      return;
+    }
+    list.innerHTML = recentAlerts.map(a => `
+      <li class="alert-item" data-alert-id="${esc(a.id)}" title="前往告警中心处理">
+        <span class="al-icon ${ALERT_SEV_CLS[a.severity] || 'info'}">
+          <svg width="14" height="14" aria-hidden="true"><use href="#icon-bell"/></svg>
+        </span>
+        <div class="al-info">
+          <div class="al-name">${esc(a.message || a.alert_type_name)}</div>
+          <div class="al-meta">${esc(a.alert_type_name)} · ${esc(a.node_name || a.node_id)} · ${ALERT_STATUS_TEXT[a.status] || esc(a.status)}</div>
+        </div>
+        <span class="al-time">${alertTimeAgo(a.first_seen)}</span>
+      </li>`).join('');
+    list.querySelectorAll('.alert-item[data-alert-id]').forEach(el => {
+      el.addEventListener('click', () => { window.location = '/alerts'; });
+    });
   }
 
   render(`
@@ -154,6 +185,18 @@ export function renderDashboard(render, navigate, user, api, shell) {
             <li class="task-item"><div class="task-info"><div class="task-name" style="color:var(--muted)">加载中…</div></div></li>
           </ul>
         </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>监控记录</h3>
+        <button class="btn btn-ghost btn-sm" onclick="window.location='/alerts'">查看全部</button>
+      </div>
+      <div class="card-body" style="padding:0 18px">
+        <ul class="alert-list" id="recent-alerts">
+          <li class="alert-item"><div class="al-info"><div class="al-name" style="color:var(--muted)">加载中…</div></div></li>
+        </ul>
       </div>
     </div>
 
