@@ -274,6 +274,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
     const a = rec.alert || {};
     state.detail = a;
     state.remedies = rec.remedies || [];
+    const bindings = (await api.alertBindings(id).catch(() => ({ items: [] }))).items || [];
     state.types = state.types.length ? state.types : (await api.alertTypes().catch(() => ({ items: [] }))).items || [];
 
     const overlay = document.createElement('div');
@@ -401,6 +402,35 @@ export function renderAlerts(render, navigate, user, api, shell) {
           <span style="flex:1"></span>
           <button class="btn btn-secondary btn-sm" id="rm-exec"><svg width="14" height="14" aria-hidden="true"><use href="#icon-play"/></svg> 按序执行</button>
         </div>` : ''}` : `<p style="color:var(--muted);font-size:12px">暂无对策${isAdmin ? '，可点击上方"添加指令"补充' : '，可联系管理员在告警类型下补充'}</p>`}
+        <h4 style="margin-top:16px">本告警专属指令 <span style="font-weight:400;color:var(--muted);font-size:11px">（按告警 ID 绑定，重开保留）</span>
+          ${isAdmin ? '<button class="btn btn-secondary btn-sm" id="ab-add" style="margin-left:8px">+ 添加指令</button>' : ''}
+        </h4>
+        ${bindings.length ? `<ul id="ab-list" style="list-style:none;margin:0;padding:0">${bindings.map((b, i) => `
+          <li class="remedy-row ab-row" data-abid="${esc(b.id)}">
+            <div class="rm-head">
+              ${isOperator ? '<input type="checkbox" class="ab-check" title="选择执行" style="accent-color:var(--accent)">' : ''}
+              <span class="rm-order">${i + 1}</span>
+              <strong style="font-size:13px;flex:1">${esc(b.name)}</strong>
+              <span style="font-size:11px;color:var(--muted)">${b.kind === 'playbook' ? '剧本' : '命令'} · ${b.auto_exec ? '<span style="color:var(--warn)">自动</span>' : '手动'} · ${b.exec_mode === 'concurrent' ? '并发' : '串行'}</span>
+              ${isOperator ? `<button class="btn btn-secondary btn-sm" data-ab-run="${esc(b.id)}">执行</button>` : ''}
+              ${isAdmin ? `
+                <button class="btn btn-ghost btn-sm" data-ab-up="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
+                <button class="btn btn-ghost btn-sm" data-ab-down="${i}" ${i === bindings.length - 1 ? 'disabled' : ''}>↓</button>
+                <button class="btn btn-ghost btn-sm" data-ab-edit="${esc(b.id)}">编辑</button>
+                <button class="btn btn-ghost btn-sm" data-ab-del="${esc(b.id)}" style="color:var(--danger)">删除</button>` : ''}
+            </div>
+            <pre class="rm-content">${esc(b.kind === 'playbook' ? '剧本: ' + b.content : b.content)}</pre>
+          </li>`).join('')}</ul>
+        ${isOperator ? `<div style="display:flex;gap:8px;align-items:center;margin:10px 0">
+          <span style="font-size:12px;color:var(--muted)">执行方式</span>
+          <select id="ab-mode" style="width:auto">
+            <option value="sequential">顺序串行</option>
+            <option value="concurrent">并发执行</option>
+          </select>
+          <span style="flex:1"></span>
+          <button class="btn btn-secondary btn-sm" id="ab-run"><svg width="14" height="14" aria-hidden="true"><use href="#icon-play"/></svg> 执行勾选指令</button>
+        </div>` : ''}` : `<p style="color:var(--muted);font-size:12px">暂无专属指令${isAdmin ? '，可点击上方「添加指令」绑定剧本或脚本' : ''}</p>`}
+        <div id="binding-runs-area"></div>
         <div id="plan-area"></div>
         <div id="plan-history"></div>
       </div>
@@ -451,25 +481,97 @@ export function renderAlerts(render, navigate, user, api, shell) {
         if (r) await copyText(remedyContentText(r), btn);
       });
     });
-    overlay.querySelector('#rm-add')?.addEventListener('click', () => openRemedyEditor(overlay, a, null));
+    const refreshDetail = () => { overlay.remove(); openDetail(a.id); };
+    overlay.querySelector('#rm-add')?.addEventListener('click', () =>
+      openRemedyEditor({ alertTypeId: a.alert_type_id, existing: null, onSaved: refreshDetail }));
     overlay.querySelectorAll('[data-edit-rm]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const r = state.remedies.find(x => x.id === btn.dataset.editRm);
-        if (r) openRemedyEditor(overlay, a, r);
+        if (r) openRemedyEditor({ alertTypeId: a.alert_type_id, existing: r, onSaved: refreshDetail });
       });
     });
 
     overlay.querySelector('#rm-exec')?.addEventListener('click', executePlan);
     loadPlanHistory();
+
+    // ---- 专属指令：添加/编辑/删除/排序/执行/历史 ----
+    overlay.querySelector('#ab-add')?.addEventListener('click', () => openBindingEditor(overlay, a, null));
+    overlay.querySelectorAll('[data-ab-edit]').forEach(btn => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const b = bindings.find(x => x.id === btn.dataset.abEdit);
+      if (b) openBindingEditor(overlay, a, b);
+    }));
+    overlay.querySelectorAll('[data-ab-del]').forEach(btn => btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('删除该专属指令?')) return;
+      try { await api.deleteAlertBinding(btn.dataset.abDel); refreshDetail(); }
+      catch (err) { alert('删除失败: ' + (err.message || err)); }
+    }));
+    overlay.querySelectorAll('[data-ab-up],[data-ab-down]').forEach(btn => btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const isUp = btn.dataset.abUp !== undefined;
+      const i = parseInt(isUp ? btn.dataset.abUp : btn.dataset.abDown, 10);
+      const j = isUp ? i - 1 : i + 1;
+      if (j < 0 || j >= bindings.length) return;
+      try {
+        await api.updateAlertBinding(bindings[i].id, { seq: bindings[j].seq });
+        await api.updateAlertBinding(bindings[j].id, { seq: bindings[i].seq });
+        refreshDetail();
+      } catch (err) { alert('排序失败: ' + (err.message || err)); }
+    }));
+    overlay.querySelectorAll('[data-ab-run]').forEach(btn => btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      try {
+        await api.runAlertBindings(a.id, { binding_ids: [btn.dataset.abRun], mode: 'sequential' });
+        loadBindingRuns();
+      } catch (err) { alert('执行失败: ' + (err.message || err)); }
+      btn.disabled = false;
+    }));
+    overlay.querySelector('#ab-run')?.addEventListener('click', async () => {
+      const ids = [...overlay.querySelectorAll('.ab-row')]
+        .filter(r => r.querySelector('.ab-check')?.checked)
+        .map(r => r.dataset.abid);
+      if (!ids.length) return alert('请先勾选要执行的指令');
+      const mode = overlay.querySelector('#ab-mode')?.value || 'sequential';
+      try {
+        await api.runAlertBindings(a.id, { binding_ids: ids, mode });
+        loadBindingRuns();
+      } catch (err) { alert('执行失败: ' + (err.message || err)); }
+    });
+
+    async function loadBindingRuns() {
+      if (!overlay.isConnected) return;
+      const area = overlay.querySelector('#binding-runs-area');
+      if (!area) return;
+      let runs = [];
+      try { runs = (await api.alertBindingRuns(a.id)).items || []; } catch {}
+      const ST = { pending: '排队中', running: '执行中', success: '成功', failed: '失败' };
+      const SC = { pending: 'var(--muted)', running: 'var(--info)', success: 'var(--success)', failed: 'var(--danger)' };
+      area.innerHTML = runs.length ? `<h4 style="margin-top:14px">指令执行记录</h4><ul style="list-style:none;margin:0;padding:0">${
+        runs.map(r => `<li style="display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;font-size:12px;background:var(--bg)">
+          <span style="font-weight:600;color:${SC[r.status] || 'var(--muted)'}">${ST[r.status] || esc(r.status)}</span>
+          <span style="color:var(--muted)">${r.kind === 'playbook' ? '剧本' : '命令'}</span>
+          <code style="font-size:11px">${esc(r.ref_id || '')}</code>
+          ${r.err ? `<span style="color:var(--danger);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.err)}">${esc(r.err)}</span>` : '<span style="flex:1"></span>'}
+          <span style="color:var(--muted)">${esc(r.created_by || '')}</span>
+        </li>`).join('')}</ul>` : '';
+      if (runs.some(r => r.status === 'pending' || r.status === 'running')) {
+        setTimeout(loadBindingRuns, 2000);
+      }
+    }
+    loadBindingRuns();
   }
 
   // ---------- 对策编辑对话框（admin）：自定义命令 / 加载剧本 / 人工指引 ----------
+  // opts: { alertTypeId, existing, onSaved }；onSaved 在保存/删除成功后回调（由调用方刷新视图）。
 
-  async function openRemedyEditor(parentOverlay, alert, existing) {
+  async function openRemedyEditor(opts) {
+    const existing = opts.existing || null;
     const isNew = !existing;
     const r = existing ? { ...existing } : {
-      id: 'RM-' + Date.now(), alert_type_id: alert.alert_type_id, name: '',
+      id: 'RM-' + Date.now(), alert_type_id: opts.alertTypeId, name: '',
       kind: 'script', content: '', risk: 'medium', rollback: '', source: 'user',
     };
     let playbooks = [];
@@ -561,8 +663,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         if (isNew) await api.createRemedy(payload);
         else await api.updateRemedy(payload.id, payload);
         close();
-        parentOverlay.remove();
-        openDetail(alert.id);
+        if (opts.onSaved) opts.onSaved();
       } catch (err) { alert('保存失败: ' + (err.message || err)); }
     });
 
@@ -571,10 +672,212 @@ export function renderAlerts(render, navigate, user, api, shell) {
       try {
         await api.deleteRemedy(r.id);
         close();
-        parentOverlay.remove();
-        openDetail(alert.id);
+        if (opts.onSaved) opts.onSaved();
       } catch (err) { alert('删除失败: ' + (err.message || err)); }
     });
+  }
+
+  // ---------- 专属指令绑定编辑器（admin）：剧本搜索多选 / 自定义命令 ----------
+
+  async function nextBindingSeq(alertId) {
+    try {
+      const items = (await api.alertBindings(alertId)).items || [];
+      return items.reduce((m, x) => Math.max(m, x.seq || 0), 0) + 1;
+    } catch { return 1; }
+  }
+
+  async function openBindingEditor(parentOverlay, alert, existing) {
+    const isNew = !existing;
+    let playbooks = [];
+    try { playbooks = ((await api.playbooks()).data || []).filter(p => p.file_exists !== false); } catch { /* 剧本库不可用不阻塞 */ }
+    let selected = existing && existing.kind === 'playbook' ? [existing.content] : [];
+
+    const editor = document.createElement('div');
+    editor.className = 'modal-overlay open';
+    editor.innerHTML = `<div class="modal" style="max-width:640px;max-height:84vh;overflow:auto">
+      <div class="modal-header"><h3>${isNew ? '为本告警添加指令' : '编辑专属指令'}</h3>
+        <button class="btn btn-ghost btn-icon" id="be-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
+      <div class="modal-body">
+        <div class="param-group">
+          <div class="param-row"><label>类型</label></div>
+          <select id="be-kind" style="width:100%" ${existing ? 'disabled' : ''}>
+            <option value="playbook" ${existing && existing.kind === 'script' ? '' : 'selected'}>剧本（从剧本库选择，可多选按序执行）</option>
+            <option value="script" ${existing && existing.kind === 'script' ? 'selected' : ''}>自定义命令</option>
+          </select>
+          <div id="be-playbook-pane" style="display:${existing && existing.kind === 'script' ? 'none' : 'block'}">
+            <div class="param-row"><label>搜索并选择剧本</label></div>
+            <input id="be-search" type="text" placeholder="输入剧本名搜索…" style="width:100%">
+            <ul id="be-pb-list" style="list-style:none;margin:6px 0;padding:0;max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius)"></ul>
+            <div class="cfg-hint">已选（按点击顺序，即执行顺序）：</div>
+            <div id="be-selected" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
+          </div>
+          <div id="be-script-pane" style="display:${existing && existing.kind === 'script' ? 'block' : 'none'}">
+            <div class="param-row"><label>名称</label></div>
+            <input id="be-name" type="text" value="${esc(existing ? existing.name : '')}" placeholder="如：清理大日志文件" style="width:100%">
+            <div class="param-row"><label>命令内容</label></div>
+            <textarea id="be-content" rows="6" placeholder="systemctl restart nginx" style="width:100%;font-family:var(--font-mono);font-size:var(--fs-xs)">${esc(existing && existing.kind === 'script' ? existing.content : '')}</textarea>
+            <div class="param-row"><label>风险等级</label></div>
+            <select id="be-risk" style="width:140px">
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:16px;align-items:center;margin-top:10px;flex-wrap:wrap">
+            <label style="font-size:12px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="be-auto" ${existing && existing.auto_exec ? 'checked' : ''} style="accent-color:var(--accent)"> 告警自动执行</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:6px">执行方式
+              <select id="be-mode" style="width:auto">
+                <option value="sequential">顺序串行</option>
+                <option value="concurrent">并发执行</option>
+              </select>
+            </label>
+          </div>
+          <div class="cfg-hint">自动执行：告警首次触发或合并窗口重开时按所选方式自动运行；手动触发：在本告警详情中勾选执行。目标节点为告警所在节点。</div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+          <button class="btn btn-ghost btn-sm" id="be-cancel">取消</button>
+          <button class="btn btn-secondary btn-sm" id="be-save">保存</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(editor);
+
+    const pbList = editor.querySelector('#be-pb-list');
+    const searchInput = editor.querySelector('#be-search');
+    const selWrap = editor.querySelector('#be-selected');
+
+    function renderPbList() {
+      const q = (searchInput.value || '').toLowerCase();
+      const items = playbooks.filter(p => !q || p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
+      pbList.innerHTML = items.map(p => `
+        <li style="padding:6px 10px;border-bottom:1px solid var(--border)">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+            <input type="checkbox" class="be-pb-check" data-pbid="${esc(p.id)}" ${selected.includes(p.id) ? 'checked' : ''} style="accent-color:var(--accent)">
+            <span style="font-weight:600">${esc(p.name)}</span>
+            <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.category || '')} ${esc(p.description || '')}</span>
+          </label>
+        </li>`).join('') || '<li style="padding:10px;color:var(--muted);font-size:12px">无匹配剧本</li>';
+    }
+    function renderSelected() {
+      selWrap.innerHTML = selected.map((id, i) => {
+        const pb = playbooks.find(x => x.id === id);
+        return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:11px;background:var(--bg)">
+          <b style="color:var(--accent)">${i + 1}</b> ${esc(pb ? pb.name : id)}
+          <button type="button" data-sel-up="${i}" ${i === 0 ? 'disabled' : ''} style="border:none;background:none;cursor:pointer;color:var(--muted)">↑</button>
+          <button type="button" data-sel-del="${i}" style="border:none;background:none;cursor:pointer;color:var(--danger)">✕</button>
+        </span>`;
+      }).join('') || '<span class="cfg-hint">未选择</span>';
+      selWrap.querySelectorAll('[data-sel-up]').forEach(btn => btn.addEventListener('click', () => {
+        const i = parseInt(btn.dataset.selUp, 10);
+        if (i > 0) { [selected[i - 1], selected[i]] = [selected[i], selected[i - 1]]; renderSelected(); }
+      }));
+      selWrap.querySelectorAll('[data-sel-del]').forEach(btn => btn.addEventListener('click', () => {
+        selected.splice(parseInt(btn.dataset.selDel, 10), 1);
+        renderSelected();
+        renderPbList();
+      }));
+    }
+    searchInput.addEventListener('input', renderPbList);
+    pbList.addEventListener('change', (e) => {
+      const cb = e.target.closest('.be-pb-check');
+      if (!cb) return;
+      const id = cb.dataset.pbid;
+      if (cb.checked) { if (!selected.includes(id)) selected.push(id); }
+      else selected = selected.filter(x => x !== id);
+      renderSelected();
+    });
+    renderPbList();
+    renderSelected();
+    editor.querySelector('#be-risk').value = existing ? (existing.risk || 'medium') : 'medium';
+    editor.querySelector('#be-mode').value = existing ? (existing.exec_mode || 'sequential') : 'sequential';
+
+    const kindSel = editor.querySelector('#be-kind');
+    kindSel.addEventListener('change', () => {
+      editor.querySelector('#be-playbook-pane').style.display = kindSel.value === 'playbook' ? 'block' : 'none';
+      editor.querySelector('#be-script-pane').style.display = kindSel.value === 'script' ? 'block' : 'none';
+    });
+
+    const close = () => editor.remove();
+    editor.querySelector('#be-close').addEventListener('click', close);
+    editor.querySelector('#be-cancel').addEventListener('click', close);
+    editor.addEventListener('click', (e) => { if (e.target === editor) close(); });
+
+    editor.querySelector('#be-save').addEventListener('click', async () => {
+      const auto = editor.querySelector('#be-auto').checked;
+      const mode = editor.querySelector('#be-mode').value;
+      try {
+        if (kindSel.value === 'playbook') {
+          if (!selected.length) return alert('请从剧本库选择剧本');
+          if (!isNew && selected.length > 1) return alert('编辑模式只能保留一个剧本，多选请删除后重新添加');
+          if (isNew) {
+            const baseSeq = await nextBindingSeq(alert.id);
+            for (let i = 0; i < selected.length; i++) {
+              const pb = playbooks.find(x => x.id === selected[i]);
+              await api.createAlertBinding(alert.id, {
+                kind: 'playbook', name: pb ? pb.name : selected[i], content: selected[i],
+                risk: 'medium', auto_exec: auto, exec_mode: mode, seq: baseSeq + i,
+              });
+            }
+          } else {
+            await api.updateAlertBinding(existing.id, { content: selected[0], auto_exec: auto, exec_mode: mode });
+          }
+        } else {
+          const name = editor.querySelector('#be-name').value.trim();
+          const content = editor.querySelector('#be-content').value;
+          if (!name) return alert('请填写名称');
+          if (!content.trim()) return alert('请填写命令内容');
+          const risk = editor.querySelector('#be-risk').value;
+          if (isNew) {
+            const seq = await nextBindingSeq(alert.id);
+            await api.createAlertBinding(alert.id, { kind: 'script', name, content, risk, auto_exec: auto, exec_mode: mode, seq });
+          } else {
+            await api.updateAlertBinding(existing.id, { name, content, risk, auto_exec: auto, exec_mode: mode });
+          }
+        }
+        close();
+        parentOverlay.remove();
+        openDetail(alert.id);
+      } catch (err) { alert('保存失败: ' + (err.message || err)); }
+    });
+  }
+
+  // ---------- 监控配置（admin）：告警类型的处置指令管理入口 ----------
+
+  async function openRemedyManager(at) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    async function render() {
+      let items = [];
+      try { items = (await api.remedies(at.id)).items || []; } catch {}
+      overlay.innerHTML = `<div class="modal" style="max-width:720px;max-height:84vh;overflow:auto">
+        <div class="modal-header"><h3>处置指令 · ${esc(at.name)} <code style="font-size:11px">${esc(at.id)}</code></h3>
+          <button class="btn btn-ghost btn-icon" id="rmgr-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
+        <div class="modal-body">
+          ${items.length ? `<ul style="list-style:none;margin:0;padding:0">${items.map(r => `
+            <li class="remedy-row">
+              <div class="rm-head">
+                <strong style="font-size:13px;flex:1">${esc(r.name)}</strong>
+                <span style="font-size:11px;color:var(--muted)">${REMEDY_KIND_TEXT[r.kind] || esc(r.kind)} · 风险 ${esc(r.risk)} · ${r.source === 'user' ? '用户自定义' : r.source === 'builtin' ? '内置' : 'AI 生成'}</span>
+                <button class="btn btn-ghost btn-sm" data-mgr-edit="${esc(r.id)}">编辑</button>
+              </div>
+              <pre class="rm-content">${esc(r.kind === 'playbook' ? '剧本: ' + r.content : r.content)}</pre>
+            </li>`).join('')}</ul>` : '<p class="cfg-hint">该告警类型暂无处置指令</p>'}
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+            <button class="btn btn-secondary btn-sm" id="rmgr-add">+ 添加指令</button>
+          </div>
+        </div>
+      </div>`;
+      overlay.querySelector('#rmgr-close').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      overlay.querySelector('#rmgr-add').addEventListener('click', () =>
+        openRemedyEditor({ alertTypeId: at.id, existing: null, onSaved: render }));
+      overlay.querySelectorAll('[data-mgr-edit]').forEach(btn => btn.addEventListener('click', () => {
+        const r = items.find(x => x.id === btn.dataset.mgrEdit);
+        if (r) openRemedyEditor({ alertTypeId: at.id, existing: r, onSaved: render });
+      }));
+    }
+    document.body.appendChild(overlay);
+    await render();
   }
 
   // ---------- 监控配置（admin） ----------
@@ -615,7 +918,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
             <td><input class="at-dur" style="width:50px" value="${at.default_params.duration || 0}"> 次</td>
             <td><input type="checkbox" class="at-enabled" ${at.enabled ? 'checked' : ''}></td>
             <td><input type="checkbox" class="at-auto" ${at.auto_approve ? 'checked' : ''}></td>
-            <td><button class="btn btn-secondary btn-sm at-save">保存</button></td>
+            <td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm at-remedies">指令</button><button class="btn btn-secondary btn-sm at-save">保存</button></div></td>
           </tr>`).join('')}</tbody></table></div>
       </section>
 
@@ -679,6 +982,14 @@ export function renderAlerts(render, navigate, user, api, shell) {
         at.enabled = tr.querySelector('.at-enabled').checked;
         at.auto_approve = tr.querySelector('.at-auto').checked;
         try { await api.updateAlertType(id, at); btn.textContent = '✓ 已保存'; setTimeout(() => { btn.textContent = '保存'; }, 1500); } catch (e) { alert('保存失败: ' + (e.message || e)); }
+      });
+    });
+
+    // 告警类型：处置指令管理
+    container.querySelectorAll('.at-remedies').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const at = types.find(x => x.id === btn.closest('tr').dataset.at);
+        if (at) openRemedyManager(at);
       });
     });
 

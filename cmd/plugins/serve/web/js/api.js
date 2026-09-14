@@ -520,4 +520,23 @@ export const api = {
 
   rejectRemedyPlan: (id) =>
     request('POST', `/plans/${encodeURIComponent(id)}/reject`, {}),
+
+  // ---------- 告警专属指令绑定（按告警 ID 指定 playbook/脚本） ----------
+  alertBindings: (alertId) =>
+    request('GET', `/alerts/${encodeURIComponent(alertId)}/bindings`),
+
+  createAlertBinding: (alertId, data) =>
+    request('POST', `/alerts/${encodeURIComponent(alertId)}/bindings`, data),
+
+  updateAlertBinding: (id, data) =>
+    request('PUT', `/alert-bindings/${encodeURIComponent(id)}`, data),
+
+  deleteAlertBinding: (id) =>
+    request('DELETE', `/alert-bindings/${encodeURIComponent(id)}`),
+
+  runAlertBindings: (alertId, data) =>
+    request('POST', `/alerts/${encodeURIComponent(alertId)}/bindings/run`, data),
+
+  alertBindingRuns: (alertId) =>
+    request('GET', `/alerts/${encodeURIComponent(alertId)}/binding-runs`),
 };
