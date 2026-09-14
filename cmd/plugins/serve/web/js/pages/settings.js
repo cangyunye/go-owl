@@ -20,7 +20,7 @@ export function renderSettings(render, navigate, user, api) {
         api.settings(),
         api.staging.disk().catch(() => null)
       ]);
-      const rows = res.data || [];
+      const rows = (res.data || []).filter(s => !s.key.startsWith('monitor.'));
       Object.keys(KNOWN_SETTINGS).forEach(key => {
         if (rows.some(s => s.key === key)) return;
         let def = KNOWN_SETTINGS[key].defaultValue;
@@ -29,7 +29,39 @@ export function renderSettings(render, navigate, user, api) {
       });
       rows.sort((a, b) => a.key.localeCompare(b.key));
       renderTable(rows);
+      fillMonitorCard(res.data || []);
     } catch { renderTable([]); }
+  }
+
+  // ---- 监控告警设置卡片 ----
+  function fillMonitorCard(all) {
+    const get = (key) => { const hit = all.find(s => s.key === key); return hit ? hit.value : ''; };
+    const enabled = get('monitor.enabled');
+    document.getElementById('mon-enabled').checked = enabled === '' || enabled.toLowerCase() !== 'false';
+    document.getElementById('mon-window').value = get('monitor.collect_window');
+    document.getElementById('mon-escalate').value = get('monitor.escalate_after_minutes') || '60';
+    document.getElementById('mon-realert').value = get('monitor.realert_window_minutes') || '1440';
+    document.getElementById('mon-retention').value = get('monitor.alert_retention_days') || '0';
+  }
+
+  async function saveMonitorCard() {
+    const msg = document.getElementById('mon-msg');
+    const val = (id) => document.getElementById(id).value.trim();
+    const entries = [
+      ['monitor.enabled', document.getElementById('mon-enabled').checked ? 'true' : 'false'],
+      ['monitor.collect_window', val('mon-window')],
+      ['monitor.escalate_after_minutes', val('mon-escalate')],
+      ['monitor.realert_window_minutes', val('mon-realert')],
+      ['monitor.alert_retention_days', val('mon-retention')],
+    ];
+    try {
+      for (const [key, value] of entries) {
+        await api.updateSetting(key, value);
+      }
+      if (msg) { msg.textContent = '✓ 已保存，运行期即时生效'; setTimeout(() => { msg.textContent = ''; }, 2500); }
+    } catch (e) {
+      if (msg) msg.textContent = '保存失败: ' + (e.message || e);
+    }
   }
 
   function renderTable(settings) {
@@ -271,6 +303,40 @@ export function renderSettings(render, navigate, user, api) {
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary btn-sm" id="add-setting-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 添加配置</button>
+    </div>
+    </div>
+
+    <div id="settings-monitor-card">
+    <div class="card">
+      <h3 style="margin:0 0 12px;font-size:var(--fs-md)">监控告警</h3>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm)">
+          <input type="checkbox" id="mon-enabled"> 启用监控采集
+          <span style="font-size:var(--fs-xs);color:var(--muted)">关闭后暂停全部节点的采集与告警评估</span>
+        </label>
+        <div class="cfg-form-row">
+          <span style="width:170px;font-size:var(--fs-sm);color:var(--muted)">采集时段</span>
+          <input id="mon-window" placeholder="HH:MM-HH:MM，留空=全天" style="width:200px">
+        </div>
+        <div class="cfg-form-row">
+          <span style="width:170px;font-size:var(--fs-sm);color:var(--muted)">warn 升级时长（分钟）</span>
+          <input id="mon-escalate" type="number" min="0.1" step="0.1" style="width:120px">
+        </div>
+        <div class="cfg-form-row">
+          <span style="width:170px;font-size:var(--fs-sm);color:var(--muted)">重复告警合并窗口（分钟）</span>
+          <input id="mon-realert" type="number" min="0" step="1" style="width:120px">
+          <span style="font-size:var(--fs-xs);color:var(--muted)">告警解决后窗口内同类型再触发将重开原条目；0=关闭合并</span>
+        </div>
+        <div class="cfg-form-row">
+          <span style="width:170px;font-size:var(--fs-sm);color:var(--muted)">告警记录保留（天）</span>
+          <input id="mon-retention" type="number" min="0" step="1" style="width:120px">
+          <span style="font-size:var(--fs-xs);color:var(--muted)">自动删除超过 N 天的已解决告警；0=不启用</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+        <button class="btn btn-primary btn-sm" id="mon-save">保存监控设置</button>
+        <span id="mon-msg" style="font-size:var(--fs-xs);color:var(--muted)"></span>
+      </div>
     </div>
     </div>
 
@@ -654,6 +720,7 @@ export function renderSettings(render, navigate, user, api) {
     ['anthropic', 'deepseek', 'openai', 'qwen', 'volcengine', 'minimax', 'mimo', 'custom'].forEach(loadAiConfig);
 
     // ---- KV Settings Modal Logic ----
+    document.getElementById('mon-save').addEventListener('click', saveMonitorCard);
     document.getElementById('settings-cancel').addEventListener('click', () => {
       document.getElementById('settings-modal').classList.remove('open');
     });
@@ -701,16 +768,18 @@ export function renderSettings(render, navigate, user, api) {
     function readSections() {
       try {
         const s = JSON.parse(localStorage.getItem('owl-settings-sections') || '{}');
-        return { ai: s.ai !== false, kv: s.kv !== false };
-      } catch { return { ai: true, kv: true }; }
+        return { ai: s.ai !== false, kv: s.kv !== false, monitor: s.monitor !== false };
+      } catch { return { ai: true, kv: true, monitor: true }; }
     }
 
     function applySections() {
       const st = readSections();
       const kv = document.getElementById('settings-kv-card');
       const ai = document.getElementById('settings-ai-card');
+      const mon = document.getElementById('settings-monitor-card');
       if (kv) kv.style.display = st.kv ? '' : 'none';
       if (ai) ai.style.display = st.ai ? '' : 'none';
+      if (mon) mon.style.display = st.monitor ? '' : 'none';
     }
 
     const onSectionsChange = () => applySections();
