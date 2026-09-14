@@ -3851,3 +3851,132 @@ html[data-theme="light-sky"] .ai-btn-test {
 .shortcut-chip:hover .shortcut-chip-actions { visibility:visible; }
 .shortcut-chip-btn { background:none; border:none; cursor:pointer; color:var(--muted); font-size:var(--fs-xs); padding:0 2px; line-height:1; }
 .shortcut-chip-btn:hover { color:var(--danger); }
+
+/* ================================================================
+   COMPONENTS — Alerts（告警中心：筛选栏 / 监控配置）
+   ================================================================ */
+.history-item .hi-status.info { background: color-mix(in oklch, var(--info) 18%, var(--surface)); color: var(--info); }
+
+/* 告警历史上方统一筛选栏 */
+.alert-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: 12px;
+}
+.alert-filter-bar .afb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.alert-filter-bar .afb-label {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.alert-filter-bar .afb-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+}
+/* 状态/级别 chip（复用 group-chip 观感，中性色） */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font: var(--fs-xs)/1.4 var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.filter-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.filter-chip:hover { border-color: var(--accent-dim); color: var(--fg); }
+.filter-chip.selected {
+  background: color-mix(in oklch, var(--accent) 14%, var(--surface));
+  border-color: color-mix(in oklch, var(--accent) 55%, transparent);
+  color: var(--accent);
+}
+.alert-filter-bar input[type="text"],
+.alert-filter-bar select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  color: var(--fg);
+  font-size: var(--fs-xs);
+  width: auto; /* 覆盖全局 input/select 的 width:100% */
+}
+
+/* 监控配置 section */
+.cfg-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  background: var(--surface);
+}
+.cfg-section > h3 {
+  margin: 0 0 10px;
+  font-size: var(--fs-md);
+}
+.cfg-form-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.cfg-form-row input,
+.cfg-form-row select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  color: var(--fg);
+  font-size: var(--fs-xs);
+  width: auto; /* 行内表单不撑满，具体宽度由 inline style 控制 */
+}
+.cfg-hint { font-size: var(--fs-xs); color: var(--muted); }
+
+/* 通知渠道行 */
+.channel-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+  background: var(--bg);
+}
+.channel-row .ch-name { font-size: var(--fs-xs); font-weight: 600; }
+.channel-row .ch-meta { font-size: var(--fs-xs); color: var(--muted); }
+.channel-row .ch-state { font-size: var(--fs-xs); font-weight: 600; }
+.channel-row .ch-state.on { color: var(--success); }
+.channel-row .ch-state.off { color: var(--muted); }
+
+/* 对策行操作按钮 */
+.remedy-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; background: var(--surface); }
+.remedy-row .rm-head { display: flex; align-items: center; gap: 8px; }
+.remedy-row pre.rm-content {
+  margin: 8px 0 0; padding: 8px; background: var(--bg); border-radius: var(--radius);
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  white-space: pre-wrap; word-break: break-all; max-height: 140px; overflow: auto;
+}
+
+/* 复选框不参与全局 input width:100%（避免在 flex 行内挤压文本） */
+.alert-filter-bar input[type="checkbox"],
+.cfg-form-row input[type="checkbox"],
+.remedy-row input[type="checkbox"],
+#settings-monitor-card input[type="checkbox"],
+.modal input[type="checkbox"] { width: auto; }

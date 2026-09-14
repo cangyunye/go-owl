@@ -218,11 +218,12 @@ export function renderNodes(render, navigate, user, api, shell) {
     btn.disabled = true;
     btn.textContent = '创建中…';
     try {
-      await api.createNode(data);
+      const res = await api.createNode(data);
       hideAddModal();
       state.page = 1;
       await loadNodes();
       loadGroupCounts(true);
+      if (res && res.warning) alert(res.warning);
     } catch (e) {
       document.getElementById('add-error').textContent = e.message;
     }
