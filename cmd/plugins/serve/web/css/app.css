@@ -4040,3 +4040,101 @@ html[data-theme="light-sky"] .ai-btn-test {
 .alert-item .al-name { font-size: var(--fs-sm); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alert-item .al-meta { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
 .alert-item .al-time { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+
+/* ================================================================
+   COMPONENTS — Dashboard group bars（节点分布 · 按分组堆叠柱）
+   上绿（在线）下灰（离线）；渐变 + color-mix 主题自适应，不用纯色。
+   ================================================================ */
+.gb-cols {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 10px 4px 2px;
+  overflow-x: auto;
+}
+.gb-col {
+  flex: 1;
+  min-width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  transition: opacity var(--transition);
+  cursor: default;
+}
+.gb-cols:hover .gb-col:not(:hover) { opacity: 0.4; }
+.gb-bar {
+  width: 30px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-radius: 8px 8px 5px 5px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.14);
+}
+.gb-seg { position: relative; transition: filter var(--transition); }
+.gb-col:hover .gb-seg { filter: brightness(1.07) saturate(1.06); }
+.gb-seg-on {
+  background: linear-gradient(180deg,
+    color-mix(in oklch, var(--success) 68%, white) 0%,
+    var(--success) 55%,
+    color-mix(in oklch, var(--success) 82%, black) 100%);
+  box-shadow: inset 0 1px 0 color-mix(in oklch, var(--success) 45%, white);
+}
+.gb-seg-off {
+  background: linear-gradient(180deg,
+    color-mix(in oklch, var(--muted) 34%, var(--surface)) 0%,
+    color-mix(in oklch, var(--muted) 16%, var(--surface)) 100%);
+  box-shadow: inset 0 1px 0 color-mix(in oklch, var(--muted) 20%, var(--surface));
+}
+.gb-seg .gb-num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.gb-seg-on .gb-num { color: #fff; text-shadow: 0 1px 2px rgb(0 0 0 / 0.3); }
+.gb-seg-off .gb-num { color: var(--muted); }
+.gb-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.gb-label .gb-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.gb-label .gb-name { overflow: hidden; text-overflow: ellipsis; }
+.gb-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.gb-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.gb-swatch { width: 12px; height: 12px; border-radius: 3px; }
+.gb-swatch.swatch-on {
+  background: linear-gradient(180deg,
+    color-mix(in oklch, var(--success) 68%, white), var(--success));
+}
+.gb-swatch.swatch-off {
+  background: linear-gradient(180deg,
+    color-mix(in oklch, var(--muted) 34%, var(--surface)),
+    color-mix(in oklch, var(--muted) 16%, var(--surface)));
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.gb-legend-note { opacity: 0.75; }
+.gb-empty {
+  padding: 34px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  width: 100%;
+}

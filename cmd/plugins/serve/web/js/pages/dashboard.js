@@ -2,20 +2,23 @@ export function renderDashboard(render, navigate, user, api, shell) {
   let stats = { total: 0, online: 0, offline: 0, warn: 0 };
   let recentTasks = [];
   let recentAlerts = [];
+  let groupStats = []; // [{group, online, offline, total}]
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
   function timeAgo(t) { if (!t) return '-'; const s = Math.floor((Date.now() - new Date(t).getTime())/1000); if (s<60) return s+'s'; if (s<3600) return Math.floor(s/60)+'m'; return Math.floor(s/3600)+'h'; }
   function alertTimeAgo(sec) { if (!sec) return '-'; const s = Math.floor(Date.now()/1000 - sec); if (s<60) return s+'秒前'; if (s<3600) return Math.floor(s/60)+'分钟前'; if (s<86400) return Math.floor(s/3600)+'小时前'; return Math.floor(s/86400)+'天前'; }
+  function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 12); }
 
   const ALERT_STATUS_TEXT = { open: '待处理', acked: '已确认', resolved: '已解决' };
   const ALERT_SEV_CLS = { critical: 'critical', warn: 'warn', info: 'info' };
 
   async function loadAll() {
     try {
-      const [statsRes, taskRes, alertRes] = await Promise.all([
+      const [statsRes, taskRes, alertRes, nodes] = await Promise.all([
         api.nodeStats(),
         api.tasks({ page: 1, page_size: 5 }),
-        api.alerts({ limit: 6 }).catch(() => ({ items: [] }))
+        api.alerts({ limit: 6 }).catch(() => ({ items: [] })),
+        fetchAllNodes(),
       ]);
       stats.total = statsRes.total || 0;
       stats.online = statsRes.online || 0;
@@ -23,9 +26,41 @@ export function renderDashboard(render, navigate, user, api, shell) {
       stats.warn = statsRes.warn || 0;
       recentTasks = taskRes.data || [];
       recentAlerts = alertRes.items || [];
+      groupStats = buildGroupStats(nodes);
     } catch {}
     renderCards();
     updateTopbar();
+  }
+
+  // fetchAllNodes 分页拉全量节点（page_size 服务端上限 100，按 meta.total 翻页）。
+  async function fetchAllNodes() {
+    const first = await api.nodes({ page: 1, page_size: 100 }).catch(() => null);
+    if (!first) return [];
+    const nodes = first.data || [];
+    const total = (first.meta && first.meta.total) || nodes.length;
+    let page = 2;
+    while (nodes.length < total && page <= 50) {
+      const res = await api.nodes({ page: page++, page_size: 100 }).catch(() => null);
+      if (!res || !res.data || !res.data.length) break;
+      nodes.push(...res.data);
+    }
+    return nodes;
+  }
+
+  // buildGroupStats 按分组聚合在线/离线节点数（warn 视为在线可达）。
+  function buildGroupStats(nodes) {
+    const byGroup = {};
+    for (const n of nodes) {
+      const groups = (n.groups && n.groups.length) ? n.groups : ['未分组'];
+      const online = n.status === 'online' || n.status === 'warn';
+      for (const g of groups) {
+        const e = byGroup[g] || (byGroup[g] = { group: g, online: 0, offline: 0 });
+        if (online) e.online++; else e.offline++;
+      }
+    }
+    return Object.values(byGroup)
+      .map(e => ({ ...e, total: e.online + e.offline }))
+      .sort((a, b) => b.total - a.total);
   }
 
   function updateTopbar() {
@@ -49,44 +84,47 @@ export function renderDashboard(render, navigate, user, api, shell) {
 
   function renderCards() {
     const onlineRate = stats.total > 0 ? Math.round(stats.online / stats.total * 100) : 0;
-    const successRate = 98;
 
     document.getElementById('stat-total').textContent = stats.total;
     document.getElementById('stat-rate').textContent = onlineRate + '%';
     document.getElementById('stat-online').textContent = stats.online;
     document.getElementById('stat-offline').textContent = stats.offline;
 
-    renderDonut();
+    renderGroupBars();
     renderTasks();
     renderRecentAlerts();
   }
 
-  function renderDonut() {
-    const total = stats.total || 1;
-    const online = stats.online;
-    const offline = stats.offline;
-    const warn = stats.warn;
-    const onlinePct = online / total;
-    const offlinePct = offline / total;
-    const warnPct = warn / total;
-    const onlineLen = Math.round(onlinePct * 339);
-    const offlineLen = Math.round(offlinePct * 339);
-    const warnLen = Math.round(warnPct * 339);
-    const remaining = 339 - onlineLen - offlineLen - warnLen;
-
-    const donut = document.getElementById('donut-svg');
-    if (!donut) return;
-    let segments = '';
-    if (onlineLen > 0) segments += `<circle cx="60" cy="60" r="54" fill="none" stroke="var(--success)" stroke-width="12" stroke-dasharray="${onlineLen} ${339 - onlineLen}" stroke-dashoffset="0" stroke-linecap="round"/>`;
-    if (warnLen > 0) segments += `<circle cx="60" cy="60" r="54" fill="none" stroke="var(--warn)" stroke-width="12" stroke-dasharray="${warnLen} ${339 - warnLen}" stroke-dashoffset="${-onlineLen}" stroke-linecap="round"/>`;
-    if (offlineLen > 0) segments += `<circle cx="60" cy="60" r="54" fill="none" stroke="var(--muted)" stroke-width="12" stroke-dasharray="${offlineLen} ${339 - offlineLen}" stroke-dashoffset="${-onlineLen - warnLen}" stroke-linecap="round"/>`;
-    if (remaining > 0) segments += `<circle cx="60" cy="60" r="54" fill="none" stroke="var(--border)" stroke-width="12" stroke-dasharray="${remaining} ${339 - remaining}" stroke-dashoffset="${-onlineLen - warnLen - offlineLen}" stroke-linecap="round"/>`;
-
-    donut.innerHTML = segments;
-    document.getElementById('donut-total').textContent = stats.total;
-    document.getElementById('legend-online').textContent = stats.online;
-    document.getElementById('legend-offline').textContent = stats.offline;
-    document.getElementById('legend-warn').textContent = stats.warn;
+  // renderGroupBars 按分组渲染堆叠柱：上绿（在线）下灰（离线），各段标数字。
+  // 段高按 maxTotal 等比缩放，非零段保底 14px 保证数字可读；渐变与配色见
+  // app.css 的 gb-*（主题自适应，不用纯色）。
+  function renderGroupBars() {
+    const wrap = document.getElementById('group-bars');
+    if (!wrap) return;
+    if (!groupStats.length) {
+      wrap.innerHTML = '<div class="gb-empty">暂无节点数据，录入节点后按分组展示在线 / 离线分布</div>';
+      return;
+    }
+    const H = 150;
+    const maxTotal = Math.max(...groupStats.map(g => g.total), 1);
+    const segH = (v) => {
+      if (!v) return 0;
+      return Math.max(14, Math.round(v / maxTotal * H));
+    };
+    wrap.innerHTML = groupStats.map(g => {
+      const hOn = segH(g.online), hOff = segH(g.offline);
+      const seg = (cls, h, num) => h ? `<div class="gb-seg ${cls}" style="height:${h}px"><span class="gb-num">${num}</span></div>` : '';
+      return `<div class="gb-col" title="${esc(g.group)} · 在线 ${g.online} / 离线 ${g.offline} · 共 ${g.total}">
+        <div class="gb-bar" style="height:${hOn + hOff}px">
+          ${seg('gb-seg-on', hOn, g.online)}
+          ${seg('gb-seg-off', hOff, g.offline)}
+        </div>
+        <div class="gb-label">
+          <span class="gb-dot ${tagColor(g.group)}" style="background:oklch(62% var(--tag-c) var(--tag-h))"></span>
+          <span class="gb-name">${esc(g.group)}</span>
+        </div>
+      </div>`;
+    }).join('');
   }
 
   function renderTasks() {
@@ -152,29 +190,23 @@ export function renderDashboard(render, navigate, user, api, shell) {
       </div>
     </div>
 
-    <div class="chart-row">
-      <div class="card">
-        <div class="card-header">
-          <h3>节点分布</h3>
-        </div>
-        <div class="card-body">
-          <div class="donut-wrapper">
-            <div class="donut">
-              <svg width="120" height="120" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="54" fill="none" stroke="var(--border)" stroke-width="12"/>
-                <g id="donut-svg"></g>
-              </svg>
-              <div class="center-text" id="donut-total">0</div>
-            </div>
-            <div class="donut-legend">
-              <div class="legend-item"><span class="swatch" style="background:var(--success)"></span> 在线 <span class="l-val" id="legend-online">0</span></div>
-              <div class="legend-item"><span class="swatch" style="background:var(--muted)"></span> 离线 <span class="l-val" id="legend-offline">0</span></div>
-              <div class="legend-item"><span class="swatch" style="background:var(--warn)"></span> 告警 <span class="l-val" id="legend-warn">0</span></div>
-            </div>
-          </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>节点分布 · 按分组</h3>
+        <div class="gb-legend">
+          <span class="gb-legend-item"><span class="gb-swatch swatch-on"></span>在线</span>
+          <span class="gb-legend-item"><span class="gb-swatch swatch-off"></span>离线</span>
+          <span class="gb-legend-item gb-legend-note">节点属多个分组时在每组分别计数</span>
         </div>
       </div>
+      <div class="card-body">
+        <div class="gb-cols" id="group-bars">
+          <div class="gb-empty">加载中…</div>
+        </div>
+      </div>
+    </div>
 
+    <div class="chart-row">
       <div class="card">
         <div class="card-header">
           <h3>最近任务</h3>
@@ -186,17 +218,17 @@ export function renderDashboard(render, navigate, user, api, shell) {
           </ul>
         </div>
       </div>
-    </div>
 
-    <div class="card">
-      <div class="card-header">
-        <h3>监控记录</h3>
-        <button class="btn btn-ghost btn-sm" onclick="window.location='/alerts'">查看全部</button>
-      </div>
-      <div class="card-body" style="padding:0 18px">
-        <ul class="alert-list" id="recent-alerts">
-          <li class="alert-item"><div class="al-info"><div class="al-name" style="color:var(--muted)">加载中…</div></div></li>
-        </ul>
+      <div class="card">
+        <div class="card-header">
+          <h3>监控记录</h3>
+          <button class="btn btn-ghost btn-sm" onclick="window.location='/alerts'">查看全部</button>
+        </div>
+        <div class="card-body" style="padding:0 18px">
+          <ul class="alert-list" id="recent-alerts">
+            <li class="alert-item"><div class="al-info"><div class="al-name" style="color:var(--muted)">加载中…</div></div></li>
+          </ul>
+        </div>
       </div>
     </div>
 
