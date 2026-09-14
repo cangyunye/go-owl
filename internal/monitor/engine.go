@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,7 +26,18 @@ type EngineConfig struct {
 	// EscalateAfter 返回 warn 未处理升级为 critical 的时长（nil 或 <=0 =
 	// 保持默认 1h）；每轮采集前求值，支持运行期经 settings 调整
 	EscalateAfter func() time.Duration
-	WebURL        string // 告警处理入口链接前缀
+	// RealertWindow 返回重复告警合并窗口（nil = 保持默认 24h；0 = 关闭合并）；
+	// 每轮采集前求值，支持运行期经 settings 调整
+	RealertWindow func() time.Duration
+	// Enabled 返回监控总开关（nil = 开启）；false 时整轮跳过采集与评估
+	Enabled func() bool
+	// CollectWindow 返回采集时段窗口 "HH:MM-HH:MM"（"" = 全天）；
+	// 窗口外整轮跳过；每轮采集前求值
+	CollectWindow func() string
+	// AlertRetentionDays 返回告警记录保留天数（nil/0 = 不启用）；
+	// 只清理已解决且解决时间超期的记录
+	AlertRetentionDays func() int
+	WebURL             string // 告警处理入口链接前缀
 }
 
 // Engine 监控引擎：周期采集 → 入库 → 规则评估 → 告警 → 通知，每日清理。
@@ -38,6 +51,7 @@ type Engine struct {
 	healer       *AutoHealer             // 自愈管线（nil = 关闭）
 	lastCounters map[string]counterPoint // node|metric → 上次累计计数（网卡速率）
 	mu           sync.Mutex
+	now          func() time.Time // 采集时段窗口判定用时钟（测试可注入）
 }
 
 // counterPoint 累计计数采样点。
@@ -68,6 +82,7 @@ func NewEngine(cfg EngineConfig, store *Store, collector *Collector, source Targ
 		manager:      manager,
 		dispatcher:   dispatcher,
 		lastCounters: make(map[string]counterPoint),
+		now:          time.Now,
 	}
 }
 
@@ -106,7 +121,14 @@ func (e *Engine) Run(ctx context.Context) error {
 }
 
 // TickOnce 执行一轮采集与评估（可单测）。
+// 监控总开关关闭或采集时段窗口之外时整轮跳过。
 func (e *Engine) TickOnce(ctx context.Context) error {
+	if e.cfg.Enabled != nil && !e.cfg.Enabled() {
+		return nil
+	}
+	if e.cfg.CollectWindow != nil && !inCollectWindow(e.now(), e.cfg.CollectWindow()) {
+		return nil
+	}
 	targets, err := e.source.ListTargets()
 	if err != nil {
 		return fmt.Errorf("monitor: 获取采集目标失败: %w", err)
@@ -120,6 +142,9 @@ func (e *Engine) TickOnce(ctx context.Context) error {
 		if d := e.cfg.EscalateAfter(); d > 0 {
 			e.manager.SetEscalateAfter(d)
 		}
+	}
+	if e.cfg.RealertWindow != nil {
+		e.manager.SetRealertWindow(e.cfg.RealertWindow())
 	}
 
 	sem := make(chan struct{}, e.cfg.Concurrency)
@@ -284,9 +309,85 @@ func (e *Engine) dispatch(ctx context.Context, events []AlertEvent, types []Aler
 	}
 }
 
-// CleanupOnce 执行一次保留期清理（幂等，可每日调用）。
+// CleanupOnce 执行一次保留期清理（幂等，可每日调用）：
+// 指标按 RetentionDays 清理；告警记录按 AlertRetentionDays 清理
+//（只删已解决且解决时间超期的，未解决告警永不删除）。
 func (e *Engine) CleanupOnce() error {
-	return e.store.Cleanup(e.cfg.RetentionDays)
+	if err := e.store.Cleanup(e.cfg.RetentionDays); err != nil {
+		return err
+	}
+	if e.cfg.AlertRetentionDays == nil {
+		return nil
+	}
+	if days := e.cfg.AlertRetentionDays(); days > 0 {
+		return e.store.CleanupAlerts(days)
+	}
+	return nil
+}
+
+// inCollectWindow 判断当前时间是否在采集时段窗口 "HH:MM-HH:MM" 内。
+// 空窗口 = 全天；支持跨午夜（如 22:00-06:00）；解析失败放行（不阻塞采集）。
+func inCollectWindow(now time.Time, window string) bool {
+	window = strings.TrimSpace(window)
+	if window == "" {
+		return true
+	}
+	parts := strings.SplitN(window, "-", 2)
+	if len(parts) != 2 {
+		return true
+	}
+	start, err1 := parseHHMM(parts[0])
+	end, err2 := parseHHMM(parts[1])
+	if err1 != nil || err2 != nil {
+		return true
+	}
+	cur := now.Hour()*60 + now.Minute()
+	s := start.Hour()*60 + start.Minute()
+	t := end.Hour()*60 + end.Minute()
+	if s == t {
+		return true // 零长度窗口视为全天
+	}
+	if s < t {
+		return cur >= s && cur < t
+	}
+	return cur >= s || cur < t // 跨午夜
+}
+
+// ValidateCollectWindow 校验采集时段窗口格式（"HH:MM-HH:MM"；空 = 全天，
+// 支持跨午夜）。供 settings 写入校验复用。
+func ValidateCollectWindow(window string) error {
+	window = strings.TrimSpace(window)
+	if window == "" {
+		return nil
+	}
+	parts := strings.SplitN(window, "-", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("collect window must be HH:MM-HH:MM")
+	}
+	if _, err := parseHHMM(parts[0]); err != nil {
+		return err
+	}
+	if _, err := parseHHMM(parts[1]); err != nil {
+		return err
+	}
+	return nil
+}
+
+// parseHHMM 解析 "HH:MM" 为时刻。
+func parseHHMM(s string) (time.Time, error) {
+	parts := strings.SplitN(strings.TrimSpace(s), ":", 2)
+	if len(parts) != 2 {
+		return time.Time{}, fmt.Errorf("invalid HH:MM: %s", s)
+	}
+	h, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || h < 0 || h > 23 {
+		return time.Time{}, fmt.Errorf("invalid hour in %s", s)
+	}
+	m, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || m < 0 || m > 59 {
+		return time.Time{}, fmt.Errorf("invalid minute in %s", s)
+	}
+	return time.Date(0, 1, 1, h, m, 0, 0, time.UTC), nil
 }
 
 func (e *Engine) isSilenced() bool {

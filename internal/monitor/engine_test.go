@@ -288,3 +288,78 @@ func TestEngine_TickOnce_ConcurrentAlertState(t *testing.T) {
 		_ = eng.TickOnce(context.Background())
 	}
 }
+
+// TestEngine_TickOnce_Disabled 验证监控总开关：关闭时整轮跳过采集与告警。
+func TestEngine_TickOnce_Disabled(t *testing.T) {
+	eng, s := newTestEngine(t, []Target{{ID: "node-a", Name: "web-01"}}, sampleOutputs())
+	eng.cfg.Enabled = func() bool { return false }
+
+	require.NoError(t, eng.TickOnce(context.Background()))
+
+	rows, err := s.QuerySamples("node-a", "load.load1", 0, 1<<62)
+	require.NoError(t, err)
+	require.Empty(t, rows, "开关关闭时不应采集入库")
+	_, exists, err := s.GetActiveAlert("OWL-MEM-001", "node-a")
+	require.NoError(t, err)
+	require.False(t, exists, "开关关闭时不应产生告警")
+}
+
+// TestEngine_TickOnce_CollectWindow 验证采集时段窗口：窗口外整轮跳过。
+func TestEngine_TickOnce_CollectWindow(t *testing.T) {
+	eng, s := newTestEngine(t, []Target{{ID: "node-a", Name: "web-01"}}, sampleOutputs())
+	eng.now = func() time.Time { return time.Date(2026, 9, 14, 7, 0, 0, 0, time.Local) }
+	eng.cfg.CollectWindow = func() string { return "08:00-22:00" }
+
+	require.NoError(t, eng.TickOnce(context.Background()))
+	rows, err := s.QuerySamples("node-a", "load.load1", 0, 1<<62)
+	require.NoError(t, err)
+	require.Empty(t, rows, "窗口外不应采集入库")
+
+	// 进入窗口后恢复采集
+	eng.now = func() time.Time { return time.Date(2026, 9, 14, 9, 0, 0, 0, time.Local) }
+	require.NoError(t, eng.TickOnce(context.Background()))
+	rows, err = s.QuerySamples("node-a", "load.load1", 0, 1<<62)
+	require.NoError(t, err)
+	require.NotEmpty(t, rows, "窗口内应正常采集")
+}
+
+// TestEngine_InCollectWindow 验证时段窗口解析：空=全天、跨午夜、非法值放行。
+func TestEngine_InCollectWindow(t *testing.T) {
+	at := func(h, m int) time.Time { return time.Date(2026, 9, 14, h, m, 0, 0, time.Local) }
+	require.True(t, inCollectWindow(at(12, 0), ""), "空窗口=全天采集")
+	require.True(t, inCollectWindow(at(9, 0), "08:00-22:00"))
+	require.False(t, inCollectWindow(at(7, 0), "08:00-22:00"))
+	require.True(t, inCollectWindow(at(23, 0), "22:00-06:00"), "跨午夜窗口：23 点在窗口内")
+	require.True(t, inCollectWindow(at(5, 0), "22:00-06:00"), "跨午夜窗口：凌晨 5 点在窗口内")
+	require.False(t, inCollectWindow(at(12, 0), "22:00-06:00"), "跨午夜窗口：正午在窗口外")
+	require.True(t, inCollectWindow(at(12, 0), "垃圾"), "非法窗口配置放行（不阻塞采集）")
+}
+
+// TestEngine_CleanupAlerts 验证告警保留期清理：只删已解决且超期的记录。
+func TestEngine_CleanupAlerts(t *testing.T) {
+	eng, s := newTestEngine(t, nil, sampleOutputs())
+	eng.cfg.AlertRetentionDays = func() int { return 7 }
+
+	now := time.Now().Unix()
+	require.NoError(t, s.InsertAlert(&Alert{ID: "AL-old", AlertTypeID: "OWL-MEM-001", NodeID: "n1",
+		Severity: SeverityWarning, Status: StatusResolved, Message: "x",
+		FirstSeen: now - 30*86400, LastSeen: now - 30*86400, ResolvedAt: now - 30*86400}))
+	require.NoError(t, s.InsertAlert(&Alert{ID: "AL-new", AlertTypeID: "OWL-MEM-001", NodeID: "n2",
+		Severity: SeverityWarning, Status: StatusResolved, Message: "x",
+		FirstSeen: now - 86400, LastSeen: now - 86400, ResolvedAt: now - 86400}))
+	require.NoError(t, s.InsertAlert(&Alert{ID: "AL-open", AlertTypeID: "OWL-MEM-001", NodeID: "n3",
+		Severity: SeverityWarning, Status: StatusOpen, Message: "x",
+		FirstSeen: now - 30*86400, LastSeen: now - 30*86400}))
+
+	require.NoError(t, eng.CleanupOnce())
+
+	_, exists, err := s.GetAlert("AL-old")
+	require.NoError(t, err)
+	require.False(t, exists, "超期已解决告警应被删除")
+	_, exists, err = s.GetAlert("AL-new")
+	require.NoError(t, err)
+	require.True(t, exists, "未超期告警应保留")
+	_, exists, err = s.GetAlert("AL-open")
+	require.NoError(t, err)
+	require.True(t, exists, "未解决告警永不删除")
+}

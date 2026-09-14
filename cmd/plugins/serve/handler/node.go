@@ -62,6 +62,8 @@ type NodeResponse struct {
 	ProxyJump string            `json:"proxy_jump,omitempty"`
 	CreatedAt string            `json:"created_at,omitempty"`
 	UpdatedAt string            `json:"updated_at,omitempty"`
+	// 非阻断提示：同地址已被其他节点登记时，监控引擎每轮只采集一份（root 优先）
+	Warning string `json:"warning,omitempty"`
 	// Intentionally excluding Password and SSHKey
 }
 
@@ -249,8 +251,27 @@ func (h *NodeHandler) Get(c *gin.Context) {
 	if n.Labels == nil {
 		n.Labels = map[string]string{}
 	}
+	n.Warning = h.duplicateAddressWarning(n.Address, n.Port, n.ID)
 
 	c.JSON(http.StatusOK, n)
+}
+
+// duplicateAddressWarning 检查同 address:port 是否被其他节点登记。
+// 监控引擎按地址去重采集（root 用户优先），重复登记只会被合并，此处提示用户。
+func (h *NodeHandler) duplicateAddressWarning(address string, port int, excludeNodeID string) string {
+	if address == "" {
+		return ""
+	}
+	var dupID, dupUser string
+	err := h.db.QueryRow(
+		`SELECT id, COALESCE(user, '') FROM nodes
+		 WHERE address = ? AND port = ? AND id != ?
+		 ORDER BY CASE WHEN COALESCE(user, '') = 'root' THEN 0 ELSE 1 END, created_at, id
+		 LIMIT 1`, address, port, excludeNodeID).Scan(&dupID, &dupUser)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("地址 %s:%d 已被节点 %s（user=%s）登记，监控每轮只采集一份（root 账号优先）", address, port, dupID, dupUser)
 }
 
 func (h *NodeHandler) Search(c *gin.Context) {
@@ -410,6 +431,7 @@ func (h *NodeHandler) Create(c *gin.Context) {
 	if n.Labels == nil {
 		n.Labels = map[string]string{}
 	}
+	n.Warning = h.duplicateAddressWarning(req.Address, req.Port, req.ID)
 
 	h.recordNodeManage(c, "node create "+req.ID, []string{req.ID})
 	c.JSON(http.StatusCreated, n)

@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
+	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
 	"github.com/gin-gonic/gin"
 )
 
@@ -77,7 +79,8 @@ func (h *SettingsHandler) Set(c *gin.Context) {
 		return
 	}
 	var req setSettingRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Value == "" {
+	// monitor.collect_window 允许空值（空 = 全天采集）
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Value == "" && key != "monitor.collect_window") {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "value is required"})
 		return
 	}
@@ -92,6 +95,36 @@ func (h *SettingsHandler) Set(c *gin.Context) {
 		n, err := strconv.ParseUint(req.Value, 10, 64)
 		if err != nil || n == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "staging_min_free must be a positive integer"})
+			return
+		}
+	case "monitor.enabled":
+		switch strings.ToLower(strings.TrimSpace(req.Value)) {
+		case "true", "false", "1", "0", "yes", "no", "on", "off":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.enabled must be true or false"})
+			return
+		}
+	case "monitor.collect_window":
+		if err := owlmonitor.ValidateCollectWindow(req.Value); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.collect_window must be HH:MM-HH:MM"})
+			return
+		}
+	case "monitor.alert_retention_days":
+		n, err := strconv.Atoi(strings.TrimSpace(req.Value))
+		if err != nil || n < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.alert_retention_days must be a non-negative integer"})
+			return
+		}
+	case "monitor.realert_window_minutes":
+		f, err := strconv.ParseFloat(strings.TrimSpace(req.Value), 64)
+		if err != nil || f < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.realert_window_minutes must be a non-negative number"})
+			return
+		}
+	case "monitor.escalate_after_minutes":
+		f, err := strconv.ParseFloat(strings.TrimSpace(req.Value), 64)
+		if err != nil || f <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.escalate_after_minutes must be a positive number"})
 			return
 		}
 	}

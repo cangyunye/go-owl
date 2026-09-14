@@ -7,16 +7,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	ai2 "github.com/cangyunye/go-owl/internal/ai"
+	"github.com/cangyunye/go-owl/internal/logger"
+	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
+	"github.com/cangyunye/go-owl/internal/secrets"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-
-	ai2 "github.com/cangyunye/go-owl/internal/ai"
-	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
-	"github.com/cangyunye/go-owl/internal/secrets"
 )
 
 // NodesTargetSource 从 serve 的 nodes 表读取采集目标（含 SSH 凭据）。
@@ -31,17 +31,26 @@ func NewNodesTargetSource(db *sql.DB) *NodesTargetSource {
 
 // ListTargets 列出全部已注册节点为采集目标。
 // label monitor.services（逗号分隔的 unit 名）映射为采集的受监控服务列表。
+// 同一 address:port 登记多个节点（不同用户）时只保留一个采集目标，
+// 优先 user=root 的条目，避免同一台机器被不同用户重复 SSH 查询；
+// 被合并的节点 ID 记 warn 日志。
 func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 	rows, err := s.db.Query(`SELECT id, name, address, port, user,
 		COALESCE(password, ''), COALESCE(ssh_key, ''), COALESCE(proxy_jump, ''),
 		COALESCE(labels, '{}')
-		FROM nodes`)
+		FROM nodes ORDER BY created_at, id`)
 	if err != nil {
 		return nil, fmt.Errorf("monitor: 读取节点列表失败: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
+	type dedupKey struct {
+		addr string
+		port int
+	}
 	var targets []owlmonitor.Target
+	merged := map[int][]string{} // 代表目标下标 → 被合并的节点 ID
+	index := map[dedupKey]int{}
 	for rows.Next() {
 		var t owlmonitor.Target
 		var labels string
@@ -60,13 +69,36 @@ func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 		} else {
 			t.SSHKey = key
 		}
+		k := dedupKey{t.Address, t.Port}
+		if i, ok := index[k]; ok {
+			// 已有代表目标：root 用户优先担任代表
+			if t.User == "root" && targets[i].User != "root" {
+				prev := targets[i].ID
+				ids := append([]string{prev}, merged[i]...)
+				merged[i] = append(ids, t.ID)
+				targets[i] = t
+			} else {
+				merged[i] = append(merged[i], t.ID)
+			}
+			continue
+		}
+		index[k] = len(targets)
 		targets = append(targets, t)
 	}
-	return targets, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i, ids := range merged {
+		logger.Warn("同地址节点合并采集（仅采集代表节点）",
+			logger.WithOperation("monitor_targets"),
+			logger.WithField("representative", targets[i].ID),
+			logger.WithField("merged_nodes", strings.Join(ids, ",")))
+	}
+	return targets, nil
 }
 
 // servicesFromLabels 从节点 labels JSON 中读取 monitor.services
-//（逗号分隔的受监控服务 unit 列表），非法 JSON 视为未配置。
+// （逗号分隔的受监控服务 unit 列表），非法 JSON 视为未配置。
 func servicesFromLabels(raw string) []string {
 	if raw == "" {
 		return nil
@@ -121,7 +153,9 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 
 	// 静默配置存于 settings 表（monitor.silence_until，0 = 不静默）；
 	// warn 升级时长存于 settings 表（monitor.escalate_after_minutes，浮点分钟，
-	// 未设置/非法 = 默认 1h），每轮采集前重读，支持运行期调整
+	// 未设置/非法 = 默认 1h），每轮采集前重读，支持运行期调整；
+	// 重复告警合并窗口存于 settings 表（monitor.realert_window_minutes，
+	// 浮点分钟，未设置/非法 = 默认 24h，0 = 关闭合并）
 	cfg := owlmonitor.EngineConfig{
 		Interval:      time.Minute,
 		RetentionDays: 30,
@@ -130,7 +164,13 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		EscalateAfter: func() time.Duration {
 			return time.Duration(readEscalateAfterMinutes(db) * float64(time.Minute))
 		},
-		WebURL: webURL,
+		RealertWindow: func() time.Duration {
+			return time.Duration(readRealertWindowMinutes(db) * float64(time.Minute))
+		},
+		Enabled:            func() bool { return readMonitorEnabled(db) },
+		CollectWindow:      func() string { return readCollectWindow(db) },
+		AlertRetentionDays: func() int { return readAlertRetentionDays(db) },
+		WebURL:             webURL,
 	}
 	engine := owlmonitor.NewEngine(cfg, store, collector, source, manager, dispatcher)
 	engine.SetAutoHealer(healer)
@@ -323,6 +363,20 @@ func readEscalateAfterMinutes(db *sql.DB) float64 {
 	return f
 }
 
+// readRealertWindowMinutes 读取重复告警合并窗口（浮点分钟）。
+// 未设置/非法/负数 = 默认 24h（1440 分钟）；显式 0 = 关闭合并。
+func readRealertWindowMinutes(db *sql.DB) float64 {
+	var v string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.realert_window_minutes'`).Scan(&v); err != nil {
+		return 1440
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil || f < 0 {
+		return 1440
+	}
+	return f
+}
+
 func writeSilenceUntil(db *sql.DB, until int64) error {
 	_, err := db.Exec(`INSERT INTO settings (key, value) VALUES ('monitor.silence_until', ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, strconv.FormatInt(until, 10))
@@ -330,4 +384,43 @@ func writeSilenceUntil(db *sql.DB, until int64) error {
 		return fmt.Errorf("monitor: 写入静默配置失败: %w", err)
 	}
 	return nil
+}
+
+// readMonitorEnabled 读取监控总开关（monitor.enabled）。未设置 = 开启；
+// "false"/"0"/"no"/"off"（大小写不敏感）= 关闭。
+func readMonitorEnabled(db *sql.DB) bool {
+	var v string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.enabled'`).Scan(&v); err != nil {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
+// readCollectWindow 读取采集时段窗口（monitor.collect_window，"HH:MM-HH:MM"）。
+// 未设置 = 全天采集。
+func readCollectWindow(db *sql.DB) string {
+	var v string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.collect_window'`).Scan(&v); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(v)
+}
+
+// readAlertRetentionDays 读取告警记录保留天数（monitor.alert_retention_days）。
+// 未设置/非法/负数 = 0（不启用清理）。
+func readAlertRetentionDays(db *sql.DB) int {
+	var v string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.alert_retention_days'`).Scan(&v); err != nil {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }
