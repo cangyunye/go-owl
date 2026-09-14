@@ -3980,3 +3980,63 @@ html[data-theme="light-sky"] .ai-btn-test {
 .remedy-row input[type="checkbox"],
 #settings-monitor-card input[type="checkbox"],
 .modal input[type="checkbox"] { width: auto; }
+
+/* ================================================================
+   COMPONENTS — Settings monitor card（监控告警设置网格）
+   ================================================================ */
+.mon-grid {
+  display: grid;
+  grid-template-columns: 200px minmax(160px, 240px) 1fr;
+  gap: 14px 20px;
+  align-items: center;
+}
+.mon-grid .mon-label { font-size: var(--fs-sm); color: var(--fg); }
+.mon-grid .mon-control input[type="text"],
+.mon-grid .mon-control input[type="number"] {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+}
+.mon-grid .mon-hint { font-size: var(--fs-xs); color: var(--muted); }
+.mon-grid .mon-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+@media (max-width: 900px) {
+  .mon-grid { grid-template-columns: 1fr; gap: 4px; }
+  .mon-grid .mon-hint { margin-bottom: 8px; }
+}
+
+/* ================================================================
+   COMPONENTS — Dashboard recent alerts（仪表盘监控记录）
+   ================================================================ */
+.alert-list { list-style: none; margin: 0; padding: 0; }
+.alert-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.alert-item:last-child { border-bottom: none; }
+.alert-item .al-icon {
+  width: 28px; height: 28px;
+  border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.alert-item .al-icon.critical { background: color-mix(in oklch, var(--danger) 18%, var(--surface)); color: var(--danger); }
+.alert-item .al-icon.warn { background: color-mix(in oklch, var(--warn) 18%, var(--surface)); color: var(--warn); }
+.alert-item .al-icon.info { background: color-mix(in oklch, var(--info) 18%, var(--surface)); color: var(--info); }
+.alert-item .al-info { flex: 1; min-width: 0; }
+.alert-item .al-name { font-size: var(--fs-sm); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert-item .al-meta { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+.alert-item .al-time { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }

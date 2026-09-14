@@ -308,32 +308,31 @@ export function renderSettings(render, navigate, user, api) {
 
     <div id="settings-monitor-card">
     <div class="card">
-      <h3 style="margin:0 0 12px;font-size:var(--fs-md)">监控告警</h3>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm)">
-          <input type="checkbox" id="mon-enabled"> 启用监控采集
-          <span style="font-size:var(--fs-xs);color:var(--muted)">关闭后暂停全部节点的采集与告警评估</span>
-        </label>
-        <div class="cfg-form-row">
-          <span style="width:170px;font-size:var(--fs-sm);color:var(--muted)">采集时段</span>
-          <input id="mon-window" placeholder="HH:MM-HH:MM，留空=全天" style="width:200px">
+      <h3 style="margin:0 0 16px;font-size:var(--fs-md)">监控告警</h3>
+      <div class="mon-grid">
+        <div class="mon-label">启用监控采集</div>
+        <div class="mon-control">
+          <label class="mon-check"><input type="checkbox" id="mon-enabled"> 开启</label>
         </div>
-        <div class="cfg-form-row">
-          <span style="width:170px;font-size:var(--fs-sm);color:var(--muted)">warn 升级时长（分钟）</span>
-          <input id="mon-escalate" type="number" min="0.1" step="0.1" style="width:120px">
-        </div>
-        <div class="cfg-form-row">
-          <span style="width:170px;font-size:var(--fs-sm);color:var(--muted)">重复告警合并窗口（分钟）</span>
-          <input id="mon-realert" type="number" min="0" step="1" style="width:120px">
-          <span style="font-size:var(--fs-xs);color:var(--muted)">告警解决后窗口内同类型再触发将重开原条目；0=关闭合并</span>
-        </div>
-        <div class="cfg-form-row">
-          <span style="width:170px;font-size:var(--fs-sm);color:var(--muted)">告警记录保留（天）</span>
-          <input id="mon-retention" type="number" min="0" step="1" style="width:120px">
-          <span style="font-size:var(--fs-xs);color:var(--muted)">自动删除超过 N 天的已解决告警；0=不启用</span>
-        </div>
+        <div class="mon-hint">关闭后暂停全部节点的采集与告警评估</div>
+
+        <div class="mon-label">采集时段</div>
+        <div class="mon-control"><input id="mon-window" type="text" placeholder="HH:MM-HH:MM"></div>
+        <div class="mon-hint">留空 = 全天采集；支持跨午夜，如 22:00-06:00</div>
+
+        <div class="mon-label">warn 升级时长（分钟）</div>
+        <div class="mon-control"><input id="mon-escalate" type="number" min="0.1" step="0.1"></div>
+        <div class="mon-hint">待处理 warn 告警超过该时长未处理将升级为紧急</div>
+
+        <div class="mon-label">重复告警合并窗口（分钟）</div>
+        <div class="mon-control"><input id="mon-realert" type="number" min="0" step="1"></div>
+        <div class="mon-hint">告警解决后窗口内同类型再触发将重开原条目；0 = 关闭合并</div>
+
+        <div class="mon-label">告警记录保留（天）</div>
+        <div class="mon-control"><input id="mon-retention" type="number" min="0" step="1"></div>
+        <div class="mon-hint">自动删除超过 N 天的已解决告警；0 = 不启用</div>
       </div>
-      <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+      <div style="display:flex;gap:8px;margin-top:16px;align-items:center">
         <button class="btn btn-primary btn-sm" id="mon-save">保存监控设置</button>
         <span id="mon-msg" style="font-size:var(--fs-xs);color:var(--muted)"></span>
       </div>
