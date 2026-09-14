@@ -160,7 +160,7 @@ func TestEmailNotifier_Message(t *testing.T) {
 	var gotBody string
 
 	fake := &fakeEmailSender{
-		onSend: func(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+		onSend: func(mode, addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
 			mu.Lock()
 			defer mu.Unlock()
 			gotFrom = from
@@ -213,12 +213,51 @@ func TestDispatcher_SendTest(t *testing.T) {
 }
 
 type fakeEmailSender struct {
-	onSend func(addr string, auth smtp.Auth, from string, to []string, msg []byte) error
+	onSend func(mode, addr string, auth smtp.Auth, from string, to []string, msg []byte) error
 }
 
-func (f *fakeEmailSender) SendMail(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+func (f *fakeEmailSender) Send(mode, addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
 	if f.onSend == nil {
 		return errors.New("no handler")
 	}
-	return f.onSend(addr, auth, from, to, msg)
+	return f.onSend(mode, addr, auth, from, to, msg)
+}
+
+// TestEmailNotifier_EncryptionMode 验证加密模式解析（问题8）：
+// 显式 encryption 优先；空值按端口推断（465→SSL，其余→STARTTLS）。
+func TestEmailNotifier_EncryptionMode(t *testing.T) {
+	cases := []struct {
+		name string
+		port int
+		enc  string
+		want string
+	}{
+		{"465默认SSL", 465, "", "ssl"},
+		{"587默认STARTTLS", 587, "", "starttls"},
+		{"25默认STARTTLS", 25, "", "starttls"},
+		{"显式SSL覆盖端口", 587, "ssl", "ssl"},
+		{"显式none", 465, "none", "none"},
+		{"非法值回退端口推断", 465, "tls?", "ssl"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var gotMode string
+			fake := &fakeEmailSender{onSend: func(mode, addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+				mu.Lock()
+				defer mu.Unlock()
+				gotMode = mode
+				return nil
+			}}
+			ch := emailChannel("CH-E", SeverityWarning)
+			ch.Config.Email.SMTPPort = tc.port
+			ch.Config.Email.Encryption = tc.enc
+
+			n := &EmailNotifier{sender: fake}
+			require.NoError(t, n.Send(context.Background(), ch, sampleEvent(), dskAlertType(), "web-01", ""))
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, tc.want, gotMode)
+		})
+	}
 }

@@ -98,3 +98,28 @@ func TestNotifyPayload_JSON(t *testing.T) {
 	require.Contains(t, string(data), `"alert_type":"OWL-DSK-001"`)
 	require.Contains(t, string(data), `"severity":"warn"`)
 }
+
+// TestNotifyChannel_JSONContract 验证渠道结构体的 JSON 契约（问题8）：
+// API 序列化输出 snake_case，前端提交的 severity_min/alert_types 能正确绑定。
+func TestNotifyChannel_JSONContract(t *testing.T) {
+	ch := emailChannel("CH-1", SeverityWarning)
+
+	data, err := json.Marshal(ch)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"id":"CH-1"`)
+	require.Contains(t, string(data), `"kind":"email"`)
+	require.Contains(t, string(data), `"severity_min":"warn"`)
+	require.Contains(t, string(data), `"enabled":true`)
+
+	// 前端提交 snake_case 字段：必须全部绑定成功（此前静默丢弃导致删除/过滤失效）
+	payload := `{"id":"CH-2","kind":"email","name":"邮件","severity_min":"critical","alert_types":"OWL-DSK-001,OWL-MEM-001","enabled":true,"created_at":123}`
+	var got NotifyChannel
+	require.NoError(t, json.Unmarshal([]byte(payload), &got))
+	require.Equal(t, "CH-2", got.ID)
+	require.Equal(t, "email", got.Kind)
+	require.Equal(t, "邮件", got.Name)
+	require.Equal(t, SeverityCritical, got.SeverityMin)
+	require.Equal(t, "OWL-DSK-001,OWL-MEM-001", got.AlertTypes)
+	require.True(t, got.Enabled)
+	require.Equal(t, int64(123), got.CreatedAt)
+}

@@ -10,14 +10,14 @@ import (
 
 // NotifyChannel 通知渠道：邮件或自定义 Webhook。
 type NotifyChannel struct {
-	ID          string
-	Kind        string // email | webhook
-	Name        string
-	Config      NotifyConfig
-	SeverityMin Severity // 最低通知级别
-	AlertTypes  string   // 空=全部；逗号分隔告警 ID
-	Enabled     bool
-	CreatedAt   int64
+	ID          string       `json:"id"`
+	Kind        string       `json:"kind"` // email | webhook
+	Name        string       `json:"name"`
+	Config      NotifyConfig `json:"config"`
+	SeverityMin Severity     `json:"severity_min"` // 最低通知级别
+	AlertTypes  string       `json:"alert_types"`  // 空=全部；逗号分隔告警 ID
+	Enabled     bool         `json:"enabled"`
+	CreatedAt   int64        `json:"created_at"`
 }
 
 // NotifyConfig 渠道配置（按 Kind 取对应子结构），JSON 结构与存储一致。
@@ -27,13 +27,15 @@ type NotifyConfig struct {
 }
 
 // EmailConfig SMTP 邮件配置。
+// Encryption：ssl（隐式 TLS，465）| starttls | none；空则按端口推断。
 type EmailConfig struct {
-	SMTPHost string   `json:"smtp_host"`
-	SMTPPort int      `json:"smtp_port"`
-	Username string   `json:"username"`
-	Password string   `json:"password"`
-	From     string   `json:"from"`
-	To       []string `json:"to"`
+	SMTPHost   string   `json:"smtp_host"`
+	SMTPPort   int      `json:"smtp_port"`
+	Encryption string   `json:"encryption,omitempty"`
+	Username   string   `json:"username"`
+	Password   string   `json:"password"`
+	From       string   `json:"from"`
+	To         []string `json:"to"`
 }
 
 // WebhookConfig 自定义 Webhook 配置。
