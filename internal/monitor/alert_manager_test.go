@@ -60,6 +60,59 @@ func TestAlertManager_OpenRefreshResolve(t *testing.T) {
 	require.Equal(t, int64(1000), got.ResolvedAt)
 }
 
+// TestAlertManager_RealertWindow 验证重复告警合并窗口：告警解决后窗口期内
+// 同类型再触发 → 重开原条目（不新建）；窗口关闭（0）→ 允许新建。
+func TestAlertManager_RealertWindow(t *testing.T) {
+	s := newTestStore(t)
+	m := NewAlertManager(s)
+	m.recoverThreshold = 1
+	base := int64(1000)
+	types := memRuleTypes()
+	memSamples := func(v float64) []Sample {
+		return []Sample{{NodeID: "n1", Metric: "mem.used_pct", TS: 1, Value: v}}
+	}
+
+	// 开告警 → 解决
+	m.now = func() int64 { return base }
+	events, err := m.Tick("n1", memSamples(95), types)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	originalID := events[0].Alert.ID
+	m.now = func() int64 { return base + 60 }
+	events, err = m.Tick("n1", memSamples(10), types)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, EventResolved, events[0].Type)
+
+	// 默认窗口（24h）内再次触发：重开同一条目，不新建
+	m.now = func() int64 { return base + 120 }
+	events, err = m.Tick("n1", memSamples(95), types)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, EventOpened, events[0].Type)
+	require.Equal(t, originalID, events[0].Alert.ID, "合并窗口内应重开原条目")
+	got, exists, err := s.GetAlert(originalID)
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.Equal(t, StatusOpen, got.Status)
+	require.Equal(t, int64(0), got.ResolvedAt, "重开后应清除解决时间")
+	require.Equal(t, int64(base+120), got.FirstSeen, "重开后 first_seen 重置，避免按旧时间立即升级")
+
+	all, err := s.ListAlerts(AlertFilter{NodeID: "n1"})
+	require.NoError(t, err)
+	require.Len(t, all, 1, "窗口内重复触发不应产生第二条告警")
+
+	// 窗口关闭（0）：解决后再触发 → 新建
+	_, err = m.Resolve(originalID)
+	require.NoError(t, err)
+	m.SetRealertWindow(0)
+	m.now = func() int64 { return base + 240 }
+	events, err = m.Tick("n1", memSamples(96), types)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.NotEqual(t, originalID, events[0].Alert.ID, "窗口关闭时应新建告警")
+}
+
 // TestAlertManager_MarkCollectOK_KeepsDurationWindow 验证周期性采集成功回调
 // 不清空规则连续命中计数：Engine 每个成功 tick 都会调 MarkCollectOK，若其
 // 无条件 Reset 规则计数，duration≥2 的规则将永远无法满足持续窗口。

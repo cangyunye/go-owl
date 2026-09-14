@@ -29,12 +29,14 @@ type AlertView struct {
 	NodeName      string `json:"node_name"`
 }
 
-// ListAlerts 告警列表：status/severity/node_id 筛选 + 分页 + 总数。
+// ListAlerts 告警列表：status/severity/node_id/alert_type_id/group 筛选 + 分页 + 总数。
 func (h *MonitorHandler) ListAlerts(c *gin.Context) {
 	filter := owlmonitor.AlertFilter{
-		Status:   owlmonitor.AlertStatus(c.Query("status")),
-		NodeID:   c.Query("node_id"),
-		Severity: c.Query("severity"),
+		Status:      owlmonitor.AlertStatus(c.Query("status")),
+		NodeID:      c.Query("node_id"),
+		Severity:    c.Query("severity"),
+		AlertTypeID: c.Query("alert_type_id"),
+		Group:       c.Query("group"),
 	}
 	if v := c.Query("limit"); v != "" {
 		filter.Limit, _ = strconv.Atoi(v)

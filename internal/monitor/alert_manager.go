@@ -37,6 +37,7 @@ type AlertManager struct {
 	recoverThreshold int            // 恢复所需连续未命中采样数，默认 3
 	escalateAfter    time.Duration  // warn 未处理升级时长，默认 1h
 	failThreshold    int            // 失联阈值（连续失败次数），默认 3
+	realertWindow    time.Duration  // 重复告警合并窗口：解决后窗口内再触发重开原条目，默认 24h（0=关闭）
 	silentUntil      int64          // 静默截止时间戳：静默期内不新建告警（已有实例正常流转）
 	now              func() int64
 	seq              int
@@ -52,6 +53,7 @@ func NewAlertManager(store *Store) *AlertManager {
 		recoverThreshold: 3,
 		escalateAfter:    time.Hour,
 		failThreshold:    3,
+		realertWindow:    24 * time.Hour,
 		now:              func() int64 { return time.Now().Unix() },
 	}
 }
@@ -94,6 +96,29 @@ func (m *AlertManager) Tick(nodeID string, samples []Sample, types []AlertType) 
 			}
 			delete(m.recoverCounts, key)
 			continue
+		}
+		// 无活跃实例：合并窗口内的已解决告警重开原条目，避免重复告警
+		if m.realertWindow > 0 {
+			resolved, found, err := m.store.GetLatestResolvedAlert(at.ID, nodeID)
+			if err != nil {
+				return events, err
+			}
+			if found && resolved.ResolvedAt > 0 &&
+				now-resolved.ResolvedAt < int64(m.realertWindow.Seconds()) {
+				resolved.Status = StatusOpen
+				resolved.Severity = at.DefaultSeverity
+				resolved.Message = buildAlertMessage(at, hit)
+				resolved.MetricSnapshot = snapshotJSON(hit)
+				resolved.FirstSeen = now
+				resolved.LastSeen = now
+				resolved.ResolvedAt = 0
+				if err := m.store.UpdateAlert(resolved); err != nil {
+					return events, err
+				}
+				delete(m.recoverCounts, key)
+				events = append(events, AlertEvent{Type: EventOpened, Alert: resolved})
+				continue
+			}
 		}
 		al := &Alert{
 			ID:             NewAlertID(now, m.seq),
@@ -277,6 +302,17 @@ func (m *AlertManager) SetEscalateAfter(d time.Duration) {
 	defer m.mu.Unlock()
 	if d > 0 {
 		m.escalateAfter = d
+	}
+}
+
+// SetRealertWindow 更新重复告警合并窗口（Engine 每轮采集前调用）。
+// d>0 窗口生效；d==0 关闭合并（解决后再触发总是新建）；d<0 忽略。
+// 可经 settings 键 monitor.realert_window_minutes 在运行期调整。
+func (m *AlertManager) SetRealertWindow(d time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if d >= 0 {
+		m.realertWindow = d
 	}
 }
 

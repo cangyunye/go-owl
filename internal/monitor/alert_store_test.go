@@ -126,3 +126,58 @@ func TestStore_ListAlerts_Filter(t *testing.T) {
 	require.Len(t, page, 1)
 	require.Equal(t, "AL-C", page[0].ID)
 }
+
+// TestStore_ListAlerts_FilterTypeGroup 验证按告警类型与节点分组筛选。
+// 分组依赖同库 nodes 表（serve 集成时为同一 owl.db 文件），测试中模拟建表。
+func TestStore_ListAlerts_FilterTypeGroup(t *testing.T) {
+	s := newTestStore(t)
+	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
+		id TEXT PRIMARY KEY, groups TEXT NOT NULL DEFAULT '[]')`)
+	require.NoError(t, err)
+	for _, n := range []struct{ id, groups string }{
+		{"n1", `["web","db"]`}, {"n2", `["db"]`}, {"n3", `[]`},
+	} {
+		_, err := s.db.Exec(`INSERT INTO nodes (id, groups) VALUES (?, ?)`, n.id, n.groups)
+		require.NoError(t, err)
+	}
+
+	now := time.Now().Unix()
+	mk := func(id, typeID, nodeID string) *Alert {
+		return &Alert{ID: id, AlertTypeID: typeID, NodeID: nodeID,
+			Severity: SeverityWarning, Status: StatusOpen, Message: "x",
+			FirstSeen: now, LastSeen: now}
+	}
+	require.NoError(t, s.InsertAlert(mk("AL-1", "OWL-DSK-001", "n1")))
+	require.NoError(t, s.InsertAlert(mk("AL-2", "OWL-MEM-001", "n2")))
+	require.NoError(t, s.InsertAlert(mk("AL-3", "OWL-DSK-001", "n3")))
+
+	// 按告警类型精确筛选
+	got, err := s.ListAlerts(AlertFilter{AlertTypeID: "OWL-DSK-001"})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	// 按分组（单组）：db → n1, n2
+	got, err = s.ListAlerts(AlertFilter{Group: "db"})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	// 多分组任一命中，节点不重复：web,db → n1, n2
+	got, err = s.ListAlerts(AlertFilter{Group: "web,db"})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	// 类型 + 分组组合：OWL-DSK-001 + db → 只有 AL-1（n3 无分组）
+	got, err = s.ListAlerts(AlertFilter{AlertTypeID: "OWL-DSK-001", Group: "db"})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "AL-1", got[0].ID)
+
+	total, err := s.CountAlerts(AlertFilter{AlertTypeID: "OWL-DSK-001", Group: "db"})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+
+	// 空白分组参数等价于不过滤
+	got, err = s.ListAlerts(AlertFilter{Group: " , "})
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+}

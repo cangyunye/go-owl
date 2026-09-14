@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 )
 
 // ensureAlertTables 建告警相关表（幂等）。
@@ -181,10 +183,10 @@ func (s *Store) InsertAlert(a *Alert) error {
 // UpdateAlert 按 ID 更新告警实例（状态/级别/时间/快照）。
 func (s *Store) UpdateAlert(a *Alert) error {
 	res, err := s.db.Exec(`UPDATE alerts SET
-		severity=?, status=?, message=?, metric_snapshot=?, last_seen=?, resolved_at=?, remedy_id=?
+		severity=?, status=?, message=?, metric_snapshot=?, first_seen=?, last_seen=?, resolved_at=?, remedy_id=?
 		WHERE id=?`,
 		string(a.Severity), string(a.Status), a.Message, a.MetricSnapshot,
-		a.LastSeen, a.ResolvedAt, a.RemedyID, a.ID)
+		a.FirstSeen, a.LastSeen, a.ResolvedAt, a.RemedyID, a.ID)
 	if err != nil {
 		return fmt.Errorf("monitor: 更新告警失败: %w", err)
 	}
@@ -223,11 +225,26 @@ func (s *Store) GetActiveAlert(typeID, nodeID string) (*Alert, bool, error) {
 	return a, true, nil
 }
 
-// ListAlerts 按筛选条件列出告警实例，级别降序 + 首次触发时间降序。
-// Status 为 "active" 时筛选未解决实例；支持 Limit/Offset 分页。
-func (s *Store) ListAlerts(f AlertFilter) ([]Alert, error) {
-	query := `SELECT id, alert_type_id, node_id, severity, status, message, metric_snapshot,
-		first_seen, last_seen, resolved_at, remedy_id FROM alerts WHERE 1=1`
+// GetLatestResolvedAlert 获取某节点某类型最近一次已解决的告警实例
+//（重复告警合并窗口查找用）。
+func (s *Store) GetLatestResolvedAlert(typeID, nodeID string) (*Alert, bool, error) {
+	row := s.db.QueryRow(`SELECT id, alert_type_id, node_id, severity, status, message, metric_snapshot,
+		first_seen, last_seen, resolved_at, remedy_id FROM alerts
+		WHERE alert_type_id = ? AND node_id = ? AND status = 'resolved'
+		ORDER BY resolved_at DESC LIMIT 1`, typeID, nodeID)
+	a, err := scanAlert(row)
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return a, true, nil
+}
+
+// alertFilterSQL 追加 AlertFilter 的 WHERE 条件（ListAlerts/CountAlerts 共用）。
+func (s *Store) alertFilterSQL(f AlertFilter) (string, []any) {
+	query := ` WHERE 1=1`
 	var args []any
 	if f.Status == "active" {
 		query += ` AND status != 'resolved'`
@@ -243,6 +260,47 @@ func (s *Store) ListAlerts(f AlertFilter) ([]Alert, error) {
 		query += ` AND severity = ?`
 		args = append(args, f.Severity)
 	}
+	if f.AlertTypeID != "" {
+		query += ` AND alert_type_id = ?`
+		args = append(args, f.AlertTypeID)
+	}
+	if groups := splitGroups(f.Group); len(groups) > 0 && s.hasNodesTable() {
+		// 分组筛选：nodes.groups 为 JSON 数组，取与 nodes 页一致的 LIKE 匹配
+		query += ` AND node_id IN (SELECT id FROM nodes WHERE 1=0`
+		for _, g := range groups {
+			query += ` OR groups LIKE ?`
+			args = append(args, `%"`+g+`"%`)
+		}
+		query += `)`
+	}
+	return query, args
+}
+
+// splitGroups 拆分逗号分隔分组并去掉空白项。
+func splitGroups(raw string) []string {
+	var out []string
+	for _, g := range strings.Split(raw, ",") {
+		if g = strings.TrimSpace(g); g != "" {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// hasNodesTable 判断同库是否存在 nodes 表（独立打开 monitor 库时无此表，
+// 分组筛选退化为不过滤）。
+func (s *Store) hasNodesTable() bool {
+	var name string
+	err := s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'`).Scan(&name)
+	return err == nil && name == "nodes"
+}
+
+// ListAlerts 按筛选条件列出告警实例，级别降序 + 首次触发时间降序。
+// Status 为 "active" 时筛选未解决实例；支持 Limit/Offset 分页。
+func (s *Store) ListAlerts(f AlertFilter) ([]Alert, error) {
+	where, args := s.alertFilterSQL(f)
+	query := `SELECT id, alert_type_id, node_id, severity, status, message, metric_snapshot,
+		first_seen, last_seen, resolved_at, remedy_id FROM alerts` + where
 	query += ` ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END, first_seen DESC`
 	if f.Limit > 0 {
 		query += ` LIMIT ?`
@@ -272,27 +330,25 @@ func (s *Store) ListAlerts(f AlertFilter) ([]Alert, error) {
 
 // CountAlerts 按筛选条件统计告警数量（与 ListAlerts 同过滤语义）。
 func (s *Store) CountAlerts(f AlertFilter) (int, error) {
-	query := `SELECT COUNT(*) FROM alerts WHERE 1=1`
-	var args []any
-	if f.Status == "active" {
-		query += ` AND status != 'resolved'`
-	} else if f.Status != "" {
-		query += ` AND status = ?`
-		args = append(args, string(f.Status))
-	}
-	if f.NodeID != "" {
-		query += ` AND node_id = ?`
-		args = append(args, f.NodeID)
-	}
-	if f.Severity != "" {
-		query += ` AND severity = ?`
-		args = append(args, f.Severity)
-	}
+	where, args := s.alertFilterSQL(f)
+	query := `SELECT COUNT(*) FROM alerts` + where
 	var n int
 	if err := s.db.QueryRow(query, args...).Scan(&n); err != nil {
 		return 0, err
 	}
 	return n, nil
+}
+
+// CleanupAlerts 清理已解决且解决时间超过 days 天的告警记录。
+// 未解决（open/acked）告警永不删除。
+func (s *Store) CleanupAlerts(days int) error {
+	cutoff := time.Now().Unix() - int64(days)*86400
+	_, err := s.db.Exec(`DELETE FROM alerts
+		WHERE status = 'resolved' AND COALESCE(resolved_at, last_seen, first_seen) < ?`, cutoff)
+	if err != nil {
+		return fmt.Errorf("monitor: 清理过期告警记录失败: %w", err)
+	}
+	return nil
 }
 
 func scanAlert(r rowScanner) (*Alert, error) {
