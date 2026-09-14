@@ -239,6 +239,9 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	}
 	s.monitor = monSvc
 	s.monitorHandler = handler.NewMonitorHandler(db, monSvc)
+	// 告警绑定：注入剧本存储（绑定校验）与剧本执行入口（手动/自动执行）
+	s.monitorHandler.SetPlaybookStore(playbookStore)
+	monSvc.SetPlaybookRunner(s.playbookHandler)
 
 	s.setupRoutes()
 
@@ -312,6 +315,8 @@ func (s *Server) setupRoutes() {
 		reader.GET("/metrics", s.monitorHandler.QueryMetrics)
 		reader.GET("/alerts/:id/plans", s.monitorHandler.ListRemedyPlans)
 		reader.GET("/plans/:id", s.monitorHandler.GetRemedyPlan)
+		reader.GET("/alerts/:id/bindings", s.monitorHandler.ListAlertBindings)
+		reader.GET("/alerts/:id/binding-runs", s.monitorHandler.ListAlertBindingRuns)
 
 		writer := auth.Group("", s.authHandler.RBACMiddleware(model.RoleEditor, model.RoleOperator, model.RoleAdmin))
 		{
@@ -349,6 +354,7 @@ func (s *Server) setupRoutes() {
 			operator.POST("/plans/:id/stop", s.monitorHandler.StopRemedyPlan)
 			operator.POST("/plans/:id/approve", s.monitorHandler.ApproveRemedyPlan)
 			operator.POST("/plans/:id/reject", s.monitorHandler.RejectRemedyPlan)
+			operator.POST("/alerts/:id/bindings/run", s.monitorHandler.RunAlertBindings)
 		}
 
 		admin := auth.Group("", s.authHandler.RBACMiddleware(model.RoleAdmin))
@@ -383,6 +389,9 @@ func (s *Server) setupRoutes() {
 			admin.POST("/notify-channels/:id/test", s.monitorHandler.TestNotifyChannel)
 			admin.GET("/monitor/silence", s.monitorHandler.GetSilence)
 			admin.PUT("/monitor/silence", s.monitorHandler.SetSilence)
+			admin.POST("/alerts/:id/bindings", s.monitorHandler.CreateAlertBinding)
+			admin.PUT("/alert-bindings/:id", s.monitorHandler.UpdateAlertBinding)
+			admin.DELETE("/alert-bindings/:id", s.monitorHandler.DeleteAlertBinding)
 		}
 	}
 

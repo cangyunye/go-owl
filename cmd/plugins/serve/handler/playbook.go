@@ -751,3 +751,51 @@ func extractAction(m map[string]interface{}) string {
 func upsertSetting(db *sql.DB, key, value string) {
 	db.Exec(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 }
+
+// RunForAlert 以告警节点为目标发起剧本运行（告警绑定执行入口，
+// 实现 monitor.PlaybookRunner 接口）。绑定为管理员显式配置，
+// 危险确认视为已同意；返回 playbook_run ID。
+func (h *PlaybookHandler) RunForAlert(ctx context.Context, playbookID, nodeID, createdBy string) (string, error) {
+	pb, err := h.playbooks.Get(ctx, playbookID)
+	if err != nil {
+		return "", fmt.Errorf("剧本 %s 不存在", playbookID)
+	}
+	if !pb.FileExists {
+		return "", fmt.Errorf("剧本文件缺失: %s", pb.FilePath)
+	}
+	run, err := h.runs.Create(ctx, pb.ID, pb.Name, pb.FilePath, []string{nodeID}, nil, "", true)
+	if err != nil {
+		return "", fmt.Errorf("创建运行失败: %w", err)
+	}
+	run.Warnings = h.preflightPlaybook(pb.FilePath)
+
+	op := &store.Operation{TaskID: run.ID, OpType: "playbook",
+		Command: "playbook run " + pb.Name + " (alert binding)",
+		Targets: []string{nodeID}, PlaybookPath: pb.FilePath, Status: "running",
+		CreatedAt: time.Now().UTC(), Forced: true, Username: createdBy}
+	if err := h.History.RecordOperation(ctx, op); err != nil {
+		log.Printf("record history: %v", err)
+	}
+	if h.hub != nil {
+		h.hub.BroadcastHistoryUpdate()
+	}
+	go h.executePlaybookRunV2(run.ID)
+	if h.hub != nil {
+		h.hub.Broadcast(WSMessage{Type: "playbook_run_update", Data: run})
+	}
+	return run.ID, nil
+}
+
+// PlaybookRunFinished 查询剧本运行是否已到终态（实现 monitor.PlaybookRunner 接口）。
+func (h *PlaybookHandler) PlaybookRunFinished(ctx context.Context, runID string) (bool, string, error) {
+	run, err := h.runs.Get(ctx, runID)
+	if err != nil {
+		return true, "unknown", err
+	}
+	switch run.Status {
+	case model.RunStatusCompleted, model.RunStatusFailed, model.RunStatusCancelled:
+		return true, string(run.Status), nil
+	default:
+		return false, string(run.Status), nil
+	}
+}

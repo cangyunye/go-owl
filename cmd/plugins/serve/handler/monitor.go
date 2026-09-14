@@ -7,19 +7,26 @@ import (
 	"time"
 
 	monitorSvc "github.com/cangyunye/go-owl/cmd/plugins/serve/monitor"
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
 	"github.com/gin-gonic/gin"
 )
 
 // MonitorHandler 监控 REST API：告警、告警类型、对策、通知渠道、指标查询、静默。
 type MonitorHandler struct {
-	db  *sql.DB
-	svc *monitorSvc.Service
+	db        *sql.DB
+	svc       *monitorSvc.Service
+	playbooks *store.PlaybookStore // 剧本存储（绑定 playbook 校验用，装配时注入）
 }
 
 // NewMonitorHandler 创建监控 handler。
 func NewMonitorHandler(db *sql.DB, svc *monitorSvc.Service) *MonitorHandler {
 	return &MonitorHandler{db: db, svc: svc}
+}
+
+// SetPlaybookStore 注入剧本存储（绑定 playbook 存在性校验用）。
+func (h *MonitorHandler) SetPlaybookStore(ps *store.PlaybookStore) {
+	h.playbooks = ps
 }
 
 // AlertView 告警视图（附类型中文名与节点名）。

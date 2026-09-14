@@ -340,7 +340,7 @@ func (s *Store) CountAlerts(f AlertFilter) (int, error) {
 }
 
 // CleanupAlerts 清理已解决且解决时间超过 days 天的告警记录。
-// 未解决（open/acked）告警永不删除。
+// 未解决（open/acked）告警永不删除；实例级绑定与执行记录级联清理。
 func (s *Store) CleanupAlerts(days int) error {
 	cutoff := time.Now().Unix() - int64(days)*86400
 	_, err := s.db.Exec(`DELETE FROM alerts
@@ -348,7 +348,7 @@ func (s *Store) CleanupAlerts(days int) error {
 	if err != nil {
 		return fmt.Errorf("monitor: 清理过期告警记录失败: %w", err)
 	}
-	return nil
+	return s.cleanupOrphanAlertBindings()
 }
 
 func scanAlert(r rowScanner) (*Alert, error) {

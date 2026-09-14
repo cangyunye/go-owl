@@ -363,3 +363,34 @@ func TestEngine_CleanupAlerts(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists, "未解决告警永不删除")
 }
+
+// TestEngine_OnAlertOpened 验证告警打开钩子：新建与合并窗口重开都会触发，
+// 供 serve 侧执行告警绑定的自动处置指令。
+func TestEngine_OnAlertOpened(t *testing.T) {
+	outputs := sampleOutputs()
+	// 高内存：used_pct > 90%（duration=1）→ 本轮即触发告警
+	outputs["LC_ALL=C free -m"] = "              total        used        free      shared  buff/cache   available\nMem:          15891       15000        100         189         791         900\nSwap:          2047           0        2047\n"
+	eng, s := newTestEngine(t, []Target{{ID: "node-a", Name: "web-01"}}, outputs)
+	var opened []string
+	eng.OnAlertOpened = func(ev AlertEvent, tg Target) {
+		opened = append(opened, ev.Alert.ID+"|"+tg.ID)
+	}
+
+	require.NoError(t, eng.TickOnce(context.Background()))
+	require.Eventually(t, func() bool { return len(opened) >= 1 }, time.Second, 5*time.Millisecond,
+		"首次触发应异步回调 OnAlertOpened")
+
+	// 重开场景：解决告警后再次入库触发（Alert ID 不变由 Manager 保证）
+	al, exists, err := s.GetActiveAlert("OWL-MEM-001", "node-a")
+	require.NoError(t, err)
+	require.True(t, exists)
+	al.Status = StatusResolved
+	al.ResolvedAt = 1750000000
+	require.NoError(t, s.UpdateAlert(al))
+	eng.manager = NewAlertManager(s)
+	eng.manager.now = func() int64 { return 1750000000 }
+
+	require.NoError(t, eng.TickOnce(context.Background()))
+	require.Eventually(t, func() bool { return len(opened) >= 2 }, time.Second, 5*time.Millisecond,
+		"重开产生的 EventOpened 也应回调")
+}

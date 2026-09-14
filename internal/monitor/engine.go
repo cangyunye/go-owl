@@ -49,6 +49,9 @@ type Engine struct {
 	manager      *AlertManager
 	dispatcher   *Dispatcher
 	healer       *AutoHealer             // 自愈管线（nil = 关闭）
+	// OnAlertOpened 告警打开（含合并窗口重开）时的扩展钩子（nil = 无操作）；
+	// 异步调用，serve 侧用于执行告警绑定的自动处置指令
+	OnAlertOpened func(ev AlertEvent, t Target)
 	lastCounters map[string]counterPoint // node|metric → 上次累计计数（网卡速率）
 	mu           sync.Mutex
 	now          func() time.Time // 采集时段窗口判定用时钟（测试可注入）
@@ -298,6 +301,10 @@ func (e *Engine) dispatch(ctx context.Context, events []AlertEvent, types []Aler
 						logger.WithField("alert_id", ev.Alert.ID), logger.WithError(err))
 				}
 			}(ev, at, t)
+		}
+		// 告警绑定执行钩子（异步；serve 侧按 auto_exec 绑定处置指令）
+		if ev.Type == EventOpened && e.OnAlertOpened != nil {
+			go e.OnAlertOpened(ev, t)
 		}
 		webURL := e.cfg.WebURL + "/alerts/" + ev.Alert.ID
 		if errs := e.dispatcher.Notify(ctx, ev, at, t.Name, webURL); len(errs) > 0 {

@@ -122,13 +122,14 @@ func servicesFromLabels(raw string) []string {
 
 // Service 监控服务（serve 集成）：持有核心组件与生命周期。
 type Service struct {
-	Store      *owlmonitor.Store
-	Engine     *owlmonitor.Engine
-	Manager    *owlmonitor.AlertManager
-	Dispatcher *owlmonitor.Dispatcher
-	runner     *owlmonitor.RunExecutor
-	db         *sql.DB // settings 表访问（静默配置）
-	webURL     string
+	Store          *owlmonitor.Store
+	Engine         *owlmonitor.Engine
+	Manager        *owlmonitor.AlertManager
+	Dispatcher     *owlmonitor.Dispatcher
+	runner         *owlmonitor.RunExecutor
+	playbookRunner PlaybookRunner // 剧本执行入口（告警绑定执行用，装配时注入）
+	db             *sql.DB        // settings 表访问（静默配置）
+	webURL         string
 
 	cancel context.CancelFunc
 }
@@ -175,7 +176,7 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 	engine := owlmonitor.NewEngine(cfg, store, collector, source, manager, dispatcher)
 	engine.SetAutoHealer(healer)
 
-	return &Service{
+	svc := &Service{
 		Store:      store,
 		Engine:     engine,
 		Manager:    manager,
@@ -183,7 +184,10 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		runner:     runner,
 		db:         db,
 		webURL:     webURL,
-	}, nil
+	}
+	// 告警打开/重开钩子：执行 alert_bindings 中 auto_exec 的专属指令
+	engine.OnAlertOpened = svc.handleAlertOpened
+	return svc, nil
 }
 
 // newAdvisor 按 ~/.owl/config.yaml 创建处置建议器：
