@@ -90,13 +90,13 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       list.innerHTML = state.filteredPlaybooks.map(pb =>
         `<tr class="playbook-row" data-id="${esc(pb.id)}" style="cursor:pointer">
           <td>${esc(pb.name)}${pb.file_exists === false ? ' <span class="missing-badge">missing</span>' : ''}</td>
-          <td>${pb.category ? `<span class="tag">${esc(pb.category)}</span>` : '<span style="color:var(--muted);font-size:12px">-</span>'}</td>
+          <td>${pb.category ? `<span class="tag">${esc(pb.category)}</span>` : '<span style="color:var(--muted);font-size:var(--fs-xs)">-</span>'}</td>
           <td>${esc(pb.description || '')}</td>
           <td>${esc((pb.task_names || []).join(', '))}</td>
           <td class="action-cell">
-            <button class="run-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} style="background:none;border:1px solid var(--primary);color:var(--primary);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px">Run</button>
-            <button class="edit-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="二次编辑剧本" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px;margin-left:4px">编辑</button>
-            <button class="download-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="下载 playbook 文件" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px;margin-left:4px">下载</button>
+            <button class="run-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} style="background:none;border:1px solid var(--primary);color:var(--primary);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:var(--fs-xs)">Run</button>
+            <button class="edit-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="二次编辑剧本" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:var(--fs-xs);margin-left:4px">编辑</button>
+            <button class="download-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="下载 playbook 文件" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:var(--fs-xs);margin-left:4px">下载</button>
           </td>
         </tr>`
       ).join('');
@@ -140,7 +140,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     document.getElementById('cp-skip-tags').value = '';
     document.getElementById('cp-vars-list').innerHTML = '';
     document.getElementById('cp-skip-vars').checked = false;
-    document.getElementById('cp-tasks-list').innerHTML = '<p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
+    document.getElementById('cp-tasks-list').innerHTML = '<p class="empty-state" style="font-size:var(--fs-sm);padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
     document.getElementById('cp-error').textContent = '';
     showCpStep(1);
   }
@@ -201,7 +201,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       valInp.addEventListener('input', () => { cpState.vars[idx].value = valInp.value; });
       const delBtn = document.createElement('button');
       delBtn.textContent = '删除';
-      delBtn.style.cssText = 'background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:4px 8px;font-size:12px';
+      delBtn.style.cssText = 'background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:4px 8px;font-size:var(--fs-xs)';
       delBtn.addEventListener('click', () => {
         const removeIdx = Array.from(list.children).indexOf(row);
         cpState.vars.splice(removeIdx, 1);
@@ -245,7 +245,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     const list = document.getElementById('cp-tasks-list');
     list.innerHTML = '';
     if (cpState.tasks.length === 0) {
-      list.innerHTML = '<p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
+      list.innerHTML = '<p class="empty-state" style="font-size:var(--fs-sm);padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>';
       return;
     }
     const actions = ['command', 'script', 'upload', 'download', 'include'];
@@ -273,7 +273,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       actionSel.addEventListener('change', () => { cpState.tasks[i].action = actionSel.value; });
       const removeBtn = document.createElement('button');
       removeBtn.textContent = '删除';
-      removeBtn.style.cssText = 'background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:11px;white-space:nowrap';
+      removeBtn.style.cssText = 'background:none;border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:var(--fs-xs);white-space:nowrap';
       removeBtn.addEventListener('click', () => { cpState.tasks.splice(i, 1); renderCpTasks(); });
       head.append(nameInput, actionSel, removeBtn);
 
@@ -284,7 +284,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
       const addArgBtn = document.createElement('button');
       addArgBtn.textContent = '+ 添加参数';
-      addArgBtn.style.cssText = 'background:none;border:1px dashed var(--border);color:var(--muted);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:11px;margin-top:6px';
+      addArgBtn.style.cssText = 'background:none;border:1px dashed var(--border);color:var(--muted);border-radius:var(--radius);cursor:pointer;padding:2px 8px;font-size:var(--fs-xs);margin-top:6px';
       addArgBtn.addEventListener('click', () => { cpState.tasks[i].args[''] = ''; renderCpTasks(); });
 
       card.append(head, argsBox, addArgBtn);
@@ -316,7 +316,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       const delBtn = document.createElement('button');
       delBtn.textContent = '×';
       delBtn.title = '删除参数';
-      delBtn.style.cssText = 'background:none;border:none;color:var(--danger);cursor:pointer;font-size:13px';
+      delBtn.style.cssText = 'background:none;border:none;color:var(--danger);cursor:pointer;font-size:var(--fs-sm)';
       delBtn.addEventListener('click', () => { delete cpState.tasks[idx].args[k]; renderCpTasks(); });
       row.append(keyInp, valInp, delBtn);
       box.appendChild(row);
@@ -397,7 +397,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       listEl.innerHTML = files.map(f => `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px dashed var(--border)">
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)} <span style="color:var(--muted)">(${f.size} B)</span></span>
-          <button class="staging-copy-path" data-name="${esc(f.name)}" title="复制完整路径" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:var(--radius);cursor:pointer;padding:0 8px;font-size:11px">复制路径</button>
+          <button class="staging-copy-path" data-name="${esc(f.name)}" title="复制完整路径" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:var(--radius);cursor:pointer;padding:0 8px;font-size:var(--fs-xs)">复制路径</button>
         </div>`).join('');
       document.querySelectorAll('.staging-copy-path').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -472,12 +472,12 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     const dd = document.getElementById('run-node-dropdown');
     const matched = filterRunNodes(q);
     if (matched.length === 0) {
-      dd.innerHTML = '<div style="padding:8px;color:var(--muted);font-size:12px">无匹配节点</div>';
+      dd.innerHTML = '<div style="padding:8px;color:var(--muted);font-size:var(--fs-xs)">无匹配节点</div>';
     } else {
       dd.innerHTML = matched.map(n => {
         const checked = runSel.nodes.has(n.id);
         const namePart = n.name && n.name !== n.id ? ` <span style="color:var(--muted)">(${esc(n.name)})</span>` : '';
-        return `<label style="display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;font-size:12px">
+        return `<label style="display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;font-size:var(--fs-xs)">
           <input type="checkbox" data-node="${esc(n.id)}" ${checked ? 'checked' : ''} style="width:13px;height:13px;flex:0 0 auto;cursor:pointer;accent-color:var(--accent)">
           <span>${esc(n.id)}</span>${namePart}
           <span style="margin-left:auto;color:var(--muted)">${esc(n.address || '')}</span>
@@ -501,7 +501,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     }
     box.innerHTML = Array.from(runSel.nodes).map(id => `
       <span class="tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px">
-        ${esc(id)}<button class="run-node-remove" data-node="${esc(id)}" style="background:none;border:none;color:inherit;cursor:pointer;font-size:12px;padding:0">&times;</button>
+        ${esc(id)}<button class="run-node-remove" data-node="${esc(id)}" style="background:none;border:none;color:inherit;cursor:pointer;font-size:var(--fs-xs);padding:0">&times;</button>
       </span>`).join('');
     box.querySelectorAll('.run-node-remove').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -515,11 +515,11 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   function renderRunGroups(groups) {
     const grid = document.getElementById('run-group-grid');
     if (!groups.length) {
-      grid.innerHTML = '<span style="color:var(--muted);font-size:12px">暂无分组</span>';
+      grid.innerHTML = '<span style="color:var(--muted);font-size:var(--fs-xs)">暂无分组</span>';
       return;
     }
     grid.innerHTML = groups.map(g => `
-      <label style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:var(--radius);padding:3px 8px;cursor:pointer;font-size:12px">
+      <label style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:var(--radius);padding:3px 8px;cursor:pointer;font-size:var(--fs-xs)">
         <input type="checkbox" data-group="${esc(g)}" style="width:13px;height:13px;flex:0 0 auto;cursor:pointer;accent-color:var(--accent)">
         <span>${esc(g)}</span>
         <span style="color:var(--muted)">(${runGroupCounts[g] || 0})</span>
@@ -534,11 +534,11 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   function renderRunTags(tags) {
     const grid = document.getElementById('run-tag-grid');
     if (!tags.length) {
-      grid.innerHTML = '<span style="color:var(--muted);font-size:12px">该剧本无标签任务</span>';
+      grid.innerHTML = '<span style="color:var(--muted);font-size:var(--fs-xs)">该剧本无标签任务</span>';
       return;
     }
     grid.innerHTML = tags.map(t => `
-      <label style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:var(--radius);padding:3px 8px;cursor:pointer;font-size:12px">
+      <label style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:var(--radius);padding:3px 8px;cursor:pointer;font-size:var(--fs-xs)">
         <input type="checkbox" data-tag="${esc(t)}" style="width:13px;height:13px;flex:0 0 auto;cursor:pointer;accent-color:var(--accent)">
         <span>${esc(t)}</span>
       </label>`).join('');
@@ -573,10 +573,10 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         <span>状态: ${pb.file_exists ? '<span style="color:var(--success)">存在</span>' : '<span style="color:var(--danger)">缺失</span>'}</span>
       `;
       if (pb.task_names && pb.task_names.length > 0) {
-        tasks.innerHTML = `<h4 style="font-size:13px;color:var(--muted);margin-bottom:8px">任务列表 (${pb.task_names.length})</h4>
+        tasks.innerHTML = `<h4 style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px">任务列表 (${pb.task_names.length})</h4>
           <div style="display:flex;flex-wrap:wrap;gap:6px">${pb.task_names.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>`;
       } else {
-        tasks.innerHTML = '<p style="color:var(--muted);font-size:13px">无任务</p>';
+        tasks.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-sm)">无任务</p>';
       }
       if (pb.file_exists) {
         yaml.textContent = '加载 YAML…';
@@ -618,7 +618,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       if (!e.target.closest('.view-run-btn, .cancel-run-btn')) return;
 
       if (pending.type === 'cancel') {
-        if (!confirm('Cancel this playbook run?')) return;
+        if (!confirm('确定取消该剧本运行？')) return;
         api.cancelPlaybookRun(pending.id)
           .then(loadRuns)
           .catch(err => alert('Cancel failed: ' + err.message));
@@ -641,18 +641,24 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     const list = document.getElementById('playbook-runs-list');
     if (!list) return;
     if (!runs || runs.length === 0) {
-      list.innerHTML = '<tr><td colspan="5" class="empty-state">No runs yet</td></tr>';
+      list.innerHTML = '<tr><td colspan="5" class="empty-state">暂无运行记录</td></tr>';
     } else {
-      list.innerHTML = runs.map(r => `<tr>
-        <td>${esc(r.playbook_name)}</td>
-        <td>${esc((r.target_nodes || []).join(', '))}</td>
+      list.innerHTML = runs.map(r => {
+        const nodes = r.target_nodes || [];
+        const nodesText = nodes.length > 3
+          ? nodes.slice(0, 3).join(', ') + ` 等 ${nodes.length} 个节点`
+          : nodes.join(', ');
+        return `<tr>
+        <td class="cell-ellipsis" title="${esc(r.playbook_name)}">${esc(r.playbook_name)}</td>
+        <td class="cell-ellipsis" title="${esc(nodes.join(', '))}">${esc(nodesText)}</td>
         <td><span class="status-badge status-${esc(r.status)}">${esc(r.status)}</span></td>
-        <td style="font-size:12px;color:var(--text-muted)">${r.created_at ? new Date(r.created_at).toLocaleString() : ''}</td>
+        <td class="cell-muted">${r.created_at ? new Date(r.created_at).toLocaleString('zh-CN', { hour12: false }) : ''}</td>
         <td class="action-cell">
-          <button class="view-run-btn" data-id="${r.id}" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px">View</button>
-          ${r.status === 'running' || r.status === 'pending' ? `<button class="cancel-run-btn" data-id="${r.id}" style="background:none;border:1px solid var(--danger);color:var(--danger);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px;margin-left:4px">Cancel</button>` : ''}
+          <button class="btn btn-ghost btn-sm view-run-btn" data-id="${r.id}">查看</button>
+          ${r.status === 'running' || r.status === 'pending' ? `<button class="btn btn-ghost btn-sm cancel-run-btn" data-id="${r.id}" style="color:var(--danger)">取消</button>` : ''}
         </td>
-      </tr>`).join('');
+      </tr>`;
+      }).join('');
     }
     delegateRunActions(list);
   }
@@ -666,27 +672,29 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
   function showRunDetail(run) {
     const detail = document.getElementById('run-detail');
+    const nodes = run.target_nodes || [];
     const steps = (run.results || []).map(r => `<tr>
       <td>${esc(r.task_name)}</td>
-      <td>${esc(r.node_id)}</td>
+      <td class="cell-mono">${esc(r.node_id)}</td>
       <td>${esc(r.action || '')}</td>
       <td><span class="status-badge status-${esc(r.status)}">${esc(r.status)}</span></td>
       <td>${r.exit_code !== undefined ? r.exit_code : ''}</td>
-      <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(r.output || '')}</td>
+      <td class="cell-output">${esc(r.output || '')}</td>
     </tr>`).join('');
 
     detail.innerHTML = `
-      <div style="margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:13px">
-        <span>Playbook: <strong>${esc(run.playbook_name)}</strong></span>
-        <span>Status: <span class="status-badge status-${esc(run.status)}">${esc(run.status)}</span></span>
-        <span>Nodes: ${esc((run.target_nodes || []).join(', '))}</span>
-        <span>Started: ${run.created_at ? new Date(run.created_at).toLocaleString() : ''}</span>
-        ${run.error ? `<span style="color:var(--danger)">Error: ${esc(run.error)}</span>` : ''}
+      <div class="run-meta">
+        <span class="run-meta-item"><span class="rm-label">剧本</span><strong title="${esc(run.playbook_name)}">${esc(run.playbook_name)}</strong></span>
+        <span class="run-meta-item"><span class="rm-label">状态</span><span class="status-badge status-${esc(run.status)}">${esc(run.status)}</span></span>
+        <span class="run-meta-item"><span class="rm-label">目标节点</span><strong class="cell-ellipsis" style="max-width:420px" title="${esc(nodes.join(', '))}">${esc(nodes.join(', ') || '—')}</strong></span>
+        <span class="run-meta-item"><span class="rm-label">开始时间</span><span class="cell-muted">${run.created_at ? new Date(run.created_at).toLocaleString('zh-CN', { hour12: false }) : ''}</span></span>
+        ${run.error ? `<span class="run-meta-item" style="color:var(--danger)">错误：${esc(run.error)}</span>` : ''}
       </div>
-      <div style="max-height:300px;overflow:auto">
-        <table style="font-size:12px">
-          <thead><tr><th>Task</th><th>Node</th><th>Action</th><th>Status</th><th>Exit</th><th>Output</th></tr></thead>
-          <tbody>${steps || '<tr><td colspan="6" class="empty-state">No results</td></tr>'}</tbody>
+      <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius)">
+        <table class="run-steps">
+          <colgroup><col style="width:20%"><col style="width:14%"><col style="width:12%"><col style="width:10%"><col style="width:7%"><col style="width:37%"></colgroup>
+          <thead><tr><th>任务</th><th>节点</th><th>动作</th><th>状态</th><th>退出码</th><th>输出</th></tr></thead>
+          <tbody>${steps || '<tr><td colspan="6" class="empty-state">暂无步骤结果</td></tr>'}</tbody>
         </table>
       </div>
     `;
@@ -727,7 +735,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     <div class="filter-bar">
       <div class="input" style="position:relative;padding-left:32px;width:240px">
         <svg width="14" height="14" aria-hidden="true" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)"><use href="#icon-search"/></svg>
-        <input type="text" id="playbook-search" placeholder="搜索剧本名称 / 描述…" style="border:none;background:transparent;outline:none;color:var(--fg);width:100%;font:13px/1.5 var(--font-body)">
+        <input type="text" id="playbook-search" placeholder="搜索剧本名称 / 描述…" style="border:none;background:transparent;outline:none;color:var(--fg);width:100%;font:var(--fs-sm)/1.5 var(--font-body)">
       </div>
       <div class="spacer"></div>
       <button class="btn btn-primary btn-sm" id="add-playbook-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 新建</button>
@@ -742,7 +750,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
     <div class="card">
       <div class="card-header"><h3>运行历史</h3></div>
-      <div class="card-body" style="padding:0">
+      <div class="card-body table-scroll" style="padding:0">
         <table class="data-table">
           <thead><tr><th>剧本</th><th>目标节点</th><th>状态</th><th>开始时间</th><th></th></tr></thead>
           <tbody id="playbook-runs-list"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
@@ -769,11 +777,11 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
             <div id="run-node-selected" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px"></div>
           </div>
           <div class="form-row">
-            <label>Groups <span style="font-weight:normal;color:var(--muted);font-size:11px">(与节点同时选择时以节点为准)</span></label>
+            <label>Groups <span style="font-weight:normal;color:var(--muted);font-size:var(--fs-xs)">(与节点同时选择时以节点为准)</span></label>
             <div id="run-group-grid" style="display:flex;flex-wrap:wrap;gap:6px;max-height:110px;overflow-y:auto"></div>
           </div>
           <div class="form-row">
-            <label>Tags <span style="font-weight:normal;color:var(--muted);font-size:11px">(任务执行标签，可选)</span></label>
+            <label>Tags <span style="font-weight:normal;color:var(--muted);font-size:var(--fs-xs)">(任务执行标签，可选)</span></label>
             <div id="run-tag-grid" style="display:flex;flex-wrap:wrap;gap:6px;max-height:110px;overflow-y:auto"></div>
           </div>
           <div class="form-row"><label>Extra Vars (optional)</label><input id="run-playbook-vars" placeholder="key=value, version=2.0"></div>
@@ -782,11 +790,11 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         <p class="error-msg" id="run-playbook-warnings" style="display:none"></p>
         <div class="staging-browser" style="margin-top:8px;border:1px solid var(--border);border-radius:var(--radius);padding:8px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <span style="font-size:12px;color:var(--muted)">中转站文件（upload/script 引用时可选用）</span>
+            <span style="font-size:var(--fs-xs);color:var(--muted)">中转站文件（upload/script 引用时可选用）</span>
             <button class="btn btn-secondary btn-sm" id="run-staging-refresh" style="padding:1px 8px">刷新</button>
           </div>
-          <div id="run-staging-files" style="max-height:160px;overflow-y:auto;font-size:12px;color:var(--text-muted)">加载中…</div>
-          <div id="run-staging-dir" style="margin-top:6px;font-size:11px;color:var(--muted);word-break:break-all"></div>
+          <div id="run-staging-files" style="max-height:160px;overflow-y:auto;font-size:var(--fs-xs);color:var(--text-muted)">加载中…</div>
+          <div id="run-staging-dir" style="margin-top:6px;font-size:var(--fs-xs);color:var(--muted);word-break:break-all"></div>
         </div>
         <div class="modal-actions">
           <button class="btn btn-secondary" id="run-playbook-cancel">Cancel</button>
@@ -799,13 +807,13 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       <div class="modal modal-lg">
         <div class="modal-header">
           <h3 id="detail-name"></h3>
-          <button class="btn btn-ghost btn-sm" id="detail-close-btn" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">&times;</button>
+          <button class="btn btn-ghost btn-sm" id="detail-close-btn" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-xl)">&times;</button>
         </div>
         <div class="modal-body" id="detail-body" style="max-height:70vh;overflow-y:auto">
-          <div id="detail-meta" style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)"></div>
+          <div id="detail-meta" style="display:flex;gap:16px;flex-wrap:wrap;font-size:var(--fs-sm);margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)"></div>
           <div id="detail-tasks" style="margin-bottom:12px"></div>
           <div style="margin-top:12px">
-            <h4 style="font-size:13px;color:var(--muted);margin-bottom:8px">YAML 源文件</h4>
+            <h4 style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px">YAML 源文件</h4>
             <pre id="detail-yaml" style="background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font:12px/1.6 var(--font-mono);overflow-x:auto;white-space:pre;max-height:300px"></pre>
           </div>
         </div>
@@ -820,20 +828,20 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       <div class="modal modal-lg">
         <div class="modal-header">
           <h3 id="cp-title">📝 创建剧本</h3>
-          <button class="btn btn-ghost btn-sm" id="create-pb-close-btn" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">&times;</button>
+          <button class="btn btn-ghost btn-sm" id="create-pb-close-btn" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-xl)">&times;</button>
         </div>
         <div class="modal-body" id="create-pb-body" style="max-height:70vh;overflow-y:auto">
           <!-- Step indicator -->
           <div style="display:flex;gap:8px;margin-bottom:16px" id="create-pb-steps">
-            <span class="step-dot active" data-step="1">1</span><span style="color:var(--muted);font-size:12px">基本信息</span>
+            <span class="step-dot active" data-step="1">1</span><span style="color:var(--muted);font-size:var(--fs-xs)">基本信息</span>
             <span style="color:var(--muted);padding:0 4px">→</span>
-            <span class="step-dot" data-step="2">2</span><span style="color:var(--muted);font-size:12px">变量</span>
+            <span class="step-dot" data-step="2">2</span><span style="color:var(--muted);font-size:var(--fs-xs)">变量</span>
             <span style="color:var(--muted);padding:0 4px">→</span>
-            <span class="step-dot" data-step="3">3</span><span style="color:var(--muted);font-size:12px">执行配置</span>
+            <span class="step-dot" data-step="3">3</span><span style="color:var(--muted);font-size:var(--fs-xs)">执行配置</span>
             <span style="color:var(--muted);padding:0 4px">→</span>
-            <span class="step-dot" data-step="4">4</span><span style="color:var(--muted);font-size:12px">任务</span>
+            <span class="step-dot" data-step="4">4</span><span style="color:var(--muted);font-size:var(--fs-xs)">任务</span>
             <span style="color:var(--muted);padding:0 4px">→</span>
-            <span class="step-dot" data-step="5">5</span><span style="color:var(--muted);font-size:12px">确认</span>
+            <span class="step-dot" data-step="5">5</span><span style="color:var(--muted);font-size:var(--fs-xs)">确认</span>
           </div>
 
           <!-- Step 1: Basic Info -->
@@ -846,7 +854,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
           <!-- Step 2: Variables -->
           <div class="create-pb-page" data-page="2" style="display:none">
-            <p style="font-size:13px;color:var(--muted);margin-bottom:12px">添加变量（可选）</p>
+            <p style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:12px">添加变量（可选）</p>
             <div id="cp-vars-list"></div>
             <button class="btn btn-secondary btn-sm" id="cp-add-var"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 添加变量</button>
             <div style="margin-top:8px"><label class="checkbox-label"><input type="checkbox" id="cp-skip-vars"> 跳过（不添加变量）</label></div>
@@ -861,7 +869,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
                 <option value="pipeline">pipeline（失败终止）</option>
               </select>
             </div>
-            <h4 style="font-size:13px;color:var(--muted);margin:16px 0 8px">默认配置（可选）</h4>
+            <h4 style="font-size:var(--fs-sm);color:var(--muted);margin:16px 0 8px">默认配置（可选）</h4>
             <div class="form-row"><label>目标分组</label><input id="cp-groups" placeholder="web, db (逗号分隔)" style="width:100%"></div>
             <div class="form-row"><label>执行标签</label><input id="cp-tags" placeholder="tag1, tag2 (逗号分隔)" style="width:100%"></div>
             <div class="form-row"><label>跳过标签</label><input id="cp-skip-tags" placeholder="skip-me (逗号分隔)" style="width:100%"></div>
@@ -869,7 +877,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
           <!-- Step 4: Tasks -->
           <div class="create-pb-page" data-page="4" style="display:none">
-            <p style="font-size:13px;color:var(--muted);margin-bottom:12px">添加任务项</p>
+            <p style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:12px">添加任务项</p>
             <div class="form-row" style="display:flex;gap:8px;align-items:end">
               <div style="flex:1">
                 <label>任务类型</label>
@@ -884,14 +892,14 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
               <button class="btn btn-primary btn-sm" id="cp-add-task" style="white-space:nowrap">+ 添加</button>
             </div>
             <div id="cp-tasks-list" style="margin-top:12px">
-              <p class="empty-state" style="font-size:13px;padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>
+              <p class="empty-state" style="font-size:var(--fs-sm);padding:16px;text-align:center;color:var(--muted)">暂无任务，请添加</p>
             </div>
           </div>
 
           <!-- Step 5: Confirm -->
           <div class="create-pb-page" data-page="5" style="display:none">
-            <div id="cp-summary" style="font-size:13px;margin-bottom:12px"></div>
-            <h4 style="font-size:13px;color:var(--muted);margin-bottom:8px">YAML 预览</h4>
+            <div id="cp-summary" style="font-size:var(--fs-sm);margin-bottom:12px"></div>
+            <h4 style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px">YAML 预览</h4>
             <pre id="cp-preview" style="background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font:12px/1.6 var(--font-mono);overflow-x:auto;white-space:pre;max-height:300px"></pre>
           </div>
         </div>

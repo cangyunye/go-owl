@@ -4268,3 +4268,53 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   transition: transform var(--transition);
 }
 .section-card:not([open]) > summary.panel-head::after { transform: rotate(-90deg); }
+
+/* ================================================================
+   COMPONENTS — Table scroll & truncation（运行历史等宽表格防堆叠）
+   ================================================================ */
+.table-scroll { overflow-x: auto; }
+.cell-ellipsis {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell-ellipsis.cell-mono { font-family: var(--font-mono); font-size: var(--fs-xs); }
+.cell-muted { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+/* 运行详情步骤表：固定布局，输出列自动换行不挤压邻列 */
+.run-steps { table-layout: fixed; width: 100%; font-size: var(--fs-xs); }
+.run-steps th, .run-steps td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.run-steps th {
+  font: 600 var(--fs-xs)/1 var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.run-steps td.cell-output {
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+.run-meta {
+  display: flex;
+  gap: 8px 20px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  font-size: var(--fs-sm);
+  margin-bottom: 14px;
+}
+.run-meta-item { display: inline-flex; gap: 6px; align-items: baseline; min-width: 0; max-width: 100%; }
+.run-meta-item .rm-label { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.run-meta-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
