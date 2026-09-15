@@ -79,9 +79,15 @@ func (s *Service) handleAlertOpened(ev owlmonitor.AlertEvent, t owlmonitor.Targe
 
 // RunAlertBindings 执行一组绑定指令（手动触发按用户给定顺序；mode 为空时
 // 按各绑定 exec_mode 分组——自动执行场景）。返回创建的执行记录。
+// 绑定必须属于该告警（防跨告警携带他人绑定执行）。
 func (s *Service) RunAlertBindings(alertID string, bindings []owlmonitor.AlertBinding, mode, nodeID, createdBy string) ([]owlmonitor.AlertBindingRun, error) {
 	if len(bindings) == 0 {
 		return nil, fmt.Errorf("未选择指令")
+	}
+	for _, b := range bindings {
+		if b.AlertID != alertID {
+			return nil, fmt.Errorf("绑定 %s 不属于告警 %s", b.ID, alertID)
+		}
 	}
 	now := time.Now()
 	recs := make([]owlmonitor.AlertBindingRun, 0, len(bindings))
@@ -145,11 +151,18 @@ func (s *Service) execBindingChain(recs []owlmonitor.AlertBindingRun, bindings [
 
 // execBindingItem 执行单条绑定并回写状态：start → 轮询关联运行至终态。
 func (s *Service) execBindingItem(rec *owlmonitor.AlertBindingRun, b owlmonitor.AlertBinding, alertID, nodeID, createdBy string) {
+	finish := func(status, msg string) {
+		if err := s.Store.FinishAlertBindingRun(rec.ID, status, msg); err != nil {
+			logger.Warn("回写绑定执行终态失败", logger.WithOperation("alert_bindings"),
+				logger.WithField("binding_id", b.ID), logger.WithError(err))
+		}
+	}
+
 	refID, err := s.startBinding(b, alertID, nodeID, createdBy)
 	if err != nil {
 		logger.Warn("告警绑定启动失败", logger.WithOperation("alert_bindings"),
 			logger.WithField("binding_id", b.ID), logger.WithError(err))
-		_ = s.Store.FinishAlertBindingRun(rec.ID, "failed", err.Error())
+		finish("failed", err.Error())
 		return
 	}
 	if err := s.Store.UpdateAlertBindingRunRef(rec.ID, refID); err != nil {
@@ -162,19 +175,19 @@ func (s *Service) execBindingItem(rec *owlmonitor.AlertBindingRun, b owlmonitor.
 		time.Sleep(bindingPollInterval)
 		done, success, status, pollErr := s.bindingItemDone(b.Kind, refID)
 		if pollErr != nil {
-			_ = s.Store.FinishAlertBindingRun(rec.ID, "failed", pollErr.Error())
+			finish("failed", pollErr.Error())
 			return
 		}
 		if done {
 			if success {
-				_ = s.Store.FinishAlertBindingRun(rec.ID, "success", "")
+				finish("success", "")
 			} else {
-				_ = s.Store.FinishAlertBindingRun(rec.ID, "failed", "运行结束： "+status)
+				finish("failed", "运行结束： "+status)
 			}
 			return
 		}
 		if time.Now().After(deadline) {
-			_ = s.Store.FinishAlertBindingRun(rec.ID, "failed", "执行超时（30 分钟）")
+			finish("failed", "执行超时（30 分钟）")
 			return
 		}
 	}

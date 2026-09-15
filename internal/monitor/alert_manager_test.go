@@ -261,3 +261,46 @@ func TestAlertManager_Unreachable(t *testing.T) {
 	require.Len(t, events, 1)
 	require.Equal(t, EventOpened, events[0].Type)
 }
+
+// TestAlertManager_Silence_RefreshesActive 验证静默语义：静默期内不新建/重开
+// 告警，但已有活跃实例照常刷新 last_seen（与文档意图一致）。
+func TestAlertManager_Silence_RefreshesActive(t *testing.T) {
+	s := newTestStore(t)
+	m := NewAlertManager(s)
+	m.recoverThreshold = 1
+	base := int64(1000)
+	types := memRuleTypes()
+	memSamples := func(v float64) []Sample {
+		return []Sample{{NodeID: "n1", Metric: "mem.used_pct", TS: 1, Value: v}}
+	}
+
+	// 静默前开告警
+	m.now = func() int64 { return base }
+	events, err := m.Tick("n1", memSamples(95), types)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	alertID := events[0].Alert.ID
+
+	// 进入静默：持续触发 → 活跃实例仍刷新 last_seen，但不新建/重开
+	m.SetSilentUntil(base + 600)
+	m.now = func() int64 { return base + 120 }
+	events, err = m.Tick("n1", memSamples(96), types)
+	require.NoError(t, err)
+	require.Empty(t, events)
+	got, exists, err := s.GetActiveAlert("OWL-MEM-001", "n1")
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.Equal(t, int64(base+120), got.LastSeen, "静默期内活跃告警应照常刷新")
+
+	// 静默期内解决 → 再触发也不得重开/新建
+	_, err = m.Resolve(alertID)
+	require.NoError(t, err)
+	m.now = func() int64 { return base + 240 }
+	events, err = m.Tick("n1", memSamples(97), types)
+	require.NoError(t, err)
+	require.Empty(t, events, "静默期内不得新建或重开告警")
+	all, err := s.ListAlerts(AlertFilter{NodeID: "n1"})
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	require.Equal(t, StatusResolved, all[0].Status)
+}

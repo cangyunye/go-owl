@@ -235,6 +235,8 @@ func TestEmailNotifier_EncryptionMode(t *testing.T) {
 		{"465默认SSL", 465, "", "ssl"},
 		{"587默认STARTTLS", 587, "", "starttls"},
 		{"25默认STARTTLS", 25, "", "starttls"},
+		{"端口0回退465推断SSL", 0, "", "ssl"},
+		{"端口0显式starttls保留", 0, "starttls", "starttls"},
 		{"显式SSL覆盖端口", 587, "ssl", "ssl"},
 		{"显式none", 465, "none", "none"},
 		{"非法值回退端口推断", 465, "tls?", "ssl"},
@@ -242,11 +244,12 @@ func TestEmailNotifier_EncryptionMode(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var mu sync.Mutex
-			var gotMode string
+			var gotMode, gotAddr string
 			fake := &fakeEmailSender{onSend: func(mode, addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
 				mu.Lock()
 				defer mu.Unlock()
 				gotMode = mode
+				gotAddr = addr
 				return nil
 			}}
 			ch := emailChannel("CH-E", SeverityWarning)
@@ -258,6 +261,9 @@ func TestEmailNotifier_EncryptionMode(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 			require.Equal(t, tc.want, gotMode)
+			if tc.port == 0 {
+				require.Contains(t, gotAddr, ":465", "端口缺省应回退 465 且参与加密推断")
+			}
 		})
 	}
 }

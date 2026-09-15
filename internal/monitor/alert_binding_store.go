@@ -218,7 +218,10 @@ func (s *Store) UpdateAlertBindingRunRef(id, refID string) error {
 		return err
 	}
 	_, err := s.db.Exec(`UPDATE alert_binding_runs SET ref_id = ?, status = 'running' WHERE id = ?`, refID, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("monitor: 回写绑定运行 %s 失败: %w", id, err)
+	}
+	return nil
 }
 
 // FinishAlertBindingRun 将执行记录置为终态（success/failed）。
@@ -228,7 +231,25 @@ func (s *Store) FinishAlertBindingRun(id, status, errMsg string) error {
 	}
 	_, err := s.db.Exec(`UPDATE alert_binding_runs SET status = ?, err = ?, finished_at = ? WHERE id = ?`,
 		status, errMsg, time.Now().Unix(), id)
-	return err
+	if err != nil {
+		return fmt.Errorf("monitor: 终结绑定运行 %s 失败: %w", id, err)
+	}
+	return nil
+}
+
+// FailStaleAlertBindingRuns 启动对账：服务重启导致执行 goroutine 丢失，
+// 将悬挂的 pending/running 记录标记为失败，避免永久停留中间态。
+func (s *Store) FailStaleAlertBindingRuns() error {
+	if err := s.EnsureAlertBindingTables(); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`UPDATE alert_binding_runs
+		SET status = 'failed', err = '服务重启，执行中断', finished_at = ?
+		WHERE status IN ('pending', 'running')`, time.Now().Unix())
+	if err != nil {
+		return fmt.Errorf("monitor: 对账悬挂绑定运行失败: %w", err)
+	}
+	return nil
 }
 
 // ListAlertBindingRuns 列出某告警的绑定执行记录（按创建时间倒序）。

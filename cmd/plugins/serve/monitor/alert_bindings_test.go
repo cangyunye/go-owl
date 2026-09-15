@@ -152,3 +152,23 @@ func TestService_HandleAlertOpened_AutoExec(t *testing.T) {
 	require.Equal(t, []string{"pb-auto|n1"}, runner.startedSnapshot())
 	runner.release("PBR-1")
 }
+
+// TestService_RunAlertBindings_RejectsCrossAlert 验证跨告警携带绑定被拒绝：
+// 绑定必须属于路径上的告警，否则整体拒绝且不产生执行记录。
+func TestService_RunAlertBindings_RejectsCrossAlert(t *testing.T) {
+	svc, st := newBindingTestService(t)
+	runner := newFakeRunner()
+	svc.SetPlaybookRunner(runner)
+	now := time.Now().Unix()
+	require.NoError(t, st.CreateAlertBinding(owlmonitor.AlertBinding{ID: "AB-OTHER",
+		AlertID: "AL-OTHER", Kind: "playbook", Name: "x", Content: "pb-x", Seq: 1, CreatedAt: now}))
+
+	_, err := svc.RunAlertBindings("AL-1", []owlmonitor.AlertBinding{
+		mkBinding("AB-1", "pb-ok", 1, false, ""),
+		{ID: "AB-OTHER", AlertID: "AL-OTHER", Kind: "playbook", Name: "x", Content: "pb-x"},
+	}, "sequential", "n1", "admin")
+	require.Error(t, err, "跨告警绑定应被拒绝")
+	require.Empty(t, runner.startedSnapshot(), "被拒绝时不得启动任何执行")
+	runs, _ := st.ListAlertBindingRuns("AL-1")
+	require.Empty(t, runs, "被拒绝时不应产生执行记录")
+}

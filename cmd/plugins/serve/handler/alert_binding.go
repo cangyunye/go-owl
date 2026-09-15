@@ -43,7 +43,10 @@ func (h *MonitorHandler) ListAlertBindings(c *gin.Context) {
 // CreateAlertBinding POST /alerts/:id/bindings 新增绑定（admin）。
 func (h *MonitorHandler) CreateAlertBinding(c *gin.Context) {
 	alertID := c.Param("id")
-	if _, exists, err := h.svc.Store.GetAlert(alertID); err != nil || !exists {
+	if _, exists, err := h.svc.Store.GetAlert(alertID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query alert failed", err)})
+		return
+	} else if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "alert not found"})
 		return
 	}
@@ -171,7 +174,11 @@ func (h *MonitorHandler) DeleteAlertBinding(c *gin.Context) {
 func (h *MonitorHandler) RunAlertBindings(c *gin.Context) {
 	alertID := c.Param("id")
 	a, exists, err := h.svc.Store.GetAlert(alertID)
-	if err != nil || !exists {
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query alert failed", err)})
+		return
+	}
+	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "alert not found"})
 		return
 	}
@@ -193,8 +200,16 @@ func (h *MonitorHandler) RunAlertBindings(c *gin.Context) {
 	bindings := make([]owlmonitor.AlertBinding, 0, len(body.BindingIDs))
 	for _, id := range body.BindingIDs {
 		b, exists, err := h.svc.Store.GetAlertBinding(id)
-		if err != nil || !exists {
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query alert binding failed", err)})
+			return
+		}
+		if !exists {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "绑定不存在: " + id})
+			return
+		}
+		if b.AlertID != alertID {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "绑定 " + id + " 不属于该告警"})
 			return
 		}
 		bindings = append(bindings, b)

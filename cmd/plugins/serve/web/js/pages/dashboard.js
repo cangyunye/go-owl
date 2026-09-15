@@ -222,7 +222,7 @@ export function renderDashboard(render, navigate, user, api, shell) {
       <div class="card">
         <div class="card-header">
           <h3>监控记录</h3>
-          <button class="btn btn-ghost btn-sm" onclick="window.location='/alerts'">查看全部</button>
+          <button class="btn btn-ghost btn-sm" onclick="history.pushState(null,'','/alerts');window.dispatchEvent(new PopStateEvent('popstate'))">查看全部</button>
         </div>
         <div class="card-body" style="padding:0 18px">
           <ul class="alert-list" id="recent-alerts">

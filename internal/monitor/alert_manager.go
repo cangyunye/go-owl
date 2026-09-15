@@ -73,13 +73,10 @@ func (m *AlertManager) Tick(nodeID string, samples []Sample, types []AlertType) 
 		typeByID[at.ID] = at
 	}
 
-	// 1. 触发 → 开/刷新（活跃去重）；静默期内跳过新建
+	// 1. 触发 → 开/刷新（活跃去重）；静默期内只拦新建/重开，活跃实例照常刷新
 	for _, hit := range out.Triggered {
 		at, ok := typeByID[hit.AlertTypeID]
 		if !ok {
-			continue
-		}
-		if m.isSilenced(now) {
 			continue
 		}
 		key := ruleKey(nodeID, at.ID)
@@ -95,6 +92,9 @@ func (m *AlertManager) Tick(nodeID string, samples []Sample, types []AlertType) 
 				return events, err
 			}
 			delete(m.recoverCounts, key)
+			continue
+		}
+		if m.isSilenced(now) {
 			continue
 		}
 		// 无活跃实例：合并窗口内的已解决告警重开原条目，避免重复告警

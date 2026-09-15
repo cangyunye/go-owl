@@ -94,10 +94,10 @@ func hostOf(addr string) string {
 	return addr
 }
 
-// resolveEncryption 解析加密模式：显式配置优先；空/非法按端口推断
-//（465→ssl，其余→starttls）。
-func resolveEncryption(cfg *EmailConfig) string {
-	switch strings.ToLower(strings.TrimSpace(cfg.Encryption)) {
+// resolveEncryption 解析加密模式：显式配置优先；空/非法按（回退后的）端口
+// 推断——465→ssl，其余→starttls。port 须传端口回退后的有效值。
+func resolveEncryption(encryption string, port int) string {
+	switch strings.ToLower(strings.TrimSpace(encryption)) {
 	case "ssl":
 		return "ssl"
 	case "starttls":
@@ -105,7 +105,7 @@ func resolveEncryption(cfg *EmailConfig) string {
 	case "none":
 		return "none"
 	default:
-		if cfg.SMTPPort == 465 {
+		if port == 465 {
 			return "ssl"
 		}
 		return "starttls"
@@ -130,7 +130,7 @@ func (n *EmailNotifier) Send(ctx context.Context, ch NotifyChannel, event AlertE
 	}
 	port := cfg.SMTPPort
 	if port == 0 {
-		port = 465
+		port = 465 // 端口缺省回退 465，且参与加密推断，避免 465 配成 STARTTLS
 	}
 	addr := fmt.Sprintf("%s:%d", cfg.SMTPHost, port)
 	var auth smtp.Auth
@@ -138,7 +138,7 @@ func (n *EmailNotifier) Send(ctx context.Context, ch NotifyChannel, event AlertE
 		auth = smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.SMTPHost)
 	}
 	msg := BuildEmailMessage(cfg, event, at, nodeName, webURL)
-	mode := resolveEncryption(cfg)
+	mode := resolveEncryption(cfg.Encryption, port)
 	if err := n.sender.Send(mode, addr, auth, cfg.From, cfg.To, msg); err != nil {
 		return fmt.Errorf("发送邮件失败: %w", err)
 	}

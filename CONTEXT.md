@@ -149,6 +149,15 @@ instance; the existing one's `last_seen` refreshes instead. Prevents alert
 flapping.
 _Avoid_: 去重 (dedup is a data-layer concern)
 
+## Realert Window (重复告警合并窗口)
+
+A configurable window (settings key `monitor.realert_window_minutes`,
+default 24h, 0 = off). When an alert re-fires within the window after being
+resolved, the SAME alert instance reopens (first_seen reset) instead of
+creating a new entry. Distinct from Suppression: Suppression merges
+re-fires while the alert is ACTIVE; the Realert Window merges re-fires
+AFTER resolution. Silence suppresses both (no reopen, no notification).
+
 ## Retention (保留期)
 
 The retention period for metrics and alert records (default 30 days),
