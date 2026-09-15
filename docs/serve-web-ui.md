@@ -182,9 +182,9 @@
 
 ## 13. 主题
 
-顶栏可切换三套主题：深空（默认）、薄荷绿（浅色）、暖阳（暖色）：
+顶栏可切换三套主题：深空（默认）、青瓷（浅色，纸白底 + 纯白面板 + 柔和阴影）、暖阳（暖色）：
 
-![薄荷绿主题](images/serve/25-theme-light.png)
+![青瓷主题](images/serve/25-theme-light.png)
 
 ![暖阳主题](images/serve/26-theme-warm.png)
 
