@@ -41,6 +41,9 @@ vars:
   BUILD_TIME: '{{now | date "2006-01-02 15:04:05"}}'
   # 与原 Makefile 的 LDFLAGS 完全一致（-s -w + 三个 -X 注入）
   LDFLAGS: '-ldflags "-s -w -X ''{{.PKG}}.version={{.VERSION}}'' -X ''{{.PKG}}.commitID={{.COMMIT_ID}}'' -X ''{{.PKG}}.buildTime={{.BUILD_TIME}}''"'
+  # owl-serve 是 package main: -X 的导入路径必须是 main(与 main.go 注释一致),
+  # 用完整模块路径时 go1.26 链接器不匹配,版本注入静默失效(同 Makefile 的 SERVE_LDFLAGS)
+  SERVE_LDFLAGS: '-ldflags "-s -w -X ''main.version={{.VERSION}}'' -X ''main.commitID={{.COMMIT_ID}}'' -X ''main.buildTime={{.BUILD_TIME}}''"'
 
   HOST_PLATFORM: '{{OS}}/{{ARCH}}'
   ALL_PLATFORMS: 'linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64'
@@ -457,6 +460,7 @@ tasks:
         vars:
           BIN: owl-serve
           MAIN: '{{.SERVE_MAIN}}'
+          LDFLAGS: '{{.SERVE_LDFLAGS}}'
           PLATFORMS: '{{.PLATFORMS}}'
 
   # gscp：克隆（或复用已有 clone）并跨平台编译
