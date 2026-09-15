@@ -176,6 +176,11 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 	engine := owlmonitor.NewEngine(cfg, store, collector, source, manager, dispatcher)
 	engine.SetAutoHealer(healer)
 
+	// 启动对账：重启导致执行 goroutine 丢失的绑定运行记录标记为失败
+	if err := store.FailStaleAlertBindingRuns(); err != nil {
+		log.Printf("monitor: 对账悬挂绑定运行失败: %v", err)
+	}
+
 	svc := &Service{
 		Store:      store,
 		Engine:     engine,
