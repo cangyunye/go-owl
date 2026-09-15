@@ -394,3 +394,66 @@ func TestEngine_OnAlertOpened(t *testing.T) {
 	require.Eventually(t, func() bool { return len(opened) >= 2 }, time.Second, 5*time.Millisecond,
 		"重开产生的 EventOpened 也应回调")
 }
+
+// TestEngine_CustomCheck_FiresAlert 验证自定义告警配置：check_cmd 每轮在
+// 节点执行，输出按 check_mode 解析为 custom.<类型ID> 指标后走常规阈值规则。
+func TestEngine_CustomCheck_FiresAlert(t *testing.T) {
+	outputs := sampleOutputs()
+	checkCmd := "check-queue-backlog --warn 90"
+	outputs[checkCmd] = "95.3\n"
+	eng, s := newTestEngine(t, []Target{{ID: "node-a", Name: "web-01"}}, outputs)
+
+	at := AlertType{ID: "OWL-CUS-TEST", Category: "custom", Name: "队列积压",
+		DefaultSeverity: SeverityWarning, Enabled: true, Builtin: false,
+		CheckCmd: checkCmd, CheckMode: "value",
+		DefaultParams: RuleParams{Metric: CustomMetricID("OWL-CUS-TEST"), Op: ">", Value: 90, Duration: 1}}
+	require.NoError(t, s.UpsertAlertType(at))
+
+	require.NoError(t, eng.TickOnce(context.Background()))
+
+	al, exists, err := s.GetActiveAlert("OWL-CUS-TEST", "node-a")
+	require.NoError(t, err)
+	require.True(t, exists, "自定义检查超阈值应触发告警")
+	require.Contains(t, al.MetricSnapshot, "custom.owl-cus-test")
+}
+
+// TestEngine_CustomCheck_BelowThreshold 验证未超阈值的自定义检查不产生告警。
+func TestEngine_CustomCheck_BelowThreshold(t *testing.T) {
+	outputs := sampleOutputs()
+	checkCmd := "check-disk-free"
+	outputs[checkCmd] = "42"
+	eng, s := newTestEngine(t, []Target{{ID: "node-a", Name: "web-01"}}, outputs)
+	require.NoError(t, s.UpsertAlertType(AlertType{ID: "OWL-CUS-FREE", Category: "custom",
+		Name: "自定义", DefaultSeverity: SeverityWarning, Enabled: true, Builtin: false,
+		CheckCmd: checkCmd, CheckMode: "value",
+		DefaultParams: RuleParams{Metric: CustomMetricID("OWL-CUS-FREE"), Op: ">", Value: 90, Duration: 1}}))
+
+	require.NoError(t, eng.TickOnce(context.Background()))
+	_, exists, err := s.GetActiveAlert("OWL-CUS-FREE", "node-a")
+	require.NoError(t, err)
+	require.False(t, exists)
+}
+
+// TestParseCheckOutput 验证三种解析模式。
+func TestParseCheckOutput(t *testing.T) {
+	v, err := ParseCheckOutput("value", "", " 87.5\n", 0)
+	require.NoError(t, err)
+	require.InDelta(t, 87.5, v, 0.001)
+
+	v, err = ParseCheckOutput("regex", `used=(\d+)%`, "disk used=93%", 0)
+	require.NoError(t, err)
+	require.InDelta(t, 93, v, 0.001)
+
+	_, err = ParseCheckOutput("regex", "", "x", 0)
+	require.Error(t, err, "regex 模式缺 pattern 应报错")
+
+	v, err = ParseCheckOutput("exit_code", "", "", 0)
+	require.NoError(t, err)
+	require.InDelta(t, 0, v, 0.001)
+	v, err = ParseCheckOutput("exit_code", "", "", 2)
+	require.NoError(t, err)
+	require.InDelta(t, 1, v, 0.001)
+
+	_, err = ParseCheckOutput("value", "", "not-a-number", 0)
+	require.Error(t, err)
+}

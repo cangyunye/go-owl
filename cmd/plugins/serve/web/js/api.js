@@ -455,6 +455,12 @@ export const api = {
   alertTypes: () =>
     request('GET', '/alert-types'),
 
+  createAlertType: (data) =>
+    request('POST', '/alert-types', data),
+
+  deleteAlertType: (id) =>
+    request('DELETE', `/alert-types/${encodeURIComponent(id)}`),
+
   updateAlertType: (id, data) =>
     request('PUT', `/alert-types/${encodeURIComponent(id)}`, data),
 

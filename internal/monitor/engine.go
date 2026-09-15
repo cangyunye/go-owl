@@ -205,6 +205,12 @@ func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) e
 
 	// 合成网卡速率并入库
 	all := e.computeNetRates(t.ID, samples)
+
+	// 自定义检查：check_cmd 类型的每轮采样（失败仅跳过该指标，不影响失联判定）
+	if custom := e.collectCustomChecks(ctx, &t, types); len(custom) > 0 {
+		all = append(all, custom...)
+	}
+
 	if err := e.store.InsertSamples(all); err != nil {
 		return fmt.Errorf("monitor: 指标入库失败(node=%s): %w", t.ID, err)
 	}
@@ -216,6 +222,41 @@ func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) e
 	}
 	e.dispatch(ctx, events, types, t)
 	return nil
+}
+
+// customCheckTimeout 单条自定义检查命令超时。
+const customCheckTimeout = 30 * time.Second
+
+// collectCustomChecks 对启用了 check_cmd 的告警类型逐个执行检查命令，
+// 按 check_mode 解析为 custom.<小写类型ID> 数值指标。
+func (e *Engine) collectCustomChecks(ctx context.Context, t *Target, types []AlertType) []Sample {
+	var out []Sample
+	for _, at := range types {
+		if !at.Enabled || at.CheckCmd == "" {
+			continue
+		}
+		stdout, exitCode, err := e.collector.ExecCommand(ctx, t, at.CheckCmd, customCheckTimeout)
+		if err != nil {
+			logger.Warn("自定义检查执行失败", logger.WithOperation("monitor_custom_check"),
+				logger.WithField("type_id", at.ID), logger.WithField("node_id", t.ID),
+				logger.WithError(err))
+			continue
+		}
+		mode := at.CheckMode
+		if mode == "" {
+			mode = "value"
+		}
+		v, perr := ParseCheckOutput(mode, at.CheckPattern, stdout, exitCode)
+		if perr != nil {
+			logger.Warn("自定义检查输出解析失败", logger.WithOperation("monitor_custom_check"),
+				logger.WithField("type_id", at.ID), logger.WithField("node_id", t.ID),
+				logger.WithError(perr))
+			continue
+		}
+		out = append(out, Sample{NodeID: t.ID, Metric: CustomMetricID(at.ID),
+			TS: e.now().Unix(), Value: v})
+	}
+	return out
 }
 
 // computeNetRates 由累计计数合成每秒速率指标（net.rx_rate.<iface> 等），
@@ -302,9 +343,19 @@ func (e *Engine) dispatch(ctx context.Context, events []AlertEvent, types []Aler
 				}
 			}(ev, at, t)
 		}
-		// 告警绑定执行钩子（异步；serve 侧按 auto_exec 绑定处置指令）
+		// 告警绑定执行钩子（异步；serve 侧按 auto_exec 绑定处置指令；
+		// recover 防止钩子 panic 带崩采集循环）
 		if ev.Type == EventOpened && e.OnAlertOpened != nil {
-			go e.OnAlertOpened(ev, t)
+			go func(ev AlertEvent, t Target) {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.Warn("告警打开钩子 panic", logger.WithOperation("monitor_hooks"),
+							logger.WithField("alert_id", ev.Alert.ID),
+							logger.WithField("panic", r))
+					}
+				}()
+				e.OnAlertOpened(ev, t)
+			}(ev, t)
 		}
 		webURL := e.cfg.WebURL + "/alerts/" + ev.Alert.ID
 		if errs := e.dispatcher.Notify(ctx, ev, at, t.Name, webURL); len(errs) > 0 {

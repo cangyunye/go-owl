@@ -2,8 +2,11 @@ package handler
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	monitorSvc "github.com/cangyunye/go-owl/cmd/plugins/serve/monitor"
@@ -123,6 +126,73 @@ func (h *MonitorHandler) ListAlertTypes(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": types})
+}
+
+// CreateAlertType 新增自定义告警类型（admin）。
+// ID 缺省按 OWL-CUS- 前缀生成；自定义检查输出解析为指标 custom.<小写ID>
+// 后走常规阈值规则。可附带处置指令（playbook/脚本）由调用方再建对策。
+func (h *MonitorHandler) CreateAlertType(c *gin.Context) {
+	var at owlmonitor.AlertType
+	if err := c.ShouldBindJSON(&at); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": internalErr("invalid request body", err)})
+		return
+	}
+	if at.ID == "" {
+		at.ID = fmt.Sprintf("OWL-CUS-%x", time.Now().UnixNano())
+	}
+	if !strings.HasPrefix(at.ID, "OWL-CUS-") {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "自定义类型 ID 必须以 OWL-CUS- 开头"})
+		return
+	}
+	if at.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "name is required"})
+		return
+	}
+	if err := validateAlertType(&at); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	at.Builtin = false
+	at.Category = "custom"
+	if at.DefaultParams.Metric == "" {
+		at.DefaultParams.Metric = owlmonitor.CustomMetricID(at.ID)
+	}
+	if err := h.svc.Store.UpsertAlertType(at); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("create alert type failed", err)})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"item": at})
+}
+
+// DeleteAlertType 删除自定义告警类型（admin；内置类型拒绝，级联删除对策）。
+func (h *MonitorHandler) DeleteAlertType(c *gin.Context) {
+	if err := h.svc.Store.DeleteAlertType(c.Param("id")); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	okAction(c, "deleted")
+}
+
+// validateAlertType 校验自定义检查配置（check_mode/正则/规则参数）。
+func validateAlertType(at *owlmonitor.AlertType) error {
+	switch at.CheckMode {
+	case "", "value", "exit_code":
+	case "regex":
+		if at.CheckPattern == "" {
+			return fmt.Errorf("regex 模式需要 check_pattern")
+		}
+		if _, err := regexp.Compile(at.CheckPattern); err != nil {
+			return fmt.Errorf("check_pattern 正则无效: %w", err)
+		}
+	default:
+		return fmt.Errorf("check_mode 必须为 value/regex/exit_code")
+	}
+	switch at.DefaultSeverity {
+	case owlmonitor.SeverityInfo, owlmonitor.SeverityWarning, owlmonitor.SeverityCritical, "":
+	default:
+		return fmt.Errorf("default_severity 必须为 info/warn/critical")
+	}
+	return nil
 }
 
 // UpdateAlertType 更新告警类型（阈值/开关/放行，admin）。

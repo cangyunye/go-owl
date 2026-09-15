@@ -2,6 +2,9 @@ package monitor
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 )
 
 // Severity 告警级别。
@@ -48,6 +51,41 @@ type AlertType struct {
 	Notifiable      bool       `json:"notifiable"`
 	Enabled         bool       `json:"enabled"`
 	Builtin         bool       `json:"builtin"`
+	// 自定义检查（非内置类型可选）：每轮采集在节点上执行 CheckCmd 并按
+	// CheckMode 解析为数值指标 custom.<小写类型ID>，再走常规阈值规则评估。
+	CheckCmd     string `json:"check_cmd"`               // SSH 执行的检查命令，空 = 无自定义检查
+	CheckMode    string `json:"check_mode"`              // value: 输出即数值 | regex: 捕获组取数 | exit_code: 退出码
+	CheckPattern string `json:"check_pattern,omitempty"` // regex 模式的正则（捕获组 1 为数值）
+}
+
+// CustomMetricID 自定义告警类型的指标名（由类型 ID 派生）。
+func CustomMetricID(typeID string) string { return "custom." + strings.ToLower(typeID) }
+
+// ParseCheckOutput 按 CheckMode 把命令输出解析为指标数值。
+// value: 去空白后整体为数值；regex: CheckPattern 捕获组 1；exit_code: 0→0 非 0→1。
+func ParseCheckOutput(mode, pattern, stdout string, exitCode int) (float64, error) {
+	switch mode {
+	case "regex":
+		if pattern == "" {
+			return 0, fmt.Errorf("regex 模式需要 check_pattern")
+		}
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return 0, fmt.Errorf("正则无效: %w", err)
+		}
+		m := re.FindStringSubmatch(stdout)
+		if len(m) < 2 {
+			return 0, fmt.Errorf("输出未匹配正则捕获组")
+		}
+		return strconv.ParseFloat(strings.TrimSpace(m[1]), 64)
+	case "exit_code":
+		if exitCode == 0 {
+			return 0, nil
+		}
+		return 1, nil
+	default: // value
+		return strconv.ParseFloat(strings.TrimSpace(stdout), 64)
+	}
 }
 
 // builtinRegistry 内置告警类型种子（第一期 12 个）。

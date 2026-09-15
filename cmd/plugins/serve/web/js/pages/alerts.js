@@ -23,7 +23,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
 
   function severityBadge(s) {
     const color = SEV_COLOR[s] || 'var(--muted)';
-    return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:color-mix(in oklch, ${color} 15%, var(--surface));color:${color}">${SEV_TEXT[s] || esc(s)}</span>`;
+    return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:var(--fs-xs);font-weight:600;background:color-mix(in oklch, ${color} 15%, var(--surface));color:${color}">${SEV_TEXT[s] || esc(s)}</span>`;
   }
 
   function statusBadge(s) {
@@ -46,7 +46,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
     const filtered = state.allGroups.filter(g => !q || g.toLowerCase().includes(q));
     shell.setPanelContent(`
       <div style="padding:6px 10px">
-        <input type="text" id="alert-group-search" placeholder="搜索分组…" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);font-size:12px;outline:none" value="${esc(state.groupSearch)}">
+        <input type="text" id="alert-group-search" placeholder="搜索分组…" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);font-size:var(--fs-xs);outline:none" value="${esc(state.groupSearch)}">
       </div>
       <div class="group-chips">
         ${filtered.map(g => {
@@ -54,9 +54,9 @@ export function renderAlerts(render, navigate, user, api, shell) {
           return `<button type="button" class="group-chip ${tagColor(g)} ${active ? 'selected' : ''}" data-group="${esc(g)}" aria-pressed="${active}">
             <span class="dot"></span><span class="group-text">${esc(g)}</span>
           </button>`;
-        }).join('') || '<div style="padding:10px 12px;font-size:12px;color:var(--muted)">暂无分组</div>'}
+        }).join('') || '<div style="padding:10px 12px;font-size:var(--fs-xs);color:var(--muted)">暂无分组</div>'}
       </div>
-      <div style="padding:10px 12px;font-size:11px;color:var(--muted)">点击分组（可多选）过滤右侧告警历史</div>
+      <div style="padding:10px 12px;font-size:var(--fs-xs);color:var(--muted)">点击分组（可多选）过滤右侧告警历史</div>
     `);
     document.getElementById('alert-group-search')?.addEventListener('input', (e) => {
       state.groupSearch = e.target.value;
@@ -93,7 +93,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         <div class="view-actions" id="alert-actions" style="display:flex;gap:8px;align-items:center">
           ${isAdmin ? `<button class="btn btn-ghost btn-sm ${mode === 'config' ? 'active' : ''}" id="toggle-config"><svg width="14" height="14" aria-hidden="true"><use href="#icon-settings"/></svg> 监控配置</button>` : ''}
           <button class="btn btn-secondary btn-sm" id="alert-refresh"><svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg> 刷新</button>
-          <span id="alert-count" style="font-size:12px;color:var(--muted)"></span>
+          <span id="alert-count" style="font-size:var(--fs-xs);color:var(--muted)"></span>
         </div>
       </div>
       ${mode === 'list' ? `
@@ -173,7 +173,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
     const list = document.getElementById('alert-list');
     if (!list) return;
     if (!state.items.length) {
-      list.innerHTML = '<div class="view-empty" style="padding:40px"><div class="empty-title">暂无告警</div><div style="font-size:12px;color:var(--muted);margin-top:6px">监控采集每 60 秒执行一次，阈值规则见告警类型设置</div></div>';
+      list.innerHTML = '<div class="view-empty" style="padding:40px"><div class="empty-title">暂无告警</div><div style="font-size:var(--fs-xs);color:var(--muted);margin-top:6px">监控采集每 60 秒执行一次，阈值规则见告警类型设置</div></div>';
     } else {
       list.innerHTML = `<ul class="history-list">${state.items.map(a => `
         <li class="history-item" data-alert="${esc(a.id)}" style="cursor:pointer">
@@ -289,16 +289,16 @@ export function renderAlerts(render, navigate, user, api, shell) {
         <li style="display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;background:var(--bg)">
           <span style="min-width:18px;text-align:center;font-weight:600;color:var(--muted)">${st.order + 1}</span>
           <div style="flex:1;min-width:0">
-            <div style="font-size:12px;font-weight:600">${esc(st.name)} <span style="color:var(--muted);font-weight:400">· ${esc(st.kind)}</span></div>
-            ${st.output ? `<pre style="margin:4px 0 0;padding:6px;background:var(--surface);border-radius:var(--radius);font-family:var(--font-mono);font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:auto">${esc(st.output)}</pre>` : ''}
+            <div style="font-size:var(--fs-xs);font-weight:600">${esc(st.name)} <span style="color:var(--muted);font-weight:400">· ${esc(st.kind)}</span></div>
+            ${st.output ? `<pre style="margin:4px 0 0;padding:6px;background:var(--surface);border-radius:var(--radius);font-family:var(--font-mono);font-size:var(--fs-xs);white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:auto">${esc(st.output)}</pre>` : ''}
           </div>
-          <span style="font-size:11px;font-weight:600;color:${STEP_COLOR[st.status] || 'var(--muted)'}">${STEP_TEXT[st.status] || esc(st.status)}</span>
+          <span style="font-size:var(--fs-xs);font-weight:600;color:${STEP_COLOR[st.status] || 'var(--muted)'}">${STEP_TEXT[st.status] || esc(st.status)}</span>
         </li>`).join('');
       return `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin:12px 0;background:var(--surface)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <strong style="font-size:13px">处置计划 <code>${esc(plan.id)}</code></strong>
+          <strong style="font-size:var(--fs-sm)">处置计划 <code>${esc(plan.id)}</code></strong>
           <span style="display:flex;gap:6px;align-items:center">
-            <span style="font-size:12px;font-weight:600;color:${plan.status === 'done' ? 'var(--success)' : plan.status === 'failed' || plan.status === 'stopped' ? 'var(--danger)' : plan.status === 'waiting_approval' ? 'var(--warn)' : 'var(--info)'}">${RUN_TEXT[plan.status] || esc(plan.status)}</span>
+            <span style="font-size:var(--fs-xs);font-weight:600;color:${plan.status === 'done' ? 'var(--success)' : plan.status === 'failed' || plan.status === 'stopped' ? 'var(--danger)' : plan.status === 'waiting_approval' ? 'var(--warn)' : 'var(--info)'}">${RUN_TEXT[plan.status] || esc(plan.status)}</span>
             ${plan.status === 'running' || plan.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-stop-plan="${esc(plan.id)}">停止</button>` : ''}
             ${plan.status === 'waiting_approval' ? `
               <button class="btn btn-secondary btn-sm" data-approve-plan="${esc(plan.id)}">批准执行</button>
@@ -348,7 +348,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
       try {
         const res = await api.createRemedyPlan(a.id, { remedy_ids: remedyIds, stop_on_error: stopOnError });
         const planArea = overlay.querySelector('#plan-area');
-        planArea.innerHTML = '<p style="color:var(--muted);font-size:12px">计划已创建，执行中...</p>';
+        planArea.innerHTML = '<p style="color:var(--muted);font-size:var(--fs-xs)">计划已创建，执行中...</p>';
         loadPlanProgress(res.run.id, planArea);
         loadPlanHistory();
       } catch (err) {
@@ -366,7 +366,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
       if (!runs.length) { area.innerHTML = ''; return; }
       const RUN_TEXT = { pending: '待执行', running: '执行中', waiting_approval: '待审批', done: '已完成', stopped: '已停止', failed: '失败' };
       area.innerHTML = `<h4 style="margin-top:14px">处置历史</h4><ul style="list-style:none;margin:0;padding:0">${
-        runs.map(r => `<li style="display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;font-size:12px;background:var(--bg)">
+        runs.map(r => `<li style="display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;font-size:var(--fs-xs);background:var(--bg)">
           <code>${esc(r.id)}</code><span style="color:var(--muted)">${r.steps ? r.steps.length : 0} 步</span>
           <span style="flex:1"></span><span style="color:var(--muted)">${esc(r.created_by || '')}</span>
           <span style="font-weight:600">${RUN_TEXT[r.status] || esc(r.status)}</span></li>`).join('')}</ul>`;
@@ -377,32 +377,32 @@ export function renderAlerts(render, navigate, user, api, shell) {
       <div class="modal-header"><h3>${severityBadge(a.severity)} ${esc(a.alert_type_name)}</h3>
         <button class="btn btn-ghost btn-icon" id="detail-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
       <div class="modal-body">
-        <p style="font-size:12px;color:var(--muted)">告警 ID: <code>${esc(a.id)}</code> · 类型: <code>${esc(a.alert_type_id)}</code> · 状态: ${statusBadge(a.status)}</p>
-        <p style="font-size:12px;color:var(--muted)">节点: ${esc(a.node_name || a.node_id)} (${esc(a.node_id)}) · 首次触发: ${fmtTime(a.first_seen)} · 最近: ${fmtTime(a.last_seen)} · 解决时间: ${fmtTime(a.resolved_at)}</p>
-        <div style="margin:12px 0;padding:10px 12px;background:var(--bg);border-radius:var(--radius);font-size:13px">${esc(a.message)}</div>
+        <p style="font-size:var(--fs-xs);color:var(--muted)">告警 ID: <code>${esc(a.id)}</code> · 类型: <code>${esc(a.alert_type_id)}</code> · 状态: ${statusBadge(a.status)}</p>
+        <p style="font-size:var(--fs-xs);color:var(--muted)">节点: ${esc(a.node_name || a.node_id)} (${esc(a.node_id)}) · 首次触发: ${fmtTime(a.first_seen)} · 最近: ${fmtTime(a.last_seen)} · 解决时间: ${fmtTime(a.resolved_at)}</p>
+        <div style="margin:12px 0;padding:10px 12px;background:var(--bg);border-radius:var(--radius);font-size:var(--fs-sm)">${esc(a.message)}</div>
         ${snapshot.length ? `<h4>指标快照</h4><table class="table"><thead><tr><th>指标</th><th>值</th></tr></thead><tbody>${snapshot.map(([k, v]) => `<tr><td><code>${esc(k)}</code></td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : ''}
-        <h4 style="margin-top:16px">可用对策 ${isOperator ? '<span style="font-weight:400;color:var(--muted);font-size:11px">（勾选多选，拖动调整执行顺序）</span>' : ''}
+        <h4 style="margin-top:16px">可用对策 ${isOperator ? '<span style="font-weight:400;color:var(--muted);font-size:var(--fs-xs)">（勾选多选，拖动调整执行顺序）</span>' : ''}
           ${isAdmin ? `<button class="btn btn-secondary btn-sm" id="rm-add" style="margin-left:8px">+ 添加指令</button>` : ''}
         </h4>
         ${state.remedies.length ? `<ul id="rm-list" style="list-style:none;margin:0;padding:0">${state.remedies.map(r => `
           <li class="remedy-row rm-row" data-rid="${esc(r.id)}" ${draggable ? 'draggable="true"' : ''} style="cursor:${draggable ? 'grab' : 'default'}">
             <div class="rm-head">
               ${draggable ? `<input type="checkbox" class="rm-check" title="选择执行" style="accent-color:var(--accent)">` : ''}
-              ${draggable ? '<span class="rm-order" style="font-size:11px;color:var(--muted);min-width:16px;text-align:center">-</span>' : ''}
-              <strong style="font-size:13px;flex:1">${esc(r.name)}</strong>
-              <span style="font-size:11px;color:var(--muted)">${REMEDY_KIND_TEXT[r.kind] || esc(r.kind)} · 风险 ${esc(r.risk)} · ${r.source === 'user' ? '用户自定义' : r.source === 'builtin' ? '内置' : 'AI 生成'}${r.source === 'ai' && !r.reviewed ? ' · <span style="color:var(--warn)">待审核</span>' : ''}</span>
+              ${draggable ? '<span class="rm-order" style="font-size:var(--fs-xs);color:var(--muted);min-width:16px;text-align:center">-</span>' : ''}
+              <strong style="font-size:var(--fs-sm);flex:1">${esc(r.name)}</strong>
+              <span style="font-size:var(--fs-xs);color:var(--muted)">${REMEDY_KIND_TEXT[r.kind] || esc(r.kind)} · 风险 ${esc(r.risk)} · ${r.source === 'user' ? '用户自定义' : r.source === 'builtin' ? '内置' : 'AI 生成'}${r.source === 'ai' && !r.reviewed ? ' · <span style="color:var(--warn)">待审核</span>' : ''}</span>
               <button class="btn btn-ghost btn-sm" data-copy-rm="${esc(r.id)}" title="复制内容">复制</button>
               ${isAdmin ? `<button class="btn btn-ghost btn-sm" data-edit-rm="${esc(r.id)}">编辑</button>` : ''}
             </div>
             <pre class="rm-content">${esc(remedyContentText(r))}</pre>
-            ${r.rollback ? `<div style="margin-top:6px;font-size:11px;color:var(--muted)">回滚: <code>${esc(r.rollback)}</code></div>` : ''}
+            ${r.rollback ? `<div style="margin-top:6px;font-size:var(--fs-xs);color:var(--muted)">回滚: <code>${esc(r.rollback)}</code></div>` : ''}
           </li>`).join('')}</ul>
         ${isOperator ? `<div style="display:flex;gap:8px;align-items:center;margin:10px 0">
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="rm-stop-on-error" checked style="accent-color:var(--accent)"> 失败即停</label>
+          <label style="font-size:var(--fs-xs);display:flex;align-items:center;gap:4px"><input type="checkbox" id="rm-stop-on-error" checked style="accent-color:var(--accent)"> 失败即停</label>
           <span style="flex:1"></span>
           <button class="btn btn-secondary btn-sm" id="rm-exec"><svg width="14" height="14" aria-hidden="true"><use href="#icon-play"/></svg> 按序执行</button>
-        </div>` : ''}` : `<p style="color:var(--muted);font-size:12px">暂无对策${isAdmin ? '，可点击上方"添加指令"补充' : '，可联系管理员在告警类型下补充'}</p>`}
-        <h4 style="margin-top:16px">本告警专属指令 <span style="font-weight:400;color:var(--muted);font-size:11px">（按告警 ID 绑定，重开保留）</span>
+        </div>` : ''}` : `<p style="color:var(--muted);font-size:var(--fs-xs)">暂无对策${isAdmin ? '，可点击上方"添加指令"补充' : '，可联系管理员在告警类型下补充'}</p>`}
+        <h4 style="margin-top:16px">本告警专属指令 <span style="font-weight:400;color:var(--muted);font-size:var(--fs-xs)">（按告警 ID 绑定，重开保留）</span>
           ${isAdmin ? '<button class="btn btn-secondary btn-sm" id="ab-add" style="margin-left:8px">+ 添加指令</button>' : ''}
         </h4>
         ${bindings.length ? `<ul id="ab-list" style="list-style:none;margin:0;padding:0">${bindings.map((b, i) => `
@@ -410,8 +410,8 @@ export function renderAlerts(render, navigate, user, api, shell) {
             <div class="rm-head">
               ${isOperator ? '<input type="checkbox" class="ab-check" title="选择执行" style="accent-color:var(--accent)">' : ''}
               <span class="rm-order">${i + 1}</span>
-              <strong style="font-size:13px;flex:1">${esc(b.name)}</strong>
-              <span style="font-size:11px;color:var(--muted)">${b.kind === 'playbook' ? '剧本' : '命令'} · ${b.auto_exec ? '<span style="color:var(--warn)">自动</span>' : '手动'} · ${b.exec_mode === 'concurrent' ? '并发' : '串行'}</span>
+              <strong style="font-size:var(--fs-sm);flex:1">${esc(b.name)}</strong>
+              <span style="font-size:var(--fs-xs);color:var(--muted)">${b.kind === 'playbook' ? '剧本' : '命令'} · ${b.auto_exec ? '<span style="color:var(--warn)">自动</span>' : '手动'} · ${b.exec_mode === 'concurrent' ? '并发' : '串行'}</span>
               ${isOperator ? `<button class="btn btn-secondary btn-sm" data-ab-run="${esc(b.id)}">执行</button>` : ''}
               ${isAdmin ? `
                 <button class="btn btn-ghost btn-sm" data-ab-up="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -422,14 +422,14 @@ export function renderAlerts(render, navigate, user, api, shell) {
             <pre class="rm-content">${esc(b.kind === 'playbook' ? '剧本: ' + b.content : b.content)}</pre>
           </li>`).join('')}</ul>
         ${isOperator ? `<div style="display:flex;gap:8px;align-items:center;margin:10px 0">
-          <span style="font-size:12px;color:var(--muted)">执行方式</span>
+          <span style="font-size:var(--fs-xs);color:var(--muted)">执行方式</span>
           <select id="ab-mode" style="width:auto">
             <option value="sequential">顺序串行</option>
             <option value="concurrent">并发执行</option>
           </select>
           <span style="flex:1"></span>
           <button class="btn btn-secondary btn-sm" id="ab-run"><svg width="14" height="14" aria-hidden="true"><use href="#icon-play"/></svg> 执行勾选指令</button>
-        </div>` : ''}` : `<p style="color:var(--muted);font-size:12px">暂无专属指令${isAdmin ? '，可点击上方「添加指令」绑定剧本或脚本' : ''}</p>`}
+        </div>` : ''}` : `<p style="color:var(--muted);font-size:var(--fs-xs)">暂无专属指令${isAdmin ? '，可点击上方「添加指令」绑定剧本或脚本' : ''}</p>`}
         <div id="binding-runs-area"></div>
         <div id="plan-area"></div>
         <div id="plan-history"></div>
@@ -550,10 +550,10 @@ export function renderAlerts(render, navigate, user, api, shell) {
       const ST = { pending: '排队中', running: '执行中', success: '成功', failed: '失败' };
       const SC = { pending: 'var(--muted)', running: 'var(--info)', success: 'var(--success)', failed: 'var(--danger)' };
       area.innerHTML = runs.length ? `<h4 style="margin-top:14px">指令执行记录</h4><ul style="list-style:none;margin:0;padding:0">${
-        runs.map(r => `<li style="display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;font-size:12px;background:var(--bg)">
+        runs.map(r => `<li style="display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;font-size:var(--fs-xs);background:var(--bg)">
           <span style="font-weight:600;color:${SC[r.status] || 'var(--muted)'}">${ST[r.status] || esc(r.status)}</span>
           <span style="color:var(--muted)">${r.kind === 'playbook' ? '剧本' : '命令'}</span>
-          <code style="font-size:11px">${esc(r.ref_id || '')}</code>
+          <code style="font-size:var(--fs-xs)">${esc(r.ref_id || '')}</code>
           ${r.err ? `<span style="color:var(--danger);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.err)}">${esc(r.err)}</span>` : '<span style="flex:1"></span>'}
           <span style="color:var(--muted)">${esc(r.created_by || '')}</span>
         </li>`).join('')}</ul>` : '';
@@ -607,7 +607,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
             ${playbooks.length ? '' : '<div class="cfg-hint" style="margin-top:4px">剧本库为空或不可用，请先在「剧本管理」上传剧本</div>'}
           </div>
           <div class="param-row"><label>内容</label></div>
-          <textarea id="re-content" rows="8" placeholder="${r.kind === 'sop' ? '1. 第一步…\n2. 第二步…' : 'echo 命令'}" style="width:100%;font-family:var(--font-mono);font-size:12px;${r.kind === 'playbook' ? 'display:none' : ''}">${esc(r.kind === 'playbook' ? '' : (r.content || ''))}</textarea>
+          <textarea id="re-content" rows="8" placeholder="${r.kind === 'sop' ? '1. 第一步…\n2. 第二步…' : 'echo 命令'}" style="width:100%;font-family:var(--font-mono);font-size:var(--fs-xs);${r.kind === 'playbook' ? 'display:none' : ''}">${esc(r.kind === 'playbook' ? '' : (r.content || ''))}</textarea>
           <div class="param-row"><label>风险等级</label></div>
           <select id="re-risk" style="width:140px">
             <option value="low" ${r.risk === 'low' ? 'selected' : ''}>low</option>
@@ -616,7 +616,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
           </select>
           <div class="param-row"><label>回滚方式（可选）</label></div>
           <input id="re-rollback" type="text" value="${esc(r.rollback || '')}" placeholder="恢复原状所需命令" style="width:100%">
-          <label style="font-size:12px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="re-auto" ${r.auto_approve ? 'checked' : ''} style="accent-color:var(--accent)"> 允许自动执行（配合告警类型「自动放行」触发自愈）</label>
+          <label style="font-size:var(--fs-xs);display:flex;align-items:center;gap:6px"><input type="checkbox" id="re-auto" ${r.auto_approve ? 'checked' : ''} style="accent-color:var(--accent)"> 允许自动执行（配合告警类型「自动放行」触发自愈）</label>
           ${existing && existing.source === 'builtin' ? '<div class="cfg-hint" style="color:var(--warn)">该对策为内置内容，修改会覆盖默认建议</div>' : ''}
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
@@ -724,8 +724,8 @@ export function renderAlerts(render, navigate, user, api, shell) {
             </select>
           </div>
           <div style="display:flex;gap:16px;align-items:center;margin-top:10px;flex-wrap:wrap">
-            <label style="font-size:12px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="be-auto" ${existing && existing.auto_exec ? 'checked' : ''} style="accent-color:var(--accent)"> 告警自动执行</label>
-            <label style="font-size:12px;display:flex;align-items:center;gap:6px">执行方式
+            <label style="font-size:var(--fs-xs);display:flex;align-items:center;gap:6px"><input type="checkbox" id="be-auto" ${existing && existing.auto_exec ? 'checked' : ''} style="accent-color:var(--accent)"> 告警自动执行</label>
+            <label style="font-size:var(--fs-xs);display:flex;align-items:center;gap:6px">执行方式
               <select id="be-mode" style="width:auto">
                 <option value="sequential">顺序串行</option>
                 <option value="concurrent">并发执行</option>
@@ -751,17 +751,17 @@ export function renderAlerts(render, navigate, user, api, shell) {
       const items = playbooks.filter(p => !q || p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
       pbList.innerHTML = items.map(p => `
         <li style="padding:6px 10px;border-bottom:1px solid var(--border)">
-          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+          <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);cursor:pointer">
             <input type="checkbox" class="be-pb-check" data-pbid="${esc(p.id)}" ${selected.includes(p.id) ? 'checked' : ''} style="accent-color:var(--accent)">
             <span style="font-weight:600">${esc(p.name)}</span>
             <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.category || '')} ${esc(p.description || '')}</span>
           </label>
-        </li>`).join('') || '<li style="padding:10px;color:var(--muted);font-size:12px">无匹配剧本</li>';
+        </li>`).join('') || '<li style="padding:10px;color:var(--muted);font-size:var(--fs-xs)">无匹配剧本</li>';
     }
     function renderSelected() {
       selWrap.innerHTML = selected.map((id, i) => {
         const pb = playbooks.find(x => x.id === id);
-        return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:11px;background:var(--bg)">
+        return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:var(--fs-xs);background:var(--bg)">
           <b style="color:var(--accent)">${i + 1}</b> ${esc(pb ? pb.name : id)}
           <button type="button" data-sel-up="${i}" ${i === 0 ? 'disabled' : ''} style="border:none;background:none;cursor:pointer;color:var(--muted)">↑</button>
           <button type="button" data-sel-del="${i}" style="border:none;background:none;cursor:pointer;color:var(--danger)">✕</button>
@@ -841,6 +841,167 @@ export function renderAlerts(render, navigate, user, api, shell) {
     });
   }
 
+  // ---------- 自定义告警配置表单（admin）：检查命令 + 阈值 + 处置指令 ----------
+
+  async function openCustomAlertModal(onSaved) {
+    let playbooks = [];
+    try { playbooks = ((await api.playbooks()).data || []).filter(p => p.file_exists !== false); } catch { /* 剧本库不可用不阻塞 */ }
+
+    const editor = document.createElement('div');
+    editor.className = 'modal-overlay open';
+    editor.innerHTML = `<div class="modal" style="max-width:680px;max-height:86vh;overflow:auto">
+      <div class="modal-header"><h3>添加自定义告警</h3>
+        <button class="btn btn-ghost btn-icon" id="ca-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
+      <div class="modal-body">
+        <div class="mon-grid">
+          <div class="mon-label">名称</div>
+          <div class="mon-control"><input id="ca-name" type="text" placeholder="如：Kafka 消费积压"></div>
+          <div class="mon-hint">告警列表中显示的名称</div>
+
+          <div class="mon-label">级别</div>
+          <div class="mon-control">
+            <select id="ca-sev" style="width:100%">
+              <option value="warn">警告（warn）</option>
+              <option value="critical">紧急（critical）</option>
+              <option value="info">提示（info）</option>
+            </select>
+          </div>
+          <div class="mon-hint">触发后的告警级别</div>
+
+          <div class="mon-label">检查命令</div>
+          <div class="mon-control"><textarea id="ca-cmd" rows="3" placeholder="如：kafka-consumer-groups --describe --group order | awk '{sum+=\$5} END {print sum}'" style="font-family:var(--font-mono)"></textarea></div>
+          <div class="mon-hint">每轮采集（60 秒）在各节点通过 SSH 执行，超时 30 秒</div>
+
+          <div class="mon-label">解析方式</div>
+          <div class="mon-control">
+            <select id="ca-mode" style="width:100%">
+              <option value="value">数值输出（输出即指标值）</option>
+              <option value="regex">正则捕获（捕获组 1 为数值）</option>
+              <option value="exit_code">退出码（0 正常 / 非 0 异常）</option>
+            </select>
+          </div>
+          <div class="mon-hint">把命令输出转成数值指标</div>
+
+          <div class="mon-label" id="ca-pattern-label" style="display:none">正则表达式</div>
+          <div class="mon-control" id="ca-pattern-wrap" style="display:none"><input id="ca-pattern" type="text" placeholder="如：lag=(\\d+)" style="font-family:var(--font-mono)"></div>
+          <div class="mon-hint" id="ca-pattern-hint" style="display:none">第一个捕获组将被解析为数值</div>
+
+          <div class="mon-label">触发条件</div>
+          <div class="mon-control" style="display:flex;gap:8px">
+            <select id="ca-op" style="width:90px">
+              <option value=">">&gt;</option>
+              <option value="<">&lt;</option>
+              <option value=">=">&gt;=</option>
+              <option value="<=">&lt;=</option>
+              <option value="==">==</option>
+              <option value="!=">!=</option>
+            </select>
+            <input id="ca-value" type="number" placeholder="阈值" style="flex:1">
+          </div>
+          <div class="mon-hint">指标值满足条件时计入触发</div>
+
+          <div class="mon-label">持续次数</div>
+          <div class="mon-control"><input id="ca-duration" type="number" value="2" min="1" style="width:100%"></div>
+          <div class="mon-hint">连续满足 N 次才触发（防抖动）</div>
+
+          <div class="mon-label">处置指令</div>
+          <div class="mon-control">
+            <select id="ca-remedy-kind" style="width:100%">
+              <option value="">暂不绑定</option>
+              <option value="playbook">绑定剧本</option>
+              <option value="script">自定义命令</option>
+            </select>
+          </div>
+          <div class="mon-hint">触发后可在告警详情中一键执行</div>
+
+          <div class="mon-label" id="ca-pb-label" style="display:none">选择剧本</div>
+          <div class="mon-control" id="ca-pb-wrap" style="display:none">
+            <select id="ca-playbook" style="width:100%">
+              <option value="">— 选择剧本 —</option>
+              ${playbooks.map(pb => `<option value="${esc(pb.id)}">${esc(pb.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="mon-hint" id="ca-pb-hint" style="display:none"></div>
+
+          <div class="mon-label" id="ca-script-label" style="display:none">处置命令</div>
+          <div class="mon-control" id="ca-script-wrap" style="display:none"><textarea id="ca-script" rows="3" style="font-family:var(--font-mono)"></textarea></div>
+          <div class="mon-hint" id="ca-script-hint" style="display:none"></div>
+
+          <div class="mon-label">自动执行</div>
+          <div class="mon-control"><label class="mon-check"><input type="checkbox" id="ca-auto"> 开启</label></div>
+          <div class="mon-hint">告警触发时自动执行所绑定的处置命令（剧本类仅创建对策，需手动运行）</div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+          <button class="btn btn-ghost btn-sm" id="ca-cancel">取消</button>
+          <button class="btn btn-primary btn-sm" id="ca-save">创建</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(editor);
+
+    const modeSel = editor.querySelector('#ca-mode');
+    const toggle = (sel, show) => { [sel + '-label', sel + '-wrap', sel + '-hint'].forEach(id => {
+      const el = editor.querySelector('#' + id);
+      if (el) el.style.display = show ? '' : 'none';
+    }); };
+    modeSel.addEventListener('change', () => toggle('ca-pattern', modeSel.value === 'regex'));
+    const remedySel = editor.querySelector('#ca-remedy-kind');
+    remedySel.addEventListener('change', () => {
+      toggle('ca-pb', remedySel.value === 'playbook');
+      toggle('ca-script', remedySel.value === 'script');
+    });
+
+    const close = () => editor.remove();
+    editor.querySelector('#ca-close').addEventListener('click', close);
+    editor.querySelector('#ca-cancel').addEventListener('click', close);
+    editor.addEventListener('click', (e) => { if (e.target === editor) close(); });
+
+    editor.querySelector('#ca-save').addEventListener('click', async () => {
+      const name = editor.querySelector('#ca-name').value.trim();
+      const cmd = editor.querySelector('#ca-cmd').value.trim();
+      const mode = modeSel.value;
+      const op = editor.querySelector('#ca-op').value;
+      const value = parseFloat(editor.querySelector('#ca-value').value);
+      const duration = parseInt(editor.querySelector('#ca-duration').value, 10) || 1;
+      if (!name) return alert('请填写名称');
+      if (!cmd) return alert('请填写检查命令');
+      if (isNaN(value)) return alert('请填写阈值');
+      const id = 'OWL-CUS-' + Date.now().toString(36);
+      try {
+        await api.createAlertType({
+          id, name, category: 'custom',
+          default_severity: editor.querySelector('#ca-sev').value,
+          default_params: { metric: owlMetric(id), op, value, duration },
+          enabled: true, notifiable: true, builtin: false,
+          check_cmd: cmd, check_mode: mode,
+          check_pattern: mode === 'regex' ? editor.querySelector('#ca-pattern').value.trim() : '',
+        });
+        // 处置指令绑定
+        const rk = remedySel.value;
+        if (rk === 'playbook') {
+          const pbid = editor.querySelector('#ca-playbook').value;
+          const pb = playbooks.find(x => x.id === pbid);
+          if (!pbid) return alert('请选择剧本');
+          await api.createRemedy({ id: 'RM-' + Date.now(), alert_type_id: id,
+            name: (pb ? pb.name : pbid) + '（自动处置）', kind: 'playbook', content: pbid,
+            risk: 'medium', source: 'user', reviewed: true,
+            auto_approve: editor.querySelector('#ca-auto').checked });
+        } else if (rk === 'script') {
+          const content = editor.querySelector('#ca-script').value;
+          if (!content.trim()) return alert('请填写处置命令');
+          await api.createRemedy({ id: 'RM-' + Date.now(), alert_type_id: id,
+            name: name + '（自动处置）', kind: 'script', content,
+            risk: 'medium', source: 'user', reviewed: true,
+            auto_approve: editor.querySelector('#ca-auto').checked });
+        }
+        close();
+        if (onSaved) onSaved();
+      } catch (err) { alert('创建失败: ' + (err.message || err)); }
+    });
+  }
+
+  function owlMetric(id) { return 'custom.' + id.toLowerCase(); }
+
   // ---------- 监控配置（admin）：告警类型的处置指令管理入口 ----------
 
   async function openRemedyManager(at) {
@@ -850,14 +1011,14 @@ export function renderAlerts(render, navigate, user, api, shell) {
       let items = [];
       try { items = (await api.remedies(at.id)).items || []; } catch {}
       overlay.innerHTML = `<div class="modal" style="max-width:720px;max-height:84vh;overflow:auto">
-        <div class="modal-header"><h3>处置指令 · ${esc(at.name)} <code style="font-size:11px">${esc(at.id)}</code></h3>
+        <div class="modal-header"><h3>处置指令 · ${esc(at.name)} <code style="font-size:var(--fs-xs)">${esc(at.id)}</code></h3>
           <button class="btn btn-ghost btn-icon" id="rmgr-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
         <div class="modal-body">
           ${items.length ? `<ul style="list-style:none;margin:0;padding:0">${items.map(r => `
             <li class="remedy-row">
               <div class="rm-head">
-                <strong style="font-size:13px;flex:1">${esc(r.name)}</strong>
-                <span style="font-size:11px;color:var(--muted)">${REMEDY_KIND_TEXT[r.kind] || esc(r.kind)} · 风险 ${esc(r.risk)} · ${r.source === 'user' ? '用户自定义' : r.source === 'builtin' ? '内置' : 'AI 生成'}</span>
+                <strong style="font-size:var(--fs-sm);flex:1">${esc(r.name)}</strong>
+                <span style="font-size:var(--fs-xs);color:var(--muted)">${REMEDY_KIND_TEXT[r.kind] || esc(r.kind)} · 风险 ${esc(r.risk)} · ${r.source === 'user' ? '用户自定义' : r.source === 'builtin' ? '内置' : 'AI 生成'}</span>
                 <button class="btn btn-ghost btn-sm" data-mgr-edit="${esc(r.id)}">编辑</button>
               </div>
               <pre class="rm-content">${esc(r.kind === 'playbook' ? '剧本: ' + r.content : r.content)}</pre>
@@ -907,8 +1068,11 @@ export function renderAlerts(render, navigate, user, api, shell) {
       </section>
 
       <section class="cfg-section">
-        <h3>告警类型（阈值 / 开关 / 自动执行放行）</h3>
-        <div style="overflow-x:auto"><table class="table"><thead><tr><th>ID</th><th>名称</th><th>级别</th><th>阈值</th><th>持续</th><th>启用</th><th>自动放行</th><th></th></tr></thead>
+        <h3 style="display:flex;align-items:center;gap:8px">告警类型（阈值 / 开关 / 自动执行放行）
+          <span style="flex:1"></span>
+          <button class="btn btn-secondary btn-sm" id="at-custom-add">+ 自定义告警</button>
+        </h3>
+        <div style="overflow-x:auto"><table class="table"><thead><tr><th>ID</th><th>名称</th><th>级别</th><th>阈值</th><th>持续</th><th>启用</th><th>自动放行</th><th colspan="2"></th></tr></thead>
         <tbody>${types.map(at => `
           <tr data-at="${esc(at.id)}">
             <td><code>${esc(at.id)}</code></td>
@@ -919,6 +1083,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
             <td><input type="checkbox" class="at-enabled" ${at.enabled ? 'checked' : ''}></td>
             <td><input type="checkbox" class="at-auto" ${at.auto_approve ? 'checked' : ''}></td>
             <td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm at-remedies">指令</button><button class="btn btn-secondary btn-sm at-save">保存</button></div></td>
+            ${at.builtin ? '' : `<td><button class="btn btn-ghost btn-sm at-del" data-at-del="${esc(at.id)}" style="color:var(--danger)">删除</button></td>`}
           </tr>`).join('')}</tbody></table></div>
       </section>
 
@@ -984,6 +1149,18 @@ export function renderAlerts(render, navigate, user, api, shell) {
         try { await api.updateAlertType(id, at); btn.textContent = '✓ 已保存'; setTimeout(() => { btn.textContent = '保存'; }, 1500); } catch (e) { alert('保存失败: ' + (e.message || e)); }
       });
     });
+
+    // 告警类型：删除自定义类型
+    container.querySelectorAll('[data-at-del]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('删除该自定义告警类型？其处置指令将一并删除。')) return;
+        try { await api.deleteAlertType(btn.dataset.atDel); renderConfig(); }
+        catch (e) { alert('删除失败: ' + (e.message || e)); }
+      });
+    });
+
+    // 自定义告警表单
+    document.getElementById('at-custom-add')?.addEventListener('click', () => openCustomAlertModal(renderConfig));
 
     // 告警类型：处置指令管理
     container.querySelectorAll('.at-remedies').forEach(btn => {

@@ -379,6 +379,8 @@ func (s *Server) setupRoutes() {
 
 			// 监控：配置管理（admin）
 			admin.PUT("/alert-types/:id", s.monitorHandler.UpdateAlertType)
+			admin.POST("/alert-types", s.monitorHandler.CreateAlertType)
+			admin.DELETE("/alert-types/:id", s.monitorHandler.DeleteAlertType)
 			admin.POST("/remedies", s.monitorHandler.UpsertRemedy)
 			admin.PUT("/remedies/:id", s.monitorHandler.UpsertRemedy)
 			admin.DELETE("/remedies/:id", s.monitorHandler.DeleteRemedy)
