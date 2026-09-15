@@ -45,20 +45,29 @@ export function renderUsers(render, navigate, user, api, shell) {
     });
   }
 
+  function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 12); }
+
   function renderTable(users) {
     const list = document.getElementById('users-list');
+    if (!list) return;
     if (users.length === 0) {
-      list.innerHTML = '<tr><td colspan="4" class="empty-state">No users</td></tr>';
+      list.innerHTML = '<div class="user-empty">暂无用户，点击右上角「添加用户」创建</div>';
     } else {
-      list.innerHTML = users.map(u => `<tr>
-        <td>${esc(u.username)}</td>
-        <td>${esc(u.display_name || '')}</td>
-        <td><span class="role-badge role-${esc(u.role)}">${esc(u.role)}</span></td>
-        <td class="action-cell">
-          <button class="edit-user-btn" data-id="${u.id}" data-username="${esc(u.username)}" data-role="${esc(u.role)}" data-display_name="${esc(u.display_name || '')}" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px;margin-right:4px">Edit</button>
-          <button class="delete-user-btn" data-id="${u.id}" data-username="${esc(u.username)}" style="background:none;border:1px solid var(--danger);color:var(--danger);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px">Delete</button>
-        </td>
-      </tr>`).join('');
+      list.innerHTML = users.map(u => {
+        const initial = (u.display_name || u.username || '?').trim().charAt(0).toUpperCase();
+        return `<div class="user-row">
+          <span class="user-avatar ${tagColor(u.username || '?')}" style="background:oklch(62% var(--tag-c) var(--tag-h));color:#fff">${esc(initial)}</span>
+          <div class="user-info">
+            <div class="user-name">${esc(u.username)}</div>
+            <div class="user-sub">${esc(u.display_name || '未设置显示名')}</div>
+          </div>
+          <span class="role-badge role-${esc(u.role)}">${esc(u.role)}</span>
+          <div class="user-actions">
+            <button class="btn btn-ghost btn-sm edit-user-btn" data-id="${u.id}" data-username="${esc(u.username)}" data-role="${esc(u.role)}" data-display_name="${esc(u.display_name || '')}">编辑</button>
+            <button class="btn btn-ghost btn-sm delete-user-btn" data-id="${u.id}" data-username="${esc(u.username)}" style="color:var(--danger)">删除</button>
+          </div>
+        </div>`;
+      }).join('');
     }
 
     document.querySelectorAll('.edit-user-btn').forEach(btn => {
@@ -75,7 +84,7 @@ export function renderUsers(render, navigate, user, api, shell) {
 
     document.querySelectorAll('.delete-user-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!confirm(`Delete user "${btn.dataset.username}"? This cannot be undone.`)) return;
+        if (!confirm(`确定删除用户「${btn.dataset.username}」？此操作不可恢复。`)) return;
         try {
           await api.deleteUser(btn.dataset.id);
           loadUsers();
@@ -97,17 +106,35 @@ export function renderUsers(render, navigate, user, api, shell) {
   }
 
   render(`
-    <div style="display:flex;gap:8px;align-items:center">
-      <button class="btn btn-primary btn-sm" id="add-user-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 添加用户</button>
-      <div style="flex:1"></div>
-      <div class="input" style="position:relative;padding-left:32px;width:240px">
-        <svg width="14" height="14" aria-hidden="true" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)"><use href="#icon-search"/></svg>
-        <input type="text" id="user-search-input" placeholder="搜索用户名 / 显示名…" aria-label="搜索用户" style="border:none;background:transparent;outline:none;color:var(--fg);width:100%;font:13px/1.5 var(--font-body)" value="${esc(state.query)}">
+    <div class="section-card">
+      <div class="panel-head">
+        <div style="flex:1;min-width:0">
+          <h3 class="panel-title"><svg width="15" height="15" aria-hidden="true"><use href="#icon-users"/></svg> 用户管理</h3>
+          <div class="panel-desc">账号、角色与显示名称；角色决定可访问的功能范围，变更即时生效</div>
+        </div>
+        <div class="input" style="position:relative;padding-left:32px;width:220px">
+          <svg width="14" height="14" aria-hidden="true" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)"><use href="#icon-search"/></svg>
+          <input type="text" id="user-search-input" placeholder="搜索用户名 / 显示名…" aria-label="搜索用户" style="border:none;background:transparent;outline:none;color:var(--fg);width:100%;font:var(--fs-sm)/1.5 var(--font-body)" value="${esc(state.query)}">
+        </div>
+        <button class="btn btn-primary btn-sm" id="add-user-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 添加用户</button>
+      </div>
+      <div class="panel-body" style="padding:4px 24px">
+        <div id="users-list"><div class="user-empty">加载中…</div></div>
+      </div>
+      <div class="panel-foot" style="justify-content:center">
+        <button class="btn btn-ghost btn-sm" id="user-prev-btn" disabled>‹</button>
+        <span class="field-hint" style="padding:0 8px" id="user-page-info"></span>
+        <button class="btn btn-ghost btn-sm" id="user-next-btn">›</button>
       </div>
     </div>
 
-    <details class="card matrix-card" id="matrix-toggle" open>
-        <summary class="matrix-summary">Permission Matrix <span class="matrix-hint">(click to collapse)</span></summary>
+    <details class="section-card" id="matrix-toggle">
+        <summary class="panel-head">
+          <div style="flex:1;min-width:0">
+            <h3 class="panel-title">权限矩阵</h3>
+            <div class="panel-desc">各角色可访问的功能范围一览，点击收起 / 展开</div>
+          </div>
+        </summary>
         <div class="matrix-scroll">
           <table class="matrix-table">
             <thead>
@@ -134,21 +161,10 @@ export function renderUsers(render, navigate, user, api, shell) {
         </div>
       </details>
 
-      <div class="card">
-        <table>
-          <thead><tr><th>Username</th><th>Display Name</th><th>Role</th><th>Actions</th></tr></thead>
-          <tbody id="users-list"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
-        </table>
-        <div style="display:flex;justify-content:center;gap:6px;padding:4px 0">
-          <button class="btn btn-ghost btn-sm" id="user-prev-btn" disabled>‹</button>
-          <span style="font-size:12px;color:var(--muted);padding:0 8px" id="user-page-info"></span>
-          <button class="btn btn-ghost btn-sm" id="user-next-btn">›</button>
-        </div>
-      </div>
 
     <div class="modal-overlay" id="user-add-modal">
       <div class="modal modal-sm">
-        <h3>Add User</h3>
+        <h3>添加用户</h3>
         <div class="modal-form">
           <div class="form-row"><label>Username</label><input id="add-username" placeholder="username"></div>
           <div class="form-row"><label>Display Name</label><input id="add-display-name" placeholder="display name (optional)"></div>
@@ -164,15 +180,15 @@ export function renderUsers(render, navigate, user, api, shell) {
         </div>
         <p class="error-msg" id="user-add-error"></p>
         <div class="modal-actions">
-          <button class="btn btn-secondary" id="user-add-cancel">Cancel</button>
-          <button class="btn btn-primary" id="user-add-submit">Create</button>
+          <button class="btn btn-secondary" id="user-add-cancel">取消</button>
+          <button class="btn btn-primary" id="user-add-submit">创建</button>
         </div>
       </div>
     </div>
 
     <div class="modal-overlay" id="user-edit-modal">
       <div class="modal modal-sm">
-        <h3>Edit User: <span id="edit-username"></span></h3>
+        <h3>编辑用户：<span id="edit-username"></span></h3>
         <div class="modal-form">
           <input type="hidden" id="edit-user-id">
           <div class="form-row"><label>Display Name</label><input id="edit-display-name" placeholder="display name"></div>
@@ -188,8 +204,8 @@ export function renderUsers(render, navigate, user, api, shell) {
         </div>
         <p class="error-msg" id="user-edit-error"></p>
         <div class="modal-actions">
-          <button class="btn btn-secondary" id="user-edit-cancel">Cancel</button>
-          <button class="btn btn-primary" id="user-edit-submit">Save</button>
+          <button class="btn btn-secondary" id="user-edit-cancel">取消</button>
+          <button class="btn btn-primary" id="user-edit-submit">保存</button>
         </div>
       </div>
     </div>
@@ -231,7 +247,7 @@ export function renderUsers(render, navigate, user, api, shell) {
       const password = document.getElementById('add-password').value;
       const role = document.getElementById('add-role').value;
       const display_name = document.getElementById('add-display-name').value.trim();
-      if (!username || !password) { document.getElementById('user-add-error').textContent = 'Username and password required'; return; }
+      if (!username || !password) { document.getElementById('user-add-error').textContent = '请填写用户名和密码'; return; }
       try {
         await api.createUser({ username, password, role, display_name: display_name || undefined });
         document.getElementById('user-add-modal').classList.remove('open');

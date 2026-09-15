@@ -73,13 +73,13 @@ export function renderSettings(render, navigate, user, api) {
         const known = KNOWN_SETTINGS[s.key];
         const desc = known ? known.desc : '-';
         const valueHtml = s._default
-          ? `${esc(s.value)} <span style="color:var(--text-muted);font-size:11px">(默认值)</span>`
+          ? `${esc(s.value)} <span style="color:var(--text-muted);font-size:var(--fs-xs)">(默认值)</span>`
           : esc(s.value);
         return `<tr>
-        <td style="font-family:monospace;font-size:13px">${esc(s.key)}</td>
-        <td style="color:var(--text-muted);font-size:12px">${esc(desc)}</td>
+        <td style="font-family:var(--font-mono);font-size:var(--fs-sm)">${esc(s.key)}</td>
+        <td style="color:var(--text-muted);font-size:var(--fs-xs)">${esc(desc)}</td>
         <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${valueHtml}</td>
-        <td><button class="edit-setting-btn" data-key="${esc(s.key)}" data-value="${esc(s.value)}" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:12px">Edit</button></td>
+        <td><button class="edit-setting-btn" data-key="${esc(s.key)}" data-value="${esc(s.value)}" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:var(--fs-xs)">编辑</button></td>
       </tr>`;
       }).join('');
     }
@@ -307,34 +307,49 @@ export function renderSettings(render, navigate, user, api) {
     </div>
 
     <div id="settings-monitor-card">
-    <div class="card">
-      <h3 style="margin:0 0 16px;font-size:var(--fs-md)">监控告警</h3>
-      <div class="mon-grid">
-        <div class="mon-label">启用监控采集</div>
-        <div class="mon-control">
-          <label class="mon-check"><input type="checkbox" id="mon-enabled"> 开启</label>
+    <div class="section-card">
+      <div class="panel-head">
+        <div style="flex:1;min-width:0">
+          <h3 class="panel-title"><svg width="15" height="15" aria-hidden="true"><use href="#icon-bell"/></svg> 监控告警</h3>
+          <div class="panel-desc">采集开关、时段窗口、告警升级与保留策略；保存后运行期即时生效，无需重启</div>
         </div>
-        <div class="mon-hint">关闭后暂停全部节点的采集与告警评估</div>
-
-        <div class="mon-label">采集时段</div>
-        <div class="mon-control"><input id="mon-window" type="text" placeholder="HH:MM-HH:MM"></div>
-        <div class="mon-hint">留空 = 全天采集；支持跨午夜，如 22:00-06:00</div>
-
-        <div class="mon-label">warn 升级时长（分钟）</div>
-        <div class="mon-control"><input id="mon-escalate" type="number" min="0.1" step="0.1"></div>
-        <div class="mon-hint">待处理 warn 告警超过该时长未处理将升级为紧急</div>
-
-        <div class="mon-label">重复告警合并窗口（分钟）</div>
-        <div class="mon-control"><input id="mon-realert" type="number" min="0" step="1"></div>
-        <div class="mon-hint">告警解决后窗口内同类型再触发将重开原条目；0 = 关闭合并</div>
-
-        <div class="mon-label">告警记录保留（天）</div>
-        <div class="mon-control"><input id="mon-retention" type="number" min="0" step="1"></div>
-        <div class="mon-hint">自动删除超过 N 天的已解决告警；0 = 不启用</div>
       </div>
-      <div style="display:flex;gap:8px;margin-top:16px;align-items:center">
+      <div class="panel-body">
+        <div class="field-grid">
+          <div class="field field-wide">
+            <div style="display:flex;align-items:center;gap:12px;padding:4px 0">
+              <label class="switch"><input type="checkbox" id="mon-enabled"><span class="track"></span></label>
+              <div>
+                <div class="field-label" style="color:var(--fg)">启用监控采集</div>
+                <div class="field-hint">关闭后暂停全部节点的采集与告警评估，恢复开启自动继续</div>
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <span class="field-label">采集时段</span>
+            <input id="mon-window" type="text" placeholder="HH:MM-HH:MM">
+            <span class="field-hint">留空 = 全天采集；支持跨午夜，如 22:00-06:00</span>
+          </div>
+          <div class="field">
+            <span class="field-label">warn 升级时长（分钟）</span>
+            <input id="mon-escalate" type="number" min="0.1" step="0.1">
+            <span class="field-hint">待处理 warn 告警超过该时长未处理将升级为紧急</span>
+          </div>
+          <div class="field">
+            <span class="field-label">重复告警合并窗口（分钟）</span>
+            <input id="mon-realert" type="number" min="0" step="1">
+            <span class="field-hint">告警解决后窗口内同类型再触发将重开原条目；0 = 关闭合并</span>
+          </div>
+          <div class="field">
+            <span class="field-label">告警记录保留（天）</span>
+            <input id="mon-retention" type="number" min="0" step="1">
+            <span class="field-hint">自动删除超过 N 天的已解决告警；0 = 不启用</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel-foot">
         <button class="btn btn-primary btn-sm" id="mon-save">保存监控设置</button>
-        <span id="mon-msg" style="font-size:var(--fs-xs);color:var(--muted)"></span>
+        <span id="mon-msg" class="field-hint"></span>
       </div>
     </div>
     </div>
@@ -342,7 +357,7 @@ export function renderSettings(render, navigate, user, api) {
     <div class="modal-overlay" id="settings-modal">
       <div class="modal modal-sm">
         <h3>Edit Setting: <span id="setting-key"></span></h3>
-        <p id="setting-desc" style="font-size:12px;color:var(--text-muted);margin:4px 0 10px"></p>
+        <p id="setting-desc" style="font-size:var(--fs-xs);color:var(--text-muted);margin:4px 0 10px"></p>
         <div class="modal-form">
           <div class="form-row"><label>Value</label><input id="setting-value-input" placeholder="value"></div>
         </div>

@@ -4153,3 +4153,118 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   font-size: var(--fs-sm);
   width: 100%;
 }
+
+/* ================================================================
+   DESIGN SYSTEM — Panel（设置/用户管理统一区块风格）
+   区块头（标题+描述，accent 微着色）/ 内容 field-grid / 底部操作条
+   ================================================================ */
+.section-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.section-card + .section-card { margin-top: 16px; }
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--accent) 4%, var(--surface));
+}
+.panel-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-desc { font-size: var(--fs-xs); color: var(--muted); margin-top: 3px; line-height: 1.5; }
+.panel-body { padding: 24px; }
+.panel-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in oklch, var(--muted) 4%, var(--surface));
+}
+/* 字段：标签 / 控件 / 提示 三层堆叠，栅格排布 */
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px 28px;
+}
+.field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.field-wide { grid-column: 1 / -1; }
+.field-label { font-size: var(--fs-xs); color: var(--muted); letter-spacing: 0.4px; font-weight: 600; }
+.field-control input[type="text"],
+.field-control input[type="number"],
+.field-control input[type="password"],
+.field-control select,
+.field-control textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  width: 100%;
+}
+.field-control textarea { font-family: var(--font-mono); resize: vertical; }
+.field-hint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.55; }
+/* 拟物开关 */
+.switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
+.switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.switch .track {
+  position: absolute; inset: 0;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted) 35%, var(--surface));
+  border: 1px solid var(--border);
+  transition: background var(--transition), border-color var(--transition);
+}
+.switch .track::after {
+  content: '';
+  position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+  transition: transform var(--transition);
+}
+.switch input:checked + .track { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(18px); }
+/* 用户管理行 */
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.user-row:last-child { border-bottom: none; }
+.user-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  flex-shrink: 0;
+}
+.user-info { flex: 1; min-width: 0; }
+.user-name { font-size: var(--fs-sm); font-weight: 600; }
+.user-sub { font-size: var(--fs-xs); color: var(--muted); margin-top: 1px; }
+.user-actions { display: flex; gap: 6px; }
+.user-empty { padding: 40px; text-align: center; color: var(--muted); font-size: var(--fs-sm); }
+/* details 形态的 panel（权限矩阵） */
+.section-card > summary.panel-head { cursor: pointer; list-style: none; }
+.section-card > summary.panel-head::-webkit-details-marker { display: none; }
+.section-card > summary.panel-head::after {
+  content: '▾';
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  transition: transform var(--transition);
+}
+.section-card:not([open]) > summary.panel-head::after { transform: rotate(-90deg); }
