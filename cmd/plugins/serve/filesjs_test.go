@@ -227,6 +227,23 @@ func TestFilesJS_TransferListPagination(t *testing.T) {
 		"the transfer list must be height-capped so it cannot push the staging area down")
 }
 
+// 中转站列表：文件名优先展示（悬浮显示完整路径）+ 文件类型图标；
+// 支持清空全部与批量删除选中（均复用 admin-only 的单文件删除接口）。
+func TestFilesJS_StagingWorkbench(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/files.js")
+
+	assert.True(t, strings.Contains(src, "stagingFileIcon"),
+		"staging rows must render file-type icons by extension")
+	assert.True(t, strings.Contains(src, `title="${esc(fullPath)}"`),
+		"staging rows must expose the full path via hover title")
+	assert.False(t, strings.Contains(src, `class="stg-path"`),
+		"the separate path column is replaced by name-first display")
+	assert.True(t, strings.Contains(src, "staging-clear-btn"),
+		"staging must offer clear-all")
+	assert.True(t, strings.Contains(src, "staging-delete-selected-btn"),
+		"staging must offer batch delete of selected files")
+}
+
 func TestExecJS_ReconcilesTaskStatesWhileRunning(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

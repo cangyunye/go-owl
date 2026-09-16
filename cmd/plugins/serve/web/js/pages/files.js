@@ -25,6 +25,7 @@ export function renderFiles(render, navigate, user, api, shell) {
   let endDate = '';
   let refreshTimer = null;
   let activeDirection = 'push';
+  const canDeleteStaging = user && user.role === 'admin'; // 中转站删除接口仅 admin
   // 传输列表分页（服务端分页，20/页）：全量渲染会把"文件中转站"顶出屏幕
   let transferPageSize = 20;
   let recordsPage = 1;
@@ -41,6 +42,31 @@ export function renderFiles(render, navigate, user, api, shell) {
   function timeAgo(t) { if (!t) return '-'; const s = Math.floor((Date.now() - new Date(t).getTime())/1000); if (s<60) return s+'s'; if (s<3600) return Math.floor(s/60)+'m'; return Math.floor(s/3600)+'h'; }
   function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 12); }
   function fmtSize(b) { if (!b) return '0 B'; const u = ['B','KB','MB','GB','TB']; let i = 0; let s = b; while (s >= 1024 && i < u.length-1) { s /= 1024; i++; } return s.toFixed(i > 0 ? 1 : 0) + ' ' + u[i]; }
+
+  // stagingFileIcon 按扩展名把文件分为文本/图片/音频/视频/默认五类，
+  // 以不同颜色的内联 SVG 图标渲染在文件名左侧。
+  function stagingFileIcon(name) {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    const groups = {
+      text: { exts: ['sh', 'txt', 'log', 'md', 'py', 'js', 'html', 'xml', 'csv', 'yml', 'yaml', 'json', 'conf', 'ini', 'css', 'sql'], color: 'var(--accent)' },
+      image: { exts: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'], color: 'var(--success)' },
+      audio: { exts: ['mp3', 'wav', 'flac', 'ogg', 'm4a'], color: 'var(--warn)' },
+      video: { exts: ['mp4', 'mov', 'avi', 'mkv', 'webm'], color: 'var(--danger)' },
+    };
+    let type = 'default';
+    let color = 'var(--muted)';
+    for (const [k, g] of Object.entries(groups)) {
+      if (g.exts.includes(ext)) { type = k; color = g.color; break; }
+    }
+    const shapes = {
+      text: '<path d="M4 1.5h5l3 3V14.5H4z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 8.5h4M6 10.5h4" stroke="currentColor" stroke-width="1.2"/>',
+      image: '<rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="5.5" cy="6.5" r="1.2" fill="currentColor"/><path d="M3.5 11.5l3-3 2.5 2.5 2-2 1.5 2.5" fill="none" stroke="currentColor" stroke-width="1.2"/>',
+      audio: '<path d="M6 11V4.5l6-1.5V9.5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="4.2" cy="11.2" r="1.8" fill="currentColor"/><circle cx="10.2" cy="9.7" r="1.8" fill="currentColor"/>',
+      video: '<rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6.5 6l4 2-4 2z" fill="currentColor"/>',
+      default: '<path d="M4 1.5h5l3.5 3.5v9a.5.5 0 01-.5.5h-8a.5.5 0 01-.5-.5v-12a.5.5 0 01.5-.5z" fill="none" stroke="currentColor" stroke-width="1.2"/>',
+    };
+    return `<svg class="stg-icon stg-icon-${type}" width="14" height="14" viewBox="0 0 16 16" style="color:${color};flex-shrink:0;vertical-align:-2px;margin-right:5px" aria-hidden="true">${shapes[type]}</svg>`;
+  }
 
   function saveSelection() {
     sessionStorage.setItem('files_selected_nodes', JSON.stringify(Array.from(selectedNodes)));
@@ -591,7 +617,9 @@ export function renderFiles(render, navigate, user, api, shell) {
     const filtered = stagingSearch
       ? stagingFiles.filter(f => f.name.toLowerCase().includes(stagingSearch.toLowerCase()))
       : stagingFiles;
-    const canDelete = user && user.role === 'admin';
+    const canDelete = canDeleteStaging;
+    const clearBtn = document.getElementById('staging-clear-btn');
+    if (clearBtn) clearBtn.style.display = (canDelete && stagingFiles.length > 0) ? '' : 'none';
     if (filtered.length === 0) {
       list.innerHTML = '<div class="staging-empty">暂无文件</div>';
       return;
@@ -603,7 +631,6 @@ export function renderFiles(render, navigate, user, api, shell) {
       <thead><tr>
         <th class="stg-ck" style="${showCheck}"><input type="checkbox" class="staging-select-all" ${allChecked ? 'checked' : ''}></th>
         <th class="stg-name">文件名</th>
-        <th class="stg-path">路径</th>
         <th class="stg-time">创建时间</th>
         <th class="stg-size">大小</th>
         ${canDelete ? '<th class="stg-act"></th>' : ''}
@@ -614,8 +641,7 @@ export function renderFiles(render, navigate, user, api, shell) {
         const checked = stagingSelected.has(f.name) ? 'checked' : '';
         return `<tr class="staging-file-row" data-name="${esc(f.name)}">
           <td class="stg-ck" style="${showCheck}"><input type="checkbox" class="staging-checkbox" data-name="${esc(f.name)}" ${checked}></td>
-          <td class="stg-name" title="${esc(f.name)}">${esc(f.name)}</td>
-          <td class="stg-path" title="${esc(fullPath)}">${esc(fullPath)}</td>
+          <td class="stg-name" title="${esc(fullPath)}">${stagingFileIcon(f.name)}${esc(f.name)}</td>
           <td class="stg-time">${fmtTime(fileTime)}</td>
           <td class="stg-size">${fmtSize(f.size)}</td>
           ${canDelete ? `<td class="stg-act"><button class="btn btn-ghost btn-icon btn-sm staging-delete-btn" data-name="${esc(f.name)}" title="删除"><svg width="14" height="14" aria-hidden="true" style="color:var(--danger)"><use href="#icon-x"/></svg></button></td>` : ''}
@@ -631,12 +657,7 @@ export function renderFiles(render, navigate, user, api, shell) {
           else stagingSelected.delete(f.name);
         });
         list.querySelectorAll('.staging-checkbox').forEach(cb => { cb.checked = this.checked; });
-        const batchBtn = document.getElementById('staging-batch-btn');
-        if (batchBtn) {
-          const count = stagingSelected.size;
-          batchBtn.textContent = count ? `批量传输 (${count})` : '批量传输';
-          batchBtn.style.display = stagingMultiSelect && count > 0 ? 'inline-flex' : 'none';
-        }
+        updateStagingBulkButtons();
       });
     }
     list.querySelectorAll('.staging-delete-btn').forEach(btn => {
@@ -668,17 +689,13 @@ export function renderFiles(render, navigate, user, api, shell) {
         const name = this.dataset.name;
         if (this.checked) stagingSelected.add(name);
         else stagingSelected.delete(name);
-        const batchBtn = document.getElementById('staging-batch-btn');
-        if (batchBtn) {
-          const count = stagingSelected.size;
-          batchBtn.textContent = count ? `批量传输 (${count})` : '批量传输';
-          batchBtn.style.display = stagingMultiSelect && count > 0 ? 'inline-flex' : 'none';
-        }
         if (selectAll) {
           selectAll.checked = filtered.every(f => stagingSelected.has(f.name));
         }
+        updateStagingBulkButtons();
       });
     });
+    updateStagingBulkButtons();
   }
 
   async function handleStagingUpload(file) {
@@ -710,6 +727,46 @@ export function renderFiles(render, navigate, user, api, shell) {
     loadStaging();
   }
 
+  async function handleStagingDeleteSelected() {
+    const names = Array.from(stagingSelected);
+    if (!names.length) return;
+    if (!confirm(`确认删除选中的 ${names.length} 个文件？删除后不可恢复。`)) return;
+    let ok = 0, fail = 0;
+    for (const name of names) {
+      try { await api.staging.delete(name); ok++; } catch { fail++; }
+    }
+    if (fail > 0) alert(`删除完成：${ok} 成功，${fail} 失败`);
+    stagingSelected.clear();
+    loadStaging();
+  }
+
+  async function handleStagingClear() {
+    if (!stagingFiles.length) return;
+    if (!confirm(`确认清空中转站全部 ${stagingFiles.length} 个文件？删除后不可恢复。`)) return;
+    let ok = 0, fail = 0;
+    for (const f of stagingFiles) {
+      try { await api.staging.delete(f.name); ok++; } catch { fail++; }
+    }
+    if (fail > 0) alert(`清空完成：${ok} 成功，${fail} 失败`);
+    stagingSelected.clear();
+    loadStaging();
+  }
+
+  // updateStagingBulkButtons 同步"批量传输/删除选中"按钮的显隐与计数文案
+  function updateStagingBulkButtons() {
+    const count = stagingSelected.size;
+    const batchBtn = document.getElementById('staging-batch-btn');
+    if (batchBtn) {
+      batchBtn.textContent = count ? `批量传输 (${count})` : '批量传输';
+      batchBtn.style.display = stagingMultiSelect ? 'inline-flex' : 'none';
+    }
+    const delSelBtn = document.getElementById('staging-delete-selected-btn');
+    if (delSelBtn) {
+      delSelBtn.textContent = count ? `删除选中 (${count})` : '删除选中';
+      delSelBtn.style.display = stagingMultiSelect && count > 0 && canDeleteStaging ? 'inline-flex' : 'none';
+    }
+  }
+
   function startAutoRefresh() {
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(loadTransfers, 5000);
@@ -726,18 +783,13 @@ export function renderFiles(render, navigate, user, api, shell) {
         <div class="card">
           <div class="card-header"><h3>文件传输</h3></div>
           <div class="card-body">
-            <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:start">
-              <div>
-                <label id="src-label" style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">本地路径</label>
-                <input type="text" class="input" id="src-path" style="width:100%" value="/var/log/app/debug.log" placeholder="/path/to/local/file">
-              </div>
-              <div style="display:grid;place-items:center;padding-top:18px">
-                <svg width="24" height="24" aria-hidden="true" style="color:var(--accent)"><use href="#icon-upload"/></svg>
-              </div>
-              <div>
-                <label id="dst-label" style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">节点路径</label>
-                <input type="text" class="input" id="dst-path" style="width:100%" value="/tmp/logs/" placeholder="/path/to/remote/dir">
-              </div>
+            <div class="path-field">
+              <label id="src-label" style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">本地路径</label>
+              <input type="text" class="input" id="src-path" style="width:100%" value="/var/log/app/debug.log" placeholder="/path/to/local/file">
+            </div>
+            <div class="path-field" style="margin-top:10px">
+              <label id="dst-label" style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">节点路径</label>
+              <input type="text" class="input" id="dst-path" style="width:100%" value="/tmp/logs/" placeholder="/path/to/remote/dir">
             </div>
             <div style="margin-top:14px;display:flex;gap:8px">
               <button class="btn btn-primary active" id="upload-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-upload"/></svg> 上传</button>
@@ -749,6 +801,7 @@ export function renderFiles(render, navigate, user, api, shell) {
         <div class="card">
           <div class="card-header" style="display:flex;align-items:center;gap:8px">
             <h3 style="flex:1">文件中转站</h3>
+            <button class="btn btn-ghost btn-sm" id="staging-clear-btn" style="display:none;color:var(--danger)">清空</button>
             <input type="text" id="staging-search" class="exec-input" placeholder="搜索文件名..." style="width:140px;font-size:12px">
           </div>
           <div class="card-body staging-dropzone" id="staging-dropzone">
@@ -775,6 +828,7 @@ export function renderFiles(render, navigate, user, api, shell) {
               <div style="width:100px;flex-shrink:0">
                 <button class="btn btn-primary btn-sm" id="staging-upload-btn" disabled style="width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">上传中转站</button>
                 <button class="btn btn-primary btn-sm" id="staging-batch-btn" style="width:100%;white-space:nowrap;display:none">批量传输</button>
+                <button class="btn btn-danger btn-sm" id="staging-delete-selected-btn" style="width:100%;white-space:nowrap;display:none;margin-top:6px">删除选中</button>
               </div>
             </div>
             <div id="staging-file-list" style="max-height:280px;overflow:auto">加载中…</div>
@@ -961,9 +1015,12 @@ document.getElementById('staging-multi-btn').addEventListener('click', function(
     srcInput.disabled = stagingMultiSelect;
     if (stagingMultiSelect) srcInput.value = '';
     document.getElementById('staging-upload-btn').style.display = stagingMultiSelect ? 'none' : 'inline-flex';
-    document.getElementById('staging-batch-btn').style.display = stagingMultiSelect ? 'inline-flex' : 'none';
+    updateStagingBulkButtons();
     renderStaging();
   });
+
+  document.getElementById('staging-clear-btn').addEventListener('click', handleStagingClear);
+  document.getElementById('staging-delete-selected-btn').addEventListener('click', handleStagingDeleteSelected);
 
   document.getElementById('staging-batch-btn').addEventListener('click', async function() {
     if (stagingSelected.size === 0) return;
