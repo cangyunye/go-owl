@@ -161,6 +161,19 @@ export function renderExec(render, navigate, user, api, shell) {
     });
   }
 
+  // normalizeTimeoutInput 读取超时输入：清空或非法时回落默认值并回填到输入框。
+  // 不能让"清空"悄悄变成"无超时"——远端命令挂死会让该节点永久停在执行中。
+  function normalizeTimeoutInput(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return String(fallback);
+    const v = parseInt(el.value, 10);
+    if (!v || v < 1) {
+      el.value = String(fallback);
+      return String(fallback);
+    }
+    return String(v);
+  }
+
   function renderPagination() {
     const container = document.getElementById('node-pagination');
     if (!container) return;
@@ -574,8 +587,8 @@ export function renderExec(render, navigate, user, api, shell) {
     const retryInterval = document.getElementById('retry-interval')?.value || '1';
     const retryMaxInterval = document.getElementById('retry-max-interval')?.value || '30';
     const noRetry = document.getElementById('no-retry')?.checked || false;
-    const connectTimeout = document.getElementById('connect-timeout')?.value || '';
-    const commandTimeout = document.getElementById('command-timeout')?.value || '';
+    const connectTimeout = normalizeTimeoutInput('connect-timeout', 10);
+    const commandTimeout = normalizeTimeoutInput('command-timeout', 30);
 
     const payload = {
       force: 'true',

@@ -814,15 +814,28 @@ type streamResult struct {
 	err  error
 }
 
+// defaultCommandTimeout 未显式指定 command_timeout 时的兜底超时：
+// 没有它，远端命令挂死会让该节点永久停在"执行中"（服务端没有别的看门狗）。
+// 取值偏大以免误杀正常的长任务；需要更久的任务显式传更大的 command_timeout。
+const defaultCommandTimeout = 10 * time.Minute
+
+// resolveCommandTimeout 解析 command_timeout：空值/非法值/非正值回落兜底超时，
+// 并返回用于错误提示的展示文本（区分显式配置与兜底）。
+func resolveCommandTimeout(raw string) (time.Duration, string) {
+	if d := parseTimeout(raw); d > 0 {
+		return d, raw
+	}
+	return defaultCommandTimeout, defaultCommandTimeout.String() + "（默认）"
+}
+
 // streamExecute 以 ExecuteStream 方式执行单条命令：逐行广播到 WS(task_output)
 // 并累积到任务输出，保证前端能实时看到执行输出。
 // cfg.CommandTimeout 生效于此：超时后断开 SSH 会话并返回超时错误。
 func (h *ExecHandler) streamExecute(ctx context.Context, taskID, nodeID, command string, cfg ExecConfig) (string, int, error) {
-	if d := parseTimeout(cfg.CommandTimeout); d > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, d)
-		defer cancel()
-	}
+	timeout, timeoutLabel := resolveCommandTimeout(cfg.CommandTimeout)
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, timeout)
+	defer cancel()
 	exec := h.executorFor(cfg)
 
 	outputCh := make(chan OutputLine, 256)
@@ -853,7 +866,7 @@ func (h *ExecHandler) streamExecute(ctx context.Context, taskID, nodeID, command
 	// finish 统一出口：命令超时优先于底层 SSH 断开错误上报
 	finish := func(code int, err error) (string, int, error) {
 		if ctx.Err() == context.DeadlineExceeded {
-			return buf.String(), -1, fmt.Errorf("命令执行超时（command_timeout=%s）", cfg.CommandTimeout)
+			return buf.String(), -1, fmt.Errorf("命令执行超时（command_timeout=%s）", timeoutLabel)
 		}
 		return buf.String(), code, err
 	}

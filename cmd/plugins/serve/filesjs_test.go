@@ -212,6 +212,18 @@ func TestExecJS_ReconcilesTaskStatesWhileRunning(t *testing.T) {
 		"exec.js must return a page cleanup function")
 }
 
+// 超时输入清空不得悄悄变成"无超时"：远端命令挂死会让该节点永久停在执行中。
+func TestExecJS_TimeoutsAlwaysSent(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/exec.js")
+
+	assert.True(t, strings.Contains(src, "normalizeTimeoutInput('command-timeout'"),
+		"exec.js must fall back to a default command timeout when the field is cleared")
+	assert.True(t, strings.Contains(src, "payload.command_timeout"),
+		"exec.js must send command_timeout in the payload")
+	assert.True(t, strings.Contains(src, "payload.connect_timeout"),
+		"exec.js must send connect_timeout in the payload")
+}
+
 func TestExecJS_AppendTerminalAvoidsFullRerender(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 
