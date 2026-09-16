@@ -744,6 +744,16 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 			break
 		}
 
+		// 重试进度必须播报到实时终端：重试期间节点长时间静默，用户无法区分
+		// "还在重试"与"卡死"。最后一次失败不提示等待时长。
+		wait := retryInterval
+		if attempt >= retryCount {
+			wait = 0
+		}
+		notice := retryNotice(attempt+1, retryCount+1, wait, lastError)
+		if h.hub != nil {
+			h.hub.BroadcastTaskOutput(taskID, task.NodeID, notice, "stderr")
+		}
 		debug("尝试 %d/%d 失败: %s", attempt+1, retryCount+1, lastError.Error())
 	}
 
@@ -812,6 +822,17 @@ func (h *ExecHandler) updateTaskStatus(ctx context.Context, taskID string, statu
 type streamResult struct {
 	code int
 	err  error
+}
+
+// retryNotice 生成重试进度提示文案。重试期间（connect/command 超时 × 重试
+// 次数）节点会长时间静默，用户无法区分"还在重试"与"卡死"。
+// next 为 0 表示不再重试（最后一次尝试失败）。
+func retryNotice(attempt, total int, next time.Duration, err error) string {
+	msg := fmt.Sprintf("⚠ 第 %d/%d 次尝试失败: %v", attempt, total, err)
+	if next > 0 {
+		msg += fmt.Sprintf("，%s 后重试", next)
+	}
+	return msg
 }
 
 // defaultCommandTimeout 未显式指定 command_timeout 时的兜底超时：
