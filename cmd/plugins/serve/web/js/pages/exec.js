@@ -5,6 +5,9 @@ export function renderExec(render, navigate, user, api, shell) {
   let currentTaskIDs = [];
   let currentTasks = [];
   let currentOpID = '';
+  // 实时输出对账：WS 可能因断线或服务端断开慢客户端而缺行，终态广播带全量 output
+  let receivedLines = {};   // task_id -> 已收到的实时行数
+  let taskUpdates = {};     // task_id -> 最近一次终态广播(含完整 output)
   let activeGroups = [];
   let allGroups = [];
   let allLabels = [];
@@ -401,6 +404,31 @@ export function renderExec(render, navigate, user, api, shell) {
     body.innerHTML = '<div class="line cursor-blink"></div>';
   }
 
+  // outputLineCount 统计任务记录中的输出行数（与服务端 buf 累积方式一致）
+  function outputLineCount(text) {
+    if (!text) return 0;
+    return text.replace(/\n+$/, '').split('\n').length;
+  }
+
+  // rebuildTerminalFromRecords 用任务记录里的全量 output 重建终端视图：
+  // 实时流缺行时(WS 断线 / 慢客户端被断开 / 采集中断)由终态广播兜底，
+  // 保证终端最终与任务历史一致。
+  function rebuildTerminalFromRecords(tasks) {
+    clearTerminal();
+    appendTerminal('⚠ 检测到实时输出有缺失，已用任务记录补全（完整输出以任务详情为准）：', 'ts');
+    const multi = tasks.length > 1;
+    for (const t of tasks) {
+      if (multi) appendTerminal(`[${esc(t.node_id || '')}] —— 完整输出 ——`, 'ts');
+      const text = (t.output || '').replace(/\n+$/, '');
+      if (!text) {
+        appendTerminal('(无输出)', 'ts');
+        continue;
+      }
+      text.split('\n').forEach(l => appendTerminal(esc(l), 'out'));
+    }
+    appendTerminal('— 全部任务已结束，可在任务历史中查看输出 —', 'ts');
+  }
+
   function renderLogDownloads() {
     const el = document.getElementById('exec-log-downloads');
     if (!el || !currentOpID) return;
@@ -647,15 +675,20 @@ export function renderExec(render, navigate, user, api, shell) {
 
       if (wsCleanup) wsCleanup.close();
       const finished = new Set();
+      receivedLines = {};
+      taskUpdates = {};
       wsCleanup = api.connectWebSocket(msg => {
         if (msg.type === 'task_output') {
           const t = msg.data;
           if (!t || !currentTaskIDs.includes(t.task_id)) return;
+          receivedLines[t.task_id] = (receivedLines[t.task_id] || 0) + 1;
           const prefix = isSingle ? '' : `[${esc(t.node_id)}] `;
           appendTerminal(prefix + esc(t.line), t.type === 'stderr' ? 'err' : 'out');
         } else if (msg.type === 'task_update') {
           const t = msg.data;
-          if (!t || !currentTaskIDs.includes(t.id) || finished.has(t.id)) return;
+          if (!t || !currentTaskIDs.includes(t.id)) return;
+          taskUpdates[t.id] = t;
+          if (finished.has(t.id)) return;
           finished.add(t.id);
           if (t.status === 'completed') {
             appendTerminal(isSingle ? '✓ 执行完成' : `[${esc(t.node_id)}] ✓ 完成`, 'ok');
@@ -663,7 +696,14 @@ export function renderExec(render, navigate, user, api, shell) {
             appendTerminal(isSingle ? `✗ ${t.status === 'cancelled' ? '已取消' : '执行失败'}` : `[${esc(t.node_id)}] ✗ ${t.status === 'cancelled' ? '已取消' : '执行失败'}`, 'err');
           }
           if (finished.size >= currentTaskIDs.length) {
-            appendTerminal('— 全部任务已结束，可在任务历史中查看输出 —', 'ts');
+            // 收齐终态：与任务记录对账，实时流缺行时用记录里的全量输出重建终端
+            const updates = currentTaskIDs.map(id => taskUpdates[id]).filter(Boolean);
+            const incomplete = updates.some(u => outputLineCount(u.output) > (receivedLines[u.id] || 0));
+            if (incomplete) {
+              rebuildTerminalFromRecords(updates);
+            } else {
+              appendTerminal('— 全部任务已结束，可在任务历史中查看输出 —', 'ts');
+            }
             renderLogDownloads();
             if (wsCleanup) wsCleanup.close();
           }

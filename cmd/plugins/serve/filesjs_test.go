@@ -182,6 +182,19 @@ func TestNodesJS_GroupCountsPageThroughAllNodes(t *testing.T) {
 		"group counts must loop pages using meta.total")
 }
 
+// 实时输出可能因 WS 断线/服务端断开慢客户端而缺行；任务终态广播携带全量
+// output，前端必须在收齐终态时对账并用任务记录补全，否则缺口永久留在终端上。
+func TestExecJS_BackfillsMissingOutputOnCompletion(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/exec.js")
+
+	assert.True(t, strings.Contains(src, "receivedLines"),
+		"exec.js must count received output lines per task")
+	assert.True(t, strings.Contains(src, "rebuildTerminalFromRecords"),
+		"exec.js must rebuild the terminal from task records when output is incomplete")
+	assert.True(t, strings.Contains(src, "已用任务记录补全"),
+		"exec.js must tell the user the output was backfilled")
+}
+
 func TestExecJS_ShortcutBar(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 
