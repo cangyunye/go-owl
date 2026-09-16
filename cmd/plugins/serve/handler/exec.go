@@ -615,6 +615,20 @@ func (h *ExecHandler) Get(c *gin.Context) {
 }
 
 func (h *ExecHandler) List(c *gin.Context) {
+	// 按 record 拉取：执行页对账兜底用（一次提交的全部节点任务，无需分页）
+	if rec := strings.TrimSpace(c.Query("record_id")); rec != "" {
+		tasks, err := h.task.ListByRecord(c.Request.Context(), rec)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "list failed"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"data": tasks,
+			"meta": gin.H{"total": len(tasks)},
+		})
+		return
+	}
+
 	page := 1
 	pageSize := 50
 	if p, err := parseInt(c.Query("page"), 1); err == nil && p > 0 {

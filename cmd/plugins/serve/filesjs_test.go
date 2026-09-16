@@ -197,6 +197,21 @@ func TestExecJS_BackfillsMissingOutputOnCompletion(t *testing.T) {
 
 // 终端逐行渲染不得对整段内容做 innerHTML 重序列化：几千行输出下 O(n²)
 // 会拖垮页面，并因浏览器消费变慢放大服务端 WS 发送积压。
+// WS 终态消息可能落在断线窗口内丢失（并行多节点时某节点会一直显示未完成）；
+// 执行页必须在批次执行期间按 record 轮询任务终态做对账兜底，并在离开页面时清理。
+func TestExecJS_ReconcilesTaskStatesWhileRunning(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/exec.js")
+
+	assert.True(t, strings.Contains(src, "record_id: currentOpID"),
+		"exec.js must poll task states by record id")
+	assert.True(t, strings.Contains(src, "setInterval(reconcile"),
+		"exec.js must run a reconcile loop while a batch is running")
+	assert.True(t, strings.Contains(src, "clearInterval(reconcileTimer)"),
+		"exec.js must stop the reconcile loop on page cleanup")
+	assert.True(t, strings.Contains(src, "return () => {"),
+		"exec.js must return a page cleanup function")
+}
+
 func TestExecJS_AppendTerminalAvoidsFullRerender(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

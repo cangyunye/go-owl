@@ -2,6 +2,7 @@ export function renderExec(render, navigate, user, api, shell) {
   let allNodes = [];
   let selectedNodes = new Set();
   let wsCleanup = null;
+  let reconcileTimer = null;   // 执行期按 record 拉取终态的对账兜底定时器
   let currentTaskIDs = [];
   let currentTasks = [];
   let currentOpID = '';
@@ -683,6 +684,35 @@ export function renderExec(render, navigate, user, api, shell) {
       const finished = new Set();
       receivedLines = {};
       taskUpdates = {};
+      const isTerminal = s => s === 'completed' || s === 'failed' || s === 'cancelled';
+      const stopReconcile = () => {
+        if (reconcileTimer) { clearInterval(reconcileTimer); reconcileTimer = null; }
+      };
+      // finalize：收齐全部节点终态后收尾——对账回填、日志下载区、关 WS、停轮询
+      const finalize = () => {
+        stopReconcile();
+        const updates = currentTaskIDs.map(id => taskUpdates[id]).filter(Boolean);
+        const incomplete = updates.some(u => outputLineCount(u.output) > (receivedLines[u.id] || 0));
+        if (incomplete) {
+          rebuildTerminalFromRecords(updates);
+        } else {
+          appendTerminal('— 全部任务已结束，可在任务历史中查看输出 —', 'ts');
+        }
+        renderLogDownloads();
+        if (wsCleanup) wsCleanup.close();
+      };
+      const markFinished = (t) => {
+        taskUpdates[t.id] = t;
+        if (finished.has(t.id)) return;
+        finished.add(t.id);
+        if (t.status === 'completed') {
+          appendTerminal(isSingle ? '✓ 执行完成' : `[${esc(t.node_id)}] ✓ 完成`, 'ok');
+        } else if (t.status === 'failed' || t.status === 'cancelled') {
+          appendTerminal(isSingle ? `✗ ${t.status === 'cancelled' ? '已取消' : '执行失败'}` : `[${esc(t.node_id)}] ✗ ${t.status === 'cancelled' ? '已取消' : '执行失败'}`, 'err');
+        }
+        if (finished.size >= currentTaskIDs.length) finalize();
+      };
+
       wsCleanup = api.connectWebSocket(msg => {
         if (msg.type === 'task_output') {
           const t = msg.data;
@@ -693,28 +723,23 @@ export function renderExec(render, navigate, user, api, shell) {
         } else if (msg.type === 'task_update') {
           const t = msg.data;
           if (!t || !currentTaskIDs.includes(t.id)) return;
-          taskUpdates[t.id] = t;
-          if (finished.has(t.id)) return;
-          finished.add(t.id);
-          if (t.status === 'completed') {
-            appendTerminal(isSingle ? '✓ 执行完成' : `[${esc(t.node_id)}] ✓ 完成`, 'ok');
-          } else if (t.status === 'failed' || t.status === 'cancelled') {
-            appendTerminal(isSingle ? `✗ ${t.status === 'cancelled' ? '已取消' : '执行失败'}` : `[${esc(t.node_id)}] ✗ ${t.status === 'cancelled' ? '已取消' : '执行失败'}`, 'err');
-          }
-          if (finished.size >= currentTaskIDs.length) {
-            // 收齐终态：与任务记录对账，实时流缺行时用记录里的全量输出重建终端
-            const updates = currentTaskIDs.map(id => taskUpdates[id]).filter(Boolean);
-            const incomplete = updates.some(u => outputLineCount(u.output) > (receivedLines[u.id] || 0));
-            if (incomplete) {
-              rebuildTerminalFromRecords(updates);
-            } else {
-              appendTerminal('— 全部任务已结束，可在任务历史中查看输出 —', 'ts');
-            }
-            renderLogDownloads();
-            if (wsCleanup) wsCleanup.close();
-          }
+          markFinished(t);
         }
       });
+
+      // 对账兜底：WS 终态消息可能落在断线窗口内永久丢失（并行多节点时某个
+      // 节点会一直显示"未完成"），定期按 record 拉取任务终态补齐并收敛收尾。
+      const reconcile = async () => {
+        if (!currentOpID || finished.size >= currentTaskIDs.length) { stopReconcile(); return; }
+        try {
+          const res = await api.tasks({ record_id: currentOpID, page_size: 100 });
+          (res.data || []).forEach(t => {
+            if (currentTaskIDs.includes(t.id) && isTerminal(t.status)) markFinished(t);
+          });
+        } catch { /* 拉取失败下个周期重试 */ }
+      };
+      stopReconcile();
+      reconcileTimer = setInterval(reconcile, 3000);
     } catch (e) {
       appendTerminal('✗ 执行失败: ' + esc(e.message || '未知错误'), 'err');
     }
@@ -1038,5 +1063,11 @@ free -m</textarea>
         document.getElementById('retry-max-interval').disabled = this.checked;
       });
     }
+
+    // 离开页面时清理长连接与对账定时器
+    return () => {
+      if (wsCleanup) { wsCleanup.close(); wsCleanup = null; }
+      if (reconcileTimer) { clearInterval(reconcileTimer); reconcileTimer = null; }
+    };
   });
 }

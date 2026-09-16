@@ -130,6 +130,32 @@ func (s *TaskStore) List(ctx context.Context, limit, offset int) ([]*Task, int, 
 // 传输任务详情列表必须用它：tasks 表由命令执行/监控等共享，若先取全量
 // 最新 N 条再在内存里过滤，前缀外的任务一多就会把目标前缀的任务完全
 // 挤出结果（列表间歇性变空）。
+// ListByRecord 返回一次提交(record)下的全部任务。
+// 执行页用它做终态对账兜底：WS 消息可能在断线窗口丢失，按 record 一次性
+// 拉取全部任务状态，避免按节点发 N 次请求。
+func (s *TaskStore) ListByRecord(ctx context.Context, recordID string) ([]*Task, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at
+		FROM tasks WHERE record_id = ? ORDER BY created_at`, recordID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tasks := make([]*Task, 0)
+	for rows.Next() {
+		t := &Task{}
+		var startedAt, completedAt sql.NullTime
+		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
+			continue
+		}
+		if startedAt.Valid { t.StartedAt = &startedAt.Time }
+		if completedAt.Valid { t.CompletedAt = &completedAt.Time }
+		tasks = append(tasks, t)
+	}
+	return tasks, nil
+}
+
 func (s *TaskStore) ListByCommandPrefix(ctx context.Context, prefix string, limit, offset int) ([]*Task, int, error) {
 	var total int
 	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE command LIKE ?`, prefix+"%").Scan(&total)
