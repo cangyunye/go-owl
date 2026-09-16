@@ -2159,6 +2159,7 @@ tr:hover td { background: var(--surface-2); }
 .yaml-preview .yaml-key { color: var(--accent); }
 .yaml-preview .yaml-str { color: var(--success); }
 .yaml-preview .yaml-bool { color: var(--warn); }
+.yaml-preview .yaml-num { color: var(--info); }
 .yaml-preview .yaml-comment { color: var(--muted); }
 
 /* ================================================================
@@ -4376,3 +4377,214 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   padding-right: 8px;
 }
 
+/* ================================================================
+   PLAYBOOKS — 主从分栏 + 工具栏 + 运行进度 + 三步向导
+   ================================================================ */
+.pb-layout {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 520px;
+  min-width: 0;
+  align-items: stretch;
+}
+.pb-master {
+  flex: 1.15;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pb-detail-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.pb-detail-col::-webkit-scrollbar { width: 6px; }
+.pb-detail-col::-webkit-scrollbar-track { background: transparent; }
+.pb-detail-col::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.pb-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--accent) 4%, var(--surface));
+  flex-shrink: 0;
+}
+.pb-toolbar-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pb-title {
+  margin: 0;
+  font: 600 var(--fs-md)/1 var(--font-display);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pb-title .count {
+  font: 600 var(--fs-xs)/1 var(--font-mono);
+  color: var(--muted);
+  background: var(--surface-2);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.pb-lib-row .path-bar { width: 100%; }
+.pb-list-body { flex: 1; min-height: 0; overflow-y: auto; }
+.pb-list-body::-webkit-scrollbar { width: 6px; }
+.pb-list-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.pb-list-body .playbook-grid {
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+.data-table tr.playbook-row.selected td { background: var(--surface-active); }
+.playbook-card.selected {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 6%, var(--surface));
+}
+.pb-search { position: relative; flex: 1; min-width: 150px; max-width: 300px; }
+.pb-search > svg {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.pb-search input { padding-left: 28px; background: var(--bg); }
+/* 分类面板彩色圆点：挂 tag-rN 后由 --tag-h/--tag-c 取组色（"全部"仍用 accent） */
+.panel-item[class*="tag-r"] .dot { background: oklch(62% var(--tag-c) var(--tag-h)); }
+.pb-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px 20px;
+}
+/* 运行详情进度条 + 仅看失败筛选 */
+.run-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.run-progress {
+  flex: 1;
+  min-width: 120px;
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.run-progress i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+.run-failonly {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.run-failonly input { width: auto; accent-color: var(--accent); margin: 0; }
+/* 三步向导：可点击步骤条 */
+.wiz-steps { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; margin-bottom: 16px; }
+.wiz-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: 500 var(--fs-xs)/1 var(--font-body);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.wiz-step:hover { background: var(--surface-2); color: var(--fg); }
+.wiz-step.active { color: var(--fg); }
+.wiz-step.done .step-dot { background: var(--success); color: #fff; }
+.wiz-arrow { color: var(--muted); font-size: var(--fs-xs); }
+.cp-subtitle {
+  font: 600 var(--fs-sm)/1 var(--font-display);
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+/* 任务卡：拖拽排序 + 专属字段 */
+.cp-task-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  background: var(--surface);
+}
+.cp-task-card.dragging { opacity: 0.45; }
+.cp-task-card.drag-over { border-color: var(--accent); }
+.cp-task-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+.cp-task-body {
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+.cp-field { display: flex; flex-direction: column; gap: 4px; }
+.cp-field > label { font-size: var(--fs-xs); color: var(--muted); }
+.cp-field-bool { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; }
+.drag-handle {
+  cursor: grab;
+  color: var(--muted);
+  font-size: var(--fs-md);
+  line-height: 1;
+  user-select: none;
+}
+/* 通用 key/value 行与描边删除按钮（向导变量 / 运行变量共用） */
+.kv-row { display: flex; gap: 8px; align-items: center; }
+.kv-row input { min-width: 0; }
+.btn-outline-danger {
+  background: none;
+  border: 1px solid color-mix(in oklch, var(--danger) 45%, transparent);
+  color: var(--danger);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  padding: 3px 8px;
+  font: 500 var(--fs-xs)/1.4 var(--font-body);
+  white-space: nowrap;
+}
+.btn-outline-danger:hover { background: color-mix(in oklch, var(--danger) 12%, transparent); }
+.lbl-hint { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
+/* 运行弹窗中转站紧凑行 */
+.stg-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: var(--fs-xs);
+}
+.stg-row:last-child { border-bottom: none; }
+.stg-row .stg-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 1024px) {
+  .pb-layout { flex-direction: column; min-height: 0; }
+  .pb-list-body { max-height: 45vh; }
+  .pb-detail-col { overflow: visible; }
+}
