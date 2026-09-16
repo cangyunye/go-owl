@@ -343,7 +343,7 @@ func (e *WebExecutor) TransferFile(ctx context.Context, params ai2.TransferFileP
 			sb.WriteString(fmt.Sprintf("✗ [%s] %v\n", nid, err))
 			continue
 		}
-		err = sftpTransfer(info, params.SourceFile, params.DestDir, "push", opts)
+		skipped, err := sftpTransfer(info, params.SourceFile, params.DestDir, "push", opts)
 		ok := err == nil
 		e.transferRecordStore.UpdateNodeResult(ctx, rec.ID, ok)
 		if ok {
@@ -359,6 +359,9 @@ func (e *WebExecutor) TransferFile(ctx context.Context, params ai2.TransferFileP
 		mark := "✓"
 		if !ok {
 			mark = "✗"
+		}
+		if skipped {
+			errMsg = "跳过：目标文件已存在且为最新（断点续传）"
 		}
 		sb.WriteString(fmt.Sprintf("%s [%s] %s\n", mark, nid, errMsg))
 	}

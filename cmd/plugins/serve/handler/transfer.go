@@ -185,24 +185,32 @@ func (h *TransferHandler) submit(c *gin.Context, req *transferRequest) {
 	c.JSON(http.StatusAccepted, gin.H{"record_id": transferRec.ID, "transfers": results})
 }
 
+// transferOutcome 依据单节点传输结果推导任务状态与任务输出。
+// skipped 表示断点续传发现目标已不小于源、未做拷贝——输出必须如实写明跳过原因，
+// 否则用户会看到传输"秒完成"却以为发生了完整拷贝。
+func transferOutcome(err error, skipped bool, src, dst string) (store.TaskStatus, string) {
+	if err != nil {
+		return store.TaskStatusFailed, err.Error()
+	}
+	if skipped {
+		return store.TaskStatusCompleted, "skipped: destination already up to date (resume)"
+	}
+	return store.TaskStatusCompleted, fmt.Sprintf("transfer %s -> %s completed", src, dst)
+}
+
 func (h *TransferHandler) runTransfer(nodeID, src, dst, dir, recordID, taskID string, info *nodeSSHInfo, opts transferOptions) {
 	bg := context.Background()
-	err := sftpTransfer(info, src, dst, dir, opts)
-	taskStatus := store.TaskStatusCompleted
-	errMsg := ""
-	if err != nil {
-		taskStatus = store.TaskStatusFailed
-		errMsg = err.Error()
-	}
-	output := errMsg
-	if output == "" {
-		output = fmt.Sprintf("transfer %s -> %s completed", src, dst)
-	}
+	skipped, err := sftpTransfer(info, src, dst, dir, opts)
+	taskStatus, output := transferOutcome(err, skipped, src, dst)
 	h.task.UpdateStatus(bg, taskID, taskStatus, output, nil)
 	h.recordStore.UpdateNodeResult(bg, recordID, err == nil)
 	ftStatus := "completed"
 	if err != nil {
 		ftStatus = "failed"
+	}
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
 	}
 	ft := &store.FileTransfer{TaskID: recordID, NodeID: nodeID, FileName: filepath.Base(src), TransferType: dir, Status: ftStatus, Error: errMsg, CreatedAt: time.Now().UTC()}
 	if e := h.History.RecordFileTransfer(bg, ft); e != nil {
@@ -261,10 +269,12 @@ func dialSFTP(info *nodeSSHInfo) (*sftp.Client, *ssh.Client, error) {
 	return sftpClient, sshClient, nil
 }
 
-func sftpTransfer(info *nodeSSHInfo, src, dst, direction string, opts transferOptions) error {
+// sftpTransfer 执行单节点传输；skipped=true 表示断点续传发现目标已不小于源，
+// 未做任何拷贝（需要向用户如实呈现"跳过"而不是伪装成成功拷贝）。
+func sftpTransfer(info *nodeSSHInfo, src, dst, direction string, opts transferOptions) (bool, error) {
 	sftpClient, sshClient, err := dialSFTP(info)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer sshClient.Close()
 	defer sftpClient.Close()
@@ -294,15 +304,15 @@ func resolveLocalDest(dst, base string) string {
 	return dst
 }
 
-func sftpPush(client *sftp.Client, src, dst string, opts transferOptions) error {
+func sftpPush(client *sftp.Client, src, dst string, opts transferOptions) (bool, error) {
 	srcFile, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("open local: %w", err)
+		return false, fmt.Errorf("open local: %w", err)
 	}
 	defer srcFile.Close()
 	srcInfo, err := srcFile.Stat()
 	if err != nil {
-		return fmt.Errorf("stat local: %w", err)
+		return false, fmt.Errorf("stat local: %w", err)
 	}
 	srcSize := srcInfo.Size()
 
@@ -319,46 +329,46 @@ func sftpPush(client *sftp.Client, src, dst string, opts transferOptions) error 
 			if opts.Mode != 0 {
 				_ = client.Chmod(remotePath, opts.Mode)
 			}
-			return nil
+			return true, nil
 		}
 		dstFile, err = client.OpenFile(remotePath, os.O_WRONLY|os.O_APPEND)
 		if err != nil {
-			return fmt.Errorf("open remote for resume: %w", err)
+			return false, fmt.Errorf("open remote for resume: %w", err)
 		}
 		if _, err := srcFile.Seek(rs, io.SeekStart); err != nil {
 			dstFile.Close()
-			return fmt.Errorf("seek local: %w", err)
+			return false, fmt.Errorf("seek local: %w", err)
 		}
 	case exists && !opts.Overwrite:
-		return fmt.Errorf("remote file exists: %s (enable overwrite)", remotePath)
+		return false, fmt.Errorf("remote file exists: %s (enable overwrite)", remotePath)
 	default:
 		dstFile, err = client.Create(remotePath)
 		if err != nil {
-			return fmt.Errorf("create remote: %w", err)
+			return false, fmt.Errorf("create remote: %w", err)
 		}
 	}
 	defer dstFile.Close()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("copy: %w", err)
+		return false, fmt.Errorf("copy: %w", err)
 	}
 	if opts.Mode != 0 {
 		if err := client.Chmod(remotePath, opts.Mode); err != nil {
-			return fmt.Errorf("chmod: %w", err)
+			return false, fmt.Errorf("chmod: %w", err)
 		}
 	}
-	return nil
+	return false, nil
 }
 
-func sftpPull(client *sftp.Client, src, dst string, opts transferOptions) error {
+func sftpPull(client *sftp.Client, src, dst string, opts transferOptions) (bool, error) {
 	srcFile, err := client.Open(src)
 	if err != nil {
-		return fmt.Errorf("open remote: %w", err)
+		return false, fmt.Errorf("open remote: %w", err)
 	}
 	defer srcFile.Close()
 	srcInfo, err := srcFile.Stat()
 	if err != nil {
-		return fmt.Errorf("stat remote: %w", err)
+		return false, fmt.Errorf("stat remote: %w", err)
 	}
 	srcSize := srcInfo.Size()
 
@@ -375,35 +385,35 @@ func sftpPull(client *sftp.Client, src, dst string, opts transferOptions) error 
 			if opts.Mode != 0 {
 				_ = os.Chmod(localPath, opts.Mode)
 			}
-			return nil
+			return true, nil
 		}
 		dstFile, err = os.OpenFile(localPath, os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			return fmt.Errorf("open local for resume: %w", err)
+			return false, fmt.Errorf("open local for resume: %w", err)
 		}
 		if _, err := srcFile.Seek(ls, io.SeekStart); err != nil {
 			dstFile.Close()
-			return fmt.Errorf("seek remote: %w", err)
+			return false, fmt.Errorf("seek remote: %w", err)
 		}
 	case exists && !opts.Overwrite:
-		return fmt.Errorf("local file exists: %s (enable overwrite)", localPath)
+		return false, fmt.Errorf("local file exists: %s (enable overwrite)", localPath)
 	default:
 		dstFile, err = os.Create(localPath)
 		if err != nil {
-			return fmt.Errorf("create local: %w", err)
+			return false, fmt.Errorf("create local: %w", err)
 		}
 	}
 	defer dstFile.Close()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("copy: %w", err)
+		return false, fmt.Errorf("copy: %w", err)
 	}
 	if opts.Mode != 0 {
 		if err := os.Chmod(localPath, opts.Mode); err != nil {
-			return fmt.Errorf("chmod: %w", err)
+			return false, fmt.Errorf("chmod: %w", err)
 		}
 	}
-	return nil
+	return false, nil
 }
 
 func (h *TransferHandler) List(c *gin.Context) {

@@ -124,6 +124,23 @@ func TestFilesJS_TransferSafetyConfirmations(t *testing.T) {
 		"files.js must confirm before transferring to more than 50 nodes")
 }
 
+// 传输记录展示必须能区分同名文件的新旧记录，且提交≠完成：
+// - 记录行用绝对时间（相对时间每 5s 轮询都会跳动，旧记录看起来像在被刷新）
+// - 记录行带方向徽标（上传/下载）
+// - 批量传输提交后不得声称"完成"（HTTP 202 只代表任务已排队）
+func TestFilesJS_TransferRecordClarity(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/files.js")
+
+	assert.True(t, strings.Contains(src, "fmtTime(r.created_at)"),
+		"record rows must show absolute creation time (ticking relative time makes old rows look refreshed)")
+	assert.True(t, strings.Contains(src, "r.direction === 'pull'"),
+		"record rows must render a direction badge so same-name records are distinguishable")
+	assert.False(t, strings.Contains(src, "批量传输完成"),
+		"batch transfer must not claim completion right after submit (202 means queued, not finished)")
+	assert.True(t, strings.Contains(src, "后台进行"),
+		"batch submit message must point users to the transfer records for progress")
+}
+
 func TestExecJS_ShortcutBar(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

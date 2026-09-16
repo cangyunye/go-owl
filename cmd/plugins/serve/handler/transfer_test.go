@@ -286,7 +286,8 @@ func TestSFTPTransfer_PushE2E(t *testing.T) {
 	defer remoteCleanup(info, remotePath)
 
 	opts := transferOptions{Overwrite: true, Mode: 0600}
-	require.NoError(t, sftpTransfer(info, src, remotePath, "push", opts))
+	_, err2 := sftpTransfer(info, src, remotePath, "push", opts)
+	require.NoError(t, err2)
 
 	c, sc, err := dialSFTP(info)
 	require.NoError(t, err)
@@ -313,13 +314,15 @@ func TestSFTPTransfer_OverwriteE2E(t *testing.T) {
 	defer remoteCleanup(info, remotePath)
 
 	require.NoError(t, os.WriteFile(src, []byte("v1"), 0644))
-	require.NoError(t, sftpTransfer(info, src, remotePath, "push", transferOptions{Overwrite: true}))
+	_, err := sftpTransfer(info, src, remotePath, "push", transferOptions{Overwrite: true})
+	require.NoError(t, err)
 
 	require.NoError(t, os.WriteFile(src, []byte("v2-longer-content"), 0644))
-	err := sftpTransfer(info, src, remotePath, "push", transferOptions{Overwrite: false})
+	_, err = sftpTransfer(info, src, remotePath, "push", transferOptions{Overwrite: false})
 	assert.Error(t, err, "expected error when overwrite disabled and file exists")
 
-	require.NoError(t, sftpTransfer(info, src, remotePath, "push", transferOptions{Overwrite: true}))
+	_, err = sftpTransfer(info, src, remotePath, "push", transferOptions{Overwrite: true})
+	require.NoError(t, err)
 
 	c, sc, err := dialSFTP(info)
 	require.NoError(t, err)
@@ -354,7 +357,8 @@ func TestSFTPTransfer_ResumeE2E(t *testing.T) {
 	c.Close()
 	sc.Close()
 
-	require.NoError(t, sftpTransfer(info, src, remotePath, "push", transferOptions{Resume: true}))
+	_, err = sftpTransfer(info, src, remotePath, "push", transferOptions{Resume: true})
+	require.NoError(t, err)
 
 	c2, sc2, err := dialSFTP(info)
 	require.NoError(t, err)

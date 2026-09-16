@@ -276,7 +276,7 @@ export function renderFiles(render, navigate, user, api, shell) {
           ${statusIcon(t.status)}
           <div class="task-info">
             <div class="task-name">${esc(t.command || '')}</div>
-            <div class="task-meta">节点: ${esc(t.node_id)} · ${t.created_at ? timeAgo(t.created_at) : ''}</div>
+            <div class="task-meta">节点: ${esc(t.node_id)} · ${t.created_at ? fmtTime(t.created_at) : ''}</div>
           </div>
           <span class="task-time">${statusText(t.status)}</span>
         </li>`).join('');
@@ -288,17 +288,21 @@ export function renderFiles(render, navigate, user, api, shell) {
       list.innerHTML = '<li class="task-item"><div class="task-info"><div class="task-name" style="color:var(--muted)">暂无传输记录</div></div></li>';
     } else {
       list.innerHTML = transferRecords.map(r => {
-        const stats = r.success_count + r.failed_count > 0
-          ? ` · ${r.success_count}/${r.node_count} 成功`
-          : ` · ${r.node_count} 节点`;
+        const dir = r.direction === 'pull' ? '下载' : '上传';
+        const done = r.success_count + r.failed_count;
+        const running = r.status === 'running' || r.status === 'pending';
+        const stats = running
+          ? ` · 进度 ${done}/${r.node_count}`
+          : (done > 0 ? ` · ${r.success_count}/${r.node_count} 成功` : ` · ${r.node_count} 节点`);
+        const name = r.file_source.split('/').pop();
         return `<li class="task-item" data-record-id="${esc(r.id)}">
           ${recordStatusIcon(r.status)}
           <div class="task-info">
-            <div class="task-name">${esc(r.file_source.split('/').pop())}</div>
-            <div class="task-meta">${esc(r.dest_path)}${stats} · ${r.created_at ? timeAgo(r.created_at) : ''}</div>
+            <div class="task-name"><span class="tag ${r.direction === 'pull' ? 'tag-blue' : 'tag-green'}" style="margin-right:5px">${dir}</span>${esc(name)}</div>
+            <div class="task-meta">${esc(r.dest_path)}${stats} · ${r.created_at ? fmtTime(r.created_at) : ''}</div>
           </div>
           <span class="task-time">${recordStatusText(r.status)}</span>
-          <button class="btn btn-ghost btn-icon btn-sm transfer-rerun-btn" data-id="${esc(r.id)}" data-name="${esc(r.file_source.split('/').pop())}" title="重新执行" aria-label="重新执行">
+          <button class="btn btn-ghost btn-icon btn-sm transfer-rerun-btn" data-id="${esc(r.id)}" data-name="${dir}·${esc(name)}" title="重新执行" aria-label="重新执行">
             <svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg>
           </button>
         </li>`;
@@ -902,7 +906,7 @@ document.getElementById('staging-multi-btn').addEventListener('click', function(
         fail++;
       }
     }
-    alert(`批量传输完成：${success} 成功, ${fail} 失败`);
+    alert(`已提交 ${success} 个传输任务${fail > 0 ? `，${fail} 个提交失败` : ''}。传输在后台进行，请在传输记录中查看进度`);
     stagingSelected.clear();
     stagingMultiSelect = false;
     document.getElementById('staging-multi-btn').classList.remove('active');
