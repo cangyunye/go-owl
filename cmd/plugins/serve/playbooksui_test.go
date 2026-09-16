@@ -22,7 +22,7 @@ func TestPlaybooksUI_RunStatusBadgePalette(t *testing.T) {
 	}
 }
 
-// 主从分栏：左侧剧本列表、右侧详情+运行历史，替代旧的四卡纵叠+详情弹窗。
+// 主从分栏：左侧剧本列表、右侧详情，替代旧的四卡纵叠+详情弹窗。
 // Library Path 收进主栏工具栏的折叠行，不再独占一张 section-card。
 func TestPlaybooksUI_MasterDetailLayout(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/playbooks.js")
@@ -40,6 +40,25 @@ func TestPlaybooksUI_MasterDetailLayout(t *testing.T) {
 		"library path must live in a collapsible toolbar row, not its own section card")
 	assert.True(t, strings.Contains(css, ".pb-layout"),
 		"app.css must define the pb-layout two-column grid")
+}
+
+// 运行历史/运行详情必须放在 pb-layout 分栏之外全宽渲染：右栏分到的宽度
+// （约 560px）放不下运行详情的 meta 行 + 6 列步骤结果表，表头会竖排折行、
+// 输出列被挤成一条缝。
+func TestPlaybooksUI_RunsSectionFullWidth(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/playbooks.js")
+
+	idxDetailCol := strings.LastIndex(src, "pb-detail-col")
+	idxRunsCard := strings.Index(src, `id="pb-runs-card"`)
+	idxRunDetail := strings.Index(src, `id="run-detail-card"`)
+
+	assert.Contains(t, src, `id="pb-runs-card"`, "run history must be its own full-width section card")
+	assert.Greater(t, idxRunsCard, idxDetailCol,
+		"run history card must be rendered after (outside) the pb-detail-col column")
+	assert.Greater(t, idxRunDetail, idxRunsCard,
+		"run detail card must follow the history card at full width")
+	assert.False(t, strings.Contains(src, "右栏：详情 + 运行历史"),
+		"the right column must no longer stack the run history/detail cards")
 }
 
 // 视图切换：表格 ↔ 卡片（.seg 切换，选择持久化到 localStorage）。

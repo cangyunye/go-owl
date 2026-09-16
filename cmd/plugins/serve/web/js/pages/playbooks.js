@@ -463,7 +463,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       <div class="run-meta">
         <span class="run-meta-item"><span class="rm-label">剧本</span><strong title="${esc(run.playbook_name)}">${esc(run.playbook_name)}</strong></span>
         <span class="run-meta-item"><span class="rm-label">状态</span><span class="status-badge status-${esc(run.status)}">${esc(run.status)}</span></span>
-        <span class="run-meta-item"><span class="rm-label">目标节点</span><strong class="cell-ellipsis" style="max-width:320px" title="${esc(nodes.join(', '))}">${esc(nodes.join(', ') || '—')}</strong></span>
+        <span class="run-meta-item"><span class="rm-label">目标节点</span><strong class="cell-ellipsis" style="max-width:480px" title="${esc(nodes.join(', '))}">${esc(nodes.join(', ') || '—')}</strong></span>
         <span class="run-meta-item"><span class="rm-label">开始时间</span><span class="cell-muted">${fmtTime(run.created_at)}</span></span>
         ${run.error ? `<span class="run-meta-item" style="color:var(--danger)">错误：${esc(run.error)}</span>` : ''}
       </div>
@@ -1108,43 +1108,45 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         </div>
       </div>
 
-      <!-- 右栏：详情 + 运行历史 + 运行详情 -->
+      <!-- 右栏：剧本详情 -->
       <div class="pb-detail-col">
         <div class="section-card" id="pb-detail-card">
           ${emptyView('scroll', '选择一个剧本', '点击左侧列表查看剧本详情、任务与 YAML 源文件')}
         </div>
+      </div>
+    </div>
 
-        <div class="section-card">
-          <div class="panel-head">
-            <div style="flex:1;min-width:0">
-              <h3 class="panel-title">运行历史</h3>
-              <div class="panel-desc">每次剧本执行的记录，点击「查看」看分步结果</div>
-            </div>
-          </div>
-          <div class="table-scroll">
-            <table class="data-table">
-              <thead><tr><th>剧本</th><th>目标节点</th><th>状态</th><th>开始时间</th><th></th></tr></thead>
-              <tbody id="playbook-runs-list"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
-            </table>
-          </div>
-          <div class="panel-foot" id="runs-pagination" style="justify-content:flex-end">
-            <span class="field-hint" id="runs-page-info">共 0 条 · 第 1/1 页</span>
-            <span style="flex:1"></span>
-            <button class="btn btn-ghost btn-sm" id="runs-prev-btn" disabled>◀ 上一页</button>
-            <button class="btn btn-ghost btn-sm" id="runs-next-btn" disabled>下一页 ▶</button>
-          </div>
-        </div>
-
-        <div class="section-card" id="run-detail-card">
-          <div class="panel-head">
-            <div style="flex:1;min-width:0">
-              <h3 class="panel-title">运行详情</h3>
-              <div class="panel-desc">选中运行记录后展示分步执行结果</div>
-            </div>
-          </div>
-          <div class="panel-body" id="run-detail" data-run-id="" style="padding:16px 20px"><p class="empty-state">选择一个运行记录查看详情</p></div>
+    <!-- 运行历史/运行详情：pb-layout 分栏之外全宽渲染。右栏分到的半宽放不下
+         运行详情的 meta 行 + 6 列步骤结果表（表头竖排、输出列成缝） -->
+    <div class="section-card" id="pb-runs-card">
+      <div class="panel-head">
+        <div style="flex:1;min-width:0">
+          <h3 class="panel-title">运行历史</h3>
+          <div class="panel-desc">每次剧本执行的记录，点击「查看」看分步结果</div>
         </div>
       </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>剧本</th><th>目标节点</th><th>状态</th><th>开始时间</th><th></th></tr></thead>
+          <tbody id="playbook-runs-list"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="panel-foot" id="runs-pagination" style="justify-content:flex-end">
+        <span class="field-hint" id="runs-page-info">共 0 条 · 第 1/1 页</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-ghost btn-sm" id="runs-prev-btn" disabled>◀ 上一页</button>
+        <button class="btn btn-ghost btn-sm" id="runs-next-btn" disabled>下一页 ▶</button>
+      </div>
+    </div>
+
+    <div class="section-card" id="run-detail-card">
+      <div class="panel-head">
+        <div style="flex:1;min-width:0">
+          <h3 class="panel-title">运行详情</h3>
+          <div class="panel-desc">选中运行记录后展示分步执行结果</div>
+        </div>
+      </div>
+      <div class="panel-body" id="run-detail" data-run-id="" style="padding:16px 24px"><p class="empty-state">选择一个运行记录查看详情</p></div>
     </div>
 
     <input type="file" id="upload-playbook-file" accept=".yaml,.yml" style="display:none">
@@ -1551,6 +1553,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       api.playbookRun(runId).then(run => {
         document.getElementById('run-detail').dataset.runId = runId;
         showRunDetail(run);
+        const card = document.getElementById('run-detail-card');
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }).catch(err => showRunDetailError(err));
     }
 
