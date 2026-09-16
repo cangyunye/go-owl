@@ -4335,3 +4335,11 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   background: color-mix(in oklch, var(--danger) 18%, var(--surface));
   color: var(--danger);
 }
+
+/* 行内窄下拉恢复原生箭头：主题覆盖的三角背景在 padding-right 只有 8px 的
+   窄下拉里会压住选中文字（#monitor-config 特异性压过 html[data-theme]） */
+#monitor-config .cfg-form-row select {
+  appearance: auto;
+  background-image: none;
+  padding-right: 8px;
+}
