@@ -237,26 +237,19 @@ export function renderFiles(render, navigate, user, api, shell) {
     return '<span class="status-pulse" style="background:var(--warn)"></span>';
   }
 
+  // renderTransfers 只渲染列表内容；tab 栏在页面 HTML 中静态渲染、点击委托
+  // 只绑定一次——轮询/输入触发的整段重建会替换按钮元素并吞掉重建窗口内的
+  // 点击，表现为 tab"自己左右乱跳"、点击不灵。
+  let lastTransfersRender = '';
   function renderTransfers() {
     const list = document.getElementById('transfer-list');
-    const tabs = document.getElementById('transfer-tabs');
     if (!list) return;
-    if (tabs) {
-      tabs.innerHTML = `
-        <div class="seg">
-          <button class="${transferRecordTab === 'list' ? 'active' : ''}" data-tab="list">传输记录</button>
-          <button class="${transferRecordTab === 'tasks' ? 'active' : ''}" data-tab="tasks">任务详情</button>
-        </div>
-      `;
-      tabs.querySelectorAll('.seg button').forEach(btn => {
-        btn.addEventListener('click', function() {
-          tabs.querySelectorAll('.seg button').forEach(b => b.classList.remove('active'));
-          this.classList.add('active');
-          transferRecordTab = this.dataset.tab;
-          renderTransfers();
-        });
-      });
-    }
+    const fingerprint = JSON.stringify([
+      transferRecordTab, transferFilter, transferSearch, startDate, endDate,
+      transferRecordTab === 'tasks' ? transfers : transferRecords,
+    ]);
+    if (fingerprint === lastTransfersRender) return;
+    lastTransfersRender = fingerprint;
 
     if (transferRecordTab === 'tasks') {
       let filtered = [...transfers];
@@ -695,7 +688,12 @@ export function renderFiles(render, navigate, user, api, shell) {
         <div class="card">
           <div class="card-header"><h3>传输记录</h3></div>
           <div class="card-body" style="padding:8px 14px 0">
-            <div style="display:flex;gap:6px;margin-bottom:8px" id="transfer-tabs"></div>
+            <div style="display:flex;gap:6px;margin-bottom:8px" id="transfer-tabs">
+              <div class="seg">
+                <button class="active" data-tab="list">传输记录</button>
+                <button data-tab="tasks">任务详情</button>
+              </div>
+            </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
               <div class="seg">
                 <button class="active" data-tf="all">全部</button>
@@ -817,6 +815,17 @@ export function renderFiles(render, navigate, user, api, shell) {
 
     document.getElementById('transfer-search').addEventListener('input', function() {
       transferSearch = this.value.trim();
+      renderTransfers();
+    });
+
+    // tab 点击委托：tab 栏是静态 DOM，只切状态与 active 类，不重建元素
+    document.getElementById('transfer-tabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('.seg button[data-tab]');
+      if (!btn || btn.classList.contains('active')) return;
+      transferRecordTab = btn.dataset.tab;
+      document.querySelectorAll('#transfer-tabs .seg button').forEach(b => {
+        b.classList.toggle('active', b === btn);
+      });
       renderTransfers();
     });
 

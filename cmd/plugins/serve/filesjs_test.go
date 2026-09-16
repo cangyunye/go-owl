@@ -199,6 +199,19 @@ func TestExecJS_BackfillsMissingOutputOnCompletion(t *testing.T) {
 // 会拖垮页面，并因浏览器消费变慢放大服务端 WS 发送积压。
 // WS 终态消息可能落在断线窗口内丢失（并行多节点时某节点会一直显示未完成）；
 // 执行页必须在批次执行期间按 record 轮询任务终态做对账兜底，并在离开页面时清理。
+// tab 栏只渲染一次、点击委托只绑定一次：轮询/输入触发的整段重建会替换
+// 按钮元素并吞掉落在重建窗口内的点击，表现为 tab"自己左右乱跳"、点击不灵。
+func TestFilesJS_TransferTabsRenderedOnce(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/files.js")
+
+	assert.False(t, strings.Contains(src, "tabs.innerHTML"),
+		"the transfer tab bar must not be rebuilt on poll/filter renders")
+	assert.True(t, strings.Contains(src, `closest('[data-tab]')`) || strings.Contains(src, `closest(".seg button[data-tab]")`) || strings.Contains(src, `closest('.seg button[data-tab]')`),
+		"tab clicks must be resolved via delegation bound once on the tab container")
+	assert.True(t, strings.Contains(src, `data-tab="list"`),
+		"the tab bar must be part of the static page HTML")
+}
+
 func TestExecJS_ReconcilesTaskStatesWhileRunning(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 
