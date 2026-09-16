@@ -24,6 +24,7 @@ type WSHub struct {
 }
 
 type wsClient struct {
+	id     string
 	conn   *websocket.Conn
 	sendCh chan WSMessage
 }
@@ -35,8 +36,10 @@ func NewWSHub() *WSHub {
 }
 
 func (h *WSHub) Subscribe(ctx context.Context, conn *websocket.Conn) {
-	client := &wsClient{conn: conn, sendCh: make(chan WSMessage, 128)}
 	id := fmt.Sprintf("%p", conn)
+	// 512 条缓冲吸收输出洪峰；积压时由 Broadcast 断开客户端（而非丢消息），
+	// 前端 3s 自动重连并按任务记录回填，输出不会缺失。
+	client := &wsClient{id: id, conn: conn, sendCh: make(chan WSMessage, 512)}
 	h.mu.Lock()
 	h.clients[id] = client
 	h.mu.Unlock()
@@ -76,14 +79,24 @@ func (h *WSHub) Unsubscribe(id string) {
 
 func (h *WSHub) Broadcast(msg WSMessage) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
+	var slow []*wsClient
 	for _, client := range h.clients {
 		select {
 		case client.sendCh <- msg:
 		default:
-			// 客户端积压时丢弃，避免阻塞执行 goroutine
+			slow = append(slow, client)
 		}
+	}
+	h.mu.RUnlock()
+
+	// 缓冲积压的客户端断开连接而不是静默丢消息：丢掉的 task_output 行会让
+	// 实时输出永久缺失；断开后前端自动重连，任务终态广播携带全量 output
+	// 供前端回填。（在 RLock 外执行，Unsubscribe 需要写锁。CloseNow 而非
+	// Close：慢消费者不读消息，关闭握手帧没人消费只会白等超时。）
+	for _, client := range slow {
+		log.Printf("ws client %s too slow, disconnecting instead of dropping messages", client.id)
+		client.conn.CloseNow()
+		h.Unsubscribe(client.id)
 	}
 }
 
