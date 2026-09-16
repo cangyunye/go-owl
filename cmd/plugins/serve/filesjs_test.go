@@ -111,6 +111,19 @@ func TestExecJS_SafetyConfirmations(t *testing.T) {
 		"exec.js must confirm before executing on more than 50 nodes")
 }
 
+func TestFilesJS_TransferSafetyConfirmations(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/files.js")
+
+	assert.True(t, strings.Contains(src, "hasTargetFilter()"),
+		"files.js must detect whether any target condition (nodes/groups/labels) is set")
+	assert.True(t, strings.Contains(src, "countTransferTargetNodes()"),
+		"files.js must count the actual transfer target nodes before submitting")
+	assert.True(t, strings.Contains(src, "未选择任何分组/标签"),
+		"files.js must warn when no group/label condition is set (full-scope transfer)")
+	assert.True(t, strings.Contains(src, "targetCount > 50"),
+		"files.js must confirm before transferring to more than 50 nodes")
+}
+
 func TestExecJS_ShortcutBar(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

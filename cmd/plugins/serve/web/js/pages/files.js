@@ -317,6 +317,44 @@ export function renderFiles(render, navigate, user, api, shell) {
     }
   }
 
+  function hasTargetFilter() {
+    return selectedNodes.size > 0 || activeGroups.length > 0 || labelInputs.length > 0;
+  }
+
+  // 统计实际传输目标节点数：已手动选中则直接计数；
+  // 否则按传输 payload 的分组/标签语义(与 /transfer 服务端 SelectIntersect 一致，
+  // 不含状态/搜索框等仅影响预览列表的筛选)查询总数。
+  async function countTransferTargetNodes() {
+    if (selectedNodes.size > 0) return selectedNodes.size;
+    const opts = {};
+    if (activeGroups.length) opts.group = activeGroups.join(',');
+    const labels = labelInputs.map(l => {
+      const i = l.indexOf('=');
+      return i > 0 ? l.slice(0, i) + ':' + l.slice(i + 1) : null;
+    }).filter(Boolean);
+    if (labels.length) opts.label = labels;
+    opts.page = 1;
+    opts.page_size = 1;
+    const res = await api.nodes(opts);
+    return res.meta?.total || 0;
+  }
+
+  // 传输目标防护(与命令执行页一致)：未选任何目标时确认全量传输风险，超过 50 个节点时确认批量影响。
+  async function confirmTransferTargets() {
+    let targetCount = 0;
+    try {
+      targetCount = await countTransferTargetNodes();
+    } catch {}
+    if (!hasTargetFilter()) {
+      const scope = targetCount > 0 ? `全部 ${targetCount} 个节点` : '全部匹配节点';
+      return confirm(`⚠️ 未选择任何分组/标签，也未手动选择节点。\n文件将传输到【${scope}】！\n\n确定要继续吗？`);
+    }
+    if (targetCount > 50) {
+      return confirm(`⚠️ 本次操作将把文件同时传输到 ${targetCount} 个节点，超过 50 个。\n\n确定要继续吗？`);
+    }
+    return true;
+  }
+
   function buildTransferPayload(action, src, dst) {
     const payload = {
       action: action,
@@ -344,6 +382,7 @@ export function renderFiles(render, navigate, user, api, shell) {
     const src = document.getElementById('src-path').value.trim();
     const dst = document.getElementById('dst-path').value.trim();
     if (!src || !dst) { alert('请填写源路径和目标路径'); return; }
+    if (!(await confirmTransferTargets())) return;
     try {
       const res = await api.transfer(buildTransferPayload(action, src, dst));
       if (res.transfers) {
@@ -851,6 +890,7 @@ document.getElementById('staging-multi-btn').addEventListener('click', function(
     const dstInput = document.getElementById('dst-path');
     const dst = dstInput ? dstInput.value.trim() : '';
     if (!dst) { alert('请填写节点路径'); return; }
+    if (!(await confirmTransferTargets())) return;
     const stagingDir = diskInfo ? diskInfo.staging_dir : '';
     let success = 0, fail = 0;
     for (const name of stagingSelected) {

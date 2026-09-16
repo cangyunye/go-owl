@@ -17,3 +17,9 @@ owl-serve
 !cmd/owl-serve/
 .superpowers/
 
+
+# E2E 临时产物（本地验证用，不入库）
+test/e2e-owl.db*
+test/e2e-server.log
+test/e2e-token.txt
+test/e2e_*.png
