@@ -55,6 +55,7 @@ func transferTestSetup(t *testing.T) (*sql.DB, *TransferHandler, *gin.Engine, st
 	auth := r.Group("/api/v1")
 	auth.Use(ah.AuthMiddleware(), ah.RBACMiddleware(model.RoleOperator))
 	auth.POST("/transfer", th.Create)
+	auth.GET("/transfers", th.List)
 	auth.POST("/transfer/records/:id/rerun", th.Rerun)
 	auth.GET("/transfer/records/:id", th.RecordGet)
 
@@ -369,6 +370,35 @@ func TestSFTPTransfer_ResumeE2E(t *testing.T) {
 	data, _ := io.ReadAll(rf)
 	rf.Close()
 	assert.Equal(t, full, string(data))
+}
+
+// 任务详情列表必须在 SQL 层按 transfer: 前缀过滤后再取最新 N 条：
+// 若先取全量最新 50 条再内存过滤，监控/执行任务一多就会把传输任务
+// 完全挤出列表（表现为传输记录突然丢失、过一会儿又闪现回来）。
+func TestTransferList_TransferTasksNotCrowdedOut(t *testing.T) {
+	db, _, router, token := transferTestSetup(t)
+	ts := store.NewTaskStore(db)
+	ctx := t.Context()
+
+	_, err := ts.Create(ctx, "node-1", "transfer:/tmp/a.tar -> /opt/")
+	require.NoError(t, err)
+	for i := 0; i < 60; i++ {
+		_, err := ts.Create(ctx, "node-1", fmt.Sprintf("monitor collect %d", i))
+		require.NoError(t, err)
+	}
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/transfers", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, 200, w.Code)
+	var resp struct {
+		Data []*store.Task `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 1, "60 条更新的一般任务不应把传输任务挤出列表")
+	assert.Contains(t, resp.Data[0].Command, "transfer:")
 }
 
 // Rerun 应按持久化 payload 原样重放(含筛选条件/选项),并生成新记录

@@ -158,6 +158,17 @@ func TestPlaybooksJS_RunHistoryPagination(t *testing.T) {
 		"playbooks.js must render page position info")
 }
 
+// 传输列表轮询(5s)失败时必须保留上一次数据：任何一次请求抖动都把列表
+// 清空，会表现为"传输记录突然丢失显示暂无、下一轮又闪现回来"。
+func TestFilesJS_PollFailureKeepsLastData(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/files.js")
+
+	assert.False(t, strings.Contains(src, "catch { transfers = [];"),
+		"loadTransfers must not wipe transfer data on a transient fetch error")
+	assert.True(t, strings.Contains(src, "loadTransfers"),
+		"files.js must keep the polling loadTransfers flow")
+}
+
 func TestExecJS_ShortcutBar(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

@@ -206,7 +206,11 @@ export function renderFiles(render, navigate, user, api, shell) {
       const [tRes, rRes] = await Promise.all([api.transfers(), api.transferRecords()]);
       transfers = tRes.data || [];
       transferRecords = rRes.data || [];
-    } catch { transfers = []; transferRecords = []; }
+    } catch {
+      // 拉取失败(请求抖动/服务端瞬时错误)时保留上一次数据并跳过本轮渲染，
+      // 否则 5s 轮询会把列表清成"暂无传输"，下一轮成功又闪回来。
+      return;
+    }
     renderTransfers();
   }
 

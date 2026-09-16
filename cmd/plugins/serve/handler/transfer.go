@@ -417,19 +417,14 @@ func sftpPull(client *sftp.Client, src, dst string, opts transferOptions) (bool,
 }
 
 func (h *TransferHandler) List(c *gin.Context) {
-	tasks, _, err := h.task.List(c.Request.Context(), 50, 0)
+	// 必须在 SQL 层按前缀过滤后再取最新 50 条：tasks 表与命令执行/监控共享，
+	// 先取全量再内存过滤会让其它任务把传输任务挤出列表（列表间歇性变空）。
+	tasks, _, err := h.task.ListByCommandPrefix(c.Request.Context(), "transfer:", 50, 0)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "list failed"})
 		return
 	}
-
-	var transfers []*store.Task
-	for _, t := range tasks {
-		if len(t.Command) > 9 && t.Command[:9] == "transfer:" {
-			transfers = append(transfers, t)
-		}
-	}
-	c.JSON(http.StatusOK, gin.H{"data": transfers})
+	c.JSON(http.StatusOK, gin.H{"data": tasks})
 }
 
 func (h *TransferHandler) Records(c *gin.Context) {
