@@ -169,6 +169,19 @@ func TestFilesJS_PollFailureKeepsLastData(t *testing.T) {
 		"files.js must keep the polling loadTransfers flow")
 }
 
+// 节点页分组计数必须按 meta.total 翻页拉全量节点后再统计：
+// 单次超大 page_size 会被服务端钳制到 100，统计只覆盖第一页节点。
+func TestNodesJS_GroupCountsPageThroughAllNodes(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/nodes.js")
+
+	assert.False(t, strings.Contains(src, "page_size: 1000"),
+		"group counts must not rely on a single oversized page request")
+	assert.True(t, strings.Contains(src, "page_size: 100"),
+		"group counts must fetch nodes in pages of 100")
+	assert.True(t, strings.Contains(src, "meta.total"),
+		"group counts must loop pages using meta.total")
+}
+
 func TestExecJS_ShortcutBar(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

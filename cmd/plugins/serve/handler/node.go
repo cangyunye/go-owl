@@ -153,8 +153,13 @@ func (h *NodeHandler) List(c *gin.Context) {
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
+	if pageSize < 1 {
 		pageSize = 20
+	}
+	// 超限钳制到上限而不是回落默认 20：前端分组统计/批量选择按大 page_size
+	// 拉取，回落 20 会让调用方误以为拿到了全量数据（统计只覆盖前 20 个节点）。
+	if pageSize > 100 {
+		pageSize = 100
 	}
 	offset := (page - 1) * pageSize
 

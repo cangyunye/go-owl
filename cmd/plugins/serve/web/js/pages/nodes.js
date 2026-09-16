@@ -64,9 +64,20 @@ export function renderNodes(render, navigate, user, api, shell) {
     if (!force && now - groupCountsAt < 10000) return;
     groupCountsAt = now;
     try {
-      const res = await api.nodes({ page: 1, page_size: 1000 });
+      // 按 meta.total 翻页拉全量节点再计数：单次大 page_size 会被服务端
+      // 钳制到 100，只统计第一页会导致分组计数不正确。
+      const nodes = [];
+      let page = 1;
+      while (page <= 50) {
+        const res = await api.nodes({ page, page_size: 100 });
+        const data = res.data || [];
+        nodes.push(...data);
+        const total = res.meta?.total || 0;
+        if (nodes.length >= total || data.length === 0) break;
+        page++;
+      }
       const counts = {};
-      (res.data || []).forEach(n => (n.groups || []).forEach(g => { counts[g] = (counts[g] || 0) + 1; }));
+      nodes.forEach(n => (n.groups || []).forEach(g => { counts[g] = (counts[g] || 0) + 1; }));
       state.groupCounts = counts;
       document.querySelectorAll('#panelList .group-chip').forEach(chip => {
         const c = counts[chip.dataset.group];
