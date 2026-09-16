@@ -25,6 +25,12 @@ export function renderFiles(render, navigate, user, api, shell) {
   let endDate = '';
   let refreshTimer = null;
   let activeDirection = 'push';
+  // 传输列表分页（服务端分页，20/页）：全量渲染会把"文件中转站"顶出屏幕
+  let transferPageSize = 20;
+  let recordsPage = 1;
+  let recordsTotal = 0;
+  let tasksPage = 1;
+  let tasksTotal = 0;
 
   const saved = sessionStorage.getItem('files_selected_nodes');
   if (saved) {
@@ -203,9 +209,14 @@ export function renderFiles(render, navigate, user, api, shell) {
 
   async function loadTransfers() {
     try {
-      const [tRes, rRes] = await Promise.all([api.transfers(), api.transferRecords()]);
+      const [tRes, rRes] = await Promise.all([
+        api.transfers({ page: tasksPage, page_size: transferPageSize }),
+        api.transferRecords({ page: recordsPage, page_size: transferPageSize }),
+      ]);
       transfers = tRes.data || [];
+      tasksTotal = tRes.meta?.total || 0;
       transferRecords = rRes.data || [];
+      recordsTotal = rRes.meta?.total || 0;
     } catch {
       // 拉取失败(请求抖动/服务端瞬时错误)时保留上一次数据并跳过本轮渲染，
       // 否则 5s 轮询会把列表清成"暂无传输"，下一轮成功又闪回来。
@@ -237,6 +248,53 @@ export function renderFiles(render, navigate, user, api, shell) {
     return '<span class="status-pulse" style="background:var(--warn)"></span>';
   }
 
+  // renderTransferPager 渲染当前 tab 的分页条。内容签名未变时跳过重绘，
+  // 避免和 tab 栏一样出现"重建窗口吞点击"的问题。
+  let lastPagerRender = '';
+  function renderTransferPager() {
+    const box = document.getElementById('transfer-pager');
+    if (!box) return;
+    const isTasks = transferRecordTab === 'tasks';
+    const total = isTasks ? tasksTotal : recordsTotal;
+    const totalPages = Math.max(1, Math.ceil(total / transferPageSize));
+    if ((isTasks ? tasksPage : recordsPage) > totalPages) {
+      if (isTasks) tasksPage = totalPages; else recordsPage = totalPages;
+    }
+    const cur = isTasks ? tasksPage : recordsPage;
+    const sig = `${transferRecordTab}|${cur}|${total}`;
+    if (sig === lastPagerRender) return;
+    lastPagerRender = sig;
+
+    let pages = '';
+    const range = 2;
+    const start = Math.max(1, cur - range);
+    const end = Math.min(totalPages, cur + range);
+    if (start > 1) {
+      pages += `<button class="page-btn" data-tp="1">1</button>`;
+      if (start > 2) pages += `<span class="page-ellipsis">⋯</span>`;
+    }
+    for (let i = start; i <= end; i++) {
+      pages += `<button class="page-btn ${i === cur ? 'active' : ''}" data-tp="${i}">${i}</button>`;
+    }
+    if (end < totalPages) {
+      if (end < totalPages - 1) pages += `<span class="page-ellipsis">⋯</span>`;
+      pages += `<button class="page-btn" data-tp="${totalPages}">${totalPages}</button>`;
+    }
+    box.innerHTML = `
+      <span class="page-info">共 ${total} 条 · 第 ${cur}/${totalPages} 页</span>
+      <button class="page-btn" data-tp="${cur - 1}" ${cur <= 1 ? 'disabled' : ''}>◀</button>
+      ${pages}
+      <button class="page-btn" data-tp="${cur + 1}" ${cur >= totalPages ? 'disabled' : ''}>▶</button>`;
+    box.querySelectorAll('.page-btn[data-tp]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = parseInt(btn.dataset.tp);
+        if (!p || p === cur || p < 1 || p > totalPages) return;
+        if (isTasks) tasksPage = p; else recordsPage = p;
+        loadTransfers();
+      });
+    });
+  }
+
   // renderTransfers 只渲染列表内容；tab 栏在页面 HTML 中静态渲染、点击委托
   // 只绑定一次——轮询/输入触发的整段重建会替换按钮元素并吞掉重建窗口内的
   // 点击，表现为 tab"自己左右乱跳"、点击不灵。
@@ -244,8 +302,10 @@ export function renderFiles(render, navigate, user, api, shell) {
   function renderTransfers() {
     const list = document.getElementById('transfer-list');
     if (!list) return;
+    renderTransferPager();
     const fingerprint = JSON.stringify([
       transferRecordTab, transferFilter, transferSearch, startDate, endDate,
+      transferRecordTab === 'tasks' ? tasksPage : recordsPage,
       transferRecordTab === 'tasks' ? transfers : transferRecords,
     ]);
     if (fingerprint === lastTransfersRender) return;
@@ -712,9 +772,10 @@ export function renderFiles(render, navigate, user, api, shell) {
             </div>
           </div>
           <div class="card-body" style="padding:0">
-            <ul class="task-list" id="transfer-list" style="padding:0 18px">
+            <ul class="task-list transfer-list-scroll" id="transfer-list" style="padding:0 18px">
               <li class="task-item"><div class="task-info"><div class="task-name" style="color:var(--muted)">加载中…</div></div></li>
             </ul>
+            <div class="pagination" id="transfer-pager" style="justify-content:center;padding:6px 14px"></div>
           </div>
         </div>
 

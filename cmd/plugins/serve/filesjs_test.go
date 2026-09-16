@@ -212,6 +212,21 @@ func TestFilesJS_TransferTabsRenderedOnce(t *testing.T) {
 		"the tab bar must be part of the static page HTML")
 }
 
+// 传输记录/任务详情列表必须服务端分页（20/页）且限高：全量渲染会把
+// "文件中转站"顶出屏幕，超过 50 条的旧记录也永远看不到。
+func TestFilesJS_TransferListPagination(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/files.js")
+
+	assert.True(t, strings.Contains(src, "page_size: transferPageSize"),
+		"transfer lists must request server-paginated data (20 per page)")
+	assert.True(t, strings.Contains(src, "transfer-pager"),
+		"a pager container must exist under the transfer list")
+	assert.True(t, strings.Contains(src, "renderTransferPager"),
+		"the pager must be rendered for the active tab")
+	assert.True(t, strings.Contains(src, "transfer-list-scroll"),
+		"the transfer list must be height-capped so it cannot push the staging area down")
+}
+
 func TestExecJS_ReconcilesTaskStatesWhileRunning(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

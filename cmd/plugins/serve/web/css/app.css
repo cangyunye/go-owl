@@ -4324,6 +4324,13 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   font-weight: 600;
 }
 
+/* COMPONENTS — Files（文件传输页） */
+/* 传输列表限高 + 内部滚动：长列表只在本区域滚动，不再把"文件中转站"顶下去 */
+.transfer-list-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
 /* COMPONENTS — Playbooks（剧本管理页） */
 .playbook-row { cursor: pointer; }
 /* 描述/任务列收窄，保证操作列默认落在可视区内，无需横向滚动 */

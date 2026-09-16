@@ -56,6 +56,7 @@ func transferTestSetup(t *testing.T) (*sql.DB, *TransferHandler, *gin.Engine, st
 	auth.Use(ah.AuthMiddleware(), ah.RBACMiddleware(model.RoleOperator))
 	auth.POST("/transfer", th.Create)
 	auth.GET("/transfers", th.List)
+	auth.GET("/transfer/records", th.Records)
 	auth.POST("/transfer/records/:id/rerun", th.Rerun)
 	auth.GET("/transfer/records/:id", th.RecordGet)
 

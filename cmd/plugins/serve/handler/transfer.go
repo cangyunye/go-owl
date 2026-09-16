@@ -417,23 +417,51 @@ func sftpPull(client *sftp.Client, src, dst string, opts transferOptions) (bool,
 }
 
 func (h *TransferHandler) List(c *gin.Context) {
-	// 必须在 SQL 层按前缀过滤后再取最新 50 条：tasks 表与命令执行/监控共享，
+	// 必须在 SQL 层按前缀过滤后再分页：tasks 表与命令执行/监控共享，
 	// 先取全量再内存过滤会让其它任务把传输任务挤出列表（列表间歇性变空）。
-	tasks, _, err := h.task.ListByCommandPrefix(c.Request.Context(), "transfer:", 50, 0)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	tasks, total, err := h.task.ListByCommandPrefix(c.Request.Context(), "transfer:", pageSize, (page-1)*pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "list failed"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": tasks})
+	c.JSON(http.StatusOK, gin.H{
+		"data": tasks,
+		"meta": gin.H{"total": total, "page": page, "page_size": pageSize},
+	})
 }
 
 func (h *TransferHandler) Records(c *gin.Context) {
-	records, total, err := h.recordStore.List(c.Request.Context(), 50, 0)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	records, total, err := h.recordStore.List(c.Request.Context(), pageSize, (page-1)*pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "list records failed"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": records, "total": total})
+	c.JSON(http.StatusOK, gin.H{
+		"data": records,
+		"meta": gin.H{"total": total, "page": page, "page_size": pageSize},
+	})
 }
 
 func (h *TransferHandler) RecordGet(c *gin.Context) {

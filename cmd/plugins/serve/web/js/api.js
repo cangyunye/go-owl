@@ -326,11 +326,17 @@ export const api = {
   transfer: (data) =>
     request('POST', '/transfer', data),
 
-  transfers: () =>
-    request('GET', '/transfers'),
+  transfers: (params) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params || {})) if (v) q.set(k, v);
+    return request('GET', `/transfers?${q}`);
+  },
 
-  transferRecords: () =>
-    request('GET', '/transfer/records'),
+  transferRecords: (params) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params || {})) if (v) q.set(k, v);
+    return request('GET', `/transfer/records?${q}`);
+  },
 
   transferRecord: (id) =>
     request('GET', `/transfer/records/${encodeURIComponent(id)}`),
