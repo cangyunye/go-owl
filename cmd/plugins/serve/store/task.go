@@ -130,6 +130,40 @@ func (s *TaskStore) List(ctx context.Context, limit, offset int) ([]*Task, int, 
 // 传输任务详情列表必须用它：tasks 表由命令执行/监控等共享，若先取全量
 // 最新 N 条再在内存里过滤，前缀外的任务一多就会把目标前缀的任务完全
 // 挤出结果（列表间歇性变空）。
+// FailOrphaned 启动对账：服务重启会丢失所有执行 goroutine，把遗留的
+// running/queued 任务标记为失败并写明原因（保留已采集的输出），避免任务
+// 永久停留在"执行中"。返回受影响的 record id，供调用方同步 operation 状态。
+func (s *TaskStore) FailOrphaned(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT COALESCE(record_id, '') FROM tasks WHERE status IN ('running', 'queued')`)
+	if err != nil {
+		return nil, err
+	}
+	recordIDs := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil && id != "" {
+			recordIDs = append(recordIDs, id)
+		}
+	}
+	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	const reason = "服务重启，执行中断"
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE tasks SET status = ?,
+			output = CASE WHEN COALESCE(output, '') = '' THEN ? ELSE output || char(10) || ? END,
+			completed_at = ?, updated_at = ?
+		WHERE status IN ('running', 'queued')`,
+		TaskStatusFailed, reason, reason, now, now); err != nil {
+		return nil, err
+	}
+	return recordIDs, nil
+}
+
 // ListByRecord 返回一次提交(record)下的全部任务。
 // 执行页用它做终态对账兜底：WS 消息可能在断线窗口丢失，按 record 一次性
 // 拉取全部任务状态，避免按节点发 N 次请求。

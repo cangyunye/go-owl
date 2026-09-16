@@ -219,6 +219,11 @@ func (s *Server) Init() (*AdminCredentials, error) {
 		return nil, fmt.Errorf("init history store: %w", err)
 	}
 
+	// 启动对账：重启导致执行 goroutine 丢失的 running/queued 任务标记失败
+	if err := reconcileOrphanedTasks(context.Background(), s.Tasks, s.History); err != nil {
+		log.Printf("serve: %v", err)
+	}
+
 	s.nodeHandler.History = s.History
 	s.nodeHandler.Hub = s.wsHub
 	s.execHandler.History = s.History
@@ -660,6 +665,26 @@ func ensureDBDir(dbPath string) error {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return os.MkdirAll(dir, 0755)
 	}
+	return nil
+}
+
+// reconcileOrphanedTasks 启动对账：服务重启会丢失所有执行 goroutine，
+// 遗留的 running/queued 任务标记为失败，并同步其 operation 状态，
+// 避免任务与历史永久停在"执行中"（执行页/waiting 也永远等不到终态）。
+func reconcileOrphanedTasks(ctx context.Context, tasks *store.TaskStore, history *store.HistoryStore) error {
+	recordIDs, err := tasks.FailOrphaned(ctx)
+	if err != nil {
+		return fmt.Errorf("对账悬挂执行任务失败: %w", err)
+	}
+	if len(recordIDs) == 0 {
+		return nil
+	}
+	for _, id := range recordIDs {
+		if err := history.UpdateOperationStatus(ctx, id, "failed"); err != nil {
+			log.Printf("启动对账: 同步 operation %s 状态失败: %v", id, err)
+		}
+	}
+	log.Printf("启动对账: %d 条中断的执行记录已标记为失败", len(recordIDs))
 	return nil
 }
 
