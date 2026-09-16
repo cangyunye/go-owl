@@ -195,6 +195,17 @@ func TestExecJS_BackfillsMissingOutputOnCompletion(t *testing.T) {
 		"exec.js must tell the user the output was backfilled")
 }
 
+// 终端逐行渲染不得对整段内容做 innerHTML 重序列化：几千行输出下 O(n²)
+// 会拖垮页面，并因浏览器消费变慢放大服务端 WS 发送积压。
+func TestExecJS_AppendTerminalAvoidsFullRerender(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/exec.js")
+
+	assert.False(t, strings.Contains(src, "body.innerHTML +="),
+		"appendTerminal must not re-serialize the whole terminal per line")
+	assert.True(t, strings.Contains(src, "cursor-blink"),
+		"the blinking cursor element must be preserved while appending")
+}
+
 func TestExecJS_ShortcutBar(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

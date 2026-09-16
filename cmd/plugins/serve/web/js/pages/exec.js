@@ -385,16 +385,22 @@ export function renderExec(render, navigate, user, api, shell) {
     updateExecButton();
   }
 
+  // 逐行 appendChild，避免对整段终端内容做 innerHTML 重序列化：
+  // 几千行输出下 O(n²) 的重渲染会拖垮页面，浏览器消费变慢又会放大
+  // 服务端 WS 发送积压（进而触发慢客户端断开）。
   function appendTerminal(html, cls) {
     const body = document.getElementById('term-body');
     if (!body) return;
-    body.innerHTML = body.innerHTML.replace('<div class="line cursor-blink"></div>', '');
+    const cursor = body.querySelector('.cursor-blink');
+    if (cursor) cursor.remove();
     const line = document.createElement('div');
     line.className = 'line';
     if (cls) line.innerHTML = `<span class="${cls}">${html}</span>`;
     else line.innerHTML = html;
     body.appendChild(line);
-    body.innerHTML += '<div class="line cursor-blink"></div>';
+    const nextCursor = document.createElement('div');
+    nextCursor.className = 'line cursor-blink';
+    body.appendChild(nextCursor);
     body.scrollTop = body.scrollHeight;
   }
 
