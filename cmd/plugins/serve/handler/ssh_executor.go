@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"time"
@@ -15,6 +16,24 @@ import (
 )
 
 const sshConnectTimeout = 10 * time.Second
+
+// maxOutputLineBytes 单行输出上限。bufio.Scanner 默认 64KB，压缩成一行的
+// JSON/base64/无换行大段输出会触发 ErrTooLong 并静默丢弃该行及其后全部输出。
+const maxOutputLineBytes = 4 * 1024 * 1024
+
+// readLines 逐行读取输出并交给 emit；emit 返回 false 时立即停止（用于 ctx 取消）。
+// 返回扫描错误（如超过 maxOutputLineBytes 的行），由调用方决定如何呈现——
+// 绝不能静默截断，那会表现为"打印到一半就没有后面的内容了"。
+func readLines(r io.Reader, emit func(line string) bool) error {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxOutputLineBytes)
+	for scanner.Scan() {
+		if !emit(scanner.Text()) {
+			return nil
+		}
+	}
+	return scanner.Err()
+}
 
 type sshExecutor struct {
 	db             *sql.DB
@@ -152,30 +171,27 @@ func (e *sshExecutor) ExecuteStream(ctx context.Context, nodeID, command string,
 	}
 
 	done := make(chan struct{}, 2)
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
+	// streamReader 逐行上报一路输出；扫描异常（如超长行）作为 stderr 行上报，
+	// 不再静默丢尾。
+	streamReader := func(stream io.Reader, lineType string) {
+		defer func() { done <- struct{}{} }()
+		err := readLines(stream, func(line string) bool {
 			select {
-			case outputCh <- OutputLine{NodeID: nodeID, Line: scanner.Text(), Type: "stdout"}:
+			case outputCh <- OutputLine{NodeID: nodeID, Line: line, Type: lineType}:
+				return true
 			case <-ctx.Done():
-				done <- struct{}{}
-				return
+				return false
+			}
+		})
+		if err != nil {
+			select {
+			case outputCh <- OutputLine{NodeID: nodeID, Line: fmt.Sprintf("[%s 采集中断: %v]", lineType, err), Type: "stderr"}:
+			case <-ctx.Done():
 			}
 		}
-		done <- struct{}{}
-	}()
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			select {
-			case outputCh <- OutputLine{NodeID: nodeID, Line: scanner.Text(), Type: "stderr"}:
-			case <-ctx.Done():
-				done <- struct{}{}
-				return
-			}
-		}
-		done <- struct{}{}
-	}()
+	}
+	go streamReader(stdout, "stdout")
+	go streamReader(stderr, "stderr")
 
 	err = session.Wait()
 	<-done
