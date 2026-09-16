@@ -141,6 +141,23 @@ func TestFilesJS_TransferRecordClarity(t *testing.T) {
 		"batch submit message must point users to the transfer records for progress")
 }
 
+// 运行历史必须真分页（用户已确认分页控件形态）：带 page/page_size 请求、
+// 读 meta.total、渲染翻页按钮与页码信息。此前固定只显示最近 50 条。
+func TestPlaybooksJS_RunHistoryPagination(t *testing.T) {
+	src := readWebFile(t, "web/js/pages/playbooks.js")
+
+	assert.True(t, strings.Contains(src, "page_size"),
+		"playbooks.js must request a bounded page_size for run history")
+	assert.True(t, strings.Contains(src, "meta"),
+		"playbooks.js must read meta.total for run-history pagination")
+	assert.True(t, strings.Contains(src, "runs-prev-btn"),
+		"playbooks.js must render a prev page button")
+	assert.True(t, strings.Contains(src, "runs-next-btn"),
+		"playbooks.js must render a next page button")
+	assert.True(t, strings.Contains(src, "runs-page-info"),
+		"playbooks.js must render page position info")
+}
+
 func TestExecJS_ShortcutBar(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/exec.js")
 

@@ -4165,6 +4165,11 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   overflow: hidden;
 }
 .section-card + .section-card { margin-top: 16px; }
+/* 视图容器(.view-container)是高度受限的纵向 flex：卡片作为其子项默认可被
+   flex-shrink 压缩，而 overflow:hidden 又使 min-height 归零，导致内容被裁切
+   （表现为卡片/表格堆叠拥挤、超出部分永远看不到）。卡片必须保持自然高度，
+   由容器滚动。 */
+.card, .section-card { flex-shrink: 0; }
 .panel-head {
   display: flex;
   align-items: center;
@@ -4317,4 +4322,16 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
+}
+
+/* COMPONENTS — Playbooks（剧本管理页） */
+.playbook-row { cursor: pointer; }
+/* 描述/任务列收窄，保证操作列默认落在可视区内，无需横向滚动 */
+.playbook-table td.cell-ellipsis { max-width: 190px; }
+.action-cell { white-space: nowrap; text-align: right; }
+.missing-badge {
+  display: inline-block; margin-left: 6px; padding: 0 6px;
+  border-radius: 999px; font-size: var(--fs-xs); line-height: 1.6;
+  background: color-mix(in oklch, var(--danger) 18%, var(--surface));
+  color: var(--danger);
 }

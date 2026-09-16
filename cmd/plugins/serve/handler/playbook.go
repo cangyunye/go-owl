@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -512,15 +513,25 @@ func (h *PlaybookHandler) preflightPlaybook(pbFile string) []string {
 	return warnings
 }
 
+// RunList 支持真分页（page/page_size，与 user/node handler 同约定），
+// 运行记录超过一页时旧记录可通过翻页查看，而不是固定只展示最近 50 条。
 func (h *PlaybookHandler) RunList(c *gin.Context) {
-	runs, total, err := h.runs.List(c.Request.Context(), 50, 0)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	runs, total, err := h.runs.List(c.Request.Context(), pageSize, (page-1)*pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query error"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"data": runs,
-		"meta": gin.H{"total": total},
+		"meta": gin.H{"total": total, "page": page, "page_size": pageSize},
 	})
 }
 

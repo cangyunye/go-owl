@@ -5,6 +5,9 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     query: '',
     selectedCategory: '',
     categories: [],
+    runsPage: 1,
+    runsPageSize: 20,
+    runsTotal: 0,
   };
 
   let ws = null;
@@ -88,15 +91,15 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       list.innerHTML = '<tr><td colspan="5" class="empty-state">无匹配剧本</td></tr>';
     } else {
       list.innerHTML = state.filteredPlaybooks.map(pb =>
-        `<tr class="playbook-row" data-id="${esc(pb.id)}" style="cursor:pointer">
-          <td>${esc(pb.name)}${pb.file_exists === false ? ' <span class="missing-badge">missing</span>' : ''}</td>
-          <td>${pb.category ? `<span class="tag">${esc(pb.category)}</span>` : '<span style="color:var(--muted);font-size:var(--fs-xs)">-</span>'}</td>
-          <td>${esc(pb.description || '')}</td>
-          <td>${esc((pb.task_names || []).join(', '))}</td>
+        `<tr class="playbook-row" data-id="${esc(pb.id)}">
+          <td class="cell-ellipsis" title="${esc(pb.name)}">${esc(pb.name)}${pb.file_exists === false ? ' <span class="missing-badge">缺失</span>' : ''}</td>
+          <td>${pb.category ? `<span class="tag">${esc(pb.category)}</span>` : '<span class="cell-muted">-</span>'}</td>
+          <td class="cell-ellipsis" title="${esc(pb.description || '')}">${esc(pb.description || '')}</td>
+          <td class="cell-ellipsis cell-muted" title="${esc((pb.task_names || []).join('、'))}">${esc((pb.task_names || []).join('、'))}</td>
           <td class="action-cell">
-            <button class="run-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} style="background:none;border:1px solid var(--primary);color:var(--primary);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:var(--fs-xs)">Run</button>
-            <button class="edit-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="二次编辑剧本" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:var(--fs-xs);margin-left:4px">编辑</button>
-            <button class="download-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="下载 playbook 文件" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 10px;border-radius:var(--radius);cursor:pointer;font-size:var(--fs-xs);margin-left:4px">下载</button>
+            <button class="btn btn-ghost btn-sm run-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''}>运行</button>
+            <button class="btn btn-ghost btn-sm edit-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="二次编辑剧本">编辑</button>
+            <button class="btn btn-ghost btn-sm download-playbook-btn" data-id="${esc(pb.id)}" ${pb.file_exists === false ? 'disabled' : ''} title="下载 playbook 文件">下载</button>
           </td>
         </tr>`
       ).join('');
@@ -702,9 +705,26 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
   async function loadRuns() {
     try {
-      const res = await api.playbookRuns();
+      const res = await api.playbookRuns({ page: state.runsPage, page_size: state.runsPageSize });
+      state.runsTotal = res.meta?.total || 0;
       renderRuns(res.data || []);
-    } catch { renderRuns([]); }
+    } catch { state.runsTotal = 0; renderRuns([]); }
+    renderRunsPagination();
+  }
+
+  function runsTotalPages() {
+    return Math.max(1, Math.ceil(state.runsTotal / state.runsPageSize));
+  }
+
+  function renderRunsPagination() {
+    const info = document.getElementById('runs-page-info');
+    if (!info) return;
+    if (state.runsPage > runsTotalPages()) state.runsPage = runsTotalPages();
+    info.textContent = `共 ${state.runsTotal} 条 · 第 ${state.runsPage}/${runsTotalPages()} 页`;
+    const prev = document.getElementById('runs-prev-btn');
+    const next = document.getElementById('runs-next-btn');
+    if (prev) prev.disabled = state.runsPage <= 1;
+    if (next) next.disabled = state.runsPage >= runsTotalPages();
   }
 
   function setupWebSocket() {
@@ -720,15 +740,23 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   }
 
   render(`
-    <div class="card" style="margin-bottom:0">
-      <div class="path-bar">
-        <label for="playbook-path">Library Path</label>
-        <div class="path-group">
-          <input id="playbook-path" placeholder="/path/to/playbooks" spellcheck="false">
-          <button class="btn btn-secondary btn-sm" id="refresh-playbooks-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg> 刷新</button>
-          <button class="btn btn-secondary btn-sm" id="upload-playbook-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-upload"/></svg> 上传 Playbook</button>
+    <div class="section-card" style="margin-bottom:16px">
+      <div class="panel-head">
+        <div style="flex:1;min-width:0">
+          <h3 class="panel-title">剧本库</h3>
+          <div class="panel-desc">Library Path 指向存放 .yaml 剧本的目录，刷新后同步到列表</div>
         </div>
-        <input type="file" id="upload-playbook-file" accept=".yaml,.yml" style="display:none">
+      </div>
+      <div class="panel-body" style="padding:16px 24px">
+        <div class="path-bar">
+          <label for="playbook-path">Library Path</label>
+          <div class="path-group">
+            <input id="playbook-path" placeholder="/path/to/playbooks" spellcheck="false">
+            <button class="btn btn-secondary btn-sm" id="refresh-playbooks-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg> 刷新</button>
+            <button class="btn btn-secondary btn-sm" id="upload-playbook-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-upload"/></svg> 上传 Playbook</button>
+          </div>
+          <input type="file" id="upload-playbook-file" accept=".yaml,.yml" style="display:none">
+        </div>
       </div>
     </div>
 
@@ -741,26 +769,50 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       <button class="btn btn-primary btn-sm" id="add-playbook-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 新建</button>
     </div>
 
-    <div class="card" style="overflow:auto">
-      <table class="data-table">
-        <thead><tr><th>名称</th><th>分类</th><th>描述</th><th>任务</th><th></th></tr></thead>
-        <tbody id="playbook-list"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
-      </table>
+    <div class="section-card" style="margin-top:16px">
+      <div class="panel-head">
+        <div style="flex:1;min-width:0">
+          <h3 class="panel-title">剧本列表</h3>
+          <div class="panel-desc">点击行查看详情与 YAML 源文件</div>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table playbook-table">
+          <thead><tr><th>名称</th><th>分类</th><th>描述</th><th>任务</th><th></th></tr></thead>
+          <tbody id="playbook-list"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="card-header"><h3>运行历史</h3></div>
-      <div class="card-body table-scroll" style="padding:0">
+    <div class="section-card">
+      <div class="panel-head">
+        <div style="flex:1;min-width:0">
+          <h3 class="panel-title">运行历史</h3>
+          <div class="panel-desc">每次剧本执行的记录，点击「查看」看分步结果</div>
+        </div>
+      </div>
+      <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>剧本</th><th>目标节点</th><th>状态</th><th>开始时间</th><th></th></tr></thead>
           <tbody id="playbook-runs-list"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
         </table>
       </div>
+      <div class="panel-foot" id="runs-pagination" style="justify-content:flex-end">
+        <span class="field-hint" id="runs-page-info">共 0 条 · 第 1/1 页</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-ghost btn-sm" id="runs-prev-btn" disabled>◀ 上一页</button>
+        <button class="btn btn-ghost btn-sm" id="runs-next-btn" disabled>下一页 ▶</button>
+      </div>
     </div>
 
-    <div class="card" id="run-detail-card">
-      <div class="card-header"><h3>运行详情</h3></div>
-      <div class="card-body" id="run-detail" data-run-id=""><p class="empty-state">选择一个运行记录查看详情</p></div>
+    <div class="section-card" id="run-detail-card">
+      <div class="panel-head">
+        <div style="flex:1;min-width:0">
+          <h3 class="panel-title">运行详情</h3>
+          <div class="panel-desc">选中运行记录后展示分步执行结果</div>
+        </div>
+      </div>
+      <div class="panel-body" id="run-detail" data-run-id="" style="padding:16px 24px"><p class="empty-state">选择一个运行记录查看详情</p></div>
     </div>
 
     <div class="modal-overlay" id="run-playbook-modal">
@@ -913,6 +965,13 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     </div>
   `, () => {
     setupWebSocket();
+
+    document.getElementById('runs-prev-btn').addEventListener('click', () => {
+      if (state.runsPage > 1) { state.runsPage--; loadRuns(); }
+    });
+    document.getElementById('runs-next-btn').addEventListener('click', () => {
+      if (state.runsPage < runsTotalPages()) { state.runsPage++; loadRuns(); }
+    });
 
     let searchDebounceTimer;
     document.getElementById('playbook-search').addEventListener('input', (e) => {
