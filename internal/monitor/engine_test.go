@@ -457,3 +457,77 @@ func TestParseCheckOutput(t *testing.T) {
 	_, err = ParseCheckOutput("value", "", "not-a-number", 0)
 	require.Error(t, err)
 }
+
+// TestEngine_CustomCheck_ScopeGroups 验证规则触发范围：scope_groups 命中的
+// 节点执行检查并告警，范围外节点不执行命令也不告警。
+func TestEngine_CustomCheck_ScopeGroups(t *testing.T) {
+	outputs := sampleOutputs()
+	checkCmd := "check-scope-cmd"
+	outputs[checkCmd] = "95"
+	targets := []Target{
+		{ID: "node-a", Name: "web-01", Groups: []string{"web"}},
+		{ID: "node-b", Name: "db-01", Groups: []string{"db"}},
+	}
+	eng, s := newTestEngine(t, targets, outputs)
+	require.NoError(t, s.UpsertAlertType(AlertType{ID: "OWL-CUS-SC", Category: "custom",
+		Name: "范围检查", DefaultSeverity: SeverityWarning, Enabled: true, Builtin: false,
+		CheckCmd: checkCmd, CheckMode: "value", ScopeGroups: "web",
+		DefaultParams: RuleParams{Metric: CustomMetricID("OWL-CUS-SC"), Op: ">", Value: 90, Duration: 1}}))
+
+	require.NoError(t, eng.TickOnce(context.Background()))
+
+	_, exists, err := s.GetActiveAlert("OWL-CUS-SC", "node-a")
+	require.NoError(t, err)
+	require.True(t, exists, "范围内节点应触发")
+
+	_, exists, err = s.GetActiveAlert("OWL-CUS-SC", "node-b")
+	require.NoError(t, err)
+	require.False(t, exists, "范围外节点不应触发")
+
+	// 命令只在范围内节点执行：以 node-b 无告警为证（上面断言）
+}
+
+// TestEngine_BuiltInRule_ScopeNodes 验证内置规则 scope_nodes 限定：只对
+// 指定节点触发。
+func TestEngine_BuiltInRule_ScopeNodes(t *testing.T) {
+	outputs := sampleOutputs()
+	// 高内存：两台都会满足阈值
+	outputs["LC_ALL=C free -m"] = "              total        used        free      shared  buff/cache   available\nMem:          15891       15000        100         189         791         900\nSwap:          2047           0        2047\n"
+	eng, s := newTestEngine(t, []Target{{ID: "node-a"}, {ID: "node-b"}}, outputs)
+
+	at, _, err := s.GetAlertType("OWL-MEM-001")
+	require.NoError(t, err)
+	at.ScopeNodes = "node-a"
+	require.NoError(t, s.UpsertAlertType(at))
+
+	require.NoError(t, eng.TickOnce(context.Background()))
+
+	_, exists, err := s.GetActiveAlert("OWL-MEM-001", "node-a")
+	require.NoError(t, err)
+	require.True(t, exists, "范围内节点应触发")
+	_, exists, err = s.GetActiveAlert("OWL-MEM-001", "node-b")
+	require.NoError(t, err)
+	require.False(t, exists, "范围外节点不应触发")
+}
+
+// TestAlertType_InScope 验证范围匹配语义：空 = 全部；节点/分组任一命中。
+func TestAlertType_InScope(t *testing.T) {
+	at := AlertType{}
+	require.True(t, at.InScope("n1", []string{"web"}), "空范围 = 全部生效")
+
+	at.ScopeNodes = "n1, n2"
+	at.ScopeGroups = ""
+	require.True(t, at.InScope("n2", nil))
+	require.False(t, at.InScope("n3", []string{"web"}), "仅节点范围时不按分组命中")
+
+	at.ScopeNodes = ""
+	at.ScopeGroups = "web, db"
+	require.True(t, at.InScope("n9", []string{"web"}))
+	require.False(t, at.InScope("n9", []string{"cache"}))
+
+	at.ScopeNodes = "n1"
+	at.ScopeGroups = "db"
+	require.True(t, at.InScope("n1", nil), "节点命中")
+	require.True(t, at.InScope("n9", []string{"db"}), "分组命中")
+	require.False(t, at.InScope("n9", []string{"cache"}))
+}

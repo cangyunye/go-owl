@@ -37,7 +37,7 @@ func NewNodesTargetSource(db *sql.DB) *NodesTargetSource {
 func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 	rows, err := s.db.Query(`SELECT id, name, address, port, user,
 		COALESCE(password, ''), COALESCE(ssh_key, ''), COALESCE(proxy_jump, ''),
-		COALESCE(labels, '{}')
+		COALESCE(labels, '{}'), COALESCE(groups, '[]')
 		FROM nodes ORDER BY created_at, id`)
 	if err != nil {
 		return nil, fmt.Errorf("monitor: 读取节点列表失败: %w", err)
@@ -53,12 +53,13 @@ func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 	index := map[dedupKey]int{}
 	for rows.Next() {
 		var t owlmonitor.Target
-		var labels string
+		var labels, groups string
 		if err := rows.Scan(&t.ID, &t.Name, &t.Address, &t.Port, &t.User,
-			&t.SSHPassword, &t.SSHKey, &t.ProxyJump, &labels); err != nil {
+			&t.SSHPassword, &t.SSHKey, &t.ProxyJump, &labels, &groups); err != nil {
 			return nil, fmt.Errorf("monitor: 扫描节点失败: %w", err)
 		}
 		t.Services = servicesFromLabels(labels)
+		t.Groups = groupsFromJSON(groups)
 		if pw, err := secrets.Decrypt(t.SSHPassword); err != nil {
 			return nil, fmt.Errorf("monitor: 节点 %s 凭据解密失败: %w", t.ID, err)
 		} else {
@@ -97,6 +98,18 @@ func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 	return targets, nil
 }
 
+// groupsFromJSON 解析节点分组 JSON 数组（非法视为空）。
+func groupsFromJSON(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
 // servicesFromLabels 从节点 labels JSON 中读取 monitor.services
 // （逗号分隔的受监控服务 unit 列表），非法 JSON 视为未配置。
 func servicesFromLabels(raw string) []string {
@@ -128,6 +141,7 @@ type Service struct {
 	Dispatcher     *owlmonitor.Dispatcher
 	runner         *owlmonitor.RunExecutor
 	playbookRunner PlaybookRunner // 剧本执行入口（告警绑定执行用，装配时注入）
+	debugExec      func(nodeID, command string, timeout time.Duration) (string, int, error) // 规则调试执行
 	db             *sql.DB        // settings 表访问（静默配置）
 	webURL         string
 
@@ -176,6 +190,7 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 	engine := owlmonitor.NewEngine(cfg, store, collector, source, manager, dispatcher)
 	engine.SetAutoHealer(healer)
 
+
 	// 启动对账：重启导致执行 goroutine 丢失的绑定运行记录标记为失败
 	if err := store.FailStaleAlertBindingRuns(); err != nil {
 		log.Printf("monitor: 对账悬挂绑定运行失败: %v", err)
@@ -189,6 +204,14 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		runner:     runner,
 		db:         db,
 		webURL:     webURL,
+	}
+	// 调试执行入口：告警规则的「执行一次调试」（handler 经 DebugCheck 调用）
+	svc.debugExec = func(nodeID, command string, timeout time.Duration) (string, int, error) {
+		t, err := resolveTarget(db)(nodeID)
+		if err != nil {
+			return "", -1, err
+		}
+		return collector.ExecCommand(context.Background(), t, command, timeout)
 	}
 	// 告警打开/重开钩子：执行 alert_bindings 中 auto_exec 的专属指令
 	engine.OnAlertOpened = svc.handleAlertOpened

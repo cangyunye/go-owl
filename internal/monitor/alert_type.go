@@ -56,6 +56,34 @@ type AlertType struct {
 	CheckCmd     string `json:"check_cmd"`               // SSH 执行的检查命令，空 = 无自定义检查
 	CheckMode    string `json:"check_mode"`              // value: 输出即数值 | regex: 捕获组取数 | exit_code: 退出码
 	CheckPattern string `json:"check_pattern,omitempty"` // regex 模式的正则（捕获组 1 为数值）
+	// 触发范围（可选）：限定规则只对指定节点/分组生效。均为空 = 全部节点。
+	ScopeNodes  string `json:"scope_nodes"`  // 逗号分隔节点 ID
+	ScopeGroups string `json:"scope_groups"` // 逗号分隔分组名
+}
+
+// InScope 判断规则是否对某节点/分组生效。两个范围均空 = 对全部节点生效；
+// 任一命中（节点 ID 或分组名）即生效。
+func (at AlertType) InScope(nodeID string, nodeGroups []string) bool {
+	if at.ScopeNodes == "" && at.ScopeGroups == "" {
+		return true
+	}
+	for _, n := range strings.Split(at.ScopeNodes, ",") {
+		if strings.TrimSpace(n) == nodeID {
+			return true
+		}
+	}
+	for _, g := range strings.Split(at.ScopeGroups, ",") {
+		g = strings.TrimSpace(g)
+		if g == "" {
+			continue
+		}
+		for _, ng := range nodeGroups {
+			if ng == g {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // CustomMetricID 自定义告警类型的指标名（由类型 ID 派生）。

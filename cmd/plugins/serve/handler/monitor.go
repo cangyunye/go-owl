@@ -518,3 +518,63 @@ func (h *MonitorHandler) webURL() string {
 	// svc.WebURL() 已是完整 URL（如 http://127.0.0.1:8080），勿再拼协议前缀
 	return h.svc.WebURL()
 }
+
+// TestAlertType POST /alert-types/:id/test 调试执行一次检查命令（admin）。
+// body: {node_id?: string}；缺省时按触发范围自动选择节点（scope_nodes →
+// scope_groups 首个分组节点 → 任意节点）。
+func (h *MonitorHandler) TestAlertType(c *gin.Context) {
+	at, exists, err := h.svc.Store.GetAlertType(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("query alert type failed", err)})
+		return
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "alert type not found"})
+		return
+	}
+	var body struct {
+		NodeID string `json:"node_id"`
+	}
+	_ = c.ShouldBindJSON(&body) // 空 body 允许
+
+	nodeID := body.NodeID
+	if nodeID == "" {
+		nodeID, err = h.defaultDebugNode(at)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+			return
+		}
+	}
+	res, err := h.svc.DebugCheck(nodeID, at)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"item": res})
+}
+
+// defaultDebugNode 按触发范围挑选调试节点。
+func (h *MonitorHandler) defaultDebugNode(at owlmonitor.AlertType) (string, error) {
+	for _, n := range strings.Split(at.ScopeNodes, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			return n, nil
+		}
+	}
+	for _, g := range strings.Split(at.ScopeGroups, ",") {
+		g = strings.TrimSpace(g)
+		if g == "" {
+			continue
+		}
+		var id string
+		if err := h.db.QueryRow(
+			`SELECT id FROM nodes WHERE groups LIKE ? ORDER BY created_at, id LIMIT 1`,
+			`%"`+g+`"%`).Scan(&id); err == nil {
+			return id, nil
+		}
+	}
+	var id string
+	if err := h.db.QueryRow(`SELECT id FROM nodes ORDER BY created_at, id LIMIT 1`).Scan(&id); err != nil {
+		return "", fmt.Errorf("没有可用节点，无法调试")
+	}
+	return id, nil
+}

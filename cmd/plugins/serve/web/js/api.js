@@ -461,6 +461,9 @@ export const api = {
   deleteAlertType: (id) =>
     request('DELETE', `/alert-types/${encodeURIComponent(id)}`),
 
+  testAlertType: (id, data) =>
+    request('POST', `/alert-types/${encodeURIComponent(id)}/test`, data || {}),
+
   updateAlertType: (id, data) =>
     request('PUT', `/alert-types/${encodeURIComponent(id)}`, data),
 

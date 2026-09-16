@@ -23,6 +23,8 @@ type Target struct {
 	// Services 受监控服务 unit 列表（serve 端来自节点 label monitor.services），
 	// 纯 opt-in：为空时不采集 svc.* 指标。
 	Services []string
+	// Groups 节点所属分组（告警规则触发范围匹配用；CLI 等来源可为空）。
+	Groups []string
 }
 
 // Execer 执行单条命令并返回退出码与输出。internal/ssh.NodeExecutor 满足该接口。

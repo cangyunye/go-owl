@@ -206,8 +206,11 @@ func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) e
 	// 合成网卡速率并入库
 	all := e.computeNetRates(t.ID, samples)
 
+	// 触发范围过滤：scope_nodes/scope_groups 限定规则只对指定节点/分组生效
+	scoped := filterTypesForTarget(types, t)
+
 	// 自定义检查：check_cmd 类型的每轮采样（失败仅跳过该指标，不影响失联判定）
-	if custom := e.collectCustomChecks(ctx, &t, types); len(custom) > 0 {
+	if custom := e.collectCustomChecks(ctx, &t, scoped); len(custom) > 0 {
 		all = append(all, custom...)
 	}
 
@@ -216,7 +219,7 @@ func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) e
 	}
 
 	// 规则评估 → 告警生命周期
-	events, merr = e.manager.Tick(t.ID, all, types)
+	events, merr = e.manager.Tick(t.ID, all, scoped)
 	if merr != nil {
 		return merr
 	}
@@ -224,8 +227,20 @@ func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) e
 	return nil
 }
 
-// customCheckTimeout 单条自定义检查命令超时。
-const customCheckTimeout = 30 * time.Second
+// filterTypesForTarget 按触发范围过滤告警类型：scope_nodes/scope_groups
+// 均空 = 全部生效；任一命中（节点 ID 或分组）即生效。
+func filterTypesForTarget(types []AlertType, t Target) []AlertType {
+	out := make([]AlertType, 0, len(types))
+	for _, at := range types {
+		if at.InScope(t.ID, t.Groups) {
+			out = append(out, at)
+		}
+	}
+	return out
+}
+
+// CustomCheckTimeout 单条自定义检查命令超时。
+const CustomCheckTimeout = 30 * time.Second
 
 // collectCustomChecks 对启用了 check_cmd 的告警类型逐个执行检查命令，
 // 按 check_mode 解析为 custom.<小写类型ID> 数值指标。
@@ -235,7 +250,7 @@ func (e *Engine) collectCustomChecks(ctx context.Context, t *Target, types []Ale
 		if !at.Enabled || at.CheckCmd == "" {
 			continue
 		}
-		stdout, exitCode, err := e.collector.ExecCommand(ctx, t, at.CheckCmd, customCheckTimeout)
+		stdout, exitCode, err := e.collector.ExecCommand(ctx, t, at.CheckCmd, CustomCheckTimeout)
 		if err != nil {
 			logger.Warn("自定义检查执行失败", logger.WithOperation("monitor_custom_check"),
 				logger.WithField("type_id", at.ID), logger.WithField("node_id", t.ID),

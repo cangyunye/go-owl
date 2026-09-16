@@ -841,6 +841,119 @@ export function renderAlerts(render, navigate, user, api, shell) {
     });
   }
 
+  function scopeText(at) {
+    const n = (at.scope_nodes || '').split(',').filter(x => x.trim()).length;
+    const g = (at.scope_groups || '').split(',').filter(x => x.trim()).length;
+    if (!n && !g) return '全部节点';
+    const parts = [];
+    if (n) parts.push(`节点${n}`);
+    if (g) parts.push(`分组${g}`);
+    return parts.join('+');
+  }
+
+  // ---------- 触发范围编辑（admin） ----------
+
+  function openScopeEditor(at) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.innerHTML = `<div class="modal" style="max-width:560px">
+      <div class="modal-header"><h3>触发范围 · ${esc(at.name)}</h3>
+        <button class="btn btn-ghost btn-icon" id="sc-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
+      <div class="modal-body">
+        <div class="param-group">
+          <div class="param-row"><label>指定节点 ID（逗号分隔）</label></div>
+          <input id="sc-nodes" type="text" value="${esc(at.scope_nodes || '')}" placeholder="如 web-01, db-02" style="width:100%">
+          <div class="param-row"><label>指定分组（逗号分隔）</label></div>
+          <input id="sc-groups" type="text" value="${esc(at.scope_groups || '')}" placeholder="如 web, db" style="width:100%">
+          <div class="cfg-hint">两者留空 = 对全部节点生效；任一命中即生效。注意：缩小范围后，范围外已有告警不会自动恢复，需手动解决。</div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+          <button class="btn btn-ghost btn-sm" id="sc-cancel">取消</button>
+          <button class="btn btn-secondary btn-sm" id="sc-save">保存</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#sc-close').addEventListener('click', close);
+    overlay.querySelector('#sc-cancel').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#sc-save').addEventListener('click', async () => {
+      try {
+        await api.updateAlertType(at.id, {
+          ...at,
+          scope_nodes: overlay.querySelector('#sc-nodes').value.trim(),
+          scope_groups: overlay.querySelector('#sc-groups').value.trim(),
+        });
+        close();
+        renderConfig();
+      } catch (err) { alert('保存失败: ' + (err.message || err)); }
+    });
+  }
+
+  // ---------- 告警规则调试对话框（admin） ----------
+
+  async function openAlertDebugModal(at) {
+    let nodes = [];
+    try { nodes = (await api.nodes({ page: 1, page_size: 100 })).data || []; } catch { /* 节点列表不可用不阻塞 */ }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.innerHTML = `<div class="modal" style="max-width:640px;max-height:84vh;overflow:auto">
+      <div class="modal-header"><h3>调试 · ${esc(at.name)}</h3>
+        <button class="btn btn-ghost btn-icon" id="dbg-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
+      <div class="modal-body">
+        <div class="param-row"><label>目标节点</label></div>
+        <select id="dbg-node" style="width:100%">
+          ${nodes.map(n => `<option value="${esc(n.id)}">${esc(n.id)}${n.name && n.name !== n.id ? '（' + esc(n.name) + '）' : ''}</option>`).join('')}
+        </select>
+        <div class="cfg-hint" style="margin:6px 0 10px">立即执行一次检查命令（不落库、不发通知），展示输出与阈值判定。</div>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button class="btn btn-secondary btn-sm" id="dbg-run">执行一次</button>
+          <span id="dbg-status" class="cfg-hint"></span>
+        </div>
+        <div id="dbg-result"></div>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+
+    // 默认选中范围内第一个节点
+    const scopeFirst = (at.scope_nodes || '').split(',').map(x => x.trim()).filter(Boolean)[0];
+    if (scopeFirst) {
+      const sel = overlay.querySelector('#dbg-node');
+      if ([...sel.options].some(o => o.value === scopeFirst)) sel.value = scopeFirst;
+    }
+    const close = () => overlay.remove();
+    overlay.querySelector('#dbg-close').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    overlay.querySelector('#dbg-run').addEventListener('click', async () => {
+      const btn = overlay.querySelector('#dbg-run');
+      const status = overlay.querySelector('#dbg-status');
+      const area = overlay.querySelector('#dbg-result');
+      btn.disabled = true;
+      status.textContent = '执行中…';
+      area.innerHTML = '';
+      try {
+        const res = (await api.testAlertType(at.id, { node_id: overlay.querySelector('#dbg-node').value })).item;
+        status.textContent = `耗时 ${res.duration_ms} ms`;
+        const ST = { pending: '排队中', running: '执行中', success: '成功', failed: '失败' };
+        area.innerHTML = `
+          <div class="param-row"><label>检查命令</label></div>
+          <pre style="margin:4px 0 8px;padding:8px;background:var(--bg);border-radius:var(--radius);font-family:var(--font-mono);font-size:var(--fs-xs);white-space:pre-wrap;word-break:break-all">${esc(res.command)}</pre>
+          <div class="param-row"><label>输出（退出码 ${res.exit_code}）</label></div>
+          <pre style="margin:4px 0 8px;padding:8px;background:var(--bg);border-radius:var(--radius);font-family:var(--font-mono);font-size:var(--fs-xs);white-space:pre-wrap;word-break:break-all;max-height:180px;overflow:auto">${esc(res.output || '（空）')}</pre>
+          ${res.parse_err
+            ? `<div style="color:var(--danger);font-size:var(--fs-sm)">解析失败：${esc(res.parse_err)}</div>`
+            : `<div style="font-size:var(--fs-sm);margin-bottom:6px">解析值 <strong>${res.value}</strong> · 条件 <code>${esc(res.metric)} ${esc(res.op)} ${res.threshold}</code></div>
+               <div style="font-size:var(--fs-sm);font-weight:600;color:${res.would_trigger ? 'var(--danger)' : 'var(--success)'}">${res.would_trigger ? '⚠ 满足阈值条件——按当前配置会触发告警' : '✓ 未满足阈值条件——不会触发告警'}</div>`}
+        `;
+      } catch (err) { alert('调试失败: ' + (err.message || err)); }
+      btn.disabled = false;
+      status.textContent = '';
+    });
+  }
+
   // ---------- 自定义告警配置表单（admin）：检查命令 + 阈值 + 处置指令 ----------
 
   async function openCustomAlertModal(onSaved) {
@@ -903,6 +1016,13 @@ export function renderAlerts(render, navigate, user, api, shell) {
           <div class="mon-label">持续次数</div>
           <div class="mon-control"><input id="ca-duration" type="number" value="2" min="1" style="width:100%"></div>
           <div class="mon-hint">连续满足 N 次才触发（防抖动）</div>
+
+          <div class="mon-label">生效范围</div>
+          <div class="mon-control" style="display:flex;gap:8px">
+            <input id="ca-scope-nodes" type="text" placeholder="节点 ID，逗号分隔" style="flex:1">
+            <input id="ca-scope-groups" type="text" placeholder="分组，逗号分隔" style="flex:1">
+          </div>
+          <div class="mon-hint">两者留空 = 对全部节点生效；任一命中即触发。后续可在规则表「范围」列调整</div>
 
           <div class="mon-label">处置指令</div>
           <div class="mon-control">
@@ -975,6 +1095,8 @@ export function renderAlerts(render, navigate, user, api, shell) {
           enabled: true, notifiable: true, builtin: false,
           check_cmd: cmd, check_mode: mode,
           check_pattern: mode === 'regex' ? editor.querySelector('#ca-pattern').value.trim() : '',
+          scope_nodes: editor.querySelector('#ca-scope-nodes').value.trim(),
+          scope_groups: editor.querySelector('#ca-scope-groups').value.trim(),
         });
         // 处置指令绑定
         const rk = remedySel.value;
@@ -1072,7 +1194,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
           <span style="flex:1"></span>
           <button class="btn btn-secondary btn-sm" id="at-custom-add">+ 自定义告警</button>
         </h3>
-        <div style="overflow-x:auto"><table class="table"><thead><tr><th>ID</th><th>名称</th><th>级别</th><th>阈值</th><th>持续</th><th>启用</th><th>自动放行</th><th colspan="2"></th></tr></thead>
+        <div style="overflow-x:auto"><table class="table"><thead><tr><th>ID</th><th>名称</th><th>级别</th><th>阈值</th><th>持续</th><th>范围</th><th>调试</th><th>启用</th><th>自动放行</th><th colspan="2"></th></tr></thead>
         <tbody>${types.map(at => `
           <tr data-at="${esc(at.id)}">
             <td><code>${esc(at.id)}</code></td>
@@ -1080,6 +1202,8 @@ export function renderAlerts(render, navigate, user, api, shell) {
             <td>${esc(at.default_severity)}</td>
             <td><input class="at-val" style="width:70px" value="${at.default_params.per_core > 0 ? at.default_params.per_core : at.default_params.value}" data-kind="${at.default_params.per_core > 0 ? 'per_core' : 'value'}">${at.default_params.per_core > 0 ? '×核' : ''}</td>
             <td><input class="at-dur" style="width:50px" value="${at.default_params.duration || 0}"> 次</td>
+            <td><button class="btn btn-ghost btn-sm at-scope" data-at-scope="${esc(at.id)}" title="点击编辑触发范围">${esc(scopeText(at))}</button></td>
+            <td><button class="btn btn-ghost btn-sm at-debug" data-at-debug="${esc(at.id)}" ${at.check_cmd ? '' : 'disabled title="内置规则随采集自动评估"'}>调试</button></td>
             <td><input type="checkbox" class="at-enabled" ${at.enabled ? 'checked' : ''}></td>
             <td><input type="checkbox" class="at-auto" ${at.auto_approve ? 'checked' : ''}></td>
             <td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm at-remedies">指令</button><button class="btn btn-secondary btn-sm at-save">保存</button></div></td>
@@ -1147,6 +1271,22 @@ export function renderAlerts(render, navigate, user, api, shell) {
         at.enabled = tr.querySelector('.at-enabled').checked;
         at.auto_approve = tr.querySelector('.at-auto').checked;
         try { await api.updateAlertType(id, at); btn.textContent = '✓ 已保存'; setTimeout(() => { btn.textContent = '保存'; }, 1500); } catch (e) { alert('保存失败: ' + (e.message || e)); }
+      });
+    });
+
+    // 告警类型：调试执行
+    container.querySelectorAll('.at-debug').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const at = types.find(x => x.id === btn.dataset.atDebug);
+        if (at) openAlertDebugModal(at);
+      });
+    });
+
+    // 告警类型：触发范围编辑
+    container.querySelectorAll('.at-scope').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const at = types.find(x => x.id === btn.dataset.atScope);
+        if (at) openScopeEditor(at);
       });
     });
 

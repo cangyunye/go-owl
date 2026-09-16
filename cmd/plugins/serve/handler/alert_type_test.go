@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	monitorSvc "github.com/cangyunye/go-owl/cmd/plugins/serve/monitor"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
@@ -40,6 +41,7 @@ func alertTypeTestSetup(t *testing.T) (*gin.Engine, *owlmonitor.Store, string) {
 	api.Use(ah.AuthMiddleware(), ah.RBACMiddleware("admin"))
 	{
 		api.POST("/alert-types", h.CreateAlertType)
+		api.POST("/alert-types/:id/test", h.TestAlertType)
 		api.DELETE("/alert-types/:id", h.DeleteAlertType)
 	}
 	token, _ := as.GenerateToken("admin", "admin")
@@ -96,4 +98,22 @@ func TestCreateAlertType_Validation(t *testing.T) {
 	w = doReq(r, token, "DELETE", "/api/v1/alert-types/OWL-DSK-001", "")
 	assert.Equal(t, 400, w.Code)
 	assert.Contains(t, w.Body.String(), "内置")
+}
+
+// TestAlertType_TestEndpoint 校验存在性等基础分支（执行链路由 service 测试覆盖）。
+func TestAlertType_TestEndpoint(t *testing.T) {
+	r, st, token := alertTypeTestSetup(t)
+	now := time.Now().Unix()
+	require.NoError(t, st.InsertAlert(&owlmonitor.Alert{ID: "AL-T", AlertTypeID: "OWL-MEM-001",
+		NodeID: "n1", Severity: owlmonitor.SeverityWarning, Status: owlmonitor.StatusOpen,
+		Message: "x", FirstSeen: now, LastSeen: now}))
+
+	// 不存在的类型 → 404
+	w := doReq(r, token, "POST", "/api/v1/alert-types/OWL-NOPE/test", `{"node_id":"n1"}`)
+	assert.Equal(t, 404, w.Code)
+
+	// 内置类型（无 check_cmd）→ 400 提示
+	w = doReq(r, token, "POST", "/api/v1/alert-types/OWL-MEM-001/test", `{"node_id":"n1"}`)
+	assert.Equal(t, 400, w.Code)
+	assert.Contains(t, w.Body.String(), "没有自定义检查命令")
 }

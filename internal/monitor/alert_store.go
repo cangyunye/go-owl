@@ -24,7 +24,9 @@ func (s *Store) ensureAlertTables() error {
 			builtin          INTEGER NOT NULL DEFAULT 1,
 			check_cmd        TEXT NOT NULL DEFAULT '',
 			check_mode       TEXT NOT NULL DEFAULT 'value',
-			check_pattern    TEXT NOT NULL DEFAULT ''
+			check_pattern    TEXT NOT NULL DEFAULT '',
+			scope_nodes      TEXT NOT NULL DEFAULT '',
+			scope_groups     TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS alerts (
 			id              TEXT PRIMARY KEY,
@@ -52,6 +54,8 @@ func (s *Store) ensureAlertTables() error {
 		`ALTER TABLE alert_types ADD COLUMN check_cmd TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE alert_types ADD COLUMN check_mode TEXT NOT NULL DEFAULT 'value'`,
 		`ALTER TABLE alert_types ADD COLUMN check_pattern TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE alert_types ADD COLUMN scope_nodes TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE alert_types ADD COLUMN scope_groups TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := s.db.Exec(alt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("monitor: 迁移 alert_types 失败: %w", err)
@@ -112,16 +116,17 @@ func (s *Store) UpsertAlertType(at AlertType) error {
 	}
 	_, err = s.db.Exec(`INSERT INTO alert_types
 		(id, category, name, description, default_severity, default_params, auto_approve, notifiable, enabled, builtin,
-		 check_cmd, check_mode, check_pattern)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 check_cmd, check_mode, check_pattern, scope_nodes, scope_groups)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			category=excluded.category, name=excluded.name, description=excluded.description,
 			default_severity=excluded.default_severity, default_params=excluded.default_params,
 			auto_approve=excluded.auto_approve, notifiable=excluded.notifiable, enabled=excluded.enabled,
-			check_cmd=excluded.check_cmd, check_mode=excluded.check_mode, check_pattern=excluded.check_pattern`,
+			check_cmd=excluded.check_cmd, check_mode=excluded.check_mode, check_pattern=excluded.check_pattern,
+			scope_nodes=excluded.scope_nodes, scope_groups=excluded.scope_groups`,
 		at.ID, at.Category, at.Name, at.Description, string(at.DefaultSeverity), string(params),
 		boolInt(at.AutoApprove), boolInt(at.Notifiable), boolInt(at.Enabled), boolInt(at.Builtin),
-		at.CheckCmd, at.CheckMode, at.CheckPattern)
+		at.CheckCmd, at.CheckMode, at.CheckPattern, at.ScopeNodes, at.ScopeGroups)
 	if err != nil {
 		return fmt.Errorf("monitor: 写入告警类型 %s 失败: %w", at.ID, err)
 	}
@@ -131,7 +136,8 @@ func (s *Store) UpsertAlertType(at AlertType) error {
 // ListAlertTypes 列出全部告警类型。
 func (s *Store) ListAlertTypes() ([]AlertType, error) {
 	rows, err := s.db.Query(`SELECT id, category, name, description, default_severity, default_params,
-		auto_approve, notifiable, enabled, builtin, check_cmd, check_mode, check_pattern FROM alert_types ORDER BY id`)
+		auto_approve, notifiable, enabled, builtin, check_cmd, check_mode, check_pattern,
+		scope_nodes, scope_groups FROM alert_types ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +157,8 @@ func (s *Store) ListAlertTypes() ([]AlertType, error) {
 // GetAlertType 按 ID 获取告警类型。
 func (s *Store) GetAlertType(id string) (AlertType, bool, error) {
 	row := s.db.QueryRow(`SELECT id, category, name, description, default_severity, default_params,
-		auto_approve, notifiable, enabled, builtin, check_cmd, check_mode, check_pattern FROM alert_types WHERE id = ?`, id)
+		auto_approve, notifiable, enabled, builtin, check_cmd, check_mode, check_pattern,
+		scope_nodes, scope_groups FROM alert_types WHERE id = ?`, id)
 	at, err := scanAlertType(row)
 	if err == sql.ErrNoRows {
 		return AlertType{}, false, nil
@@ -165,7 +172,8 @@ func (s *Store) GetAlertType(id string) (AlertType, bool, error) {
 // ListEnabledAlertTypes 列出启用的告警类型。
 func (s *Store) ListEnabledAlertTypes() ([]AlertType, error) {
 	rows, err := s.db.Query(`SELECT id, category, name, description, default_severity, default_params,
-		auto_approve, notifiable, enabled, builtin, check_cmd, check_mode, check_pattern FROM alert_types WHERE enabled = 1 ORDER BY id`)
+		auto_approve, notifiable, enabled, builtin, check_cmd, check_mode, check_pattern,
+		scope_nodes, scope_groups FROM alert_types WHERE enabled = 1 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -191,8 +199,10 @@ func scanAlertType(r rowScanner) (AlertType, error) {
 	var severity, params string
 	var autoApprove, notifiable, enabled, builtin int
 	var checkCmd, checkMode, checkPattern string
+	var scopeNodes, scopeGroups string
 	err := r.Scan(&at.ID, &at.Category, &at.Name, &at.Description, &severity, &params,
-		&autoApprove, &notifiable, &enabled, &builtin, &checkCmd, &checkMode, &checkPattern)
+		&autoApprove, &notifiable, &enabled, &builtin, &checkCmd, &checkMode, &checkPattern,
+		&scopeNodes, &scopeGroups)
 	if err != nil {
 		return AlertType{}, err
 	}
@@ -204,6 +214,8 @@ func scanAlertType(r rowScanner) (AlertType, error) {
 	at.CheckCmd = checkCmd
 	at.CheckMode = checkMode
 	at.CheckPattern = checkPattern
+	at.ScopeNodes = scopeNodes
+	at.ScopeGroups = scopeGroups
 	if err := json.Unmarshal([]byte(params), &at.DefaultParams); err != nil {
 		return AlertType{}, fmt.Errorf("monitor: 解析 %s 规则参数失败: %w", at.ID, err)
 	}
