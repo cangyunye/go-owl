@@ -1719,6 +1719,19 @@ tr:hover td { background: var(--surface-2); }
 .exec-main { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .exec-sidebar { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
+/* LAYOUT — Files 工作台：传输表单与中转站并排（点文件回填路径的联动触手可及），
+   传输记录放下方全宽；窄屏折叠为单列（中转站回到表单下方）。 */
+.files-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 12px;
+  align-items: stretch;
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .files-grid { grid-template-columns: 1fr; }
+}
+
 .cmd-editor {
   background: var(--code-bg);
   border: 1px solid var(--border);

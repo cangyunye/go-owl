@@ -722,6 +722,7 @@ export function renderFiles(render, navigate, user, api, shell) {
   render(`
     <div class="exec-layout">
       <div class="exec-main">
+        <div class="files-grid">
         <div class="card">
           <div class="card-header"><h3>文件传输</h3></div>
           <div class="card-body">
@@ -742,40 +743,6 @@ export function renderFiles(render, navigate, user, api, shell) {
               <button class="btn btn-primary active" id="upload-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-upload"/></svg> 上传</button>
               <button class="btn btn-secondary" id="download-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg> 下载</button>
             </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><h3>传输记录</h3></div>
-          <div class="card-body" style="padding:8px 14px 0">
-            <div style="display:flex;gap:6px;margin-bottom:8px" id="transfer-tabs">
-              <div class="seg">
-                <button class="active" data-tab="list">传输记录</button>
-                <button data-tab="tasks">任务详情</button>
-              </div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
-              <div class="seg">
-                <button class="active" data-tf="all">全部</button>
-                <button data-tf="completed">成功</button>
-                <button data-tf="failed">失败</button>
-                <button data-tf="running">进行中</button>
-              </div>
-              <span style="flex:1"></span>
-              <input type="text" id="transfer-search" class="exec-input" placeholder="搜索文件名/节点..." style="width:160px">
-            </div>
-            <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
-              <label style="font-size:11px;color:var(--muted)">起始</label>
-              <input type="date" id="tf-start-date" class="exec-input" style="width:140px">
-              <label style="font-size:11px;color:var(--muted)">截止</label>
-              <input type="date" id="tf-end-date" class="exec-input" style="width:140px">
-            </div>
-          </div>
-          <div class="card-body" style="padding:0">
-            <ul class="task-list transfer-list-scroll" id="transfer-list" style="padding:0 18px">
-              <li class="task-item"><div class="task-info"><div class="task-name" style="color:var(--muted)">加载中…</div></div></li>
-            </ul>
-            <div class="pagination" id="transfer-pager" style="justify-content:center;padding:6px 14px"></div>
           </div>
         </div>
 
@@ -810,7 +777,42 @@ export function renderFiles(render, navigate, user, api, shell) {
                 <button class="btn btn-primary btn-sm" id="staging-batch-btn" style="width:100%;white-space:nowrap;display:none">批量传输</button>
               </div>
             </div>
-            <div id="staging-file-list" style="max-height:280px;overflow-y:auto">加载中…</div>
+            <div id="staging-file-list" style="max-height:280px;overflow:auto">加载中…</div>
+          </div>
+        </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>传输记录</h3></div>
+          <div class="card-body" style="padding:8px 14px 0">
+            <div style="display:flex;gap:6px;margin-bottom:8px" id="transfer-tabs">
+              <div class="seg">
+                <button class="active" data-tab="list">传输记录</button>
+                <button data-tab="tasks">任务详情</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+              <div class="seg">
+                <button class="active" data-tf="all">全部</button>
+                <button data-tf="completed">成功</button>
+                <button data-tf="failed">失败</button>
+                <button data-tf="running">进行中</button>
+              </div>
+              <span style="flex:1"></span>
+              <input type="text" id="transfer-search" class="exec-input" placeholder="搜索文件名/节点..." style="width:160px">
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+              <label style="font-size:11px;color:var(--muted)">起始</label>
+              <input type="date" id="tf-start-date" class="exec-input" style="width:140px">
+              <label style="font-size:11px;color:var(--muted)">截止</label>
+              <input type="date" id="tf-end-date" class="exec-input" style="width:140px">
+            </div>
+          </div>
+          <div class="card-body" style="padding:0">
+            <ul class="task-list transfer-list-scroll" id="transfer-list" style="padding:0 18px">
+              <li class="task-item"><div class="task-info"><div class="task-name" style="color:var(--muted)">加载中…</div></div></li>
+            </ul>
+            <div class="pagination" id="transfer-pager" style="justify-content:center;padding:6px 14px"></div>
           </div>
         </div>
       </div>
