@@ -886,8 +886,7 @@ tr:hover td { background: var(--surface-2); }
 .staging-table tr:last-child td { border-bottom: none; }
 .staging-table tr:hover td { background: var(--surface-hover); cursor: pointer; }
 .staging-table .stg-ck { width: 32px; }
-.staging-table .stg-name { width: 25%; }
-.staging-table .stg-path { width: 35%; }
+.staging-table .stg-name { width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .staging-table .stg-time { width: 135px; }
 .staging-table .stg-size { width: 70px; text-align: right; }
 .staging-table .stg-act { width: 36px; }
@@ -1259,6 +1258,18 @@ tr:hover td { background: var(--surface-2); }
 .status-online { background: color-mix(in oklch, var(--success) 18%, var(--surface)); color: var(--success); }
 .status-offline { background: color-mix(in oklch, var(--danger) 18%, var(--surface)); color: var(--danger); }
 .status-unknown { background: color-mix(in oklch, var(--muted) 18%, var(--surface)); color: var(--muted); }
+/* 剧本运行/步骤状态（queued/pending/running/completed/failed/cancelled…）：
+   色语义与 .status-dot 同源，此前无定义导致所有运行状态渲染为无色文本 */
+.status-queued, .status-pending { background: color-mix(in oklch, var(--muted) 18%, var(--surface)); color: var(--muted); }
+.status-running {
+  background: color-mix(in oklch, var(--accent) 18%, var(--surface));
+  color: var(--accent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.status-completed, .status-success { background: color-mix(in oklch, var(--success) 18%, var(--surface)); color: var(--success); }
+.status-failed, .status-error { background: color-mix(in oklch, var(--danger) 18%, var(--surface)); color: var(--danger); }
+.status-cancelled { background: color-mix(in oklch, var(--muted) 18%, var(--surface)); color: var(--muted); }
+.status-partial_failure { background: color-mix(in oklch, var(--warn) 18%, var(--surface)); color: var(--warn); }
 
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
@@ -1720,12 +1731,13 @@ tr:hover td { background: var(--surface-2); }
 .exec-sidebar { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
 /* LAYOUT — Files 工作台：传输表单与中转站并排（点文件回填路径的联动触手可及），
-   传输记录放下方全宽；窄屏折叠为单列（中转站回到表单下方）。 */
+   传输记录放下方全宽；窄屏折叠为单列（中转站回到表单下方）。
+   align-items:start 让卡片贴合内容高度，避免表单卡下方大片留白。 */
 .files-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) 420px;
   gap: 12px;
-  align-items: stretch;
+  align-items: start;
   min-width: 0;
 }
 @media (max-width: 1100px) {
@@ -4363,3 +4375,4 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   background-image: none;
   padding-right: 8px;
 }
+
