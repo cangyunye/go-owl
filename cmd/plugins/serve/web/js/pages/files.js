@@ -559,25 +559,27 @@ export function renderFiles(render, navigate, user, api, shell) {
       </div>
       <div class="filter-row" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
         <label>传输选项</label>
-        <label class="toggle-row" style="margin-top:4px">
-          <input type="checkbox" id="files-overwrite">
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          <span style="font-size:12px;color:var(--muted)">覆盖已有文件</span>
-        </label>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
-          <span style="font-size:11px;color:var(--muted)">权限</span>
-          <input type="text" id="files-mode" class="exec-input" value="0644" style="width:60px;text-align:center">
+        <div class="option-grid">
+          <label class="toggle-row">
+            <input type="checkbox" id="files-overwrite">
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span style="font-size:12px;color:var(--muted)">覆盖已有文件</span>
+          </label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;color:var(--muted)">权限</span>
+            <input type="text" id="files-mode" class="exec-input" value="0644" style="width:60px;text-align:center">
+          </div>
+          <label class="toggle-row">
+            <input type="checkbox" id="files-parallel" checked>
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span style="font-size:12px;color:var(--muted)">并行传输</span>
+          </label>
+          <label class="toggle-row">
+            <input type="checkbox" id="files-resume" checked>
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span style="font-size:12px;color:var(--muted)">断点续传</span>
+          </label>
         </div>
-        <label class="toggle-row" style="margin-top:4px">
-          <input type="checkbox" id="files-parallel" checked>
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          <span style="font-size:12px;color:var(--muted)">并行传输</span>
-        </label>
-        <label class="toggle-row" style="margin-top:4px">
-          <input type="checkbox" id="files-resume" checked>
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          <span style="font-size:12px;color:var(--muted)">断点续传</span>
-        </label>
       </div>
     `;
     renderGroupChips();
@@ -631,6 +633,7 @@ export function renderFiles(render, navigate, user, api, shell) {
       <thead><tr>
         <th class="stg-ck" style="${showCheck}"><input type="checkbox" class="staging-select-all" ${allChecked ? 'checked' : ''}></th>
         <th class="stg-name">文件名</th>
+        <th class="stg-path">路径</th>
         <th class="stg-time">创建时间</th>
         <th class="stg-size">大小</th>
         ${canDelete ? '<th class="stg-act"></th>' : ''}
@@ -642,6 +645,7 @@ export function renderFiles(render, navigate, user, api, shell) {
         return `<tr class="staging-file-row" data-name="${esc(f.name)}">
           <td class="stg-ck" style="${showCheck}"><input type="checkbox" class="staging-checkbox" data-name="${esc(f.name)}" ${checked}></td>
           <td class="stg-name" title="${esc(fullPath)}">${stagingFileIcon(f.name)}${esc(f.name)}</td>
+          <td class="stg-path" title="${esc(fullPath)}">${esc(fullPath)}</td>
           <td class="stg-time">${fmtTime(fileTime)}</td>
           <td class="stg-size">${fmtSize(f.size)}</td>
           ${canDelete ? `<td class="stg-act"><button class="btn btn-ghost btn-icon btn-sm staging-delete-btn" data-name="${esc(f.name)}" title="删除"><svg width="14" height="14" aria-hidden="true" style="color:var(--danger)"><use href="#icon-x"/></svg></button></td>` : ''}
@@ -778,8 +782,7 @@ export function renderFiles(render, navigate, user, api, shell) {
 
   render(`
     <div class="exec-layout">
-      <div class="exec-main">
-        <div class="files-grid">
+      <div class="files-col-main">
         <div class="card">
           <div class="card-header"><h3>文件传输</h3></div>
           <div class="card-body">
@@ -796,44 +799,6 @@ export function renderFiles(render, navigate, user, api, shell) {
               <button class="btn btn-secondary" id="download-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-refresh"/></svg> 下载</button>
             </div>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header" style="display:flex;align-items:center;gap:8px">
-            <h3 style="flex:1">文件中转站</h3>
-            <button class="btn btn-ghost btn-sm" id="staging-clear-btn" style="display:none;color:var(--danger)">清空</button>
-            <input type="text" id="staging-search" class="exec-input" placeholder="搜索文件名..." style="width:140px;font-size:12px">
-          </div>
-          <div class="card-body staging-dropzone" id="staging-dropzone">
-            <div class="staging-drop-overlay" id="staging-drop-overlay">
-              <div style="text-align:center">
-                <div style="font-size:14px;font-weight:600;margin-bottom:4px">松开以上传文件</div>
-                <div style="font-size:12px;color:var(--muted)">支持拖放多个文件到中转站</div>
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-              <div style="flex:1;min-width:0">
-                <div id="staging-disk-bar" style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"></div>
-                <div id="staging-disk-info" style="font-size:11px;color:var(--muted);margin-top:2px">加载中…</div>
-              </div>
-              <button class="btn btn-ghost btn-sm" id="staging-multi-btn" style="white-space:nowrap;flex-shrink:0" title="多选模式">
-                <svg width="13" height="13" aria-hidden="true" style="margin-right:3px;vertical-align:-2px"><use href="#icon-check"/></svg>
-                多选
-              </button>
-              <button class="btn btn-secondary btn-sm" id="staging-pick-btn" style="white-space:nowrap;flex-shrink:0">
-                <svg width="13" height="13" aria-hidden="true" style="margin-right:3px;vertical-align:-2px"><use href="#icon-plus"/></svg>
-                选择
-              </button>
-              <input type="file" id="staging-file-input" hidden>
-              <div style="width:100px;flex-shrink:0">
-                <button class="btn btn-primary btn-sm" id="staging-upload-btn" disabled style="width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">上传中转站</button>
-                <button class="btn btn-primary btn-sm" id="staging-batch-btn" style="width:100%;white-space:nowrap;display:none">批量传输</button>
-                <button class="btn btn-danger btn-sm" id="staging-delete-selected-btn" style="width:100%;white-space:nowrap;display:none;margin-top:6px">删除选中</button>
-              </div>
-            </div>
-            <div id="staging-file-list" style="max-height:280px;overflow:auto">加载中…</div>
-          </div>
-        </div>
         </div>
 
         <div class="card">
@@ -871,10 +836,47 @@ export function renderFiles(render, navigate, user, api, shell) {
         </div>
       </div>
 
-      <div class="exec-sidebar">
+      <div class="files-col-side">
         <div class="card">
           <div class="card-header"><h3>筛选条件</h3></div>
           <div class="card-body" id="files-filter-controls"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header" style="display:flex;align-items:center;gap:8px">
+            <h3 style="flex:1">文件中转站</h3>
+            <button class="btn btn-ghost btn-sm" id="staging-clear-btn" style="display:none;color:var(--danger)">清空</button>
+            <input type="text" id="staging-search" class="exec-input" placeholder="搜索文件名..." style="width:140px;font-size:12px">
+          </div>
+          <div class="card-body staging-dropzone" id="staging-dropzone">
+            <div class="staging-drop-overlay" id="staging-drop-overlay">
+              <div style="text-align:center">
+                <div style="font-size:14px;font-weight:600;margin-bottom:4px">松开以上传文件</div>
+                <div style="font-size:12px;color:var(--muted)">支持拖放多个文件到中转站</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              <div style="flex:1;min-width:0">
+                <div id="staging-disk-bar" style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"></div>
+                <div id="staging-disk-info" style="font-size:11px;color:var(--muted);margin-top:2px">加载中…</div>
+              </div>
+              <button class="btn btn-ghost btn-sm" id="staging-multi-btn" style="white-space:nowrap;flex-shrink:0" title="多选模式">
+                <svg width="13" height="13" aria-hidden="true" style="margin-right:3px;vertical-align:-2px"><use href="#icon-check"/></svg>
+                多选
+              </button>
+              <button class="btn btn-secondary btn-sm" id="staging-pick-btn" style="white-space:nowrap;flex-shrink:0">
+                <svg width="13" height="13" aria-hidden="true" style="margin-right:3px;vertical-align:-2px"><use href="#icon-plus"/></svg>
+                选择
+              </button>
+              <input type="file" id="staging-file-input" hidden>
+              <div style="width:100px;flex-shrink:0">
+                <button class="btn btn-primary btn-sm" id="staging-upload-btn" disabled style="width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">上传中转站</button>
+                <button class="btn btn-primary btn-sm" id="staging-batch-btn" style="width:100%;white-space:nowrap;display:none">批量传输</button>
+                <button class="btn btn-danger btn-sm" id="staging-delete-selected-btn" style="width:100%;white-space:nowrap;display:none;margin-top:6px">删除选中</button>
+              </div>
+            </div>
+            <div id="staging-file-list" style="max-height:340px;overflow:auto">加载中…</div>
+          </div>
         </div>
       </div>
     </div>

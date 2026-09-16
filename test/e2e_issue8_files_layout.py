@@ -1,9 +1,9 @@
-"""E2E: /files 页 tab 稳定 + 分页 + 双栏布局
+"""E2E: /files 页双栏布局 + tab 稳定 + 分页
 
-前提：服务端已有 21+ 条传输记录（脚本外经 API 造数）。
+布局：左列 = 传输表单 + 传输记录（纵向对齐）；右列 = 筛选条件（上）+ 文件中转站（下）。
 A. tab 稳定：点"任务详情"后跨多个 5s 轮询周期 active 不变；单击"传输记录"立即切回
 B. 分页：分页条显示"共 N 条 · 第 1/2 页"，翻页后可见更早记录，页码状态正确
-C. 双栏布局：中转站卡片与传输表单同排（顶端 y 坐标接近），且不随记录数变化
+C. 双栏布局：右列在左列右侧，筛选条件在中转站上方，传输记录在表单下方
 """
 import sys
 
@@ -30,16 +30,36 @@ def main():
         page.wait_for_load_state('networkidle')
         page.wait_for_timeout(1500)
 
-        # ---------- C: 双栏布局 ----------
-        form_box = page.locator('.files-grid .card').first.bounding_box()
-        staging_top = page.evaluate("""() => {
-          const cards = [...document.querySelectorAll('.exec-main .files-grid > .card')];
-          const stg = cards.find(c => c.textContent.includes('文件中转站'));
-          return stg ? stg.getBoundingClientRect() : null;
+        # ---------- C: 双栏布局几何 ----------
+        geo = page.evaluate("""() => {
+          const r = el => el.getBoundingClientRect();
+          const side = document.querySelector('.files-col-side');
+          const main = document.querySelector('.files-col-main');
+          if (!side || !main) return null;
+          const sideCards = [...side.querySelectorAll(':scope > .card')];
+          const mainCards = [...main.querySelectorAll(':scope > .card')];
+          const filters = sideCards.find(c => c.textContent.includes('筛选条件'));
+          const stg = sideCards.find(c => c.textContent.includes('文件中转站'));
+          const form = mainCards.find(c => c.textContent.includes('文件传输'));
+          const rec = mainCards.find(c => c.textContent.includes('传输记录'));
+          return {
+            mainX: r(main).x, sideX: r(side).x, sideW: r(side).width,
+            filtersY: filters ? r(filters).y : null,
+            stgY: stg ? r(stg).y + (document.querySelector(".view-container")?.scrollTop || 0) : null,
+            formY: form ? r(form).y : null,
+            recY: rec ? r(rec).y : null,
+            pathCol: !!side.querySelector('.staging-table .stg-path'),
+          };
         }""")
-        assert staging_top, 'C: 中转站卡片应在 files-grid 内'
-        assert abs(staging_top['y'] - form_box['y']) < 40, 'C: 中转站应与表单同排: form y=%s stg y=%s' % (form_box['y'], staging_top['y'])
-        print('C PASS 中转站与表单并排 (y: %s vs %s)' % (round(form_box['y']), round(staging_top['y'])))
+        assert geo, 'C: 双栏结构缺失'
+        assert geo['sideX'] > geo['mainX'], 'C: 右列应在左列右侧'
+        assert geo['filtersY'] is not None and geo['stgY'] is not None
+        assert geo['stgY'] > geo['filtersY'], 'C: 中转站应在筛选条件下方'
+        assert geo['formY'] is not None and geo['recY'] is not None
+        assert geo['recY'] > geo['formY'], 'C: 传输记录应在表单下方（纵向对齐）'
+        assert geo['pathCol'], 'C: 中转站表格应有路径列'
+        assert geo['sideW'] >= 400, 'C: 右列宽度应 >= 400，实际 %s' % geo['sideW']
+        print('C PASS 双栏布局:', {k: (round(v) if isinstance(v, (int, float)) else v) for k, v in geo.items() if v is not None})
 
         # ---------- A: tab 稳定 ----------
         page.locator('#transfer-tabs .seg button[data-tab="tasks"]').click()
@@ -70,13 +90,16 @@ def main():
         assert rows == total - 20, 'B: 第 2 页应为 %d 行，实际 %d' % (total - 20, rows)
         print('B PASS 分页: %s，第二页 %d 行' % (info2, rows))
 
-        # 中转站位置在翻页后不变化
-        staging_top2 = page.evaluate("""() => {
-          const cards = [...document.querySelectorAll('.exec-main .files-grid > .card')];
-          const stg = cards.find(c => c.textContent.includes('文件中转站'));
-          return stg.getBoundingClientRect().y;
+        # 中转站位置在翻页后不变化（相对滚动容器 .view-container 的文档坐标：
+        # 页面滚动发生在 .view-container 上而非 window，点击翻页按钮会触发
+        # 容器滚动，必须用 scrollTop 折算才能得到稳定的文档坐标）
+        geo2 = page.evaluate("""() => {
+          const stg = [...document.querySelectorAll('.files-col-side > .card')]
+            .find(c => c.textContent.includes('文件中转站'));
+          const scroller = document.querySelector('.view-container');
+          return stg.getBoundingClientRect().y + (scroller ? scroller.scrollTop : 0);
         }""")
-        assert abs(staging_top2 - staging_top['y']) < 4, 'C: 翻页后中转站位置不应变化'
+        assert abs(geo2 - geo['stgY']) < 4, 'C: 翻页后中转站位置不应变化'
         print('C PASS 翻页后中转站位置稳定')
 
         assert not errors, '不应有运行时报错: %r' % errors[:3]

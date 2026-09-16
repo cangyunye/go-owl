@@ -886,8 +886,9 @@ tr:hover td { background: var(--surface-2); }
 .staging-table tr:last-child td { border-bottom: none; }
 .staging-table tr:hover td { background: var(--surface-hover); cursor: pointer; }
 .staging-table .stg-ck { width: 32px; }
-.staging-table .stg-name { width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.staging-table .stg-time { width: 135px; }
+.staging-table .stg-name { width: 26%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.staging-table .stg-path { width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.staging-table .stg-time { width: 110px; }
 .staging-table .stg-size { width: 70px; text-align: right; }
 .staging-table .stg-act { width: 36px; }
 .staging-table input[type="checkbox"] {
@@ -1730,19 +1731,26 @@ tr:hover td { background: var(--surface-2); }
 .exec-main { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .exec-sidebar { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
-/* LAYOUT — Files 工作台：传输表单与中转站并排（点文件回填路径的联动触手可及），
-   传输记录放下方全宽；窄屏折叠为单列（中转站回到表单下方）。
-   align-items:start 让卡片贴合内容高度，避免表单卡下方大片留白。 */
-.files-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
-  gap: 12px;
-  align-items: start;
+/* LAYOUT — Files 工作台：左列 = 传输表单 + 传输记录（纵向对齐）；
+   右列 = 筛选条件（摊开在上）+ 文件中转站（在下），宽右栏让文件名/路径
+   都有足够的显示宽度；窄屏折叠为单列（右列回到左列下方）。 */
+.files-col-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.files-col-side {
+  width: clamp(400px, 31%, 560px);
+  flex-shrink: 0;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 @media (max-width: 1100px) {
-  .files-grid { grid-template-columns: 1fr; }
+  .files-col-side { width: auto; }
 }
+/* 筛选条件摊开：标签在左、控件横向铺满右栏宽度 */
+.files-col-side .filter-row { display: flex; align-items: flex-start; gap: 10px; }
+.files-col-side .filter-row > label { flex: 0 0 52px; padding-top: 4px; font-size: 12px; color: var(--muted); }
+.files-col-side .filter-row > div { flex: 1; min-width: 0; }
+.files-col-side .option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; align-items: center; }
 
 .cmd-editor {
   background: var(--code-bg);

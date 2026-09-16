@@ -33,9 +33,9 @@ def main():
         assert abs(src_box['x'] - dst_box['x']) < 4, '竖排：两个输入框应左对齐'
         assert dst_box['y'] > src_box['y'], '竖排：节点路径应在本地路径下方'
         form_h = page.evaluate("""() => {
-          const cards = [...document.querySelectorAll('.files-grid > .card')];
+          const cards = [...document.querySelectorAll('.files-col-main > .card')];
           const form = cards.find(c => c.textContent.includes('文件传输'));
-          return form.getBoundingClientRect().height;
+          return form ? form.getBoundingClientRect().height : 9999;
         }""")
         assert form_h < 320, '表单卡不应有大片留白（高度 %s）' % form_h
         print('C PASS 竖排表单，表单卡高度 %d' % round(form_h))
