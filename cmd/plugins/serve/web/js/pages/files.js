@@ -549,14 +549,16 @@ export function renderFiles(render, navigate, user, api, shell) {
         <label>分组</label>
         <div style="display:flex;gap:4px;flex-wrap:wrap" id="files-group-chips"></div>
       </div>
-      <div class="filter-row">
-        <label>标签</label>
-        <div style="display:flex;gap:4px;flex-wrap:wrap" id="files-label-tags"></div>
-        <div style="display:flex;gap:4px;margin-top:4px">
-          <input type="text" id="files-label-input" class="exec-input" placeholder="key=value" style="flex:1;min-width:0">
-          <button class="btn btn-ghost btn-sm" id="files-add-label-btn">+</button>
-        </div>
+  <div class="filter-row">
+    <label>标签</label>
+    <div>
+      <div id="files-label-tags" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px"></div>
+      <div style="display:flex;gap:4px">
+        <input type="text" id="files-label-input" class="exec-input" placeholder="key=value" style="flex:1;min-width:0">
+        <button class="btn btn-ghost btn-sm" id="files-add-label-btn">+</button>
       </div>
+    </div>
+  </div>
       <div class="filter-row" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
         <label>传输选项</label>
         <div class="option-grid">
@@ -603,6 +605,14 @@ export function renderFiles(render, navigate, user, api, shell) {
     return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
+  // fmtTimeShort 紧凑时间（中转站表格列宽有限，完整时间见悬浮提示）
+  function fmtTimeShort(t) {
+    if (!t) return '-';
+    const d = new Date(t);
+    const p = n => String(n).padStart(2, '0');
+    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
   function renderStaging() {
     const list = document.getElementById('staging-file-list');
     const bar = document.getElementById('staging-disk-bar');
@@ -646,7 +656,7 @@ export function renderFiles(render, navigate, user, api, shell) {
           <td class="stg-ck" style="${showCheck}"><input type="checkbox" class="staging-checkbox" data-name="${esc(f.name)}" ${checked}></td>
           <td class="stg-name" title="${esc(fullPath)}">${stagingFileIcon(f.name)}${esc(f.name)}</td>
           <td class="stg-path" title="${esc(fullPath)}">${esc(fullPath)}</td>
-          <td class="stg-time">${fmtTime(fileTime)}</td>
+          <td class="stg-time" title="${esc(fmtTime(fileTime))}">${fmtTimeShort(fileTime)}</td>
           <td class="stg-size">${fmtSize(f.size)}</td>
           ${canDelete ? `<td class="stg-act"><button class="btn btn-ghost btn-icon btn-sm staging-delete-btn" data-name="${esc(f.name)}" title="删除"><svg width="14" height="14" aria-hidden="true" style="color:var(--danger)"><use href="#icon-x"/></svg></button></td>` : ''}
         </tr>`;
