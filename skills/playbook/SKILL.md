@@ -7,7 +7,7 @@ description: 根据用户描述的使用步骤生成 owl 运维 playbook YAML �
 
 根据用户描述的使用步骤，生成符合 owl playbook 模板的 YAML 剧本，并写入 `playbooks/` 目录，最后通过 `owl playbook validate` 校验。
 
-生成时必须先阅读本项目 `.opencode/skills/playbook/schema.md`（playbook YAML 唯一 schema 依据），严格按其字段与动作参数表生成。
+生成时必须先阅读本项目 `skills/playbook/schema.md`（playbook YAML 唯一 schema 依据），严格按其字段与动作参数表生成。
 
 ## 工作流
 
@@ -67,7 +67,7 @@ description: 根据用户描述的使用步骤生成 owl 运维 playbook YAML �
 
 ## 示例参考
 
-完整示例见 `.opencode/skills/playbook/examples/deploy-app.yaml`。
+完整示例见 `skills/playbook/examples/deploy-app.yaml`。
 
 ## 边界
 
