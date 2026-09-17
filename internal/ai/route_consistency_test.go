@@ -144,16 +144,27 @@ func TestNoFreeTextOnTurnZero(t *testing.T) {
 	}
 }
 
-// TestNoFreeTextInProcessWithContext 验证多轮场景同样收口。
-func TestNoFreeTextInProcessWithContext(t *testing.T) {
-	agent := newTestAgentForRoute([]string{"好的，我来帮您！"})
+// TestDirectAnswerInProcessWithContext 多轮共享上下文的对话轮允许 LLM
+// 直接文本回答（追问/闲聊无需工具）；空文本仍收口为"不确定"。
+func TestDirectAnswerInProcessWithContext(t *testing.T) {
+	agent := newTestAgentForRoute([]string{"你好！我是 owl AI 助手，有什么可以帮你？"})
 	msgs := []Message{{Role: "system", Content: "system"}, {Role: "user", Content: "你好"}}
 	_, resp, err := agent.ProcessWithContext(context.Background(), msgs, nil)
 	if err != nil {
 		t.Fatalf("ProcessWithContext failed: %v", err)
 	}
-	if resp != "我不确定您要做什么" {
-		t.Errorf("expected rejection for free text, got %q", resp)
+	if resp != "你好！我是 owl AI 助手，有什么可以帮你？" {
+		t.Errorf("expected direct answer, got %q", resp)
+	}
+
+	// 空文本仍收口
+	agent2 := newTestAgentForRoute([]string{"   "})
+	_, resp2, err := agent2.ProcessWithContext(context.Background(), msgs, nil)
+	if err != nil {
+		t.Fatalf("ProcessWithContext failed: %v", err)
+	}
+	if resp2 != "我不确定您要做什么" {
+		t.Errorf("expected rejection for empty text, got %q", resp2)
 	}
 }
 

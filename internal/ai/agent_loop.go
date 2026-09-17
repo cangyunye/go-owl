@@ -25,6 +25,10 @@ type toolLoopParams struct {
 	localFallback bool
 	// useToolHints 多轮执行后是否注入工具提示（仅 Process）
 	useToolHints bool
+	// allowDirectAnswer 允许首轮无工具调用时把 LLM 文本直接作为回答
+	// （多轮共享上下文的对话轮：追问/闲聊不需要工具）。Process 首轮路由
+	// 保持"不确定"收口（防提示词失败的自由文本泄漏）。
+	allowDirectAnswer bool
 }
 
 type toolLoopResult struct {
@@ -104,6 +108,13 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 		debugPrint(a.debug, "=== 第 %d 轮 === 工具调用数: %d", turn+1, len(toolCalls))
 
 		if len(toolCalls) == 0 {
+			if turn == 0 && p.allowDirectAnswer && strings.TrimSpace(content) != "" {
+				debugPrint(a.debug, "多轮对话轮：LLM 直接回答（未调用工具）")
+				if p.onProgress != nil {
+					p.onProgress("result", "完成")
+				}
+				return toolLoopResult{messages: msgs, reply: content}, nil
+			}
 			if turn > 0 {
 				reply := strings.TrimSpace(content)
 				if reply == "" && lastToolResult != "" {

@@ -32,10 +32,16 @@ type AIHandler struct {
 
 func NewAIHandler(db *sql.DB, auditStore *store.AIAuditStore, executor *WebExecutor,
 	keyManager *KeyManager, agent *ai2.Agent, debugMode bool) *AIHandler {
+	// 会话持久化到 serve 主库（ai_sessions 表，host="web"），重启后可恢复上下文；
+	// 建表失败降级为纯内存会话（不阻塞服务启动）
+	sessionMgr := ai2.NewSessionManager()
+	if sessionStore, err := ai2.NewSQLiteSessionStore(db); err == nil {
+		sessionMgr = ai2.NewSessionManagerWithStore(sessionStore, "web")
+	}
 	h := &AIHandler{
 		db: db, auditStore: auditStore, executor: executor,
 		keyManager: keyManager, agent: agent,
-		sessionMgr: ai2.NewSessionManager(),
+		sessionMgr: sessionMgr,
 		debugMode:  debugMode,
 	}
 	h.newChatAgent = h.buildChatAgent
@@ -125,30 +131,32 @@ func (h *AIHandler) resolveChatContext(c *gin.Context) (*aiChatContext, bool) {
 	h.executor.userRole = c.GetString("role")
 	h.executor.userName = c.GetString("username")
 
-	session, exists := h.sessionMgr.GetSession(sessionKey)
-	if !exists {
-		agent := h.agent
-		if req.EncryptedAPIKey != "" && req.Model != "" {
-			if apiKeyBytes, err := h.keyManager.Decrypt(req.SessionID, req.EncryptedAPIKey); err == nil {
-				apiType := req.APIType
-				if apiType == "" {
-					apiType = "openai"
-				}
-				baseURL := req.BaseURL
-				if baseURL == "" {
-					baseURL = defaultBaseURL(req.Provider)
-				}
-				llmReq := &LLMRequest{
-					APIKey:  string(apiKeyBytes),
-					BaseURL: baseURL,
-					Model:   req.Model,
-					APIType: apiType,
-				}
-				if chatAgent, err := h.newChatAgent(llmReq); err == nil {
-					agent = chatAgent
-				}
+	// 先构建本次请求使用的 agent（用户自带 key 时），命中持久化会话则以
+	// 该 agent 恢复上下文（新 key + 旧上下文），未命中则创建新会话
+	agent := h.agent
+	if req.EncryptedAPIKey != "" && req.Model != "" {
+		if apiKeyBytes, err := h.keyManager.Decrypt(req.SessionID, req.EncryptedAPIKey); err == nil {
+			apiType := req.APIType
+			if apiType == "" {
+				apiType = "openai"
+			}
+			baseURL := req.BaseURL
+			if baseURL == "" {
+				baseURL = defaultBaseURL(req.Provider)
+			}
+			llmReq := &LLMRequest{
+				APIKey:  string(apiKeyBytes),
+				BaseURL: baseURL,
+				Model:   req.Model,
+				APIType: apiType,
+			}
+			if chatAgent, err := h.newChatAgent(llmReq); err == nil {
+				agent = chatAgent
 			}
 		}
+	}
+	session, exists := h.sessionMgr.GetOrLoadSession(sessionKey, agent)
+	if !exists {
 		session = h.sessionMgr.CreateSession(sessionKey, agent)
 	}
 

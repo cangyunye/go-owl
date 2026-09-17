@@ -616,8 +616,9 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 	msgs[0] = Message{Role: messages[0].Role, Content: formattedPrompt}
 	copy(msgs[1:], messages[1:])
 	result, err := a.runToolLoop(ctx, chatModel, toolLoopParams{
-		messages:   msgs,
-		onProgress: onProgress,
+		messages:          msgs,
+		onProgress:        onProgress,
+		allowDirectAnswer: true,
 	})
 	if err != nil {
 		return msgs, "", err
@@ -904,8 +905,10 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 
 	params := extractor.ExtractParams(intentResult.Type, input)
 
+	// 参数验证失败不在此处拒绝：工具层 Validate 仍会兜底拦截非法参数，
+	// 而这里报错会让兜底 agent 在多轮对话路径上整体失败。
 	if err := validator.ValidateParams(intentResult.Type, params); err != nil {
-		return "", fmt.Errorf("参数验证失败：%w", err)
+		debugPrint(a.debug, "defaultChatHandler 参数验证未通过（交由工具层校验）: %v", err)
 	}
 
 	var toolCallJSON string
@@ -969,6 +972,15 @@ type Session struct {
 	lastActive     time.Time
 	OnProgress     ProgressCallback
 	pendingContext *PendingContext
+	// persist 由 SessionManager 注入：Send 成功后持久化快照（nil=纯内存）
+	persist func(*Session)
+}
+
+// persistNow 触发快照持久化（store 缺失时为空操作）。
+func (s *Session) persistNow() {
+	if s.persist != nil {
+		s.persist(s)
+	}
 }
 
 func NewSession(agent *Agent) *Session {
@@ -1040,25 +1052,34 @@ func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 			msg := fmt.Sprintf("已执行：%s\n%s", pending.Summary, result)
 			s.appendDialogue(userInput, msg)
 			s.history = append(s.history, fmt.Sprintf("Assistant: %s", msg))
+			s.persistNow()
 			return msg, nil
 		}
 		if negativeReplies[lowerInput] {
 			s.pendingContext = nil
 			s.appendDialogue(userInput, "已取消该操作")
 			s.history = append(s.history, "Assistant: 已取消该操作")
+			s.persistNow()
 			return "已取消该操作", nil
 		}
 		return fmt.Sprintf("有未确认的操作：%s。请回复「是」确认，或「否」取消。", s.pendingContext.Summary), nil
 	}
 
-	// 首次交互（无上下文），使用 Process（带路由）
+	// 首次交互（无上下文），使用 Process（带路由）。
+	// 成功后把本轮 user/assistant 对写回消息历史，后续轮次走
+	// ProcessWithContext 共享上下文（否则多轮对话永远无上下文）。
 	if len(s.messages) == 0 {
 		response, err := s.agent.Process(ctx, userInput, s.OnProgress)
 		if err != nil {
 			return "", err
 		}
+		s.messages = append(s.messages,
+			Message{Role: "user", Content: userInput},
+			Message{Role: "assistant", Content: response},
+		)
 		s.appendDialogue(userInput, response)
 		s.history = append(s.history, fmt.Sprintf("Assistant: %s", response))
+		s.persistNow()
 		return response, nil
 	}
 
@@ -1090,6 +1111,7 @@ func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 
 	s.appendDialogue(userInput, response)
 	s.history = append(s.history, fmt.Sprintf("Assistant: %s", response))
+	s.persistNow()
 	return response, nil
 }
 
@@ -1204,12 +1226,25 @@ func (s *Session) MessageCount() int {
 
 type SessionManager struct {
 	sessions map[string]*Session
+	store    SessionStore
+	host     string
 	mu       sync.RWMutex
 }
 
+// NewSessionManager 创建纯内存会话管理器（不持久化）。
 func NewSessionManager() *SessionManager {
 	return &SessionManager{
 		sessions: make(map[string]*Session),
+	}
+}
+
+// NewSessionManagerWithStore 创建带持久化的会话管理器。
+// host 标识宿主（web/cli），Send 成功后自动保存会话快照。
+func NewSessionManagerWithStore(store SessionStore, host string) *SessionManager {
+	return &SessionManager{
+		sessions: make(map[string]*Session),
+		store:    store,
+		host:     host,
 	}
 }
 
@@ -1218,8 +1253,27 @@ func (m *SessionManager) CreateSession(sessionID string, agent *Agent) *Session 
 	defer m.mu.Unlock()
 
 	session := NewSession(agent)
+	m.attachPersist(sessionID, session)
 	m.sessions[sessionID] = session
 	return session
+}
+
+// attachPersist 给会话注入持久化闭包（store 可用时）。
+func (m *SessionManager) attachPersist(sessionID string, session *Session) {
+	if m.store == nil {
+		return
+	}
+	session.persist = func(s *Session) {
+		rec := &SessionRecord{
+			SessionID: sessionID,
+			Host:      m.host,
+			Title:     sessionTitle(s),
+			State:     s.Snapshot(),
+		}
+		if err := m.store.Save(rec); err != nil {
+			debugPrint(false, "会话持久化失败: %v", err)
+		}
+	}
 }
 
 func (m *SessionManager) GetSession(sessionID string) (*Session, bool) {
@@ -1228,6 +1282,46 @@ func (m *SessionManager) GetSession(sessionID string) (*Session, bool) {
 
 	session, ok := m.sessions[sessionID]
 	return session, ok
+}
+
+// GetOrLoadSession 返回内存中的会话；未命中且配置了持久化 store 时，
+// 从存储恢复（模拟进程重启后的会话延续），恢复后缓存进内存。
+func (m *SessionManager) GetOrLoadSession(sessionID string, agent *Agent) (*Session, bool) {
+	m.mu.RLock()
+	session, ok := m.sessions[sessionID]
+	m.mu.RUnlock()
+	if ok {
+		return session, true
+	}
+	if m.store == nil {
+		return nil, false
+	}
+	rec, err := m.store.Load(sessionID, m.host)
+	if err != nil {
+		return nil, false
+	}
+	restored := restoreSession(agent, rec)
+
+	m.mu.Lock()
+	// 双检：并发恢复时以先入者为准
+	if existing, ok := m.sessions[sessionID]; ok {
+		m.mu.Unlock()
+		return existing, true
+	}
+	m.attachPersist(sessionID, restored)
+	m.sessions[sessionID] = restored
+	m.mu.Unlock()
+	return restored, true
+}
+
+// DeleteSession 删除内存与持久化层中的会话。
+func (m *SessionManager) DeleteSession(sessionID string) {
+	m.mu.Lock()
+	delete(m.sessions, sessionID)
+	m.mu.Unlock()
+	if m.store != nil {
+		_ = m.store.Delete(sessionID, m.host)
+	}
 }
 
 // ListSessions 返回当前所有会话 ID（供 Web 端会话隔离测试使用）。

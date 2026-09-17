@@ -75,11 +75,14 @@ func TestSessionNodeContextSaved(t *testing.T) {
 
 // TestSessionNodeContextOverwrite 验证新一轮节点查询覆盖旧上下文。
 func TestSessionNodeContextOverwrite(t *testing.T) {
+	// 契约：首轮走路由（Process），后续轮走 ProcessWithContext 共享上下文，
+	// 不再重复路由。第二轮直接给工具调用与总结。
 	agent := newTestAgentForRoute([]string{
 		"node_list",
 		"```json\n{\"tool_calls\":[{\"name\":\"query_nodes\",\"arguments\":{\"group\":\"web\"}}]}\n```",
-		"node_list",
+		"第一轮查询完成。",
 		"```json\n{\"tool_calls\":[{\"name\":\"query_nodes\",\"arguments\":{\"search\":\"db\"}}]}\n```",
+		"第二轮查询完成。",
 	})
 	agent.nodeMgr = nodeContextTestMgr()
 	sess := NewSession(agent)

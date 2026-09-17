@@ -342,12 +342,25 @@ func runAI(cmd *cobra.Command, args []string) {
 	fmt.Println(i18n.T("ai.welcome.quit_hint"))
 	fmt.Println()
 
-	session := ai.NewSessionManager()
+	var sessionStore ai.SessionStore
+	if gdb := internalhistory.GetGlobalDB(); gdb != nil {
+		if st, err := ai.NewSQLiteSessionStore(gdb.Connection()); err == nil {
+			sessionStore = st
+		}
+	}
+	session := ai.NewSessionManagerWithStore(sessionStore, "cli")
 	sessionID = aiSession
 	if sessionID == "" {
 		sessionID = "default"
 	}
-	currentSession := session.CreateSession(sessionID, agent)
+	// 会话持久化在 ~/.owl/owl.db 的 ai_sessions 表（host="cli"），
+	// --session 指定的会话重启后可恢复上下文
+	currentSession, restored := session.GetOrLoadSession(sessionID, agent)
+	if !restored {
+		currentSession = session.CreateSession(sessionID, agent)
+	} else {
+		fmt.Println(i18n.T("ai.chat.restored", sessionID))
+	}
 	replProgress, replFinishStream := streamAwareProgress(sessionID, aiVerbose)
 	currentSession.OnProgress = replProgress
 	currentSession.SetDefaultConfirmGate()

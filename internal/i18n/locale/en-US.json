@@ -905,5 +905,6 @@
   "node.reencrypt.long": "Encrypt unencrypted password/ssh_key values in the nodes table.\n\nRequires the OWL_ENC_KEY environment variable (base64-encoded 32-byte key).\nOnly encrypts; other data is untouched. Safe to re-run (encrypted values are skipped).",
   "node.reencrypt.done": "Encrypted %s plaintext credentials",
   "node.reencrypt.no_key": "OWL_ENC_KEY is not set; encryption is disabled, refusing to run",
-  "node.reencrypt.no_db": "database is not initialized"
+  "node.reencrypt.no_db": "database is not initialized",
+  "ai.chat.restored": "Restored session %s context from local store"
 }
