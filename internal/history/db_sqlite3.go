@@ -82,6 +82,7 @@ func (s *SQLite3) InitSchema() error {
 			current_task_index INTEGER DEFAULT 0,
 			current_task_phase TEXT DEFAULT '',
 			forced INTEGER DEFAULT 0,
+			origin TEXT DEFAULT '',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_operations_task_id ON operations (task_id);`,
@@ -262,6 +263,7 @@ var operationColumnSpecs = []struct {
 	{"current_task_index", `ALTER TABLE operations ADD COLUMN current_task_index INTEGER DEFAULT 0`},
 	{"current_task_phase", `ALTER TABLE operations ADD COLUMN current_task_phase TEXT DEFAULT ''`},
 	{"forced", `ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`},
+	{"origin", `ALTER TABLE operations ADD COLUMN origin TEXT DEFAULT ''`},
 }
 
 // EnsureOperationColumns 为存量库补齐 operations 缺失的列（幂等）。

@@ -19,6 +19,7 @@ type Operation struct {
 	CurrentTaskIndex int       // 断点续跑：当前任务索引
 	CurrentTaskPhase string   // 断点续跑：pre_tasks / tasks / post_tasks
 	Forced          bool      // 黑名单放行留痕：danger_confirmed 覆盖时为 true
+	Origin          string    // 操作来源：cli（默认）/web/ai/autoheal/binding
 	CreatedAt       time.Time
 }
 
@@ -89,10 +90,14 @@ func upsertOperation(conn *sql.DB, op *Operation) error {
 		return nil
 	}
 
+	origin := op.Origin
+	if origin == "" {
+		origin = "cli"
+	}
 	_, err = conn.Exec(`
-		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, boolToInt(op.Forced), op.CreatedAt)
+		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, origin, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, op.TaskID, op.OpType, op.Command, targetsJSON, op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, boolToInt(op.Forced), origin, op.CreatedAt)
 	return err
 }
 

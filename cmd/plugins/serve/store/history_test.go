@@ -438,3 +438,51 @@ func TestHistoryStore_QueryExposesForced(t *testing.T) {
 	require.Len(t, recs, 1)
 	assert.False(t, recs[0].Operation.Forced)
 }
+
+// TestHistoryStore_OriginDefault 标记操作来源：serve 侧默认 web，
+// AI 执行器显式填 ai，Query 原样返回。
+func TestHistoryStore_OriginDefault(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "op-web", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed"}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "op-ai", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed", Origin: "ai"}))
+
+	recWeb, err := s.GetByTaskID(ctx, "op-web")
+	require.NoError(t, err)
+	assert.Equal(t, "web", recWeb.Operation.Origin, "serve 侧默认来源应为 web")
+
+	recAI, err := s.GetByTaskID(ctx, "op-ai")
+	require.NoError(t, err)
+	assert.Equal(t, "ai", recAI.Operation.Origin)
+}
+
+// TestHistoryStore_OriginLegacyMigration 旧库（无 origin 列）迁移后写入/查询正常。
+func TestHistoryStore_OriginLegacyMigration(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	_, err := db.Exec(`CREATE TABLE operations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id TEXT,
+		op_type TEXT,
+		command TEXT,
+		targets TEXT,
+		status TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	var n int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('operations') WHERE name = 'origin'`).Scan(&n))
+	assert.Equal(t, 1, n, "origin column should be migrated into legacy operations table")
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "legacy-origin", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed"}))
+	rec, err := s.GetByTaskID(ctx, "legacy-origin")
+	require.NoError(t, err)
+	assert.Equal(t, "web", rec.Operation.Origin)
+}

@@ -73,6 +73,7 @@ func (d *DuckDB) InitSchema() error {
 			current_task_phase VARCHAR DEFAULT '',
 			forced INTEGER DEFAULT 0,
 			status VARCHAR,
+			origin VARCHAR DEFAULT '',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_operations_task_id ON operations (task_id);`,

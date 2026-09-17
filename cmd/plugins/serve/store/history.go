@@ -29,7 +29,10 @@ type Operation struct {
 	CurrentTaskPhase string    `json:"current_task_phase"`
 	Forced           bool      `json:"forced"`
 	Username         string    `json:"username,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
+	// Origin 操作来源：web（页面）/ai（AI 助手）/cli/autoheal/binding。
+	// serve 侧 RecordOperation 空值默认 web。
+	Origin    string    `json:"origin,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type CommandExecution struct {
@@ -123,6 +126,7 @@ func (s *HistoryStore) Init(ctx context.Context) error {
 			current_task_phase TEXT DEFAULT '',
 			forced INTEGER DEFAULT 0,
 			username TEXT DEFAULT '',
+			origin TEXT DEFAULT '',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_operations_task_id ON operations (task_id)`,
@@ -198,6 +202,7 @@ var operationColumnSpecs = []struct {
 	{"current_task_phase", `ALTER TABLE operations ADD COLUMN current_task_phase TEXT DEFAULT ''`},
 	{"forced", `ALTER TABLE operations ADD COLUMN forced INTEGER DEFAULT 0`},
 	{"username", `ALTER TABLE operations ADD COLUMN username TEXT DEFAULT ''`},
+	{"origin", `ALTER TABLE operations ADD COLUMN origin TEXT DEFAULT ''`},
 }
 
 // ensureOperationColumns 为存量库补齐 operations 缺失的列（幂等）。
@@ -256,10 +261,14 @@ func (s *HistoryStore) RecordOperation(ctx context.Context, op *Operation) error
 	if op.Forced {
 		forced = 1
 	}
+	origin := op.Origin
+	if origin == "" {
+		origin = "web"
+	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, username, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, op.TaskID, op.OpType, op.Command, string(targetsJSON), op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, forced, op.Username, op.CreatedAt)
+		INSERT INTO operations (task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, username, origin, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, op.TaskID, op.OpType, op.Command, string(targetsJSON), op.Status, op.ExecutionMode, op.PlaybookPath, op.CurrentTaskIndex, op.CurrentTaskPhase, forced, op.Username, origin, op.CreatedAt)
 	return err
 }
 
@@ -349,7 +358,7 @@ func (s *HistoryStore) Query(ctx context.Context, opts *QueryOptions) ([]*Record
 		return nil, 0, err
 	}
 
-	query := "SELECT id, task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, username, created_at FROM operations" + where + " ORDER BY created_at DESC"
+	query := "SELECT id, task_id, op_type, command, targets, status, execution_mode, playbook_path, current_task_index, current_task_phase, forced, username, origin, created_at FROM operations" + where + " ORDER BY created_at DESC"
 	listArgs := append([]interface{}{}, args...)
 	if opts.Limit > 0 {
 		query += " LIMIT ? OFFSET ?"
@@ -367,7 +376,7 @@ func (s *HistoryStore) Query(ctx context.Context, opts *QueryOptions) ([]*Record
 		var op Operation
 		var targetsJSON string
 		var forced int
-		if err := rows.Scan(&op.ID, &op.TaskID, &op.OpType, &op.Command, &targetsJSON, &op.Status, &op.ExecutionMode, &op.PlaybookPath, &op.CurrentTaskIndex, &op.CurrentTaskPhase, &forced, &op.Username, &op.CreatedAt); err != nil {
+		if err := rows.Scan(&op.ID, &op.TaskID, &op.OpType, &op.Command, &targetsJSON, &op.Status, &op.ExecutionMode, &op.PlaybookPath, &op.CurrentTaskIndex, &op.CurrentTaskPhase, &forced, &op.Username, &op.Origin, &op.CreatedAt); err != nil {
 			continue
 		}
 		op.Forced = forced == 1

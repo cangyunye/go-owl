@@ -9,7 +9,10 @@ export function renderHistory(render, navigate, user, api, shell) {
   function timeAgo(t) { if (!t) return '-'; const s = Math.floor((Date.now() - new Date(t).getTime())/1000); if (s<60) return s+'秒前'; if (s<3600) return Math.floor(s/60)+'分钟前'; if (s<86400) return Math.floor(s/3600)+'小时前'; return Math.floor(s/86400)+'天前'; }
 
   const OP_LABELS = { command: '命令', script: '脚本', file_transfer: '文件传输', playbook: '剧本', node_manage: '节点' };
-  const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'upload', playbook: 'scroll', node_manage: 'nodes' };
+  // 操作来源徽章：AI 发起的执行可整体回溯（web 默认不展示，避免噪音）
+const ORIGIN_BADGE = { ai: '🤖 AI', cli: '⌨️ CLI', autoheal: '♻️ 自愈', binding: '🔗 告警绑定' };
+
+const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'upload', playbook: 'scroll', node_manage: 'nodes' };
   const STATUS_TEXT = { completed: '成功', failed: '失败', running: '进行中', cancelled: '已取消', pending: '等待中' };
 
   function buildParams() {
@@ -57,7 +60,7 @@ export function renderHistory(render, navigate, user, api, shell) {
           <div class="hi-icon"><svg width="16" height="16" aria-hidden="true"><use href="#icon-${icon}"/></svg></div>
           <div class="hi-info">
             <div class="hi-name">${esc(op.command || '')}</div>
-            <div class="hi-meta">${OP_LABELS[op.op_type] || esc(op.op_type)} · ${targets || '无目标'} · ${op.username ? `执行人: ${esc(op.username)} · ` : ''}${timeAgo(op.created_at)}</div>
+            <div class="hi-meta">${OP_LABELS[op.op_type] || esc(op.op_type)} · ${targets || '无目标'} · ${op.username ? `执行人: ${esc(op.username)} · ` : ''}${ORIGIN_BADGE[op.origin] ? ORIGIN_BADGE[op.origin] + ' · ' : ''}${timeAgo(op.created_at)}</div>
           </div>
           ${statusBadge(op.status)}
           <div class="hi-action"><svg width="14" height="14" aria-hidden="true"><use href="#icon-chevron-right"/></svg></div>
@@ -148,7 +151,7 @@ export function renderHistory(render, navigate, user, api, shell) {
       <div class="modal-header"><h3>${esc(op.command || '操作详情')}</h3>
         <button class="btn btn-ghost btn-icon" id="detail-close"><svg width="16" height="16"><use href="#icon-x"/></svg></button></div>
       <div class="modal-body">
-        <p style="color:var(--muted);font-size:12px">类型: ${OP_LABELS[op.op_type] || esc(op.op_type)} · 状态: ${STATUS_TEXT[op.status] || esc(op.status)} · ${op.username ? `执行人: ${esc(op.username)} · ` : ''}时间: ${esc(op.created_at)}</p>
+        <p style="color:var(--muted);font-size:12px">类型: ${OP_LABELS[op.op_type] || esc(op.op_type)} · 状态: ${STATUS_TEXT[op.status] || esc(op.status)} · ${op.username ? `执行人: ${esc(op.username)} · ` : ''}${ORIGIN_BADGE[op.origin] ? '来源: ' + ORIGIN_BADGE[op.origin] + ' · ' : ''}时间: ${esc(op.created_at)}</p>
         <p style="color:var(--muted);font-size:12px">目标: ${(op.targets || []).map(esc).join(', ') || '无'}</p>
         ${dlRow}
         ${execBlocks ? `<h4>命令执行</h4>${execBlocks}` : ''}
