@@ -21,6 +21,7 @@
 | [02_RETRY_MECHANISM.md](02_RETRY_MECHANISM.md) | 重试机制设计 |
 | [03_ASYNC_EXECUTION.md](03_ASYNC_EXECUTION.md) | 异步执行设计 |
 | [04_MONITORING_ALERTING.md](04_MONITORING_ALERTING.md) | 智能监控与告警体系设计 |
+| [05_CAPABILITY_MATCHING_SPEC.md](05_CAPABILITY_MATCHING_SPEC.md) | 能力库与 AI 匹配规范（脚本库·剧本库·告警自愈） |
 | [PLAYBOOK_ACTION_OPTIONS.md](PLAYBOOK_ACTION_OPTIONS.md) | Playbook 动作选项设计 |
 | [PLAYBOOK_TEMPLATE_SYSTEM.md](PLAYBOOK_TEMPLATE_SYSTEM.md) | Playbook 模板系统设计 |
 
@@ -47,7 +48,7 @@
 ## 待开发功能
 
 - [x] 智能监控与告警体系（Phase 1：采集/存储/规则/告警/对策/通知/serve 集成）
-- [ ] AI 处置闭环设计（Phase 2，监控告警体系的后半环）
+- [x] AI 处置闭环设计（Phase 2，监控告警体系的后半环）→ [05_CAPABILITY_MATCHING_SPEC.md](05_CAPABILITY_MATCHING_SPEC.md)（设计评审稿，待分期实施）
 - [ ] AI 配置优化设计
 - [ ] TUI 交互式界面设计
 - [ ] 分布式执行设计
