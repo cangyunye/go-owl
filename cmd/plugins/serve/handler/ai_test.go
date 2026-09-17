@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
+	"strings"
 )
 
 type mockChatModel struct {
@@ -1006,4 +1007,80 @@ func TestAIPermissions_OperatorAndAdmin(t *testing.T) {
 		assert.Contains(t, allowed, "execute_command", "role %s", role)
 		assert.Contains(t, allowed, "run_playbook", "role %s", role)
 	}
+}
+
+// ---- 流式聊天（SSE）----
+
+// streamTextMock 实现流式接口：一次 delta + 完整文本
+type streamTextMock struct{ responses []string; idx int }
+
+func (m *streamTextMock) Generate(ctx context.Context, messages []ai2.Message) (string, error) {
+	if m.idx >= len(m.responses) {
+		return "", fmt.Errorf("no more responses")
+	}
+	r := m.responses[m.idx]
+	m.idx++
+	return r, nil
+}
+
+func (m *streamTextMock) GenerateStream(ctx context.Context, messages []ai2.Message, onDelta func(string)) (string, error) {
+	r, err := m.Generate(ctx, messages)
+	if err != nil {
+		return "", err
+	}
+	if onDelta != nil {
+		onDelta(r)
+	}
+	return r, nil
+}
+
+func TestStreamChat_SSE(t *testing.T) {
+	db, h := aiTestSetup(t)
+	defer db.Close()
+
+	// 注入流式 mock：单轮直接回复
+	agent, err := ai2.NewAgent(h.executor, &ai2.Config{}, seededNodeManager(db), nil, nil, false)
+	require.NoError(t, err)
+	toolCallJSON := "```json\n{\"tool_calls\":[{\"name\":\"query_nodes\",\"arguments\":{}}]}\n```"
+	agent.SetChatModel(&streamTextMock{responses: []string{"node_list", toolCallJSON, "你好，我是 owl AI。"}})
+	h.newChatAgent = func(*LLMRequest) (*ai2.Agent, error) { return agent, nil }
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "u1")
+		c.Set("role", "admin")
+		c.Set("username", "u1")
+		c.Next()
+	})
+	router.POST("/ai/chat/stream", h.StreamChat)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/ai/chat/stream", strings.NewReader(`{"message":"hi","model":"m","encrypted_api_key":"__plain__:a2V5"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	ct := w.Header().Get("Content-Type")
+	require.Contains(t, ct, "text/event-stream")
+
+	body := w.Body.String()
+	require.Contains(t, body, "event: delta")
+	require.Contains(t, body, "你好，我是 owl AI。")
+	require.Contains(t, body, "event: done")
+	// done 载荷含最终 reply 与 session_id
+	require.Contains(t, body, `"session_id"`)
+}
+
+func TestStreamChat_BadRequest(t *testing.T) {
+	_, h := aiTestSetup(t)
+
+	router := gin.New()
+	router.POST("/ai/chat/stream", h.StreamChat)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/ai/chat/stream", strings.NewReader(`{"message":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }

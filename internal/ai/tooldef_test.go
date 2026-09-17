@@ -83,9 +83,9 @@ func TestToolRegistry_ToolDefinitions_InvalidSchemaFallbacks(t *testing.T) {
 
 type brokenSchemaTool struct{}
 
-func (t *brokenSchemaTool) Name() string          { return "broken_schema" }
-func (t *brokenSchemaTool) Description() string   { return "tool with broken schema" }
-func (t *brokenSchemaTool) Parameters() string    { return "not-json{{" }
+func (t *brokenSchemaTool) Name() string                                 { return "broken_schema" }
+func (t *brokenSchemaTool) Description() string                          { return "tool with broken schema" }
+func (t *brokenSchemaTool) Parameters() string                           { return "not-json{{" }
 func (t *brokenSchemaTool) Validate(params map[string]interface{}) error { return nil }
 func (t *brokenSchemaTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	return "", nil

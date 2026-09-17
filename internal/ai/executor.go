@@ -147,13 +147,13 @@ type (
 		Node  string `json:"node"`
 	}
 
-	FileDownloadResult              struct{ Text string }
-	PlaybookTemplateListResult      struct{ Text string }
-	PlaybookTemplateInfoResult      struct{ Text string }
-	PlaybookTemplateExportResult    struct{ Text string }
-	PlaybookScaffoldResult          struct{ Text string }
-	PlaybookStateListResult         struct{ Text string }
-	PlaybookStateShowResult         struct{ Text string }
+	FileDownloadResult           struct{ Text string }
+	PlaybookTemplateListResult   struct{ Text string }
+	PlaybookTemplateInfoResult   struct{ Text string }
+	PlaybookTemplateExportResult struct{ Text string }
+	PlaybookScaffoldResult       struct{ Text string }
+	PlaybookStateListResult      struct{ Text string }
+	PlaybookStateShowResult      struct{ Text string }
 
 	AsyncStatusParams struct {
 		TaskID string `json:"task_id"`
@@ -174,9 +174,9 @@ type (
 		Days int `json:"days"`
 	}
 
-	AsyncListResult   struct{ Text string }
-	AsyncStatusResult struct{ Text string }
-	AsyncCancelResult struct{ Text string }
+	AsyncListResult    struct{ Text string }
+	AsyncStatusResult  struct{ Text string }
+	AsyncCancelResult  struct{ Text string }
 	SettingsShowResult struct{ Text string }
 	SettingsSetResult  struct{ Text string }
 	HistoryListResult  struct{ Text string }

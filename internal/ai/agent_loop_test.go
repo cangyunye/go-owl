@@ -159,7 +159,7 @@ func TestAgentNativeUnsupported_DowngradesToText(t *testing.T) {
 }
 
 // TestAgentMaxTurnsConfigured 循环轮数可配置，耗尽后返回最后一个工具结果
-//（修复原 fullResponse 死代码返回空串的问题）。
+// （修复原 fullResponse 死代码返回空串的问题）。
 func TestAgentMaxTurnsConfigured(t *testing.T) {
 	m := &mockToolCallingModel{
 		routeResponses: []string{"node_list"},
@@ -220,5 +220,101 @@ func TestAgentNativeToolsUnsupportedErrorSurfaces(t *testing.T) {
 	}
 	if errors.Is(err, ErrToolsUnsupported) {
 		t.Error("plain error must not be classified as tools-unsupported")
+	}
+}
+
+// deltaRecorder 包装 mockToolCallingModel：实现流式 FC 接口，
+// 仅在第二轮（总结轮）回调文本增量。
+type deltaRecorder struct {
+	inner   *mockToolCallingModel
+	callIdx int
+}
+
+func (d *deltaRecorder) Generate(ctx context.Context, messages []Message) (string, error) {
+	return d.inner.Generate(ctx, messages)
+}
+func (d *deltaRecorder) GenerateTools(ctx context.Context, messages []Message, tools []ToolDef) (*ModelResponse, error) {
+	return d.inner.GenerateTools(ctx, messages, tools)
+}
+func (d *deltaRecorder) GenerateToolsStream(ctx context.Context, messages []Message, tools []ToolDef, onDelta func(string)) (*ModelResponse, error) {
+	d.callIdx++
+	if d.callIdx >= 2 && onDelta != nil {
+		onDelta("总结增量A")
+		onDelta("总结增量B")
+	}
+	return d.inner.GenerateTools(ctx, messages, tools)
+}
+
+// TestAgentNativeStreamDeltaForwarding 原生模式下总结轮的文本增量必须经
+// OnProgress("delta", ...) 转发给宿主（Web SSE / CLI 终端）。
+func TestAgentNativeStreamDeltaForwarding(t *testing.T) {
+	inner := &mockToolCallingModel{
+		routeResponses: []string{"node_list"},
+		toolResponses: []*ModelResponse{
+			toolCallResponse(ToolCall{Name: "query_nodes", Arguments: map[string]interface{}{}}),
+			textResponse("总结增量A总结增量B"),
+		},
+	}
+	recorder := &deltaRecorder{inner: inner}
+	agent := newNativeTestAgent(&Config{}, recorder)
+
+	var deltas []string
+	reply, err := agent.Process(context.Background(), "列出所有节点", func(step, detail string) {
+		if step == "delta" {
+			deltas = append(deltas, detail)
+		}
+	})
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if len(deltas) != 2 || deltas[0] != "总结增量A" || deltas[1] != "总结增量B" {
+		t.Fatalf("expected deltas forwarded, got %v", deltas)
+	}
+	if reply != "总结增量A总结增量B" {
+		t.Fatalf("expected full summary reply, got %q", reply)
+	}
+}
+
+// streamableTextMock 为文本协议客户端补充流式接口（拆整段为单次增量）
+type streamableTextMock struct {
+	inner *mockChatModel
+}
+
+func (s *streamableTextMock) Generate(ctx context.Context, messages []Message) (string, error) {
+	return s.inner.Generate(ctx, messages)
+}
+
+func (s *streamableTextMock) GenerateStream(ctx context.Context, messages []Message, onDelta func(string)) (string, error) {
+	resp, err := s.inner.Generate(ctx, messages)
+	if err != nil {
+		return "", err
+	}
+	if onDelta != nil {
+		onDelta(resp)
+	}
+	return resp, nil
+}
+
+// TestAgentTextProtocolStreamDeltaForwarding 文本协议下 GenerateStream 的增量同样转发，
+// 且最终回复仍是完整总结。
+func TestAgentTextProtocolStreamDeltaForwarding(t *testing.T) {
+	toolCallJSON := "```json\n" + `{"tool_calls":[{"name":"query_nodes","arguments":{}}]}` + "\n```"
+	m := &mockChatModel{responses: []string{"node_list", toolCallJSON, "文本总结"}}
+	agent := newNativeTestAgent(&Config{}, &streamableTextMock{inner: m})
+
+	var deltas []string
+	reply, err := agent.Process(context.Background(), "列出所有节点", func(step, detail string) {
+		if step == "delta" {
+			deltas = append(deltas, detail)
+		}
+	})
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if reply != "文本总结" {
+		t.Fatalf("unexpected reply %q", reply)
+	}
+	if len(deltas) < 1 || deltas[len(deltas)-1] != "文本总结" {
+		t.Fatalf("expected summary delta forwarded, got %v", deltas)
 	}
 }

@@ -20,9 +20,9 @@ func TestResolveToolTargets(t *testing.T) {
 	agent := &Agent{nodeMgr: nodeContextTestMgr()}
 
 	tests := []struct {
-		name   string
-		args   map[string]interface{}
-		want   []string
+		name    string
+		args    map[string]interface{}
+		want    []string
 		wantSrc string
 	}{
 		{"explicit nodes", map[string]interface{}{"nodes": []interface{}{"web-01", "db-01"}}, []string{"web-01", "db-01"}, "nodes=web-01,db-01"},

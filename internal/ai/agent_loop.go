@@ -80,7 +80,7 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 		var toolCalls []ToolCall
 
 		if native {
-			resp, err := chatModel.(ToolCallingChatModel).GenerateTools(ctx, msgs, a.registry.ToolDefinitions())
+			resp, err := a.generateToolsForLoop(ctx, chatModel, msgs, p.onProgress)
 			if err != nil {
 				if errors.Is(err, ErrToolsUnsupported) {
 					debugPrint(a.debug, "provider 不支持原生 tools，本次会话降级文本协议")
@@ -93,7 +93,7 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 			content = resp.Content
 			toolCalls = resp.ToolCalls
 		} else {
-			response, err := generateWithRetry(ctx, chatModel, msgs, "AI调用")
+			response, err := a.generateForLoop(ctx, chatModel, msgs, p.onProgress)
 			if err != nil {
 				return toolLoopResult{messages: msgs}, fmt.Errorf("AI 调用失败: %w", err)
 			}
@@ -282,4 +282,31 @@ func (a *Agent) localFallbackChain(ctx context.Context, userInput string, onProg
 		return result, true
 	}
 	return "", false
+}
+
+// generateToolsForLoop 原生 function calling 调用：优先流式实现，delta 经
+// OnProgress("delta", ...) 转发给宿主。
+func (a *Agent) generateToolsForLoop(ctx context.Context, chatModel ChatModel, msgs []Message, onProgress ProgressCallback) (*ModelResponse, error) {
+	tools := a.registry.ToolDefinitions()
+	if tsm, ok := chatModel.(ToolCallingStreamModel); ok {
+		return tsm.GenerateToolsStream(ctx, msgs, tools, deltaForwarder(onProgress))
+	}
+	return chatModel.(ToolCallingChatModel).GenerateTools(ctx, msgs, tools)
+}
+
+// generateForLoop 文本协议调用：优先流式实现。
+func (a *Agent) generateForLoop(ctx context.Context, chatModel ChatModel, msgs []Message, onProgress ProgressCallback) (string, error) {
+	if ssm, ok := chatModel.(StreamingChatModel); ok {
+		return ssm.GenerateStream(ctx, msgs, deltaForwarder(onProgress))
+	}
+	return generateWithRetry(ctx, chatModel, msgs, "AI调用")
+}
+
+func deltaForwarder(onProgress ProgressCallback) func(string) {
+	if onProgress == nil {
+		return nil
+	}
+	return func(delta string) {
+		onProgress("delta", delta)
+	}
 }

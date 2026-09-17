@@ -14,9 +14,9 @@ type AsyncListTool struct {
 
 func NewAsyncListTool(executor Executor) *AsyncListTool { return &AsyncListTool{executor: executor} }
 
-func (t *AsyncListTool) Name() string        { return "async_list" }
-func (t *AsyncListTool) Description() string { return "List async execution tasks." }
-func (t *AsyncListTool) Parameters() string  { return `{"type":"object","properties":{}}` }
+func (t *AsyncListTool) Name() string                            { return "async_list" }
+func (t *AsyncListTool) Description() string                     { return "List async execution tasks." }
+func (t *AsyncListTool) Parameters() string                      { return `{"type":"object","properties":{}}` }
 func (t *AsyncListTool) Validate(p map[string]interface{}) error { return nil }
 func (t *AsyncListTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	if t.executor != nil {
@@ -32,7 +32,9 @@ type AsyncStatusTool struct {
 	executor Executor
 }
 
-func NewAsyncStatusTool(executor Executor) *AsyncStatusTool { return &AsyncStatusTool{executor: executor} }
+func NewAsyncStatusTool(executor Executor) *AsyncStatusTool {
+	return &AsyncStatusTool{executor: executor}
+}
 
 func (t *AsyncStatusTool) Name() string        { return "async_status" }
 func (t *AsyncStatusTool) Description() string { return "Show status of an async execution task." }
@@ -64,7 +66,9 @@ type AsyncCancelTool struct {
 	executor Executor
 }
 
-func NewAsyncCancelTool(executor Executor) *AsyncCancelTool { return &AsyncCancelTool{executor: executor} }
+func NewAsyncCancelTool(executor Executor) *AsyncCancelTool {
+	return &AsyncCancelTool{executor: executor}
+}
 
 func (t *AsyncCancelTool) Name() string        { return "async_cancel" }
 func (t *AsyncCancelTool) Description() string { return "Cancel an async execution task." }
@@ -92,11 +96,13 @@ type SettingsShowTool struct {
 	executor Executor
 }
 
-func NewSettingsShowTool(executor Executor) *SettingsShowTool { return &SettingsShowTool{executor: executor} }
+func NewSettingsShowTool(executor Executor) *SettingsShowTool {
+	return &SettingsShowTool{executor: executor}
+}
 
-func (t *SettingsShowTool) Name() string        { return "settings_show" }
-func (t *SettingsShowTool) Description() string { return "Show current owl settings." }
-func (t *SettingsShowTool) Parameters() string  { return `{"type":"object","properties":{}}` }
+func (t *SettingsShowTool) Name() string                            { return "settings_show" }
+func (t *SettingsShowTool) Description() string                     { return "Show current owl settings." }
+func (t *SettingsShowTool) Parameters() string                      { return `{"type":"object","properties":{}}` }
 func (t *SettingsShowTool) Validate(p map[string]interface{}) error { return nil }
 func (t *SettingsShowTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	if t.executor != nil {
@@ -112,11 +118,15 @@ type SettingsSetTool struct {
 	executor Executor
 }
 
-func NewSettingsSetTool(executor Executor) *SettingsSetTool { return &SettingsSetTool{executor: executor} }
+func NewSettingsSetTool(executor Executor) *SettingsSetTool {
+	return &SettingsSetTool{executor: executor}
+}
 
-func (t *SettingsSetTool) Name() string        { return "settings_set" }
-func (t *SettingsSetTool) Description() string { return "Set an owl setting (e.g. ssh timeout, default groups)." }
-func (t *SettingsSetTool) Parameters() string  { return settingsSetParamsSchema }
+func (t *SettingsSetTool) Name() string { return "settings_set" }
+func (t *SettingsSetTool) Description() string {
+	return "Set an owl setting (e.g. ssh timeout, default groups)."
+}
+func (t *SettingsSetTool) Parameters() string { return settingsSetParamsSchema }
 func (t *SettingsSetTool) Validate(p map[string]interface{}) error {
 	if strings.TrimSpace(strOf(p["key"])) == "" {
 		return fmt.Errorf("key is required")
@@ -153,11 +163,13 @@ type HistoryListTool struct {
 	executor Executor
 }
 
-func NewHistoryListTool(executor Executor) *HistoryListTool { return &HistoryListTool{executor: executor} }
+func NewHistoryListTool(executor Executor) *HistoryListTool {
+	return &HistoryListTool{executor: executor}
+}
 
-func (t *HistoryListTool) Name() string        { return "history_list" }
-func (t *HistoryListTool) Description() string { return "List execution history records." }
-func (t *HistoryListTool) Parameters() string  { return historyListParamsSchema }
+func (t *HistoryListTool) Name() string                            { return "history_list" }
+func (t *HistoryListTool) Description() string                     { return "List execution history records." }
+func (t *HistoryListTool) Parameters() string                      { return historyListParamsSchema }
 func (t *HistoryListTool) Validate(p map[string]interface{}) error { return nil }
 
 const historyListParamsSchema = `{
@@ -188,11 +200,13 @@ type HistoryCleanTool struct {
 	executor Executor
 }
 
-func NewHistoryCleanTool(executor Executor) *HistoryCleanTool { return &HistoryCleanTool{executor: executor} }
+func NewHistoryCleanTool(executor Executor) *HistoryCleanTool {
+	return &HistoryCleanTool{executor: executor}
+}
 
-func (t *HistoryCleanTool) Name() string        { return "history_clean" }
-func (t *HistoryCleanTool) Description() string { return "Clean execution history older than N days." }
-func (t *HistoryCleanTool) Parameters() string  { return historyCleanParamsSchema }
+func (t *HistoryCleanTool) Name() string                            { return "history_clean" }
+func (t *HistoryCleanTool) Description() string                     { return "Clean execution history older than N days." }
+func (t *HistoryCleanTool) Parameters() string                      { return historyCleanParamsSchema }
 func (t *HistoryCleanTool) Validate(p map[string]interface{}) error { return nil }
 
 const historyCleanParamsSchema = `{

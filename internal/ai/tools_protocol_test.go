@@ -34,7 +34,7 @@ func TestHTTPModel_GenerateTools_OpenAI(t *testing.T) {
 				{
 					"finish_reason": "tool_calls",
 					"message": map[string]interface{}{
-						"role": "assistant",
+						"role":    "assistant",
 						"content": "",
 						"tool_calls": []map[string]interface{}{
 							{

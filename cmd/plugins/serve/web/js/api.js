@@ -285,6 +285,50 @@ export const api = {
   getSessionKey: () => request('GET', '/ai/session-key'),
   aiPermissions: () => request('GET', '/ai/permissions'),
   aiChat: (message, sessionId, encryptedApiKey, provider, model, baseUrl, apiType) => request('POST', '/ai/chat', { message, session_id: sessionId, encrypted_api_key: encryptedApiKey, provider, model, base_url: baseUrl, api_type: apiType }),
+  // aiChatStream 走 SSE 流式聊天；handlers: {onDelta, onTool, onProgress}。
+  // 失败（含流中途断开）抛错，调用方可回退 aiChat。
+  aiChatStream: async (payload, handlers = {}) => {
+    const res = await fetch(`${API_BASE}/ai/chat/stream`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    if (!res.ok || !res.body) throw new Error(res.statusText || 'stream failed');
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let done = null;
+    const dispatch = (block) => {
+      let event = 'message';
+      let data = '';
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event: ')) event = line.slice(7).trim();
+        else if (line.startsWith('data: ')) data += line.slice(6);
+      }
+      if (!data) return;
+      const obj = JSON.parse(data);
+      if (event === 'delta' && handlers.onDelta) handlers.onDelta(obj.text || '');
+      else if (event === 'tool' && handlers.onTool) handlers.onTool(obj);
+      else if (event === 'progress' && handlers.onProgress) handlers.onProgress(obj);
+      else if (event === 'done') done = obj;
+      else if (event === 'error') throw new Error(obj.message || 'stream error');
+    };
+    while (true) {
+      const { value, done: rdDone } = await reader.read();
+      if (rdDone) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        dispatch(block);
+      }
+    }
+    if (!done) throw new Error('stream ended without done');
+    return done;
+  },
   getAiContext: () => request('GET', '/ai/context'),
   aiAudit: (record) => request('POST', '/ai/audit', record),
   aiModels: (sessionId, encryptedApiKey, baseUrl, apiType) => request('POST', '/ai/models', { session_id: sessionId, encrypted_api_key: encryptedApiKey, base_url: baseUrl, api_type: apiType }),

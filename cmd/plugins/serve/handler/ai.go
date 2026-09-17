@@ -83,16 +83,26 @@ type aiChatRequest struct {
 	APIType         string `json:"api_type"`
 }
 
-func (h *AIHandler) Chat(c *gin.Context) {
+// aiChatContext 是解析后的聊天请求上下文（Chat 与 StreamChat 共用）
+type aiChatContext struct {
+	req        *aiChatRequest
+	userID     string
+	sessionID  string
+	sessionKey string
+	session    *ai2.Session
+}
+
+// resolveChatContext 解析并创建/复用用户会话。
+func (h *AIHandler) resolveChatContext(c *gin.Context) (*aiChatContext, bool) {
 	var req aiChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request body"})
-		return
+		return nil, false
 	}
 
 	if req.Message == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "message is required"})
-		return
+		return nil, false
 	}
 
 	userID := c.GetString("user_id")
@@ -141,6 +151,16 @@ func (h *AIHandler) Chat(c *gin.Context) {
 		}
 		session = h.sessionMgr.CreateSession(sessionKey, agent)
 	}
+
+	return &aiChatContext{req: &req, userID: userID, sessionID: sessionID, sessionKey: sessionKey, session: session}, true
+}
+
+func (h *AIHandler) Chat(c *gin.Context) {
+	cc, ok := h.resolveChatContext(c)
+	if !ok {
+		return
+	}
+	req, userID, sessionID, session, sessionKey := cc.req, cc.userID, cc.sessionID, cc.session, cc.sessionKey
 
 	startTime := time.Now()
 	reply, err := session.Send(c.Request.Context(), req.Message)
@@ -432,4 +452,82 @@ func (h *AIHandler) Status() (int, int, int, error) {
 	h.db.QueryRow("SELECT COUNT(*) FROM nodes WHERE status = 'online'").Scan(&online)
 	h.db.QueryRow("SELECT COUNT(*) FROM nodes WHERE status = 'offline' OR status = 'unknown'").Scan(&offline)
 	return total, online, offline, nil
+}
+
+// StreamChat 是 /ai/chat/stream 的 SSE 流式聊天：请求体与 Chat 相同，
+// 响应为 text/event-stream，事件：delta（文本增量）/ tool（工具调用进度）/
+// progress（路由等阶段进度）/ done（最终 reply+session_id）/ error。
+func (h *AIHandler) StreamChat(c *gin.Context) {
+	cc, ok := h.resolveChatContext(c)
+	if !ok {
+		return
+	}
+	req, userID, sessionID, session := cc.req, cc.userID, cc.sessionID, cc.session
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.WriteHeader(http.StatusOK)
+
+	flusher, canFlush := c.Writer.(http.Flusher)
+	if !canFlush {
+		return
+	}
+	flusher.Flush()
+
+	writeSSE := func(event string, data interface{}) {
+		payload, err := json.Marshal(data)
+		if err != nil {
+			return
+		}
+		fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event, payload)
+		flusher.Flush()
+	}
+
+	// 桥接 agent 进度到 SSE。会话级回调，请求结束即清理。
+	session.OnProgress = func(step, detail string) {
+		switch step {
+		case "delta":
+			writeSSE("delta", gin.H{"text": detail})
+		case "generate", "execute":
+			writeSSE("tool", gin.H{"name": detail, "phase": step})
+		default:
+			writeSSE("progress", gin.H{"step": step, "detail": detail})
+		}
+	}
+	defer func() { session.OnProgress = nil }()
+
+	startTime := time.Now()
+	reply, err := session.Send(c.Request.Context(), req.Message)
+	if err != nil {
+		// 与 Chat 一致：LLM agent 失败时优雅降级到规则兜底 agent
+		fallbackID := "fallback:" + cc.sessionKey
+		if fallback, ok := h.sessionMgr.GetSession(fallbackID); ok {
+			session = fallback
+		} else {
+			session = h.sessionMgr.CreateSession(fallbackID, h.agent)
+		}
+		session.OnProgress = func(step, detail string) {
+			switch step {
+			case "delta":
+				writeSSE("delta", gin.H{"text": detail})
+			case "generate", "execute":
+				writeSSE("tool", gin.H{"name": detail, "phase": step})
+			default:
+				writeSSE("progress", gin.H{"step": step, "detail": detail})
+			}
+		}
+		reply, err = session.Send(c.Request.Context(), req.Message)
+	}
+	durationMs := time.Since(startTime).Milliseconds()
+
+	if err != nil {
+		writeSSE("error", gin.H{"message": internalErr("ai request failed", err)})
+		return
+	}
+
+	go h.logAudit(userID, "conversation", "success", req.Message, reply, durationMs, h.debugMode)
+
+	writeSSE("done", gin.H{"reply": reply, "session_id": sessionID})
 }

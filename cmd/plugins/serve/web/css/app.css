@@ -4596,3 +4596,26 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   .pb-list-body { max-height: 45vh; }
   .pb-detail-col { overflow: visible; }
 }
+
+/* ---- AI streaming ---- */
+.ai-stream-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  color: var(--accent, #6ea8fe);
+  animation: aiCursorBlink 1s step-end infinite;
+}
+@keyframes aiCursorBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.ai-tool-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin-bottom: 6px;
+}

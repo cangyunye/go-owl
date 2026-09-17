@@ -14,9 +14,11 @@ func NewFileDownloadTool(executor Executor) *FileDownloadTool {
 	return &FileDownloadTool{executor: executor}
 }
 
-func (t *FileDownloadTool) Name() string        { return "file_download" }
-func (t *FileDownloadTool) Description() string { return "Download files from remote nodes to the local machine." }
-func (t *FileDownloadTool) Parameters() string  { return fileDownloadParamsSchema }
+func (t *FileDownloadTool) Name() string { return "file_download" }
+func (t *FileDownloadTool) Description() string {
+	return "Download files from remote nodes to the local machine."
+}
+func (t *FileDownloadTool) Parameters() string { return fileDownloadParamsSchema }
 func (t *FileDownloadTool) Validate(p map[string]interface{}) error {
 	if strings.TrimSpace(strOf(p["remote_file"])) == "" {
 		return fmt.Errorf("remote_file is required")

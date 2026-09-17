@@ -134,6 +134,46 @@ export async function renderAI(render, navigate, user, api, shell) {
   }
 
   // ---- Send message ----
+  // 流式渲染状态：气泡引用 + 累积文本 + 节流句柄
+  let streamBubble = null;   // { el, bubble }
+  let streamText = '';
+  let streamFlushTimer = null;
+  let streamToolName = '';
+
+  function ensureStreamBubble() {
+    if (streamBubble) return streamBubble;
+    hideThinking();
+    addMsg('assistant', '<span class="ai-stream-cursor">▍</span>');
+    const m = document.getElementById('ai-chat-messages');
+    const el = m.lastElementChild;
+    streamBubble = { el, bubble: el.querySelector('.ai-msg-bubble') };
+    streamText = '';
+    return streamBubble;
+  }
+
+  function renderStreamBubble() {
+    if (!streamBubble) return;
+    const toolTag = streamToolName ? '<div class="ai-tool-tag">🔧 ' + esc(streamToolName) + '</div>' : '';
+    streamBubble.bubble.innerHTML = toolTag + md(streamText) + '<span class="ai-stream-cursor">▍</span>';
+    const m = document.getElementById('ai-chat-messages');
+    if (m) m.scrollTop = m.scrollHeight;
+  }
+
+  function scheduleStreamFlush() {
+    if (streamFlushTimer) return;
+    streamFlushTimer = setTimeout(() => {
+      streamFlushTimer = null;
+      renderStreamBubble();
+    }, 200);
+  }
+
+  function resetStreamState() {
+    streamBubble = null;
+    streamText = '';
+    if (streamFlushTimer) { clearTimeout(streamFlushTimer); streamFlushTimer = null; }
+    streamToolName = '';
+  }
+
   async function sendMsg(text) {
     if (!text || !text.trim() || isProcessing) return;
     text = text.trim();
@@ -162,16 +202,32 @@ export async function renderAI(render, navigate, user, api, shell) {
         payload.api_type = keyData.apiFormat || 'openai';
       }
 
-      const res = await api.aiChat(payload.message, payload.session_id, payload.encrypted_api_key, payload.provider, payload.model, payload.base_url, payload.api_type);
+      // 优先走 SSE 流式；失败回退一次性 /ai/chat
+      let done = null;
+      try {
+        done = await api.aiChatStream(payload, {
+          onDelta: (t) => { ensureStreamBubble(); streamText += t; scheduleStreamFlush(); },
+          onTool: (obj) => { if (obj && obj.name) { streamToolName = obj.name; if (streamBubble) renderStreamBubble(); } },
+        });
+      } catch (streamErr) {
+        console.warn('stream failed, fallback to blocking chat:', streamErr);
+        if (streamBubble) { streamBubble.el.remove(); resetStreamState(); showThinking(); }
+        done = await api.aiChat(payload.message, payload.session_id, payload.encrypted_api_key, payload.provider, payload.model, payload.base_url, payload.api_type);
+      }
+
       hideThinking();
-      if (res && res.reply) {
-        addMsg('assistant', md(res.reply) + navChips(res.intent));
+      resetStreamState();
+      if (done && done.reply) {
+        // 服务端 session_id 回写：刷新页面后可续接同一服务端会话
+        if (done.session_id) sessionId = done.session_id;
+        addMsg('assistant', md(done.reply) + navChips(done.intent));
         chatMessages.push({ role: 'user', content: text });
-        chatMessages.push({ role: 'assistant', content: res.reply });
+        chatMessages.push({ role: 'assistant', content: done.reply });
         await saveCurrentConv();
       }
     } catch (e) {
       hideThinking();
+      resetStreamState();
       addMsg('assistant', '抱歉，我现在无法响应。' + esc(e.message || '请稍后重试。'));
     }
     isProcessing = false;

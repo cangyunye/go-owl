@@ -186,6 +186,42 @@ func progressLog(sessionID string, debug bool, step string, detail string) {
 	internalhistory.RecordAiChatGlobal(chat)
 }
 
+// streamAwareProgress 返回带流式输出的进度回调与收尾函数：
+// delta 事件直接以打字机方式写 stdout（带 AI> 前缀），其余步骤走 progressLog。
+// Send 完成后调用 finish(finalReply)：若流式已输出相同全文则仅补换行并返回 true
+// （调用方跳过重复打印）；流式内容与最终回复不一致（如文本协议中间过程）时
+// 补换行并返回 false。
+func streamAwareProgress(sessionID string, debug bool) (func(step, detail string), func(finalReply string) bool) {
+	var sb strings.Builder
+	var prefixPrinted bool
+
+	onProgress := func(step string, detail string) {
+		if step == "delta" {
+			if !prefixPrinted {
+				fmt.Print("\033[36mAI>\033[0m ")
+				prefixPrinted = true
+			}
+			fmt.Print(detail)
+			sb.WriteString(detail)
+			return
+		}
+		progressLog(sessionID, debug, step, detail)
+	}
+
+	finish := func(finalReply string) bool {
+		if sb.Len() == 0 {
+			return false
+		}
+		if sb.String() != finalReply {
+			fmt.Println()
+			return false
+		}
+		fmt.Println()
+		return true
+	}
+	return onProgress, finish
+}
+
 func debugLog(debug bool, format string, args ...interface{}) {
 	if debug {
 		timestamp := time.Now().Format("15:04:05")
@@ -267,9 +303,7 @@ func runAI(cmd *cobra.Command, args []string) {
 			CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		})
 
-		onProgress := func(step string, detail string) {
-			progressLog(sessionID, aiVerbose, step, detail)
-		}
+		onProgress, finishStream := streamAwareProgress(sessionID, aiVerbose)
 
 		// 单次（非交互）模式：写操作无法交互确认，直接拒绝并提示。
 		agent.SetConfirmGate(ai.RejectWriteOpsGate())
@@ -288,7 +322,9 @@ func runAI(cmd *cobra.Command, args []string) {
 			CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		})
 
-		fmt.Println(response)
+		if !finishStream(response) {
+			fmt.Println(response)
+		}
 		return
 	}
 
@@ -312,9 +348,8 @@ func runAI(cmd *cobra.Command, args []string) {
 		sessionID = "default"
 	}
 	currentSession := session.CreateSession(sessionID, agent)
-	currentSession.OnProgress = func(step string, detail string) {
-		progressLog(sessionID, aiVerbose, step, detail)
-	}
+	replProgress, replFinishStream := streamAwareProgress(sessionID, aiVerbose)
+	currentSession.OnProgress = replProgress
 	currentSession.SetDefaultConfirmGate()
 
 	// 斜杠命令目录: 对齐网页端 AI 助手的 SlashMenu 设计。
@@ -323,9 +358,8 @@ func runAI(cmd *cobra.Command, args []string) {
 	quitRequested := false
 	resetSession := func() {
 		currentSession = session.CreateSession(sessionID, agent)
-		currentSession.OnProgress = func(step string, detail string) {
-			progressLog(sessionID, aiVerbose, step, detail)
-		}
+		replProgress, replFinishStream = streamAwareProgress(sessionID, aiVerbose)
+		currentSession.OnProgress = replProgress
 		currentSession.SetDefaultConfirmGate()
 		fmt.Println(i18n.T("ai.chat.new_session"))
 	}
@@ -373,7 +407,7 @@ func runAI(cmd *cobra.Command, args []string) {
 		response, err := currentSession.Send(ctx, input)
 		if err != nil {
 			fmt.Printf("%s", i18n.T("ai.chat.error", err))
-		} else {
+		} else if !replFinishStream(response) {
 			fmt.Printf("\033[36mAI>\033[0m %s\n", response)
 		}
 

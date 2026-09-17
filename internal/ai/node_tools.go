@@ -20,9 +20,9 @@ func NewNodeAddTool(executor Executor, nodeStore NodeStoreAdapter) *NodeAddTool 
 	return &NodeAddTool{executor: executor, nodeStore: nodeStore}
 }
 
-func (t *NodeAddTool) Name() string         { return "node_add" }
-func (t *NodeAddTool) Description() string  { return "Add a new node to the inventory." }
-func (t *NodeAddTool) Parameters() string   { return nodeAddParamsSchema }
+func (t *NodeAddTool) Name() string        { return "node_add" }
+func (t *NodeAddTool) Description() string { return "Add a new node to the inventory." }
+func (t *NodeAddTool) Parameters() string  { return nodeAddParamsSchema }
 func (t *NodeAddTool) Validate(p map[string]interface{}) error {
 	if s, ok := p["name"].(string); !ok || strings.TrimSpace(s) == "" {
 		return fmt.Errorf("name is required")
@@ -193,9 +193,11 @@ func NewNodeStatusTool(executor Executor, nodeMgr node.Manager) *NodeStatusTool 
 	return &NodeStatusTool{executor: executor, nodeMgr: nodeMgr}
 }
 
-func (t *NodeStatusTool) Name() string        { return "node_status" }
-func (t *NodeStatusTool) Description() string { return "Show status of nodes (online/offline/unknown)." }
-func (t *NodeStatusTool) Parameters() string  { return nodeStatusParamsSchema }
+func (t *NodeStatusTool) Name() string { return "node_status" }
+func (t *NodeStatusTool) Description() string {
+	return "Show status of nodes (online/offline/unknown)."
+}
+func (t *NodeStatusTool) Parameters() string                      { return nodeStatusParamsSchema }
 func (t *NodeStatusTool) Validate(p map[string]interface{}) error { return nil }
 
 const nodeStatusParamsSchema = `{
@@ -280,10 +282,10 @@ const nodePingParamsSchema = `{
 func (t *NodePingTool) Execute(ctx context.Context, params map[string]interface{}) (string, error) {
 	if t.executor != nil {
 		p := NodePingParams{
-			Nodes:    strSliceOf(params["nodes"]),
-			All:      boolOf(params["all"]),
-			Count:    intOf(params["count"]),
-			Timeout:  intOf(params["timeout_sec"]),
+			Nodes:   strSliceOf(params["nodes"]),
+			All:     boolOf(params["all"]),
+			Count:   intOf(params["count"]),
+			Timeout: intOf(params["timeout_sec"]),
 		}
 		result, err := t.executor.NodePing(ctx, p)
 		if err == nil {
@@ -303,9 +305,11 @@ func NewNodeGroupsTool(executor Executor) *NodeGroupsTool {
 	return &NodeGroupsTool{executor: executor}
 }
 
-func (t *NodeGroupsTool) Name() string        { return "node_groups" }
-func (t *NodeGroupsTool) Description() string { return "Manage node groups: add/remove group for a node, or list/show groups." }
-func (t *NodeGroupsTool) Parameters() string  { return nodeGroupsParamsSchema }
+func (t *NodeGroupsTool) Name() string { return "node_groups" }
+func (t *NodeGroupsTool) Description() string {
+	return "Manage node groups: add/remove group for a node, or list/show groups."
+}
+func (t *NodeGroupsTool) Parameters() string { return nodeGroupsParamsSchema }
 func (t *NodeGroupsTool) Validate(p map[string]interface{}) error {
 	action := strings.ToLower(strOf(p["action"]))
 	switch action {
@@ -363,9 +367,11 @@ func NewNodeLabelsTool(executor Executor) *NodeLabelsTool {
 	return &NodeLabelsTool{executor: executor}
 }
 
-func (t *NodeLabelsTool) Name() string        { return "node_labels" }
-func (t *NodeLabelsTool) Description() string { return "Manage node labels: set/remove/show key=value labels on nodes." }
-func (t *NodeLabelsTool) Parameters() string  { return nodeLabelsParamsSchema }
+func (t *NodeLabelsTool) Name() string { return "node_labels" }
+func (t *NodeLabelsTool) Description() string {
+	return "Manage node labels: set/remove/show key=value labels on nodes."
+}
+func (t *NodeLabelsTool) Parameters() string { return nodeLabelsParamsSchema }
 func (t *NodeLabelsTool) Validate(p map[string]interface{}) error {
 	action := strings.ToLower(strOf(p["action"]))
 	switch action {
@@ -494,9 +500,9 @@ func NewNodeExportTool(executor Executor) *NodeExportTool {
 	return &NodeExportTool{executor: executor}
 }
 
-func (t *NodeExportTool) Name() string        { return "node_export" }
-func (t *NodeExportTool) Description() string { return "Export nodes to a YAML/JSON file." }
-func (t *NodeExportTool) Parameters() string  { return nodeExportParamsSchema }
+func (t *NodeExportTool) Name() string                            { return "node_export" }
+func (t *NodeExportTool) Description() string                     { return "Export nodes to a YAML/JSON file." }
+func (t *NodeExportTool) Parameters() string                      { return nodeExportParamsSchema }
 func (t *NodeExportTool) Validate(p map[string]interface{}) error { return nil }
 
 const nodeExportParamsSchema = `{

@@ -254,20 +254,30 @@ func buildAnthropicWire(messages []Message) (system string, wire []anthropicWire
 	return system, wire
 }
 
+// anthropicWireTool 是 Anthropic tools 参数的 wire 结构
+type anthropicWireTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"input_schema"`
+}
+
+// anthropicWireTools 把 ToolDef 列表转为 Anthropic wire 格式
+func anthropicWireTools(tools []ToolDef) []anthropicWireTool {
+	wire := make([]anthropicWireTool, 0, len(tools))
+	for _, td := range tools {
+		wire = append(wire, anthropicWireTool{
+			Name: td.Name, Description: td.Description, InputSchema: json.RawMessage(td.Schema),
+		})
+	}
+	return wire
+}
+
 func (m *HTTPModel) generateToolsAnthropic(ctx context.Context, messages []Message, tools []ToolDef) (*ModelResponse, error) {
 	system, wireMsgs := buildAnthropicWire(messages)
 
-	wireTools := make([]struct {
-		Name        string          `json:"name"`
-		Description string          `json:"description"`
-		InputSchema json.RawMessage `json:"input_schema"`
-	}, 0, len(tools))
-	for _, td := range tools {
-		wireTools = append(wireTools, struct {
-			Name        string          `json:"name"`
-			Description string          `json:"description"`
-			InputSchema json.RawMessage `json:"input_schema"`
-		}{Name: td.Name, Description: td.Description, InputSchema: json.RawMessage(td.Schema)})
+	var reqTools interface{}
+	if len(tools) > 0 {
+		reqTools = anthropicWireTools(tools)
 	}
 
 	reqBody := struct {
@@ -276,10 +286,7 @@ func (m *HTTPModel) generateToolsAnthropic(ctx context.Context, messages []Messa
 		System    string                 `json:"system,omitempty"`
 		Messages  []anthropicWireMessage `json:"messages"`
 		Tools     interface{}            `json:"tools,omitempty"`
-	}{Model: m.model, MaxTokens: anthropicMaxTokens, System: system, Messages: wireMsgs}
-	if len(wireTools) > 0 {
-		reqBody.Tools = wireTools
-	}
+	}{Model: m.model, MaxTokens: anthropicMaxTokens, System: system, Messages: wireMsgs, Tools: reqTools}
 
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {

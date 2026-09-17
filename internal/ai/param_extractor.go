@@ -129,7 +129,7 @@ func (e *ParamExtractor) extractQueryNodesParams(input string, params map[string
 	}
 
 	e.extractLabelFilters(input, params)
-	
+
 	// 检查是否已经有了 user 或 owner 标签，如果有就不再尝试提取 owner
 	hasUserLabel := false
 	hasOwnerLabel := false
@@ -137,13 +137,13 @@ func (e *ParamExtractor) extractQueryNodesParams(input string, params map[string
 		_, hasUserLabel = labels["user"]
 		_, hasOwnerLabel = labels["owner"]
 	}
-	
+
 	if !hasUserLabel && !hasOwnerLabel {
 		e.extractOwnerFilter(input, params)
 	}
-	
+
 	e.extractEnvFilter(input, params)
-	
+
 	// 同样，检查是否已经有了 user 标签，如果有就不再尝试用 extractGenericLabelFilters
 	if !hasUserLabel {
 		if labels, ok := params["labels"].(map[string]interface{}); ok {
@@ -181,7 +181,7 @@ func (e *ParamExtractor) extractLabelFilters(input string, params map[string]int
 
 	// 识别通用的 label=value 模式
 	labelPatterns := []string{
-		"user=", "env=", "owner=", 
+		"user=", "env=", "owner=",
 		"role=", "group=", "os=",
 		"region=", "env=", "region=", "role=",
 		"USER=", "ENV=", "OWNER=",
@@ -199,9 +199,9 @@ func (e *ParamExtractor) extractLabelFilters(input string, params map[string]int
 				endIdx := -1
 				for i := 0; i < len(runes); i++ {
 					r := runes[i]
-					isAlnum := (r >= 'a' && r <= 'z') || 
-						(r >= 'A' && r <= 'Z') || 
-						(r >= '0' && r <= '9') || 
+					isAlnum := (r >= 'a' && r <= 'z') ||
+						(r >= 'A' && r <= 'Z') ||
+						(r >= '0' && r <= '9') ||
 						r == '_' || r == '-'
 					if isAlnum {
 						endIdx = i
@@ -214,7 +214,7 @@ func (e *ParamExtractor) extractLabelFilters(input string, params map[string]int
 				} else {
 					value = valuePart
 				}
-				
+
 				key := strings.TrimRight(pattern, "=")
 				if value != "" && key != "" {
 					if labels, ok := params["labels"].(map[string]interface{}); ok {
@@ -309,8 +309,8 @@ func (e *ParamExtractor) extractPersonNameFromQuery(input string) string {
 			trimmed = strings.TrimSpace(trimmed)
 
 			if len(trimmed) >= 2 && len(trimmed) <= 4 {
-					chinesePattern := regexp.MustCompile(`^[一-龥]+`)
-					match := chinesePattern.FindString(trimmed)
+				chinesePattern := regexp.MustCompile(`^[一-龥]+`)
+				match := chinesePattern.FindString(trimmed)
 
 				if match != "" && len(match) >= 2 && len(match) <= 4 {
 					excludeWords := map[string]bool{
@@ -374,11 +374,11 @@ func (e *ParamExtractor) extractGenericLabelFilters(input string, params map[str
 			startIdx := -1
 			for i := len(runes) - 1; i >= 0; i-- {
 				r := runes[i]
-				isAlnum := (r >= 'a' && r <= 'z') || 
-					(r >= 'A' && r <= 'Z') || 
-					(r >= '0' && r <= '9') || 
+				isAlnum := (r >= 'a' && r <= 'z') ||
+					(r >= 'A' && r <= 'Z') ||
+					(r >= '0' && r <= '9') ||
 					r == '_' || r == '-'
-				
+
 				if isAlnum {
 					if startIdx == -1 {
 						startIdx = i
@@ -401,7 +401,7 @@ func (e *ParamExtractor) extractGenericLabelFilters(input string, params map[str
 					userValue = parts[len(parts)-1]
 				}
 			}
-			
+
 			if userValue != "" {
 				if labels, ok := params["labels"].(map[string]interface{}); ok {
 					labels["user"] = userValue
@@ -413,7 +413,7 @@ func (e *ParamExtractor) extractGenericLabelFilters(input string, params map[str
 	}
 
 	// 处理 "用户为XXX" 或 "用户是XXX" 模式
-	if strings.Contains(lowerInput, "用户为") || 
+	if strings.Contains(lowerInput, "用户为") ||
 		strings.Contains(lowerInput, "用户是") {
 		var idx int
 		var markerLen int
@@ -426,25 +426,25 @@ func (e *ParamExtractor) extractGenericLabelFilters(input string, params map[str
 		}
 		userPart := input[idx+markerLen:]
 		userPart = strings.TrimSpace(userPart)
-		
+
 		// 提取第一个连续的字母数字序列
 		runes := []rune(userPart)
 		var userValue string
 		endIdx := -1
 		for i := 0; i < len(runes); i++ {
 			r := runes[i]
-			isAlnum := (r >= 'a' && r <= 'z') || 
-				(r >= 'A' && r <= 'Z') || 
-				(r >= '0' && r <= '9') || 
+			isAlnum := (r >= 'a' && r <= 'z') ||
+				(r >= 'A' && r <= 'Z') ||
+				(r >= '0' && r <= '9') ||
 				r == '_' || r == '-'
-			
+
 			if isAlnum {
 				if endIdx == -1 {
 					endIdx = i
 				}
 			} else {
 				if endIdx != -1 {
-					userValue = string(runes[endIdx : i])
+					userValue = string(runes[endIdx:i])
 					break
 				}
 			}
@@ -460,7 +460,7 @@ func (e *ParamExtractor) extractGenericLabelFilters(input string, params map[str
 				userValue = parts[0]
 			}
 		}
-		
+
 		if userValue != "" {
 			if labels, ok := params["labels"].(map[string]interface{}); ok {
 				labels["user"] = userValue
@@ -484,30 +484,30 @@ func (e *ParamExtractor) extractPersonName(input string) string {
 		"点列": true, "线节": true, "节点列": true, "在线节": true,
 		"点列表": true, "线节点": true, "节点列表": true, "在线节点": true,
 	}
-	
+
 	excludeSingleChars := map[rune]bool{
 		'人': true, '找': true, '看': true, '列': true, '查': true,
 		'获': true, '搜': true, '下': true,
 	}
 
 	runes := []rune(input)
-	
+
 	for length := 2; length <= 4; length++ {
 		for i := 0; i <= len(runes)-length; i++ {
 			if excludeSingleChars[runes[i]] {
 				continue
 			}
-			
+
 			name := string(runes[i : i+length])
-			
+
 			if !isAllChinese(name) {
 				continue
 			}
-			
+
 			if excludeWords[name] {
 				continue
 			}
-			
+
 			return name
 		}
 	}
