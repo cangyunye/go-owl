@@ -195,3 +195,47 @@ func seedVerifyFixture(t *testing.T, s *Store, alertID, runID string) {
 	// 反馈计数需要对策存在
 	require.NoError(t, s.UpsertRemedy(sampleRemedy("RM-1", "OWL-DSK-001", "user", true)))
 }
+
+// TestClosedLoop_EndToEnd 闭环贯通：执行计划完成 → OnRunFinished 回调 →
+// 定向采集验证 → 结果落库（C1 核心链路的组合集成验证）。
+func TestClosedLoop_EndToEnd(t *testing.T) {
+	// 指标已回落（磁盘 45% < 90%）→ 处置后验证应为 recovered
+	fake := &fakeExecer{outputs: sampleOutputs()}
+	s := newTestStore(t)
+
+	verifier := NewRunVerifier(NewCollector(&fakeFactory{exec: fake}),
+		func(nodeID string) (*Target, error) {
+			return &Target{ID: nodeID, Address: "127.0.0.1", Port: 22, User: "local"}, nil
+		}, s)
+	verifier.SetDelay(0)
+	verifier.now = func() time.Time { return time.Unix(1750000000, 0) }
+
+	ex := NewRunExecutor(&remedyFakeFactory{exec: fake},
+		func(nodeID string) (*Target, error) {
+			return &Target{ID: nodeID, Address: "127.0.0.1", Port: 22, User: "local"}, nil
+		})
+	ex.OnRunFinished = func(run *RemedyRun) {
+		if _, err := verifier.VerifyRun(context.Background(), run.ID); err != nil {
+			t.Errorf("verify failed: %v", err)
+		}
+	}
+
+	seedVerifyFixture(t, s, "AL-CL", "RUN-CL")
+	// seed 的 run 已是 RunDone，重置为 pending 走真实执行链
+	require.NoError(t, s.UpdateRemedyRunStatus("RUN-CL", RunPending))
+
+	require.NoError(t, ex.ExecuteRun(context.Background(), "RUN-CL", s))
+
+	// OnRunFinished 异步触发，轮询等待验证落库
+	var v *RunVerification
+	var err error
+	for i := 0; i < 40; i++ {
+		if v, err = s.GetVerificationByRun("RUN-CL"); err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.NoError(t, err, "执行完成后验证记录应落库")
+	require.Equal(t, VerifyRecovered, v.Status)
+	require.Equal(t, "AL-CL", v.AlertID)
+}
