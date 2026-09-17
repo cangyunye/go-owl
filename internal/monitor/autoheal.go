@@ -18,6 +18,13 @@ type AutoHealer struct {
 	checker *blacklist.Checker
 	decide  func(ApprovalInput) Decision
 	now     func() int64
+	// enricher 处置上下文增强（nil=维持基础告警摘要）
+	enricher ContextEnricher
+}
+
+// SetContextEnricher 注入处置上下文增强器（历史处置/变更关联/相关告警）。
+func (h *AutoHealer) SetContextEnricher(e ContextEnricher) {
+	h.enricher = e
 }
 
 // NewAutoHealer 创建自愈协调器。
@@ -43,6 +50,11 @@ func (h *AutoHealer) Heal(ctx context.Context, alert *Alert, at AlertType, targe
 	ctxStr := fmt.Sprintf("告警类型: %s（%s）\n节点: %s\n级别: %s\n消息: %s\n指标快照: %s",
 		alert.AlertTypeID, at.Name, alert.NodeID, alert.Severity, alert.Message, alert.MetricSnapshot)
 	req := DisposalRequest{Alert: alert, Type: at, Remedies: recs, Context: ctxStr}
+	if h.enricher != nil {
+		if extra := h.enricher.Enrich(alert, at); extra != "" {
+			req.Context += "\n\n" + extra
+		}
+	}
 	plan, err := h.advisor.Advise(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("monitor: 生成处置建议失败: %w", err)

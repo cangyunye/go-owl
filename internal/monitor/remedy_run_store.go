@@ -249,3 +249,39 @@ func (s *Store) UpdateRemedyStep(runID string, order int, mutate func(*RemedySte
 	}
 	return fmt.Errorf("monitor: 执行步骤 %s/%d 不存在", runID, order)
 }
+
+// RemedyRunSummary 是按告警类型检索的历史处置摘要（供上下文增强）。
+type RemedyRunSummary struct {
+	RunID     string
+	AlertID   string
+	NodeID    string
+	Status    RemedyRunStatus
+	CreatedAt int64
+}
+
+// ListRemedyRunsByAlertType 按告警类型检索最近的处置计划（join alerts），
+// 时间倒序、limit 截断。供 AI advisor 注入"历史同类处置"上下文。
+func (s *Store) ListRemedyRunsByAlertType(alertTypeID string, limit int) ([]*RemedyRunSummary, error) {
+	if limit <= 0 {
+		limit = 3
+	}
+	rows, err := s.db.Query(`
+		SELECT r.id, r.alert_id, r.node_id, r.status, r.created_at
+		FROM remedy_runs r JOIN alerts a ON r.alert_id = a.id
+		WHERE a.alert_type_id = ?
+		ORDER BY r.created_at DESC LIMIT ?`, alertTypeID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("monitor: 按类型查询处置历史失败: %w", err)
+	}
+	defer rows.Close()
+
+	var out []*RemedyRunSummary
+	for rows.Next() {
+		var m RemedyRunSummary
+		if err := rows.Scan(&m.RunID, &m.AlertID, &m.NodeID, &m.Status, &m.CreatedAt); err != nil {
+			continue
+		}
+		out = append(out, &m)
+	}
+	return out, rows.Err()
+}
