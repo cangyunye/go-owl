@@ -40,6 +40,8 @@ func TestSettingsHandler_MonitorKeysValidation(t *testing.T) {
 		{"monitor.realert_window_minutes", "1440", 200},
 		{"monitor.escalate_after_minutes", "0", 400},
 		{"monitor.escalate_after_minutes", "60", 200},
+		{"monitor.rollback_enabled", "banana", 400},
+		{"monitor.rollback_enabled", "false", 200},
 		{"monitor.verify_enabled", "banana", 400},
 		{"monitor.verify_enabled", "false", 200},
 		{"monitor.verify_enabled", "true", 200},

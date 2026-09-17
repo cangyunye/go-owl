@@ -187,6 +187,9 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		AlertRetentionDays: func() int { return readAlertRetentionDays(db) },
 		WebURL:             webURL,
 	}
+	// 失败自动回滚开关（monitor.rollback_enabled，默认开）
+	runner.SetRollbackEnabled(readRollbackEnabled(db))
+
 	// 恢复闭环验证：处置计划完成后定向采集并重新评估告警规则（monitor.verify_*），
 	// 结果写入 remedy_run_verifications 供前端展示；验证失败不阻断主链路
 	if readVerifyEnabled(db) {
@@ -457,6 +460,18 @@ func readCollectWindow(db *sql.DB) string {
 
 // readAlertRetentionDays 读取告警记录保留天数（monitor.alert_retention_days）。
 // 未设置/非法/负数 = 0（不启用清理）。
+// readRollbackEnabled 读取 monitor.rollback_enabled（默认 true）。
+func readRollbackEnabled(db *sql.DB) bool {
+	var v string
+	_ = db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.rollback_enabled'`).Scan(&v)
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
 // readVerifyEnabled 读取 monitor.verify_enabled（默认 true）。
 func readVerifyEnabled(db *sql.DB) bool {
 	var v string

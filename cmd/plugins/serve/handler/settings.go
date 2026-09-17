@@ -127,6 +127,13 @@ func (h *SettingsHandler) Set(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.escalate_after_minutes must be a positive number"})
 			return
 		}
+	case "monitor.rollback_enabled":
+		switch strings.ToLower(strings.TrimSpace(req.Value)) {
+		case "true", "false", "1", "0", "yes", "no", "on", "off":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.rollback_enabled must be true or false"})
+			return
+		}
 	case "monitor.verify_enabled":
 		switch strings.ToLower(strings.TrimSpace(req.Value)) {
 		case "true", "false", "1", "0", "yes", "no", "on", "off":
