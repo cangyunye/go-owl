@@ -58,7 +58,7 @@ func (s *NodeStoreDB) ensureConsistent() {
 }
 
 func (s *NodeStoreDB) listInternal() ([]*NodeInfo, error) {
-	rows, err := s.db.Query(`SELECT id, name, address, port, user, password, ssh_key, status, groups, labels, proxy_jump, created_at, updated_at, last_check_at FROM nodes`)
+	rows, err := s.db.Query(`SELECT id, COALESCE(name, ''), COALESCE(address, ''), port, COALESCE(user, ''), COALESCE(password, ''), COALESCE(ssh_key, ''), COALESCE(status, 'unknown'), COALESCE(groups, '[]'), COALESCE(labels, '{}'), COALESCE(proxy_jump, ''), created_at, updated_at, last_check_at FROM nodes`)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func ReencryptNodeCredentials(db *sql.DB) (int, error) {
 		return 0, fmt.Errorf("未设置 %s,拒绝执行迁移(加密处于关闭状态)", secrets.KeyEnvName)
 	}
 
-	rows, err := db.Query(`SELECT id, password, ssh_key FROM nodes`)
+	rows, err := db.Query(`SELECT id, COALESCE(password, ''), COALESCE(ssh_key, '') FROM nodes`)
 	if err != nil {
 		return 0, err
 	}
@@ -193,7 +193,7 @@ func (s *NodeStoreDB) Get(id string) (*NodeInfo, error) {
 	var groupsJSON, labelsJSON string
 	var lastCheckAt sql.NullString
 	err := s.db.QueryRow(
-		`SELECT id, name, address, port, user, password, ssh_key, status, groups, labels, proxy_jump, created_at, updated_at, last_check_at FROM nodes WHERE id = ?`,
+		`SELECT id, COALESCE(name, ''), COALESCE(address, ''), port, COALESCE(user, ''), COALESCE(password, ''), COALESCE(ssh_key, ''), COALESCE(status, 'unknown'), COALESCE(groups, '[]'), COALESCE(labels, '{}'), COALESCE(proxy_jump, ''), created_at, updated_at, last_check_at FROM nodes WHERE id = ?`,
 		id,
 	).Scan(
 		&node.ID, &node.Name, &node.Address, &node.Port,

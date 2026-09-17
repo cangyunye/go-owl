@@ -423,3 +423,63 @@ func TestNodeStoreDB_ListWithConflicts_PromptDisabled(t *testing.T) {
 		t.Fatalf("expected 1 node n1, got %+v", nodes)
 	}
 }
+
+// TestNodeStoreDB_List_NullCredentials 复现 serve 侧 schema：password/ssh_key 等
+// 列可空（seed 节点无凭据）。CLI 与 serve 共享同一 owl.db，List/Get/Reencrypt
+// 不得因 NULL 崩溃。
+func TestNodeStoreDB_List_NullCredentials(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory sqlite3: %v", err)
+	}
+	defer db.Close()
+
+	// 与 cmd/plugins/serve/server.go initNodes 相同的可空 schema
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
+		id TEXT PRIMARY KEY,
+		name TEXT,
+		address TEXT,
+		port INTEGER DEFAULT 22,
+		user TEXT,
+		password TEXT,
+		ssh_key TEXT,
+		status TEXT DEFAULT 'unknown',
+		groups TEXT DEFAULT '[]',
+		labels TEXT DEFAULT '{}',
+		proxy_jump TEXT DEFAULT '',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		last_check_at DATETIME
+	)`)
+	if err != nil {
+		t.Fatalf("failed to create serve-style nodes table: %v", err)
+	}
+
+	// 模拟 serve seed 节点：凭据列全 NULL
+	_, err = db.Exec(`INSERT INTO nodes (id, name, address, port, user, password, ssh_key)
+		VALUES ('seed-1', 'seed-node', '10.0.0.1', 22, NULL, NULL, NULL)`)
+	if err != nil {
+		t.Fatalf("failed to insert seed node: %v", err)
+	}
+
+	store := NewNodeStoreDB(db)
+
+	nodes, err := store.List()
+	if err != nil {
+		t.Fatalf("List failed on NULL credentials: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	if nodes[0].Password != "" || nodes[0].SSHKey != "" {
+		t.Errorf("expected empty credentials, got password=%q ssh_key=%q", nodes[0].Password, nodes[0].SSHKey)
+	}
+
+	node, err := store.Get("seed-1")
+	if err != nil {
+		t.Fatalf("Get failed on NULL credentials: %v", err)
+	}
+	if node.Password != "" {
+		t.Errorf("expected empty password, got %q", node.Password)
+	}
+}
