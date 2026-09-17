@@ -186,7 +186,7 @@ func RatePerSec(prev, cur Sample) float64 {
 }
 
 // ExecCommand 在目标节点执行任意命令并返回标准输出与退出码
-//（自定义告警检查用；不走固定采集步骤表）。
+// （自定义告警检查用；不走固定采集步骤表）。
 func (c *Collector) ExecCommand(ctx context.Context, t *Target, command string, timeout time.Duration) (string, int, error) {
 	if err := ctx.Err(); err != nil {
 		return "", -1, err

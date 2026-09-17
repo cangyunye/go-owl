@@ -40,6 +40,13 @@ func TestSettingsHandler_MonitorKeysValidation(t *testing.T) {
 		{"monitor.realert_window_minutes", "1440", 200},
 		{"monitor.escalate_after_minutes", "0", 400},
 		{"monitor.escalate_after_minutes", "60", 200},
+		{"monitor.verify_enabled", "banana", 400},
+		{"monitor.verify_enabled", "false", 200},
+		{"monitor.verify_enabled", "true", 200},
+		{"monitor.verify_delay_seconds", "-1", 400},
+		{"monitor.verify_delay_seconds", "601", 400},
+		{"monitor.verify_delay_seconds", "0", 200},
+		{"monitor.verify_delay_seconds", "120", 200},
 	}
 	for _, tc := range cases {
 		w := doSettingsPut(router, token, tc.key, tc.value)

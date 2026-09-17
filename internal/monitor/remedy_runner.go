@@ -22,6 +22,9 @@ type RunExecutor struct {
 	timeout   time.Duration
 	stepDelay time.Duration // 测试用：步骤间停顿，便于并发停止
 	now       func() int64
+	// OnRunFinished 计划到达终态 RunDone 后的收尾回调（异步触发，nil=无操作）。
+	// serve 层用于注入处置疗效的定向验证（恢复闭环）。
+	OnRunFinished func(run *RemedyRun)
 }
 
 // NewRunExecutor 创建处置执行器，默认单步超时 60s。
@@ -47,6 +50,18 @@ func (e *RunExecutor) ExecuteRun(ctx context.Context, runID string, store *Store
 	if run.IsTerminal() {
 		return nil
 	}
+	// 终态收尾回调：仅 RunDone 触发（等待审批/失败/停止不验证）。
+	// 幂等早退（上面 IsTerminal）不会重复触发。
+	defer func() {
+		if e.OnRunFinished == nil {
+			return
+		}
+		final, exists, err := store.GetRemedyRun(runID)
+		if err != nil || !exists || final.Status != RunDone {
+			return
+		}
+		go e.OnRunFinished(final)
+	}()
 	if run.Status == RunPending {
 		if err := store.UpdateRemedyRunStatus(runID, RunRunning); err != nil {
 			return err

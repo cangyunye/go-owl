@@ -127,6 +127,19 @@ func (h *SettingsHandler) Set(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.escalate_after_minutes must be a positive number"})
 			return
 		}
+	case "monitor.verify_enabled":
+		switch strings.ToLower(strings.TrimSpace(req.Value)) {
+		case "true", "false", "1", "0", "yes", "no", "on", "off":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.verify_enabled must be true or false"})
+			return
+		}
+	case "monitor.verify_delay_seconds":
+		n, err := strconv.Atoi(strings.TrimSpace(req.Value))
+		if err != nil || n < 0 || n > 600 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.verify_delay_seconds must be 0-600"})
+			return
+		}
 	}
 
 	_, err := h.db.Exec(

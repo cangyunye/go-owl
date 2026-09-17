@@ -42,19 +42,19 @@ type EngineConfig struct {
 
 // Engine 监控引擎：周期采集 → 入库 → 规则评估 → 告警 → 通知，每日清理。
 type Engine struct {
-	cfg          EngineConfig
-	store        *Store
-	collector    *Collector
-	source       TargetSource
-	manager      *AlertManager
-	dispatcher   *Dispatcher
-	healer       *AutoHealer             // 自愈管线（nil = 关闭）
+	cfg        EngineConfig
+	store      *Store
+	collector  *Collector
+	source     TargetSource
+	manager    *AlertManager
+	dispatcher *Dispatcher
+	healer     *AutoHealer // 自愈管线（nil = 关闭）
 	// OnAlertOpened 告警打开（含合并窗口重开）时的扩展钩子（nil = 无操作）；
 	// 异步调用，serve 侧用于执行告警绑定的自动处置指令
 	OnAlertOpened func(ev AlertEvent, t Target)
-	lastCounters map[string]counterPoint // node|metric → 上次累计计数（网卡速率）
-	mu           sync.Mutex
-	now          func() time.Time // 采集时段窗口判定用时钟（测试可注入）
+	lastCounters  map[string]counterPoint // node|metric → 上次累计计数（网卡速率）
+	mu            sync.Mutex
+	now           func() time.Time // 采集时段窗口判定用时钟（测试可注入）
 }
 
 // counterPoint 累计计数采样点。
@@ -384,7 +384,7 @@ func (e *Engine) dispatch(ctx context.Context, events []AlertEvent, types []Aler
 
 // CleanupOnce 执行一次保留期清理（幂等，可每日调用）：
 // 指标按 RetentionDays 清理；告警记录按 AlertRetentionDays 清理
-//（只删已解决且解决时间超期的，未解决告警永不删除）。
+// （只删已解决且解决时间超期的，未解决告警永不删除）。
 func (e *Engine) CleanupOnce() error {
 	if err := e.store.Cleanup(e.cfg.RetentionDays); err != nil {
 		return err

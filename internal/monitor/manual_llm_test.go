@@ -28,7 +28,7 @@ func TestManual_RealDeepSeek(t *testing.T) {
 	plan, err := a.Advise(context.Background(), DisposalRequest{
 		Alert: &Alert{ID: "AL-1", AlertTypeID: "OWL-DSK-001", NodeID: "web-01",
 			Severity: SeverityWarning, Status: StatusOpen,
-			Message: "磁盘使用率过高：disk.usage./ 当前 93.50（规则 > 90）",
+			Message:        "磁盘使用率过高：disk.usage./ 当前 93.50（规则 > 90）",
 			MetricSnapshot: `{"disk.usage./":93.5}`},
 		Remedies: []Remedy{{
 			ID: "R-DSK-001-SOP", AlertTypeID: "OWL-DSK-001", Name: "磁盘使用率过高排查指引",

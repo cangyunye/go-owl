@@ -187,6 +187,18 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		AlertRetentionDays: func() int { return readAlertRetentionDays(db) },
 		WebURL:             webURL,
 	}
+	// 恢复闭环验证：处置计划完成后定向采集并重新评估告警规则（monitor.verify_*），
+	// 结果写入 remedy_run_verifications 供前端展示；验证失败不阻断主链路
+	if readVerifyEnabled(db) {
+		verifier := owlmonitor.NewRunVerifier(collector, resolveTarget(db), store)
+		verifier.SetDelay(time.Duration(readVerifyDelaySeconds(db)) * time.Second)
+		runner.OnRunFinished = func(run *owlmonitor.RemedyRun) {
+			if _, err := verifier.VerifyRun(context.Background(), run.ID); err != nil {
+				log.Printf("monitor: 处置验证失败 run=%s: %v", run.ID, err)
+			}
+		}
+	}
+
 	engine := owlmonitor.NewEngine(cfg, store, collector, source, manager, dispatcher)
 	engine.SetAutoHealer(healer)
 
@@ -445,6 +457,32 @@ func readCollectWindow(db *sql.DB) string {
 
 // readAlertRetentionDays 读取告警记录保留天数（monitor.alert_retention_days）。
 // 未设置/非法/负数 = 0（不启用清理）。
+// readVerifyEnabled 读取 monitor.verify_enabled（默认 true）。
+func readVerifyEnabled(db *sql.DB) bool {
+	var v string
+	_ = db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.verify_enabled'`).Scan(&v)
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
+// readVerifyDelaySeconds 读取 monitor.verify_delay_seconds（处置生效等待，默认 30）。
+func readVerifyDelaySeconds(db *sql.DB) int {
+	var v string
+	_ = db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.verify_delay_seconds'`).Scan(&v)
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return 30
+	}
+	if n > 600 {
+		n = 600
+	}
+	return n
+}
+
 func readAlertRetentionDays(db *sql.DB) int {
 	var v string
 	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.alert_retention_days'`).Scan(&v); err != nil {

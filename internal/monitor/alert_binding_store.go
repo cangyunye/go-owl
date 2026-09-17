@@ -12,7 +12,7 @@ import (
 type AlertBinding struct {
 	ID        string `json:"id"`
 	AlertID   string `json:"alert_id"`
-	Kind      string `json:"kind"`      // script | playbook
+	Kind      string `json:"kind"` // script | playbook
 	Name      string `json:"name"`
 	Content   string `json:"content"`   // script: 命令文本；playbook: 剧本 ID
 	Risk      string `json:"risk"`      // low | medium | high

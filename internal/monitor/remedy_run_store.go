@@ -35,6 +35,17 @@ func (s *Store) EnsureRemedyRunTables() error {
 			node_id     TEXT NOT NULL DEFAULT '',
 			PRIMARY KEY (run_id, step_order)
 		)`,
+		`CREATE TABLE IF NOT EXISTS remedy_run_verifications (
+			run_id        TEXT PRIMARY KEY,
+			alert_id      TEXT NOT NULL DEFAULT '',
+			node_id       TEXT NOT NULL DEFAULT '',
+			alert_type_id TEXT NOT NULL DEFAULT '',
+			status        TEXT NOT NULL DEFAULT '',
+			metric        TEXT NOT NULL DEFAULT '',
+			value         REAL NOT NULL DEFAULT 0,
+			message       TEXT NOT NULL DEFAULT '',
+			verified_at   INTEGER NOT NULL DEFAULT 0
+		)`,
 	}
 	for _, q := range schemas {
 		if _, err := s.db.Exec(q); err != nil {

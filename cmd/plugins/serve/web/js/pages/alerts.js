@@ -281,7 +281,15 @@ export function renderAlerts(render, navigate, user, api, shell) {
     overlay.className = 'modal-overlay open';
     const snapshot = (() => { try { return Object.entries(JSON.parse(a.metric_snapshot || '{}')); } catch { return []; } })();
 
-    function planProgressHtml(plan) {
+    // 闭环验证徽标：recovered=疗效确认 / not_recovered=未消除 / inconclusive=无法判定
+    const VERIFY_TEXT = { recovered: '✅ 疗效确认', not_recovered: '⚠️ 告警未消除', inconclusive: '❔ 无法判定' };
+    const VERIFY_COLOR = { recovered: 'var(--success)', not_recovered: 'var(--warn)', inconclusive: 'var(--muted)' };
+    function verifyBadgeHtml(v) {
+      if (!v || !v.status) return '';
+      return `<span title="${esc(v.message || '')}" style="font-size:var(--fs-xs);font-weight:600;color:${VERIFY_COLOR[v.status] || 'var(--muted)'}">${VERIFY_TEXT[v.status] || esc(v.status)}</span>`;
+    }
+
+    function planProgressHtml(plan, verification) {
       const RUN_TEXT = { pending: '待执行', running: '执行中', waiting_approval: '待审批', done: '已完成', stopped: '已停止', failed: '失败' };
       const STEP_TEXT = { pending: '等待', running: '执行中', success: '成功', failed: '失败', skipped: '跳过', pending_approval: '待审批' };
       const STEP_COLOR = { pending: 'var(--muted)', running: 'var(--info)', success: 'var(--success)', failed: 'var(--danger)', skipped: 'var(--muted)', pending_approval: 'var(--warn)' };
@@ -296,7 +304,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         </li>`).join('');
       return `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin:12px 0;background:var(--surface)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <strong style="font-size:var(--fs-sm)">处置计划 <code>${esc(plan.id)}</code></strong>
+          <strong style="font-size:var(--fs-sm)">处置计划 <code>${esc(plan.id)}</code>${verifyBadgeHtml(verification)}</strong>
           <span style="display:flex;gap:6px;align-items:center">
             <span style="font-size:var(--fs-xs);font-weight:600;color:${plan.status === 'done' ? 'var(--success)' : plan.status === 'failed' || plan.status === 'stopped' ? 'var(--danger)' : plan.status === 'waiting_approval' ? 'var(--warn)' : 'var(--info)'}">${RUN_TEXT[plan.status] || esc(plan.status)}</span>
             ${plan.status === 'running' || plan.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-stop-plan="${esc(plan.id)}">停止</button>` : ''}
@@ -314,6 +322,18 @@ export function renderAlerts(render, navigate, user, api, shell) {
       try {
         const res = await api.remedyPlan(planId);
         plan = res.run;
+        // 终态后继续轮询一小段，等待闭环验证结果落库
+        if (plan.status === 'done' && !res.verification && (loadPlanProgress._tries?.[planId] || 0) < 40) {
+          loadPlanProgress._tries = loadPlanProgress._tries || {};
+          loadPlanProgress._tries[planId] = (loadPlanProgress._tries[planId] || 0) + 1;
+          setTimeout(() => loadPlanProgress(planId, area), 1500);
+          area.innerHTML = planProgressHtml(plan, null);
+          return;
+        }
+        loadPlanProgress._tries = loadPlanProgress._tries || {};
+        delete loadPlanProgress._tries[planId];
+        area.innerHTML = planProgressHtml(plan, res.verification);
+        return;
       } catch { return; }
       area.innerHTML = planProgressHtml(plan);
       area.querySelector('[data-stop-plan]')?.addEventListener('click', async (e) => {
@@ -361,15 +381,19 @@ export function renderAlerts(render, navigate, user, api, shell) {
     async function loadPlanHistory() {
       const area = overlay.querySelector('#plan-history');
       if (!area) return;
-      let runs = [];
-      try { runs = (await api.remedyPlans(a.id)).items || []; } catch {}
-      if (!runs.length) { area.innerHTML = ''; return; }
+      let items = [];
+      try { items = (await api.remedyPlans(a.id)).items || []; } catch {}
+      if (!items.length) { area.innerHTML = ''; return; }
       const RUN_TEXT = { pending: '待执行', running: '执行中', waiting_approval: '待审批', done: '已完成', stopped: '已停止', failed: '失败' };
       area.innerHTML = `<h4 style="margin-top:14px">处置历史</h4><ul style="list-style:none;margin:0;padding:0">${
-        runs.map(r => `<li style="display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;font-size:var(--fs-xs);background:var(--bg)">
+        items.map(it => {
+          const r = it.run || it;
+          return `<li style="display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;font-size:var(--fs-xs);background:var(--bg)">
           <code>${esc(r.id)}</code><span style="color:var(--muted)">${r.steps ? r.steps.length : 0} 步</span>
           <span style="flex:1"></span><span style="color:var(--muted)">${esc(r.created_by || '')}</span>
-          <span style="font-weight:600">${RUN_TEXT[r.status] || esc(r.status)}</span></li>`).join('')}</ul>`;
+          ${verifyBadgeHtml(it.verification)}
+          <span style="font-weight:600">${RUN_TEXT[r.status] || esc(r.status)}</span></li>`;
+        }).join('')}</ul>`;
     }
 
     const draggable = isOperator;

@@ -282,7 +282,7 @@ func (s *Store) GetActiveAlert(typeID, nodeID string) (*Alert, bool, error) {
 }
 
 // GetLatestResolvedAlert 获取某节点某类型最近一次已解决的告警实例
-//（重复告警合并窗口查找用）。
+// （重复告警合并窗口查找用）。
 func (s *Store) GetLatestResolvedAlert(typeID, nodeID string) (*Alert, bool, error) {
 	row := s.db.QueryRow(`SELECT id, alert_type_id, node_id, severity, status, message, metric_snapshot,
 		first_seen, last_seen, resolved_at, remedy_id FROM alerts

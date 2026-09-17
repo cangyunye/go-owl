@@ -403,7 +403,11 @@ func (h *MonitorHandler) GetRemedyPlan(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "remedy plan not found"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"run": run})
+	resp := gin.H{"run": run}
+	if v, err := h.svc.Store.GetVerificationByRun(run.ID); err == nil {
+		resp["verification"] = v
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // ListRemedyPlans 列出某告警的处置记录（reader）。
@@ -413,7 +417,16 @@ func (h *MonitorHandler) ListRemedyPlans(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("internal error", err)})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": runs})
+	// 每条附带疗效验证记录（无验证的计划不带该字段）
+	items := make([]gin.H, 0, len(runs))
+	for _, r := range runs {
+		item := gin.H{"run": r}
+		if v, err := h.svc.Store.GetVerificationByRun(r.ID); err == nil {
+			item["verification"] = v
+		}
+		items = append(items, item)
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 // StopRemedyPlan 停止处置计划（operator+）。
