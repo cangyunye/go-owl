@@ -84,15 +84,17 @@ func TestSftpPush_ExistsNoOverwriteErrors(t *testing.T) {
 	assert.False(t, skipped)
 }
 
-// localhost 可用 SSH 时（与 transfer_test.go 的 E2E 同环境），用真实 sftp 链路再验一次跳过语义。
-func TestSFTPTransfer_ResumeUpToDateSkipE2E(t *testing.T) {
+// localhost 可用 SSH 时（与 transfer_test.go 的 E2E 同环境），用真实 sftp 链路验证：
+// 远端存在"更大但内容已过期"的同名文件时，续传校验发现前缀不一致 → 全量重传，
+// 让远端收敛到源文件内容（旧行为是直接跳过、保留过期内容）。
+func TestSFTPTransfer_ResumeStaleLargerFreshCopyE2E(t *testing.T) {
 	info := localhostNodeInfo(t)
 
 	srcDir := t.TempDir()
 	src := filepath.Join(srcDir, "f.txt")
 	require.NoError(t, os.WriteFile(src, []byte("short"), 0644))
 
-	remotePath := fmt.Sprintf("/tmp/owl_sftp_skip_%d.txt", os.Getpid())
+	remotePath := fmt.Sprintf("/tmp/owl_sftp_stale_%d.txt", os.Getpid())
 	remoteCleanup(info, remotePath)
 	defer remoteCleanup(info, remotePath)
 
@@ -100,7 +102,7 @@ func TestSFTPTransfer_ResumeUpToDateSkipE2E(t *testing.T) {
 	require.NoError(t, err)
 	pf, err := c.Create(remotePath)
 	require.NoError(t, err)
-	_, err = pf.Write([]byte("much longer existing content"))
+	_, err = pf.Write([]byte("much longer existing stale content"))
 	require.NoError(t, err)
 	pf.Close()
 	c.Close()
@@ -108,7 +110,7 @@ func TestSFTPTransfer_ResumeUpToDateSkipE2E(t *testing.T) {
 
 	skipped, err := sftpTransfer(info, src, remotePath, "push", transferOptions{Resume: true})
 	require.NoError(t, err)
-	assert.True(t, skipped, "远端已不小于源时应报告 skipped")
+	assert.False(t, skipped, "前缀不一致不得跳过")
 
 	c2, sc2, err := dialSFTP(info)
 	require.NoError(t, err)
@@ -118,7 +120,7 @@ func TestSFTPTransfer_ResumeUpToDateSkipE2E(t *testing.T) {
 	require.NoError(t, err)
 	data, _ := io.ReadAll(rf)
 	rf.Close()
-	assert.Equal(t, "much longer existing content", string(data), "跳过时不应改写远端文件")
+	assert.Equal(t, "short", string(data), "内容不一致时应全量重传收敛到源内容")
 }
 
 // runTransfer 依据 (err, skipped) 推导任务状态与输出——跳过必须如实呈现，不得伪装成成功拷贝。

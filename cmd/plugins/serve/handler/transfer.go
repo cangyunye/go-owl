@@ -61,6 +61,38 @@ func NewTransferHandler(db *sql.DB, ts *store.TaskStore, rs *store.TransferRecor
 	return &TransferHandler{db: db, task: ts, recordStore: rs}
 }
 
+// readersPrefixMatch 比较两个读取流的前 n 字节是否逐字节一致。
+// 断点续传前的一致性校验：远端已存在的文件未必是本源文件的中途副本
+// （同名异容的旧文件/更新前的版本），盲目追加会拼出大小一致但内容损坏
+// 的文件，盲目跳过会让远端停留在过期内容上。
+func readersPrefixMatch(a, b io.Reader, n int64) (bool, error) {
+	if n <= 0 {
+		return true, nil
+	}
+	bufA := make([]byte, 32*1024)
+	bufB := make([]byte, 32*1024)
+	remaining := n
+	for remaining > 0 {
+		chunk := len(bufA)
+		if int64(chunk) > remaining {
+			chunk = int(remaining)
+		}
+		na, err := io.ReadFull(a, bufA[:chunk])
+		if err != nil {
+			return false, err
+		}
+		nb, err := io.ReadFull(b, bufB[:chunk])
+		if err != nil {
+			return false, err
+		}
+		if na != nb || string(bufA[:na]) != string(bufB[:nb]) {
+			return false, nil
+		}
+		remaining -= int64(na)
+	}
+	return true, nil
+}
+
 func parseFileMode(s string) os.FileMode {
 	if s == "" {
 		return 0
@@ -324,20 +356,48 @@ func sftpPush(client *sftp.Client, src, dst string, opts transferOptions) (bool,
 
 	switch {
 	case exists && opts.Resume:
+		// 断点续传一致性校验：前缀一致才续传/跳过，不一致全量重传
 		rs := remoteInfo.Size()
-		if rs >= srcSize {
+		compareN := rs
+		if compareN > srcSize {
+			compareN = srcSize
+		}
+		remoteFile, rerr := client.Open(remotePath)
+		if rerr != nil {
+			return false, fmt.Errorf("open remote for resume check: %w", rerr)
+		}
+		same, verr := readersPrefixMatch(srcFile, io.LimitReader(remoteFile, compareN), compareN)
+		remoteFile.Close()
+		if verr != nil {
+			return false, fmt.Errorf("resume 前缀校验失败: %w", verr)
+		}
+		if same && rs >= srcSize {
 			if opts.Mode != 0 {
 				_ = client.Chmod(remotePath, opts.Mode)
 			}
 			return true, nil
 		}
-		dstFile, err = client.OpenFile(remotePath, os.O_WRONLY|os.O_APPEND)
-		if err != nil {
-			return false, fmt.Errorf("open remote for resume: %w", err)
-		}
-		if _, err := srcFile.Seek(rs, io.SeekStart); err != nil {
-			dstFile.Close()
-			return false, fmt.Errorf("seek local: %w", err)
+		if same {
+			// 真实前缀：追加剩余部分
+			dstFile, err = client.OpenFile(remotePath, os.O_WRONLY|os.O_APPEND)
+			if err != nil {
+				return false, fmt.Errorf("open remote for resume: %w", err)
+			}
+			if _, err := srcFile.Seek(rs, io.SeekStart); err != nil {
+				dstFile.Close()
+				return false, fmt.Errorf("seek local: %w", err)
+			}
+		} else {
+			// 前缀不一致：远端不是本源文件的中途副本——全量覆盖重传，
+			// 避免拼接出大小一致但内容损坏的文件
+			dstFile, err = client.OpenFile(remotePath, os.O_WRONLY|os.O_TRUNC)
+			if err != nil {
+				return false, fmt.Errorf("open remote for fresh copy: %w", err)
+			}
+			if _, err := srcFile.Seek(0, io.SeekStart); err != nil {
+				dstFile.Close()
+				return false, fmt.Errorf("seek local: %w", err)
+			}
 		}
 	case exists && !opts.Overwrite:
 		return false, fmt.Errorf("remote file exists: %s (enable overwrite)", remotePath)
@@ -380,20 +440,48 @@ func sftpPull(client *sftp.Client, src, dst string, opts transferOptions) (bool,
 
 	switch {
 	case exists && opts.Resume:
+		// 断点续传一致性校验：前缀一致才续传/跳过，不一致全量重传
 		ls := localInfo.Size()
-		if ls >= srcSize {
+		compareN := ls
+		if compareN > srcSize {
+			compareN = srcSize
+		}
+		localRead, rerr := os.Open(localPath)
+		if rerr != nil {
+			return false, fmt.Errorf("open local for resume check: %w", rerr)
+		}
+		same, verr := readersPrefixMatch(io.LimitReader(srcFile, compareN), io.LimitReader(localRead, compareN), compareN)
+		localRead.Close()
+		if verr != nil {
+			return false, fmt.Errorf("resume 前缀校验失败: %w", verr)
+		}
+		if same && ls >= srcSize {
 			if opts.Mode != 0 {
 				_ = os.Chmod(localPath, opts.Mode)
 			}
 			return true, nil
 		}
-		dstFile, err = os.OpenFile(localPath, os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			return false, fmt.Errorf("open local for resume: %w", err)
-		}
-		if _, err := srcFile.Seek(ls, io.SeekStart); err != nil {
-			dstFile.Close()
-			return false, fmt.Errorf("seek remote: %w", err)
+		if same {
+			// 真实前缀：追加剩余部分
+			dstFile, err = os.OpenFile(localPath, os.O_WRONLY|os.O_APPEND, 0644)
+			if err != nil {
+				return false, fmt.Errorf("open local for resume: %w", err)
+			}
+			if _, err := srcFile.Seek(ls, io.SeekStart); err != nil {
+				dstFile.Close()
+				return false, fmt.Errorf("seek remote: %w", err)
+			}
+		} else {
+			// 前缀不一致：本地不是本源文件的中途副本——全量覆盖重传，
+			// 避免拼接出大小一致但内容损坏的文件
+			dstFile, err = os.OpenFile(localPath, os.O_WRONLY|os.O_TRUNC, 0644)
+			if err != nil {
+				return false, fmt.Errorf("open local for fresh copy: %w", err)
+			}
+			if _, err := srcFile.Seek(0, io.SeekStart); err != nil {
+				dstFile.Close()
+				return false, fmt.Errorf("seek remote: %w", err)
+			}
 		}
 	case exists && !opts.Overwrite:
 		return false, fmt.Errorf("local file exists: %s (enable overwrite)", localPath)
