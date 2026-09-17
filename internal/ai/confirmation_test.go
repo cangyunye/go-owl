@@ -148,6 +148,7 @@ func TestSessionReadOpNoConfirm(t *testing.T) {
 	agent := newTestAgentForRoute([]string{
 		"node",
 		"```json\n{\"tool_calls\":[{\"name\":\"query_nodes\",\"arguments\":{}}]}\n```",
+		"节点查询完成。", // 工具执行后的总结轮（summarize 默认开启）
 	})
 	sess := NewSession(agent)
 	ctx := context.Background()

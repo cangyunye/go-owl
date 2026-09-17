@@ -52,6 +52,7 @@ func TestSessionNodeContextSaved(t *testing.T) {
 	agent := newTestAgentForRoute([]string{
 		"node_list",
 		"```json\n{\"tool_calls\":[{\"name\":\"query_nodes\",\"arguments\":{\"group\":\"web\"}}]}\n```",
+		"查询完成。", // 工具执行后的总结轮
 	})
 	agent.nodeMgr = nodeContextTestMgr()
 	sess := NewSession(agent)

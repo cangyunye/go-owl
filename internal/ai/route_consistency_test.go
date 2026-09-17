@@ -162,6 +162,7 @@ func TestGenericRouteExecutesTool(t *testing.T) {
 	agent := newTestAgentForRoute([]string{
 		"settings_show",
 		"```json\n{\"tool_calls\":[{\"name\":\"async_list\",\"arguments\":{}}]}\n```",
+		"完成。", // 工具执行后的总结轮
 	})
 	agent.SetConfirmGate(nil)
 	resp, err := agent.Process(context.Background(), "查看异步任务", nil)

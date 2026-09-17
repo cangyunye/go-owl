@@ -20,6 +20,13 @@ type AIConfig struct {
 	APIKey   string `yaml:"api_key"`
 	BaseURL  string `yaml:"base_url"`
 	Timeout  int    `yaml:"timeout"` // seconds
+	// MaxTurns 工具循环最大轮数（每轮一次 LLM 调用），0 表示默认 10
+	MaxTurns int `yaml:"max_turns"`
+	// NativeTools 原生 function calling：auto（默认，客户端支持即启用）/ on / off
+	NativeTools string `yaml:"native_tools"`
+	// SummarizeAfterTool 工具执行后是否继续循环由 LLM 总结（默认 true；
+	// false 保留旧行为：首轮工具结果直接返回，省一次 LLM 调用）
+	SummarizeAfterTool *bool `yaml:"summarize_after_tool"`
 }
 
 type PromptsConfig struct {

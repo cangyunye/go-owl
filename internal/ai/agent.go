@@ -136,16 +136,16 @@ func (a *Agent) SetNodeContextHook(hook func(nodes []string, source string)) {
 
 // nodeTargetTools 执行后需要记录节点上下文的工具。
 var nodeTargetTools = map[string]bool{
-	"query_nodes":       true,
-	"query_database":    true,
-	"execute_command":   true,
-	"execute_script":    true,
-	"transfer_file":     true,
-	"file_download":     true,
-	"run_playbook":      true,
-	"node_check":        true,
-	"node_ping":         true,
-	"node_status":       true,
+	"query_nodes":     true,
+	"query_database":  true,
+	"execute_command": true,
+	"execute_script":  true,
+	"transfer_file":   true,
+	"file_download":   true,
+	"run_playbook":    true,
+	"node_check":      true,
+	"node_ping":       true,
+	"node_status":     true,
 }
 
 // resolveToolTargets 从工具参数解析目标节点名列表（确定性，非 LLM 记忆）。
@@ -259,6 +259,17 @@ type ProgressCallback func(step string, detail string)
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// 以下字段仅原生 function calling 路径使用，文本协议路径忽略。
+	// ToolCalls: assistant 消息携带的工具调用；ToolCallID: role=tool 结果消息关联的调用 ID。
+	ToolCalls  []MessageToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string            `json:"tool_call_id,omitempty"`
+}
+
+// MessageToolCall 是消息中携带的工具调用（wire 层由各协议编码器转换）
+type MessageToolCall struct {
+	ID       string // provider 返回的调用 ID
+	Name     string
+	ArgsJSON string // 参数的原始 JSON 串
 }
 
 type ChatModelFunc func(ctx context.Context, messages []Message) (string, error)
@@ -286,22 +297,22 @@ var groupPrompts = map[string]string{
 	"playbook_run":      aiPrompts.PlaybookRunSystemPrompt,
 	"playbook_validate": aiPrompts.PlaybookValidateSystemPrompt,
 	// 以下类别使用通用工具目录提示词
-	"node_export":          aiPrompts.GenericToolSystemPrompt,
-	"file_download":        aiPrompts.GenericToolSystemPrompt,
-	"playbook_generate":    aiPrompts.GenericToolSystemPrompt,
-	"playbook_template_list": aiPrompts.GenericToolSystemPrompt,
-	"playbook_template_info": aiPrompts.GenericToolSystemPrompt,
+	"node_export":              aiPrompts.GenericToolSystemPrompt,
+	"file_download":            aiPrompts.GenericToolSystemPrompt,
+	"playbook_generate":        aiPrompts.GenericToolSystemPrompt,
+	"playbook_template_list":   aiPrompts.GenericToolSystemPrompt,
+	"playbook_template_info":   aiPrompts.GenericToolSystemPrompt,
 	"playbook_template_export": aiPrompts.GenericToolSystemPrompt,
-	"playbook_scaffold":    aiPrompts.GenericToolSystemPrompt,
-	"playbook_state_list":  aiPrompts.GenericToolSystemPrompt,
-	"playbook_state_show":  aiPrompts.GenericToolSystemPrompt,
-	"async_list":           aiPrompts.GenericToolSystemPrompt,
-	"async_status":         aiPrompts.GenericToolSystemPrompt,
-	"async_cancel":         aiPrompts.GenericToolSystemPrompt,
-	"settings_show":        aiPrompts.GenericToolSystemPrompt,
-	"settings_set":         aiPrompts.GenericToolSystemPrompt,
-	"history_list":         aiPrompts.GenericToolSystemPrompt,
-	"history_clean":        aiPrompts.GenericToolSystemPrompt,
+	"playbook_scaffold":        aiPrompts.GenericToolSystemPrompt,
+	"playbook_state_list":      aiPrompts.GenericToolSystemPrompt,
+	"playbook_state_show":      aiPrompts.GenericToolSystemPrompt,
+	"async_list":               aiPrompts.GenericToolSystemPrompt,
+	"async_status":             aiPrompts.GenericToolSystemPrompt,
+	"async_cancel":             aiPrompts.GenericToolSystemPrompt,
+	"settings_show":            aiPrompts.GenericToolSystemPrompt,
+	"settings_set":             aiPrompts.GenericToolSystemPrompt,
+	"history_list":             aiPrompts.GenericToolSystemPrompt,
+	"history_clean":            aiPrompts.GenericToolSystemPrompt,
 }
 
 // unsupportedRouteLabels 路由命中的豁免命令：AI 明确不支持。
@@ -573,175 +584,17 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 	}
 	messages = append(messages, Message{Role: "user", Content: userInput})
 
-	var fullResponse strings.Builder
-	maxTurns := 10
-	var lastToolName string
-	var lastToolResult string // 保存最后一个工具结果
-
-	for turn := 0; turn < maxTurns; turn++ {
-		debugPrint(a.debug, "=== 第 %d 轮对话 ===", turn+1)
-
-		debugPrint(a.debug, "messages 数量: %d", len(messages))
-		for i, msg := range messages {
-			hasResult := strings.Contains(msg.Content, "[TOOL_CALL_RESULT]")
-			if hasResult {
-				debugPrint(a.debug, "  messages[%d] 包含工具结果", i)
-			}
-		}
-
-		response, err := generateWithRetry(ctx, chatModel, messages, "AI调用")
-		if err != nil {
-			return "", fmt.Errorf("AI 调用失败: %w", err)
-		}
-
-		debugPrint(a.debug, "AI 响应: %.200s...", response)
-
-		toolCalls := a.parseToolCalls(response)
-		debugPrint(a.debug, "解析到工具调用数量: %d", len(toolCalls))
-
-		if len(toolCalls) == 0 {
-			if turn >= 1 {
-				debugPrint(a.debug, "多轮对话，检查是否有工具结果")
-				if lastToolResult != "" && (len(strings.TrimSpace(response)) == 0 || response == "") {
-					return lastToolResult, nil
-				}
-				return response, nil
-			}
-
-			if (len(response) > 100 && !strings.Contains(response, "tool_calls")) || strings.Contains(response, "我不确定您要做什么") {
-				debugPrint(a.debug, "LLM 无法生成有效工具调用，尝试使用本地参数提取器")
-
-				nodes := a.nodeMgr.List()
-				nodeNames := make([]string, 0, len(nodes))
-				for _, n := range nodes {
-					nodeNames = append(nodeNames, n.Name)
-				}
-
-				classifier := NewIntentClassifier()
-				intentResult := classifier.Classify(userInput)
-
-				// 置信度阈值 20: 两个及以上关键词命中(如"列出节点")即视为有效意图,
-				// 单关键词命中(置信度 10)仍拒绝,兼顾召回与误判。
-				if intentResult.Type == IntentUncertain || intentResult.Confidence < 20 {
-					debugPrint(a.debug, "本地分类器也无法确定，返回不确定")
-					return "我不确定您要做什么", nil
-				}
-
-				extractor := NewParamExtractor(nodeNames)
-				params := extractor.ExtractParams(intentResult.Type, userInput)
-
-				validator := NewValidator()
-				if err := validator.ValidateParams(intentResult.Type, params); err != nil {
-					debugPrint(a.debug, "参数验证失败: %v", err)
-					return "我不确定您要做什么", nil
-				}
-
-				debugPrint(a.debug, "使用本地参数提取成功: %v", params)
-
-				var toolCallJSON string
-				switch intentResult.Type {
-				case IntentQueryNodes:
-					toolCallJSON = a.buildToolCall("query_nodes", params)
-				case IntentExecuteCmd:
-					toolCallJSON = a.buildToolCall("execute_command", params)
-				case IntentExecuteScript:
-					toolCallJSON = a.buildToolCall("execute_script", params)
-				case IntentGeneratePlaybook:
-					toolCallJSON = a.buildToolCall("generate_playbook", params)
-			case IntentTransferFile:
-				toolCallJSON = a.buildToolCall("transfer_file", params)
-			case IntentFileDownload:
-				toolCallJSON = a.buildToolCall("file_download", params)
-			default:
-				return "我不确定您要做什么", nil
-			}
-
-			if toolCallJSON != "" {
-				debugPrint(a.debug, "使用本地提取的工具调用")
-					toolCalls := a.parseToolCalls(toolCallJSON)
-					if len(toolCalls) > 0 {
-						if onProgress != nil {
-							onProgress("generate", toolCalls[0].Name)
-						}
-						lastToolName = toolCalls[0].Name
-						messages = append(messages, Message{Role: "assistant", Content: toolCallJSON})
-
-					for _, call := range toolCalls {
-						if onProgress != nil {
-							onProgress("execute", call.Name)
-						}
-						if ok, question := a.confirmToolCall(call); !ok {
-							if onProgress != nil {
-								onProgress("result", "等待确认")
-							}
-							return question, nil
-						}
-						result, err := a.executeToolCall(ctx, call)
-						if err != nil {
-							result = fmt.Sprintf("Tool execution failed: %v", err)
-						}
-						lastToolResult = result
-						return result, nil
-					}
-					}
-				}
-			}
-
-			debugPrint(a.debug, "无有效工具调用，返回不确定（LLM 自由文本不透出）")
-			return "我不确定您要做什么", nil
-		}
-
-		if onProgress != nil && len(toolCalls) > 0 {
-			onProgress("generate", toolCalls[0].Name)
-		}
-
-		lastToolName = toolCalls[0].Name
-		messages = append(messages, Message{Role: "assistant", Content: response})
-
-		var toolResultStr string
-		for _, call := range toolCalls {
-			if onProgress != nil {
-				onProgress("execute", call.Name)
-			}
-			if ok, question := a.confirmToolCall(call); !ok {
-				if onProgress != nil {
-					onProgress("result", "等待确认")
-				}
-				return question, nil
-			}
-			result, err := a.executeToolCall(ctx, call)
-			if err != nil {
-				result = fmt.Sprintf("Tool execution failed: %v", err)
-			}
-			toolResultStr = result
-			lastToolResult = result
-			messages = append(messages, Message{Role: "user", Content: fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)})
-		}
-
-		if turn >= 1 && lastToolName != "" {
-			if hint, ok := toolHints[lastToolName]; ok {
-				hintMsg := Message{
-					Role:    "system",
-					Content: fmt.Sprintf("\n\n%s", hint),
-				}
-				messages = append(messages, hintMsg)
-			}
-		}
-
-		if turn == 0 && len(toolCalls) > 0 {
-			debugPrint(a.debug, "首轮执行工具后直接返回结果，不再进行额外LLM调用")
-			if onProgress != nil {
-				onProgress("result", "完成")
-			}
-			return toolResultStr, nil
-		}
+	result, err := a.runToolLoop(ctx, chatModel, toolLoopParams{
+		messages:      messages,
+		onProgress:    onProgress,
+		userInput:     userInput,
+		localFallback: true,
+		useToolHints:  true,
+	})
+	if err != nil {
+		return "", err
 	}
-
-	if onProgress != nil {
-		onProgress("result", "完成")
-	}
-
-	return fullResponse.String(), nil
+	return result.reply, nil
 }
 
 func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onProgress ProgressCallback) ([]Message, string, error) {
@@ -762,71 +615,14 @@ func (a *Agent) ProcessWithContext(ctx context.Context, messages []Message, onPr
 	msgs := make([]Message, len(messages))
 	msgs[0] = Message{Role: messages[0].Role, Content: formattedPrompt}
 	copy(msgs[1:], messages[1:])
-
-	var fullResponse strings.Builder
-	maxTurns := 10
-
-	for turn := 0; turn < maxTurns; turn++ {
-		response, err := generateWithRetry(ctx, chatModel, msgs, "AI调用")
-		if err != nil {
-			return msgs, "", fmt.Errorf("AI 调用失败: %w", err)
-		}
-
-		toolCalls := a.parseToolCalls(response)
-		if len(toolCalls) == 0 {
-			if turn >= 1 {
-				// 多轮：返回 LLM 对工具结果的总结（此前版本误返回空的 fullResponse）
-				if onProgress != nil {
-					onProgress("result", "完成")
-				}
-				if strings.TrimSpace(response) == "" {
-					response = "完成"
-				}
-				return msgs, response, nil
-			}
-			debugPrint(a.debug, "无有效工具调用，返回不确定（LLM 自由文本不透出）")
-			return msgs, "我不确定您要做什么", nil
-		}
-
-		if onProgress != nil && len(toolCalls) > 0 {
-			onProgress("generate", toolCalls[0].Name)
-		}
-
-		msgs = append(msgs, Message{Role: "assistant", Content: response})
-
-		var toolResultStr string
-		for _, call := range toolCalls {
-			if onProgress != nil {
-				onProgress("execute", call.Name)
-			}
-			if ok, question := a.confirmToolCall(call); !ok {
-				if onProgress != nil {
-					onProgress("result", "等待确认")
-				}
-				return msgs, question, nil
-			}
-			result, err := a.executeToolCall(ctx, call)
-			if err != nil {
-				result = fmt.Sprintf("Tool execution failed: %v", err)
-			}
-			toolResultStr = result
-			msgs = append(msgs, Message{Role: "user", Content: fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", result)})
-		}
-
-		if turn == 0 && len(toolCalls) > 0 {
-			debugPrint(a.debug, "首轮执行工具后直接返回结果，不再进行额外LLM调用")
-			if onProgress != nil {
-				onProgress("result", "完成")
-			}
-			return msgs, toolResultStr, nil
-		}
+	result, err := a.runToolLoop(ctx, chatModel, toolLoopParams{
+		messages:   msgs,
+		onProgress: onProgress,
+	})
+	if err != nil {
+		return msgs, "", err
 	}
-
-	if onProgress != nil {
-		onProgress("result", "完成")
-	}
-
-	return msgs, fullResponse.String(), nil
+	return result.messages, result.reply, nil
 }
 
 const maxRetries = 3
@@ -907,8 +703,18 @@ func (a *Agent) getNodeInfo() string {
 }
 
 type ToolCall struct {
+	ID        string // 原生 function calling 模式下 provider 返回的调用 ID（文本协议为空）
 	Name      string
 	Arguments map[string]interface{}
+}
+
+// ArgsJSON 把参数序列化为 JSON 串（原生协议回注消息时使用）。
+func (c ToolCall) ArgsJSON() string {
+	b, err := json.Marshal(c.Arguments)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
 }
 
 func (a *Agent) parseToolCalls(response string) []ToolCall {
