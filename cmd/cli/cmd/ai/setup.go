@@ -43,5 +43,7 @@ func SetupSession(store common.NodeStore, cfg *ai.Config, verbose bool) (*ai.Age
 	if err != nil {
 		return nil, nil, err
 	}
+	// 内核统一安全策略：黑名单按 CLI 身份审计
+	agent.SetSafetyIdentity(func() string { return "cli" })
 	return agent, cfg, nil
 }

@@ -207,6 +207,9 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	agent, err := ai2.NewAgent(webExecutor, config,
 		node.NewManager(node.NewInMemoryNodeStore()),
 		nil, nil, s.Config.AIDebugMode)
+	if err == nil {
+		agent.SetSafetyIdentity(func() string { return "web" })
+	}
 	if err != nil {
 		return nil, fmt.Errorf("init ai agent: %w", err)
 	}

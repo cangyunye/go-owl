@@ -83,6 +83,10 @@ type Agent struct {
 	// nodeContextHook 工具执行成功且涉及节点时回调解析后的节点名列表，
 	// 供 Session 保存节点上下文（跨轮复用，新一轮查询覆盖）。
 	nodeContextHook func(nodes []string, source string)
+	// safetyPolicy 命令安全策略（nil=默认策略：黑名单+低危白名单+保守确认）
+	safetyPolicy *SafetyPolicy
+	// safetyIdentity 安全审计用户身份（serve=username，cli=常量）
+	safetyIdentity func() string
 }
 
 // ConfirmationDecision 确认门判定结果。
@@ -433,6 +437,20 @@ func (a *Agent) SetChatModel(model ChatModel) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.chatModel = model
+}
+
+// SetSafetyIdentity 注入安全审计的用户身份（黑名单按用户检查）。
+func (a *Agent) SetSafetyIdentity(fn func() string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.safetyIdentity = fn
+}
+
+// SetSafetyPolicy 覆盖默认安全策略（测试或宿主定制用）。
+func (a *Agent) SetSafetyPolicy(p *SafetyPolicy) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.safetyPolicy = p
 }
 
 func (a *Agent) SetSystemPrompt(prompt string) {
@@ -787,6 +805,16 @@ func (a *Agent) confirmToolCall(call ToolCall) (bool, string) {
 	a.mu.RLock()
 	gate := a.confirmGate
 	a.mu.RUnlock()
+	if gate != nil {
+		policy := a.safety()
+		lowRiskOff := policy.ConfirmLowRisk != nil && !*policy.ConfirmLowRisk
+		if lowRiskOff {
+			if command, isCmd := commandToolArgumentKeys(call); isCmd && policy.IsLowRiskCommand(command) {
+				debugPrint(a.debug, "低危命令跳过确认: %s", command)
+				return true, ""
+			}
+		}
+	}
 	if gate == nil {
 		if confirmRequiredTools[call.Name] {
 			return false, fmt.Sprintf("该操作（%s）需要交互确认，当前上下文未启用确认机制，已拒绝执行。", call.Name)
@@ -823,6 +851,12 @@ func (a *Agent) runToolCalls(ctx context.Context, calls []ToolCall, onProgress P
 }
 
 func (a *Agent) executeToolCall(ctx context.Context, call ToolCall) (string, error) {
+	// 命令类工具先过内核统一黑名单：命中直接拒绝，任何确认机制均不能放行
+	// （CLI 端由此获得与 Web 端一致的黑名单防护）。
+	if reason := a.safetyBlockedReason(call); reason != "" {
+		debugPrint(a.debug, "黑名单拦截: %s", call.Name)
+		return reason, nil
+	}
 	debugPrint(a.debug, "执行工具: %s", call.Name)
 	debugPrint(a.debug, "工具参数: %+v", call.Arguments)
 
@@ -1502,4 +1536,21 @@ func (a *nodeStoreAdapter) toNodeInfo(node *model.Node) *NodeInfoAdapter {
 		Groups:  groups,
 		Labels:  labels,
 	}
+}
+
+// safetyBlockedReason 对命令类工具执行黑名单检查，命中返回拒绝文案。
+func (a *Agent) safetyBlockedReason(call ToolCall) string {
+	command, isCmd := commandToolArgumentKeys(call)
+	if !isCmd {
+		return ""
+	}
+	policy := a.safety()
+	user := "cli"
+	a.mu.RLock()
+	fn := a.safetyIdentity
+	a.mu.RUnlock()
+	if fn != nil {
+		user = fn()
+	}
+	return policy.CheckCommand(user, command)
 }

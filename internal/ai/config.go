@@ -40,6 +40,9 @@ type SafetyConfig struct {
 	ConfirmDangerous bool     `yaml:"confirm_dangerous"`
 	AllowedCommands  []string `yaml:"allowed_commands"`
 	BlockedCommands  []string `yaml:"blocked_commands"`
+	// ConfirmLowRisk 低危白名单命令是否仍需确认（nil/true=保守确认；
+	// false 时命中低危白名单的命令跳过确认门，黑名单始终硬拦截）
+	ConfirmLowRisk *bool `yaml:"confirm_low_risk"`
 }
 
 func DefaultConfig() *Config {

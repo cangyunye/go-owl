@@ -64,6 +64,7 @@ func (h *AIHandler) buildChatAgent(llmReq *LLMRequest) (*ai2.Agent, error) {
 		Model:   llmReq.Model,
 		APIKey:  llmReq.APIKey,
 	}))
+	agent.SetSafetyIdentity(func() string { return h.executor.userName })
 	return agent, nil
 }
 
