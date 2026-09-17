@@ -52,8 +52,8 @@ func TestConfigSetup_SelectByName(t *testing.T) {
 	if cfg.AI.Provider != "deepseek" {
 		t.Errorf("expected provider 'deepseek', got '%s'", cfg.AI.Provider)
 	}
-	if cfg.AI.Model != "deepseek-v4-flash" {
-		t.Errorf("expected default model 'deepseek-v4-flash', got '%s'", cfg.AI.Model)
+	if cfg.AI.Model != "deepseek-flash" {
+		t.Errorf("expected default model 'deepseek-flash', got '%s'", cfg.AI.Model)
 	}
 	if cfg.AI.BaseURL != "https://api.deepseek.com" {
 		t.Errorf("expected default deepseek base url, got '%s'", cfg.AI.BaseURL)

@@ -42,29 +42,9 @@ func NewAIHandler(db *sql.DB, auditStore *store.AIAuditStore, executor *WebExecu
 	return h
 }
 
-// webLLMChatModel adapts the generic CallLLM HTTP client to ai2.ChatModel so
-// the agent framework (router + group prompts + tool calling) runs on the
-// user-provided API key/model instead of a bare chat completion.
-type webLLMChatModel struct {
-	req *LLMRequest
-}
-
-func (m *webLLMChatModel) Generate(ctx context.Context, messages []ai2.Message) (string, error) {
-	msgs := make([]LLMMessage, len(messages))
-	for i, msg := range messages {
-		msgs[i] = LLMMessage{Role: msg.Role, Content: msg.Content}
-	}
-	req := *m.req
-	req.Messages = msgs
-	resp, err := CallLLM(ctx, &req)
-	if err != nil {
-		return "", err
-	}
-	return resp.Content, nil
-}
-
 // buildChatAgent constructs an agent that executes against the serve database
 // (via WebExecutor + dbNodeStoreAdapter) and uses the given LLM credentials.
+// 用户自带的 key/model 经 internal/ai.HTTPModel 直连，与 CLI 共用同一内核客户端。
 func (h *AIHandler) buildChatAgent(llmReq *LLMRequest) (*ai2.Agent, error) {
 	nodeStore := &dbNodeStoreAdapter{db: h.db}
 	nodeMgr := ai2.InitNodeManager(nodeStore)
@@ -72,7 +52,12 @@ func (h *AIHandler) buildChatAgent(llmReq *LLMRequest) (*ai2.Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	agent.SetChatModel(&webLLMChatModel{req: llmReq})
+	agent.SetChatModel(ai2.NewHTTPModel(ai2.ModelOptions{
+		APIType: llmReq.APIType,
+		BaseURL: llmReq.BaseURL,
+		Model:   llmReq.Model,
+		APIKey:  llmReq.APIKey,
+	}))
 	return agent, nil
 }
 

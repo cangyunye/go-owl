@@ -98,20 +98,4 @@ func TestCallLLM_Anthropic(t *testing.T) {
 	}
 }
 
-func TestBuildChatURL(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"https://api.openai.com", "https://api.openai.com/v1/chat/completions"},
-		{"https://api.openai.com/v1", "https://api.openai.com/v1/chat/completions"},
-		{"https://api.deepseek.com/v1/chat/completions", "https://api.deepseek.com/v1/chat/completions"},
-		{"https://api.example.com/v1/", "https://api.example.com/v1/chat/completions"},
-	}
-	for _, tc := range tests {
-		got := buildChatURL(tc.input)
-		if got != tc.expected {
-			t.Errorf("buildChatURL(%q) = %q, want %q", tc.input, got, tc.expected)
-		}
-	}
-}
+// buildChatURL 归一化测试已随实现迁移至 internal/ai/http_model_test.go（TestBuildChatURL_Normalization）。

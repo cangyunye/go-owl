@@ -119,7 +119,7 @@ export function renderSettings(render, navigate, user, api) {
     },
     deepseek: {
       provider: 'deepseek', baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-flash',
       thinking: { budget_tokens: 4096, temperature: 0.6, reasoning_effort: 'high', top_p: 0.9 }
     },
     openai: {
@@ -164,7 +164,7 @@ export function renderSettings(render, navigate, user, api) {
     } else {
       const opts = {
         anthropic: ['claude-sonnet-4-20250514','claude-4-20250514','claude-opus-4-20250514','claude-3-5-haiku-20241022','claude-3-opus-20240229'],
-        deepseek:  ['deepseek-v4-flash','deepseek-v4-pro'],
+        deepseek:  ['deepseek-flash','deepseek-v4-pro'],
         qwen:      ['qwen-max','qwen-plus','qwen-turbo','qwen-long','qwq-32b','qwen2.5-72b-instruct'],
         volcengine: ['doubao-pro-32k','doubao-pro-128k','doubao-lite-32k','doubao-lite-128k','doubao-1.5-pro-256k'],
         minimax:    ['MiniMax-Text-01','MiniMax-M1-7B-0824','abab7'],

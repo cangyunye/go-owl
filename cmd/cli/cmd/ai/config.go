@@ -27,7 +27,7 @@ func providerDefaults(provider string) (model, baseURL string) {
 	case "qwen", "dashscope":
 		return "qwen-max", "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	case "deepseek":
-		return "deepseek-v4-flash", "https://api.deepseek.com"
+		return "deepseek-flash", "https://api.deepseek.com"
 	default:
 		return "gpt-4o", "https://api.openai.com/v1"
 	}

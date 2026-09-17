@@ -1,13 +1,11 @@
 package ai
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -53,42 +51,47 @@ type LLMClient interface {
 	Generate(ctx context.Context, messages []Message) (string, error)
 }
 
-// OpenAIClient 实现了 OpenAI 兼容 API 的客户端（用于 Qwen、DeepSeek 等）
-type OpenAIClient struct {
-	apiKey     string
-	baseURL    string
-	model      string
-	httpClient *http.Client
+// OpenAIRequest 是 OpenAI API 请求结构体
+type OpenAIRequest struct {
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
 }
 
-// NewOpenAIClient 创建一个新的 OpenAI 兼容客户端
-func NewOpenAIClient(config *Config) *OpenAIClient {
-	baseURL := config.AI.BaseURL
-	if baseURL == "" {
-		baseURL = "https://api.openai.com/v1"
-	}
-
-	return &OpenAIClient{
-		apiKey:  config.AI.APIKey,
-		baseURL: baseURL,
-		model:   config.AI.Model,
-		httpClient: &http.Client{
-			Timeout: time.Duration(config.AI.Timeout) * time.Second,
-		},
-	}
+// OpenAIResponse 是 OpenAI API 响应结构体
+type OpenAIResponse struct {
+	Choices []struct {
+		Message Message `json:"message"`
+	} `json:"choices"`
+	Model string `json:"model"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
-// ListModels 从 API 获取可用模型列表
-func (c *OpenAIClient) ListModels(ctx context.Context) ([]string, error) {
+// ModelsResponse 是模型列表 API 响应结构体
+type ModelsResponse struct {
+	Data []struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		Created int64  `json:"created"`
+		Owner   string `json:"owner"`
+	} `json:"data"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// ListModels 从 OpenAI 兼容 API 获取可用模型列表
+func (m *HTTPModel) ListModels(ctx context.Context) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET",
-		c.baseURL+"/models", nil)
+		trimBaseURL(m.baseURL)+"/models", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Authorization", "Bearer "+m.apiKey)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := m.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -113,233 +116,47 @@ func (c *OpenAIClient) ListModels(ctx context.Context) ([]string, error) {
 	}
 
 	var models = make([]string, 0, len(modelsResp.Data))
-	for _, m := range modelsResp.Data {
-		models = append(models, m.ID)
+	for _, mo := range modelsResp.Data {
+		models = append(models, mo.ID)
 	}
 
 	return models, nil
 }
 
-// OpenAIRequest 是 OpenAI API 请求结构体
-type OpenAIRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
+// NewOpenAIClient 用 Config 创建 OpenAI 兼容客户端（qwen/dashscope/deepseek 等通用）。
+// 兼容构造：内部统一走 HTTPModel。
+func NewOpenAIClient(config *Config) *HTTPModel {
+	baseURL := config.AI.BaseURL
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	return NewHTTPModel(ModelOptions{
+		APIType:        "openai",
+		BaseURL:        baseURL,
+		Model:          config.AI.Model,
+		APIKey:         config.AI.APIKey,
+		TimeoutSeconds: config.AI.Timeout,
+	})
 }
 
-// OpenAIResponse 是 OpenAI API 响应结构体
-type OpenAIResponse struct {
-	Choices []struct {
-		Message Message `json:"message"`
-	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-// ModelsResponse 是模型列表 API 响应结构体
-type ModelsResponse struct {
-	Data []struct {
-		ID      string `json:"id"`
-		Object  string `json:"object"`
-		Created int64  `json:"created"`
-		Owner   string `json:"owner"`
-	} `json:"data"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-// Generate 调用 LLM 生成文本
-func (c *OpenAIClient) Generate(ctx context.Context, messages []Message) (string, error) {
-	reqBody := OpenAIRequest{
-		Model:    c.model,
-		Messages: messages,
+// NewAnthropicClient 用 Config 创建 Anthropic 客户端。
+// 兼容构造：内部统一走 HTTPModel。
+func NewAnthropicClient(config *Config) *HTTPModel {
+	baseURL := config.AI.BaseURL
+	if baseURL == "" {
+		baseURL = "https://api.anthropic.com"
 	}
-
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+	model := config.AI.Model
+	if model == "" {
+		model = "claude-sonnet-4-20250514"
 	}
-
-	llmDebug("[OpenAI] Request URL: %s/chat/completions", c.baseURL)
-	llmDebug("[OpenAI] Request Model: %s", c.model)
-	llmDebug("[OpenAI] Request Body: %s", string(bodyBytes))
-
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		c.baseURL+"/chat/completions", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-
-	llmDebug("[OpenAI] Sending request...")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		llmDebug("[OpenAI] Request failed: %v", err)
-		return "", fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	llmDebug("[OpenAI] Response Status: %d", resp.StatusCode)
-	llmDebug("[OpenAI] Response Body: %s", string(respBody))
-
-	if resp.StatusCode != http.StatusOK {
-		var errorResp OpenAIResponse
-		if json.Unmarshal(respBody, &errorResp) == nil && errorResp.Error != nil {
-			return "", fmt.Errorf("API error: %s", errorResp.Error.Message)
-		}
-		return "", fmt.Errorf("API error, status: %d, body: %s", resp.StatusCode, string(respBody))
-	}
-
-	var openAIResp OpenAIResponse
-	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
-		return "", fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	if len(openAIResp.Choices) == 0 {
-		return "", fmt.Errorf("no choices in response")
-	}
-
-	return openAIResp.Choices[0].Message.Content, nil
-}
-
-// AnthropicClient 实现了 Anthropic API 的客户端
-type AnthropicClient struct {
-	apiKey     string
-	model      string
-	httpClient *http.Client
-}
-
-// NewAnthropicClient 创建一个新的 Anthropic 客户端
-func NewAnthropicClient(config *Config) *AnthropicClient {
-	return &AnthropicClient{
-		apiKey: config.AI.APIKey,
-		model:  config.AI.Model,
-		httpClient: &http.Client{
-			Timeout: time.Duration(config.AI.Timeout) * time.Second,
-		},
-	}
-}
-
-// AnthropicRequest 是 Anthropic API 请求结构体
-type AnthropicRequest struct {
-	Model     string `json:"model"`
-	MaxTokens int    `json:"max_tokens"`
-	System    string `json:"system,omitempty"`
-	Messages  []struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	} `json:"messages"`
-}
-
-// AnthropicResponse 是 Anthropic API 响应结构体
-type AnthropicResponse struct {
-	Content []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-// Generate 调用 Anthropic API 生成文本
-func (c *AnthropicClient) Generate(ctx context.Context, messages []Message) (string, error) {
-	// 转换消息格式并分离系统消息
-	var systemMessage string
-	var anthropicMessages []struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-
-	for _, msg := range messages {
-		if msg.Role == "system" {
-			systemMessage = msg.Content
-		} else {
-			// 确保 role 是 user 或 assistant
-			role := msg.Role
-			if role != "user" && role != "assistant" {
-				role = "user"
-			}
-			anthropicMessages = append(anthropicMessages, struct {
-				Role    string `json:"role"`
-				Content string `json:"content"`
-			}{
-				Role:    role,
-				Content: msg.Content,
-			})
-		}
-	}
-
-	reqBody := AnthropicRequest{
-		Model:     c.model,
-		MaxTokens: 4096,
-		System:    systemMessage,
-		Messages:  anthropicMessages,
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	llmDebug("[Anthropic] Request URL: https://api.anthropic.com/v1/messages")
-	llmDebug("[Anthropic] Request Model: %s", c.model)
-	llmDebug("[Anthropic] Request Body: %s", string(bodyBytes))
-
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		"https://api.anthropic.com/v1/messages", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", c.apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	llmDebug("[Anthropic] Sending request...")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		llmDebug("[Anthropic] Request failed: %v", err)
-		return "", fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	llmDebug("[Anthropic] Response Status: %d", resp.StatusCode)
-	llmDebug("[Anthropic] Response Body: %s", string(respBody))
-
-	if resp.StatusCode != http.StatusOK {
-		var errorResp AnthropicResponse
-		if json.Unmarshal(respBody, &errorResp) == nil && errorResp.Error != nil {
-			return "", fmt.Errorf("API error: %s", errorResp.Error.Message)
-		}
-		return "", fmt.Errorf("API error, status: %d, body: %s", resp.StatusCode, string(respBody))
-	}
-
-	var anthropicResp AnthropicResponse
-	if err := json.Unmarshal(respBody, &anthropicResp); err != nil {
-		return "", fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	if len(anthropicResp.Content) == 0 {
-		return "", fmt.Errorf("no content in response")
-	}
-
-	return anthropicResp.Content[0].Text, nil
+	return NewHTTPModel(ModelOptions{
+		APIType:        "anthropic",
+		BaseURL:        baseURL,
+		Model:          model,
+		APIKey:         config.AI.APIKey,
+		TimeoutSeconds: config.AI.Timeout,
+	})
 }
 
 // CreateLLMClient 根据配置创建相应的 LLM 客户端
@@ -356,9 +173,6 @@ func CreateLLMClient(config *Config) (LLMClient, error) {
 		return NewOpenAIClient(config), nil
 
 	case "anthropic":
-		if config.AI.Model == "" {
-			config.AI.Model = "claude-sonnet-4-20250514"
-		}
 		return NewAnthropicClient(config), nil
 
 	case "qwen", "dashscope":
@@ -375,7 +189,7 @@ func CreateLLMClient(config *Config) (LLMClient, error) {
 			config.AI.BaseURL = "https://api.deepseek.com"
 		}
 		if config.AI.Model == "" {
-			config.AI.Model = "deepseek-v4-flash"
+			config.AI.Model = "deepseek-flash"
 		}
 		return NewOpenAIClient(config), nil
 

@@ -2,6 +2,8 @@ package ai
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -100,8 +102,8 @@ func TestCreateLLMClient_OpenAI(t *testing.T) {
 	if client == nil {
 		t.Fatal("expected client to be created")
 	}
-	if _, ok := client.(*OpenAIClient); !ok {
-		t.Error("expected OpenAIClient type")
+	if _, ok := client.(*HTTPModel); !ok {
+		t.Error("expected HTTPModel type")
 	}
 }
 
@@ -115,8 +117,8 @@ func TestCreateLLMClient_Anthropic(t *testing.T) {
 	if client == nil {
 		t.Fatal("expected client to be created")
 	}
-	if _, ok := client.(*AnthropicClient); !ok {
-		t.Error("expected AnthropicClient type")
+	if _, ok := client.(*HTTPModel); !ok {
+		t.Error("expected HTTPModel type")
 	}
 }
 
@@ -130,8 +132,8 @@ func TestCreateLLMClient_Qwen(t *testing.T) {
 	if client == nil {
 		t.Fatal("expected client to be created")
 	}
-	if _, ok := client.(*OpenAIClient); !ok {
-		t.Error("expected OpenAIClient type for qwen")
+	if _, ok := client.(*HTTPModel); !ok {
+		t.Error("expected HTTPModel type for qwen")
 	}
 }
 
@@ -145,8 +147,8 @@ func TestCreateLLMClient_DeepSeek(t *testing.T) {
 	if client == nil {
 		t.Fatal("expected client to be created")
 	}
-	if _, ok := client.(*OpenAIClient); !ok {
-		t.Error("expected OpenAIClient type for deepseek")
+	if _, ok := client.(*HTTPModel); !ok {
+		t.Error("expected HTTPModel type for deepseek")
 	}
 }
 
@@ -160,8 +162,8 @@ func TestCreateLLMClient_DefaultProvider(t *testing.T) {
 	if client == nil {
 		t.Fatal("expected client to be created")
 	}
-	if _, ok := client.(*OpenAIClient); !ok {
-		t.Error("expected OpenAIClient type for default provider")
+	if _, ok := client.(*HTTPModel); !ok {
+		t.Error("expected HTTPModel type for default provider")
 	}
 }
 
@@ -207,15 +209,15 @@ func TestCreateLLMClient_Qwen_DefaultValues(t *testing.T) {
 		t.Fatal("expected client to be created")
 	}
 
-	openAIClient, ok := client.(*OpenAIClient)
+	httpModel, ok := client.(*HTTPModel)
 	if !ok {
-		t.Fatal("expected OpenAIClient type")
+		t.Fatal("expected HTTPModel type")
 	}
-	if openAIClient.model != "qwen-max" {
-		t.Errorf("expected default model 'qwen-max', got '%s'", openAIClient.model)
+	if httpModel.model != "qwen-max" {
+		t.Errorf("expected default model 'qwen-max', got '%s'", httpModel.model)
 	}
-	if openAIClient.baseURL != "https://dashscope.aliyuncs.com/compatible-mode/v1" {
-		t.Errorf("expected default base URL for qwen, got '%s'", openAIClient.baseURL)
+	if httpModel.baseURL != "https://dashscope.aliyuncs.com/compatible-mode/v1" {
+		t.Errorf("expected default base URL for qwen, got '%s'", httpModel.baseURL)
 	}
 }
 
@@ -237,15 +239,15 @@ func TestCreateLLMClient_DeepSeek_DefaultValues(t *testing.T) {
 		t.Fatal("expected client to be created")
 	}
 
-	openAIClient, ok := client.(*OpenAIClient)
+	httpModel, ok := client.(*HTTPModel)
 	if !ok {
-		t.Fatal("expected OpenAIClient type")
+		t.Fatal("expected HTTPModel type")
 	}
-	if openAIClient.model != "deepseek-v4-flash" {
-		t.Errorf("expected default model 'deepseek-v4-flash', got '%s'", openAIClient.model)
+	if httpModel.model != "deepseek-flash" {
+		t.Errorf("expected default model 'deepseek-flash', got '%s'", httpModel.model)
 	}
-	if openAIClient.baseURL != "https://api.deepseek.com" {
-		t.Errorf("expected default base URL for deepseek, got '%s'", openAIClient.baseURL)
+	if httpModel.baseURL != "https://api.deepseek.com" {
+		t.Errorf("expected default base URL for deepseek, got '%s'", httpModel.baseURL)
 	}
 }
 
@@ -266,12 +268,12 @@ func TestCreateLLMClient_Anthropic_DefaultModel(t *testing.T) {
 		t.Fatal("expected client to be created")
 	}
 
-	anthropicClient, ok := client.(*AnthropicClient)
+	httpModel, ok := client.(*HTTPModel)
 	if !ok {
-		t.Fatal("expected AnthropicClient type")
+		t.Fatal("expected HTTPModel type")
 	}
-	if anthropicClient.model != "claude-sonnet-4-20250514" {
-		t.Errorf("expected default model 'claude-sonnet-4-20250514', got '%s'", anthropicClient.model)
+	if httpModel.model != "claude-sonnet-4-20250514" {
+		t.Errorf("expected default model 'claude-sonnet-4-20250514', got '%s'", httpModel.model)
 	}
 }
 
@@ -293,12 +295,12 @@ func TestCreateLLMClient_OpenAI_DefaultValues(t *testing.T) {
 		t.Fatal("expected client to be created")
 	}
 
-	openAIClient, ok := client.(*OpenAIClient)
+	httpModel, ok := client.(*HTTPModel)
 	if !ok {
-		t.Fatal("expected OpenAIClient type")
+		t.Fatal("expected HTTPModel type")
 	}
-	if openAIClient.baseURL != "https://api.openai.com/v1" {
-		t.Errorf("expected default base URL for openai, got '%s'", openAIClient.baseURL)
+	if httpModel.baseURL != "https://api.openai.com/v1" {
+		t.Errorf("expected default base URL for openai, got '%s'", httpModel.baseURL)
 	}
 }
 
@@ -320,15 +322,15 @@ func TestCreateLLMClient_DashScope_DefaultValues(t *testing.T) {
 		t.Fatal("expected client to be created")
 	}
 
-	openAIClient, ok := client.(*OpenAIClient)
+	httpModel, ok := client.(*HTTPModel)
 	if !ok {
-		t.Fatal("expected OpenAIClient type")
+		t.Fatal("expected HTTPModel type")
 	}
-	if openAIClient.model != "qwen-max" {
-		t.Errorf("expected default model 'qwen-max', got '%s'", openAIClient.model)
+	if httpModel.model != "qwen-max" {
+		t.Errorf("expected default model 'qwen-max', got '%s'", httpModel.model)
 	}
-	if openAIClient.baseURL != "https://dashscope.aliyuncs.com/compatible-mode/v1" {
-		t.Errorf("expected default base URL for dashscope, got '%s'", openAIClient.baseURL)
+	if httpModel.baseURL != "https://dashscope.aliyuncs.com/compatible-mode/v1" {
+		t.Errorf("expected default base URL for dashscope, got '%s'", httpModel.baseURL)
 	}
 }
 
@@ -383,73 +385,58 @@ func TestLLMClient_Interface(t *testing.T) {
 	}
 }
 
-func TestOpenAIClient_Generate_MissingAPIKey(t *testing.T) {
-	config := &Config{
-		AI: AIConfig{
-			APIKey:  "",
-			Model:   "gpt-4o",
-			BaseURL: "https://api.openai.com/v1",
-			Timeout: 60,
-		},
-	}
+func TestHTTPModel_Generate_UnauthorizedError(t *testing.T) {
+	// 401 响应必须以 error 形式暴露（离线验证鉴权失败路径）
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer server.Close()
 
-	client := NewOpenAIClient(config)
+	client := NewHTTPModel(ModelOptions{
+		APIType: "openai",
+		BaseURL: server.URL,
+		Model:   "gpt-4o",
+		APIKey:  "bad-key",
+	})
 
-	messages := []Message{
-		{Role: "user", Content: "Hello"},
-	}
-
-	ctx := context.Background()
-	_, err := client.Generate(ctx, messages)
-
+	_, err := client.Generate(context.Background(), []Message{{Role: "user", Content: "Hello"}})
 	if err == nil {
-		t.Error("expected error when API key is empty")
+		t.Error("expected error for 401 response")
 	}
 }
 
-func TestOpenAIClient_Generate_MissingBaseURL(t *testing.T) {
-	config := &Config{
-		AI: AIConfig{
-			APIKey:  testAPIKey,
-			Model:   "gpt-4o",
-			BaseURL: "",
-			Timeout: 60,
-		},
-	}
+func TestHTTPModel_Generate_EmptyBaseURLError(t *testing.T) {
+	// baseURL 为空时必须报错而不是发起相对路径请求
+	client := NewHTTPModel(ModelOptions{
+		APIType: "openai",
+		BaseURL: "",
+		Model:   "gpt-4o",
+		APIKey:  testAPIKey,
+	})
 
-	client := NewOpenAIClient(config)
-
-	messages := []Message{
-		{Role: "user", Content: "Hello"},
-	}
-
-	ctx := context.Background()
-	_, err := client.Generate(ctx, messages)
-
+	_, err := client.Generate(context.Background(), []Message{{Role: "user", Content: "Hello"}})
 	if err == nil {
 		t.Error("expected error when base URL is empty")
 	}
 }
 
-func TestAnthropicClient_Generate_MissingAPIKey(t *testing.T) {
-	config := &Config{
-		AI: AIConfig{
-			APIKey:  "",
-			Model:   "claude-3-opus",
-			Timeout: 60,
-		},
-	}
+func TestHTTPModel_Anthropic_UnauthorizedError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer server.Close()
 
-	client := NewAnthropicClient(config)
+	client := NewHTTPModel(ModelOptions{
+		APIType: "anthropic",
+		BaseURL: server.URL,
+		Model:   "claude-3-opus",
+		APIKey:  "bad-key",
+	})
 
-	messages := []Message{
-		{Role: "user", Content: "Hello"},
-	}
-
-	ctx := context.Background()
-	_, err := client.Generate(ctx, messages)
-
+	_, err := client.Generate(context.Background(), []Message{{Role: "user", Content: "Hello"}})
 	if err == nil {
-		t.Error("expected error when API key is empty")
+		t.Error("expected error for 401 response")
 	}
 }
