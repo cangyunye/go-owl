@@ -46,6 +46,7 @@ func runTui(cmd *cobra.Command, args []string) {
 
 	app := NewApp(store)
 	p := tea.NewProgram(app, tea.WithAltScreen())
+	app.SetProgram(p) // 回填 program,AI 面板借其把内核流式回调桥接为 tea.Msg
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "错误: owl tui 异常:", err)
 		os.Exit(1)

@@ -254,6 +254,31 @@ func TestApp_ChatDoneRoutedToAIPanelWhileInactive(t *testing.T) {
 	}
 }
 
+func TestApp_ChatStreamRoutedToAIPanelWhileInactive(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('4'))
+	m = nm.(*App)
+	nm, _ = m.Update(key(tea.KeyTab)) // 切回 Nodes,AI 面板不活跃
+	m = nm.(*App)
+	// 流式增量与节拍在 AI 面板不活跃时也应送达并刷入视口
+	nm, _ = m.Update(tuiai.ChatDeltaMsg{Text: "后台流式增量"})
+	m = nm.(*App)
+	nm, _ = m.Update(tuiai.FlushTickMsg{})
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('4'))
+	m = nm.(*App)
+	if got := m.View(); !strings.Contains(got, "后台流式增量") || !strings.Contains(got, "▍") {
+		t.Fatalf("ChatDeltaMsg 未路由到 AI 面板: %s", got)
+	}
+}
+
+func TestApp_SetProgramBackfillsAIModel(t *testing.T) {
+	m := newApp(t)
+	// 不触碰真实 Program: nil 应被安全忽略(回填时机在 tea.NewProgram 之后)
+	m.SetProgram(nil)
+	// 真实回填走 tui.runTui,此处只验证入口存在且不 panic
+}
+
 func TestApp_AIEscReturnsToNodes(t *testing.T) {
 	m := newApp(t)
 	nm, _ := m.Update(runeKey('4'))

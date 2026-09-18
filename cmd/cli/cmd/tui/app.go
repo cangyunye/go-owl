@@ -48,6 +48,11 @@ func NewApp(store common.NodeStore) *App {
 
 func (m *App) Init() tea.Cmd { return nil }
 
+// SetProgram 回填 tea.Program 给 AI 面板,供内核 OnProgress 跨 goroutine 推送流式消息。
+func (m *App) SetProgram(p *tea.Program) {
+	m.ai.SetProgram(p)
+}
+
 func (m *App) currentPanel() Panel {
 	switch m.panel {
 	case 1:
@@ -134,8 +139,8 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		fm, cmd := m.file.Update(msg)
 		m.file = fm.(file.FileModel)
 		return m, cmd
-	case tuiai.ChatDoneMsg:
-		// AI 回复直接路由到 AI 面板,即使当前处于其他面板,避免 busy 永久卡死
+	case tuiai.ChatDoneMsg, tuiai.ChatDeltaMsg, tuiai.ToolProgressMsg, tuiai.FlushTickMsg:
+		// AI 消息直接路由到 AI 面板,即使当前处于其他面板,避免流式中断或 busy 永久卡死
 		am, cmd := m.ai.Update(msg)
 		m.ai = am.(tuiai.Model)
 		return m, cmd

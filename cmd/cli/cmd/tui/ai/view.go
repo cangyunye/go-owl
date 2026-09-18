@@ -22,7 +22,11 @@ func (m Model) View() string {
 		b.WriteString(styleDim.Render("  模型  "+m.modelLabel) + "\n")
 	}
 	if m.busy {
-		b.WriteString("  " + styleAI.Render("● AI 处理中…") + "\n")
+		if m.toolPhase != "" {
+			b.WriteString("  " + styleAI.Render(m.toolPhase) + "\n")
+		} else {
+			b.WriteString("  " + styleAI.Render("● AI 处理中…") + "\n")
+		}
 	} else if m.status != "" {
 		b.WriteString(styleDim.Render("  "+m.status) + "\n")
 	}
