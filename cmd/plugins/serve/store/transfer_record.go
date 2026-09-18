@@ -21,18 +21,18 @@ const (
 )
 
 type TransferRecord struct {
-	ID            string               `json:"id"`
-	FileSource    string               `json:"file_source"`
-	DestPath      string               `json:"dest_path"`
-	Direction     string               `json:"direction"`
-	Status        TransferRecordStatus `json:"status"`
-	NodeCount     int                  `json:"node_count"`
-	SuccessCount  int                  `json:"success_count"`
-	FailedCount   int                  `json:"failed_count"`
-	CreatedAt     time.Time            `json:"created_at"`
-	UpdatedAt     time.Time            `json:"updated_at"`
-	CompletedAt   *time.Time           `json:"completed_at,omitempty"`
-	Payload       string               `json:"payload,omitempty"`
+	ID           string               `json:"id"`
+	FileSource   string               `json:"file_source"`
+	DestPath     string               `json:"dest_path"`
+	Direction    string               `json:"direction"`
+	Status       TransferRecordStatus `json:"status"`
+	NodeCount    int                  `json:"node_count"`
+	SuccessCount int                  `json:"success_count"`
+	FailedCount  int                  `json:"failed_count"`
+	CreatedAt    time.Time            `json:"created_at"`
+	UpdatedAt    time.Time            `json:"updated_at"`
+	CompletedAt  *time.Time           `json:"completed_at,omitempty"`
+	Payload      string               `json:"payload,omitempty"`
 }
 
 type TransferRecordStore struct {

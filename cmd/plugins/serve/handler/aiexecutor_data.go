@@ -59,5 +59,16 @@ func (e *WebExecutor) queryNodeRows(ctx context.Context, group, status, search s
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	// 节点范围授权：AI 查询同样只看得到授权内节点
+	scope := NewScopeChecker(e.db).userScope(ctx, IdentityFromContext(ctx).Username)
+	if scope.IsUnrestricted() {
+		return out, rows.Err()
+	}
+	filtered := out[:0]
+	for _, r := range out {
+		if scope.contains(r.ID, r.Groups) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered, rows.Err()
 }

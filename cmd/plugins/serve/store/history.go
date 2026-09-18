@@ -17,18 +17,18 @@ import (
 // 先建者生效；其余列 schema 不一致会导致读写错乱。
 
 type Operation struct {
-	ID               int64     `json:"id"`
-	TaskID           string    `json:"task_id"`
-	OpType           string    `json:"op_type"`
-	Command          string    `json:"command"`
-	Targets          []string  `json:"targets"`
-	Status           string    `json:"status"`
-	ExecutionMode    string    `json:"execution_mode"`
-	PlaybookPath     string    `json:"playbook_path"`
-	CurrentTaskIndex int       `json:"current_task_index"`
-	CurrentTaskPhase string    `json:"current_task_phase"`
-	Forced           bool      `json:"forced"`
-	Username         string    `json:"username,omitempty"`
+	ID               int64    `json:"id"`
+	TaskID           string   `json:"task_id"`
+	OpType           string   `json:"op_type"`
+	Command          string   `json:"command"`
+	Targets          []string `json:"targets"`
+	Status           string   `json:"status"`
+	ExecutionMode    string   `json:"execution_mode"`
+	PlaybookPath     string   `json:"playbook_path"`
+	CurrentTaskIndex int      `json:"current_task_index"`
+	CurrentTaskPhase string   `json:"current_task_phase"`
+	Forced           bool     `json:"forced"`
+	Username         string   `json:"username,omitempty"`
 	// Origin 操作来源：web（页面）/ai（AI 助手）/cli/autoheal/binding。
 	// serve 侧 RecordOperation 空值默认 web。
 	Origin    string    `json:"origin,omitempty"`
@@ -75,9 +75,9 @@ type NodeCommunication struct {
 }
 
 type Record struct {
-	Operation         *Operation         `json:"operation"`
-	CommandExecutions []*CommandExecution `json:"command_executions,omitempty"`
-	Transfers         []*FileTransfer     `json:"transfers,omitempty"`
+	Operation         *Operation           `json:"operation"`
+	CommandExecutions []*CommandExecution  `json:"command_executions,omitempty"`
+	Transfers         []*FileTransfer      `json:"transfers,omitempty"`
 	Communications    []*NodeCommunication `json:"communications,omitempty"`
 }
 

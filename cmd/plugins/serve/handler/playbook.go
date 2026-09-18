@@ -442,6 +442,12 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "target_nodes or groups is required"})
 		return
 	}
+	// 节点范围授权：范围外节点静默剔除
+	req.TargetNodes = NewScopeChecker(h.db).FilterNodeIDs(c.Request.Context(), c.GetString("username"), req.TargetNodes)
+	if len(req.TargetNodes) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "no accessible target nodes"})
+		return
+	}
 
 	run, err := h.runs.Create(c.Request.Context(), pb.ID, pb.Name, pb.FilePath, req.TargetNodes, req.ExtraVars, req.Tags, req.DangerConfirmed)
 	if err != nil {

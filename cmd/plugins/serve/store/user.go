@@ -24,17 +24,31 @@ func (s *UserStore) Init(ctx context.Context) error {
 			password     TEXT NOT NULL,
 			role         TEXT NOT NULL DEFAULT 'viewer',
 			display_name TEXT DEFAULT '',
+			node_scope   TEXT DEFAULT '',
 			created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	// 存量库补列（幂等）：节点范围授权
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('web_users') WHERE name = 'node_scope'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE web_users ADD COLUMN node_scope TEXT DEFAULT ''`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *UserStore) Create(ctx context.Context, user *model.User) error {
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO web_users (username, password, role, display_name) VALUES (?, ?, ?, ?)`,
-		user.Username, user.PasswordHash, user.Role, user.DisplayName)
+		`INSERT INTO web_users (username, password, role, display_name, node_scope) VALUES (?, ?, ?, ?, ?)`,
+		user.Username, user.PasswordHash, user.Role, user.DisplayName, user.NodeScope)
 	if err != nil {
 		return err
 	}
@@ -48,10 +62,10 @@ func (s *UserStore) Create(ctx context.Context, user *model.User) error {
 
 func (s *UserStore) FindByID(ctx context.Context, id int64) (*model.User, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, username, password, role, display_name FROM web_users WHERE id = ?`,
+		`SELECT id, username, password, role, display_name, node_scope FROM web_users WHERE id = ?`,
 		id)
 	user := &model.User{}
-	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.DisplayName)
+	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.DisplayName, &user.NodeScope)
 	if err != nil {
 		return nil, err
 	}
@@ -60,10 +74,10 @@ func (s *UserStore) FindByID(ctx context.Context, id int64) (*model.User, error)
 
 func (s *UserStore) FindByUsername(ctx context.Context, username string) (*model.User, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, username, password, role, display_name FROM web_users WHERE username = ?`,
+		`SELECT id, username, password, role, display_name, node_scope FROM web_users WHERE username = ?`,
 		username)
 	user := &model.User{}
-	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.DisplayName)
+	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.DisplayName, &user.NodeScope)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +86,7 @@ func (s *UserStore) FindByUsername(ctx context.Context, username string) (*model
 
 func (s *UserStore) List(ctx context.Context) ([]*model.User, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, username, password, role, display_name FROM web_users ORDER BY id`)
+		`SELECT id, username, password, role, display_name, node_scope FROM web_users ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +95,7 @@ func (s *UserStore) List(ctx context.Context) ([]*model.User, error) {
 	var users []*model.User
 	for rows.Next() {
 		user := &model.User{}
-		if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.DisplayName); err != nil {
+		if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.DisplayName, &user.NodeScope); err != nil {
 			return nil, err
 		}
 		users = append(users, user)
@@ -120,7 +134,7 @@ func (s *UserStore) ListPaged(ctx context.Context, keyword, role string, page, p
 	}
 	offset := (page - 1) * pageSize
 
-	query := `SELECT id, username, password, role, display_name FROM web_users` + where + ` ORDER BY id LIMIT ? OFFSET ?`
+	query := `SELECT id, username, password, role, display_name, node_scope FROM web_users` + where + ` ORDER BY id LIMIT ? OFFSET ?`
 	queryArgs := append(args, pageSize, offset)
 	rows, err := s.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
@@ -131,7 +145,7 @@ func (s *UserStore) ListPaged(ctx context.Context, keyword, role string, page, p
 	var users []*model.User
 	for rows.Next() {
 		user := &model.User{}
-		if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.DisplayName); err != nil {
+		if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.DisplayName, &user.NodeScope); err != nil {
 			return nil, 0, err
 		}
 		users = append(users, user)
@@ -141,8 +155,8 @@ func (s *UserStore) ListPaged(ctx context.Context, keyword, role string, page, p
 
 func (s *UserStore) Update(ctx context.Context, user *model.User) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE web_users SET username = ?, password = ?, role = ?, display_name = ? WHERE id = ?`,
-		user.Username, user.PasswordHash, user.Role, user.DisplayName, user.ID)
+		`UPDATE web_users SET username = ?, password = ?, role = ?, display_name = ?, node_scope = ? WHERE id = ?`,
+		user.Username, user.PasswordHash, user.Role, user.DisplayName, user.NodeScope, user.ID)
 	return err
 }
 

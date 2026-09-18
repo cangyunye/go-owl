@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -38,12 +40,28 @@ type createUserRequest struct {
 	Password    string     `json:"password" binding:"required"`
 	Role        model.Role `json:"role" binding:"required"`
 	DisplayName string     `json:"display_name"`
+	// NodeScope 节点/分组范围授权 JSON（{"groups":[],"nodes":[]}，空=不限）
+	NodeScope string `json:"node_scope"`
 }
 
 type updateUserRequest struct {
 	Password    string     `json:"password"`
 	Role        model.Role `json:"role"`
 	DisplayName string     `json:"display_name"`
+	// NodeScope 传 null 或省略=不改；"{}"/空串=清除限制；JSON 对象=设置
+	NodeScope *string `json:"node_scope"`
+}
+
+// validateNodeScope 校验 scope JSON 合法性（空/非法结构拒绝）。
+func validateNodeScope(raw string) error {
+	if strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == "{}" {
+		return nil
+	}
+	var ns NodeScope
+	if err := json.Unmarshal([]byte(raw), &ns); err != nil {
+		return fmt.Errorf("node_scope 必须是合法 JSON，如 {\"groups\":[\"web\"],\"nodes\":[]}")
+	}
+	return nil
 }
 
 var validRoles = map[model.Role]bool{
@@ -153,11 +171,16 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 
+	if err := validateNodeScope(req.NodeScope); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
 	user := &model.User{
 		Username:     req.Username,
 		PasswordHash: hash,
 		Role:         req.Role,
 		DisplayName:  req.DisplayName,
+		NodeScope:    req.NodeScope,
 	}
 	if err := h.users.Create(c.Request.Context(), user); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "unique") {
@@ -199,6 +222,15 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 
 	privilegesChanged := (req.Role != "" && req.Role != user.Role) || req.Password != ""
+	if req.NodeScope != nil {
+		if err := validateNodeScope(*req.NodeScope); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+			return
+		}
+		if *req.NodeScope != user.NodeScope {
+			privilegesChanged = true // 范围变更同样撤销 token，立即生效
+		}
+	}
 	if req.Role != "" {
 		if !validRoles[req.Role] {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid role"})
@@ -227,6 +259,13 @@ func (h *UserHandler) Update(c *gin.Context) {
 			return
 		}
 		user.PasswordHash = hash
+	}
+	if req.NodeScope != nil {
+		scope := strings.TrimSpace(*req.NodeScope)
+		if scope == "{}" {
+			scope = "" // 显式清除限制
+		}
+		user.NodeScope = scope
 	}
 
 	if err := h.users.Update(c.Request.Context(), user); err != nil {

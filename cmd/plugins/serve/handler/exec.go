@@ -369,6 +369,10 @@ func (h *ExecHandler) Create(c *gin.Context) {
 		respondErr(c, http.StatusBadRequest, "resolve target nodes failed", err)
 		return
 	}
+	// 节点范围授权：范围外节点静默剔除（与"不存在即跳过"语义一致）
+	if filtered := NewScopeChecker(h.db).FilterNodeIDs(c.Request.Context(), c.GetString("username"), nodeIDs); len(filtered) != len(nodeIDs) {
+		nodeIDs = filtered
+	}
 	if len(nodeIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "no target nodes specified"})
 		return

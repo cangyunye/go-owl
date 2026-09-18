@@ -1027,3 +1027,53 @@ func TestExecCreate_DBFailureDoesNotLeak(t *testing.T) {
 	assert.NotContains(t, w.Body.String(), "database is closed")
 	assert.NotContains(t, w.Body.String(), "sql:")
 }
+
+// TestExecHandler_NodeScopeFiltered 节点范围授权：范围外节点被静默剔除，
+// 全部越权时返回 400。
+func TestExecHandler_NodeScopeFiltered(t *testing.T) {
+	db, h := execTestSetup(t)
+	ctx := context.Background()
+
+	// 预置：test-node 属 web 组；dmz-node 属 dmz 组
+	_, err := db.Exec(`UPDATE nodes SET groups = '["web"]' WHERE id = 'test-node'`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO nodes (id, name, address, port, user, status, groups)
+		VALUES ('dmz-node', 'dmz-node', '10.9.9.9', 22, 'root', 'online', '["dmz"]')`)
+	require.NoError(t, err)
+
+	// 受限用户：仅 web 组
+	users := store.NewUserStore(db)
+	require.NoError(t, users.Init(ctx))
+	require.NoError(t, users.Create(ctx, &model.User{
+		Username: "scoped", PasswordHash: "x", Role: model.RoleOperator,
+		NodeScope: `{"groups":["web"]}`,
+	}))
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("username", "scoped")
+		c.Set("role", "operator")
+		c.Next()
+	})
+	router.POST("/exec", h.Create)
+
+	doExec := func(nodeIDs []string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]interface{}{"command": "uptime", "node_ids": nodeIDs})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/exec", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	// 范围内节点：放行（异步任务 202）
+	require.Equal(t, http.StatusAccepted, doExec([]string{"test-node"}).Code)
+
+	// 范围外节点：全部被剔除 → 400
+	w := doExec([]string{"dmz-node"})
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+
+	// 混合：范围内保留（dmz-node 剔除后仍有 test-node）
+	require.Equal(t, http.StatusAccepted, doExec([]string{"test-node", "dmz-node"}).Code)
+}

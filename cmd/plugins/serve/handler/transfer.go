@@ -143,6 +143,12 @@ func (h *TransferHandler) submit(c *gin.Context, req *transferRequest) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "no target nodes specified"})
 		return
 	}
+	// 节点范围授权：范围外节点静默剔除
+	req.NodeIDs = NewScopeChecker(h.db).FilterNodeIDs(c.Request.Context(), c.GetString("username"), req.NodeIDs)
+	if len(req.NodeIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "no target nodes specified"})
+		return
+	}
 	if req.SourcePath == "" || req.DestPath == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "source_path and dest_path are required"})
 		return

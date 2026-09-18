@@ -106,7 +106,8 @@ func (e *WebExecutor) resolveAINodeIDs(ctx context.Context, nodes []string, grou
 		}
 		out = append(out, r.ID)
 	}
-	return out
+	// 节点范围授权：AI 执行同样受用户 scope 约束
+	return NewScopeChecker(e.db).FilterNodeIDs(ctx, IdentityFromContext(ctx).Username, out)
 }
 
 func aggregateStatus(success, total int) string {
@@ -458,6 +459,8 @@ func (e *WebExecutor) NodeCheck(ctx context.Context, params ai2.NodeCheckParams)
 	} else {
 		nodeIDs = params.Nodes
 	}
+	// 节点范围授权：AI 检查同样受用户 scope 约束
+	nodeIDs = NewScopeChecker(e.db).FilterNodeIDs(ctx, IdentityFromContext(ctx).Username, nodeIDs)
 	if len(nodeIDs) == 0 {
 		return &ai2.NodeCheckResult{Text: "未找到目标节点"}, nil
 	}

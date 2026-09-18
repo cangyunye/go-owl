@@ -576,6 +576,12 @@ func (h *NodeHandler) BatchGroups(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "node_ids is required"})
 		return
 	}
+	// 节点范围授权：范围外节点静默剔除
+	req.NodeIDs = NewScopeChecker(h.db).FilterNodeIDs(c.Request.Context(), c.GetString("username"), req.NodeIDs)
+	if len(req.NodeIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "no accessible nodes"})
+		return
+	}
 
 	addSet := map[string]bool{}
 	for _, g := range req.Add {
@@ -880,6 +886,12 @@ func (h *NodeHandler) Ping(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "node_ids is required"})
 		return
 	}
+	// 节点范围授权：范围外节点静默剔除
+	req.NodeIDs = NewScopeChecker(h.db).FilterNodeIDs(c.Request.Context(), c.GetString("username"), req.NodeIDs)
+	if len(req.NodeIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "no accessible nodes"})
+		return
+	}
 
 	type nodeAddr struct {
 		ID      string
@@ -937,6 +949,12 @@ func (h *NodeHandler) Check(c *gin.Context) {
 	}
 	if len(req.NodeIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "node_ids is required"})
+		return
+	}
+	// 节点范围授权：范围外节点静默剔除
+	req.NodeIDs = NewScopeChecker(h.db).FilterNodeIDs(c.Request.Context(), c.GetString("username"), req.NodeIDs)
+	if len(req.NodeIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "no accessible nodes"})
 		return
 	}
 

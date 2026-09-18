@@ -63,7 +63,7 @@ export function renderUsers(render, navigate, user, api, shell) {
           </div>
           <span class="role-badge role-${esc(u.role)}">${esc(u.role)}</span>
           <div class="user-actions">
-            <button class="btn btn-ghost btn-sm edit-user-btn" data-id="${u.id}" data-username="${esc(u.username)}" data-role="${esc(u.role)}" data-display_name="${esc(u.display_name || '')}">编辑</button>
+            <button class="btn btn-ghost btn-sm edit-user-btn" data-id="${u.id}" data-username="${esc(u.username)}" data-role="${esc(u.role)}" data-display_name="${esc(u.display_name || '')}" data-node_scope="${esc(u.node_scope || '')}">编辑</button>
             <button class="btn btn-ghost btn-sm delete-user-btn" data-id="${u.id}" data-username="${esc(u.username)}" style="color:var(--danger)">删除</button>
           </div>
         </div>`;
@@ -77,6 +77,16 @@ export function renderUsers(render, navigate, user, api, shell) {
         document.getElementById('edit-role').value = btn.dataset.role;
         document.getElementById('edit-display-name').value = btn.dataset.display_name;
         document.getElementById('edit-user-password').value = '';
+        let scopeGroups = '', scopeNodes = '';
+        try {
+          const obj = btn.dataset.node_scope ? JSON.parse(btn.dataset.node_scope) : null;
+          if (obj) {
+            scopeGroups = (obj.groups || []).join(',');
+            scopeNodes = (obj.nodes || []).join(',');
+          }
+        } catch {}
+        document.getElementById('edit-scope-groups').value = scopeGroups;
+        document.getElementById('edit-scope-nodes').value = scopeNodes;
         document.getElementById('user-edit-error').textContent = '';
         document.getElementById('user-edit-modal').classList.add('open');
       });
@@ -177,6 +187,8 @@ export function renderUsers(render, navigate, user, api, shell) {
               <option value="admin">admin</option>
             </select>
           </div>
+          <div class="form-row"><label>授权分组</label><input id="add-scope-groups" placeholder="逗号分隔，如 web,db；留空=不限"></div>
+          <div class="form-row"><label>授权节点</label><input id="add-scope-nodes" placeholder="节点 ID 逗号分隔（可选）"></div>
         </div>
         <p class="error-msg" id="user-add-error"></p>
         <div class="modal-actions">
@@ -201,6 +213,8 @@ export function renderUsers(render, navigate, user, api, shell) {
               <option value="admin">admin</option>
             </select>
           </div>
+          <div class="form-row"><label>授权分组</label><input id="edit-scope-groups" placeholder="逗号分隔；留空=不限"></div>
+          <div class="form-row"><label>授权节点</label><input id="edit-scope-nodes" placeholder="节点 ID 逗号分隔（可选）"></div>
         </div>
         <p class="error-msg" id="user-edit-error"></p>
         <div class="modal-actions">
@@ -242,6 +256,14 @@ export function renderUsers(render, navigate, user, api, shell) {
     document.getElementById('user-add-modal').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) document.getElementById('user-add-modal').classList.remove('open');
     });
+    // scope 表单 → JSON（两组都空 = 不限，传空串）
+    const buildScope = (groupsId, nodesId) => {
+      const groups = document.getElementById(groupsId).value.split(',').map(s => s.trim()).filter(Boolean);
+      const nodes = document.getElementById(nodesId).value.split(',').map(s => s.trim()).filter(Boolean);
+      if (!groups.length && !nodes.length) return '';
+      return JSON.stringify({ groups, nodes });
+    };
+
     document.getElementById('user-add-submit').addEventListener('click', async () => {
       const username = document.getElementById('add-username').value.trim();
       const password = document.getElementById('add-password').value;
@@ -249,7 +271,8 @@ export function renderUsers(render, navigate, user, api, shell) {
       const display_name = document.getElementById('add-display-name').value.trim();
       if (!username || !password) { document.getElementById('user-add-error').textContent = '请填写用户名和密码'; return; }
       try {
-        await api.createUser({ username, password, role, display_name: display_name || undefined });
+        await api.createUser({ username, password, role, display_name: display_name || undefined,
+          node_scope: buildScope('add-scope-groups', 'add-scope-nodes') || undefined });
         document.getElementById('user-add-modal').classList.remove('open');
         state.page = 1;
         loadUsers();
@@ -267,7 +290,7 @@ export function renderUsers(render, navigate, user, api, shell) {
       const role = document.getElementById('edit-role').value;
       const display_name = document.getElementById('edit-display-name').value.trim();
       const password = document.getElementById('edit-user-password').value;
-      const body = { role };
+      const body = { role, node_scope: buildScope('edit-scope-groups', 'edit-scope-nodes') };
       if (display_name) body.display_name = display_name;
       if (password) body.password = password;
       try {

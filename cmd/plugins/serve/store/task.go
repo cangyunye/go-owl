@@ -19,16 +19,16 @@ const (
 )
 
 type Task struct {
-	ID        string     `json:"id"`
-	NodeID    string     `json:"node_id"`
-	Command   string     `json:"command"`
-	Status    TaskStatus `json:"status"`
-	Output    string     `json:"output,omitempty"`
-	ExitCode  *int       `json:"exit_code,omitempty"`
-	RecordID  string     `json:"record_id,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	StartedAt *time.Time `json:"started_at,omitempty"`
+	ID          string     `json:"id"`
+	NodeID      string     `json:"node_id"`
+	Command     string     `json:"command"`
+	Status      TaskStatus `json:"status"`
+	Output      string     `json:"output,omitempty"`
+	ExitCode    *int       `json:"exit_code,omitempty"`
+	RecordID    string     `json:"record_id,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
@@ -119,8 +119,12 @@ func (s *TaskStore) List(ctx context.Context, limit, offset int) ([]*Task, int, 
 		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
 			continue
 		}
-		if startedAt.Valid { t.StartedAt = &startedAt.Time }
-		if completedAt.Valid { t.CompletedAt = &completedAt.Time }
+		if startedAt.Valid {
+			t.StartedAt = &startedAt.Time
+		}
+		if completedAt.Valid {
+			t.CompletedAt = &completedAt.Time
+		}
 		tasks = append(tasks, t)
 	}
 	return tasks, total, nil
@@ -183,8 +187,12 @@ func (s *TaskStore) ListByRecord(ctx context.Context, recordID string) ([]*Task,
 		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
 			continue
 		}
-		if startedAt.Valid { t.StartedAt = &startedAt.Time }
-		if completedAt.Valid { t.CompletedAt = &completedAt.Time }
+		if startedAt.Valid {
+			t.StartedAt = &startedAt.Time
+		}
+		if completedAt.Valid {
+			t.CompletedAt = &completedAt.Time
+		}
 		tasks = append(tasks, t)
 	}
 	return tasks, nil
@@ -209,8 +217,12 @@ func (s *TaskStore) ListByCommandPrefix(ctx context.Context, prefix string, limi
 		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
 			continue
 		}
-		if startedAt.Valid { t.StartedAt = &startedAt.Time }
-		if completedAt.Valid { t.CompletedAt = &completedAt.Time }
+		if startedAt.Valid {
+			t.StartedAt = &startedAt.Time
+		}
+		if completedAt.Valid {
+			t.CompletedAt = &completedAt.Time
+		}
 		tasks = append(tasks, t)
 	}
 	return tasks, total, nil
@@ -264,8 +276,12 @@ func (s *TaskStore) ListByNode(ctx context.Context, nodeID string, status TaskSt
 		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
 			continue
 		}
-		if startedAt.Valid { t.StartedAt = &startedAt.Time }
-		if completedAt.Valid { t.CompletedAt = &completedAt.Time }
+		if startedAt.Valid {
+			t.StartedAt = &startedAt.Time
+		}
+		if completedAt.Valid {
+			t.CompletedAt = &completedAt.Time
+		}
 		tasks = append(tasks, t)
 	}
 	return tasks, nil

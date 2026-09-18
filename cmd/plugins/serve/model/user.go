@@ -15,4 +15,7 @@ type User struct {
 	PasswordHash string `json:"-"`
 	Role         Role   `json:"role"`
 	DisplayName  string `json:"display_name,omitempty"`
+	// NodeScope 节点/分组范围授权（JSON: {"groups":[],"nodes":[]}）；
+	// 空 = 不限；admin 恒不限。
+	NodeScope string `json:"node_scope,omitempty"`
 }

@@ -47,7 +47,7 @@ func (h *TerminalHandler) Terminal(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "ticket required"})
 		return
 	}
-	_, role, ok := h.tickets.Redeem(ticket)
+	username, role, ok := h.tickets.Redeem(ticket)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid ticket"})
 		return
@@ -60,6 +60,11 @@ func (h *TerminalHandler) Terminal(c *gin.Context) {
 	nodeID := c.Query("node_id")
 	if nodeID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "node_id required"})
+		return
+	}
+	// 节点范围授权：终端只允许连接授权内节点
+	if filtered := NewScopeChecker(h.db).FilterNodeIDs(c.Request.Context(), username, []string{nodeID}); len(filtered) == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "node out of your scope"})
 		return
 	}
 

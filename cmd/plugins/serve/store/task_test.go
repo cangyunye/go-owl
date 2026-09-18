@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func TestTaskStore_CreateAndGet(t *testing.T) {
