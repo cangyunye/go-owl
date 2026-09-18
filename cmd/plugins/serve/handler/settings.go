@@ -127,6 +127,12 @@ func (h *SettingsHandler) Set(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.escalate_after_minutes must be a positive number"})
 			return
 		}
+	case "ai.rate_limit_per_min":
+		n, err := strconv.Atoi(strings.TrimSpace(req.Value))
+		if err != nil || n < 0 || n > 10000 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "ai.rate_limit_per_min must be 0-10000 (0 = unlimited)"})
+			return
+		}
 	case "monitor.rollback_enabled":
 		switch strings.ToLower(strings.TrimSpace(req.Value)) {
 		case "true", "false", "1", "0", "yes", "no", "on", "off":

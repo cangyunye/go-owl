@@ -1012,7 +1012,10 @@ func TestAIPermissions_OperatorAndAdmin(t *testing.T) {
 // ---- 流式聊天（SSE）----
 
 // streamTextMock 实现流式接口：一次 delta + 完整文本
-type streamTextMock struct{ responses []string; idx int }
+type streamTextMock struct {
+	responses []string
+	idx       int
+}
 
 func (m *streamTextMock) Generate(ctx context.Context, messages []ai2.Message) (string, error) {
 	if m.idx >= len(m.responses) {

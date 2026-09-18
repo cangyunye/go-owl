@@ -26,11 +26,11 @@ type StagingFile struct {
 }
 
 type DiskInfo struct {
-	Total       uint64 `json:"total"`
-	Used        uint64 `json:"used"`
-	Free        uint64 `json:"free"`
-	Threshold   uint64 `json:"threshold"`
-	StagingDir  string `json:"staging_dir"`
+	Total      uint64 `json:"total"`
+	Used       uint64 `json:"used"`
+	Free       uint64 `json:"free"`
+	Threshold  uint64 `json:"threshold"`
+	StagingDir string `json:"staging_dir"`
 }
 
 func NewStagingHandler(db *sql.DB) *StagingHandler {

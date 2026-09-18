@@ -210,6 +210,7 @@ export async function renderAI(render, navigate, user, api, shell) {
           onTool: (obj) => { if (obj && obj.name) { streamToolName = obj.name; if (streamBubble) renderStreamBubble(); } },
         });
       } catch (streamErr) {
+        if (streamErr && streamErr.isRateLimit) throw streamErr; // 限流不回退重试
         console.warn('stream failed, fallback to blocking chat:', streamErr);
         if (streamBubble) { streamBubble.el.remove(); resetStreamState(); showThinking(); }
         done = await api.aiChat(payload.message, payload.session_id, payload.encrypted_api_key, payload.provider, payload.model, payload.base_url, payload.api_type);

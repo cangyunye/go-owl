@@ -38,12 +38,12 @@ type Executor interface {
 }
 
 type ExecHandler struct {
-	db      *sql.DB
-	task    *store.TaskStore
-	exec    Executor
-	hub     *WSHub
-	History *store.HistoryStore
-	checker *blacklist.Checker
+	db        *sql.DB
+	task      *store.TaskStore
+	exec      Executor
+	hub       *WSHub
+	History   *store.HistoryStore
+	checker   *blacklist.Checker
 	LogWriter *logfile.NodeLogWriter
 
 	// runMu 保护 runCancels：执行 goroutine 登记取消句柄，Cancel 据此中断
@@ -148,16 +148,16 @@ type execRequest struct {
 	Force           string            `json:"force,omitempty"`
 	DangerConfirmed bool              `json:"danger_confirmed"`
 
-	Format            string `json:"format"`
-	Debug             bool   `json:"debug"`
-	Parallel          bool   `json:"parallel"`
-	Serial            bool   `json:"serial"`
-	Retry             int    `json:"retry"`
-	RetryInterval     string `json:"retry_interval"`
-	RetryMaxInterval  string `json:"retry_max_interval"`
-	NoRetry           bool   `json:"no_retry"`
-	ConnectTimeout    string `json:"connect_timeout"`
-	CommandTimeout    string `json:"command_timeout"`
+	Format           string `json:"format"`
+	Debug            bool   `json:"debug"`
+	Parallel         bool   `json:"parallel"`
+	Serial           bool   `json:"serial"`
+	Retry            int    `json:"retry"`
+	RetryInterval    string `json:"retry_interval"`
+	RetryMaxInterval string `json:"retry_max_interval"`
+	NoRetry          bool   `json:"no_retry"`
+	ConnectTimeout   string `json:"connect_timeout"`
+	CommandTimeout   string `json:"command_timeout"`
 }
 
 type ExecConfig struct {

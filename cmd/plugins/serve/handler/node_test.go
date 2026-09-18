@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func seedNodesDB(t *testing.T, db *sql.DB) {
@@ -65,8 +65,8 @@ func TestNodeList(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 
 	var resp struct {
-		Data  []NodeResponse `json:"data"`
-		Meta  struct {
+		Data []NodeResponse `json:"data"`
+		Meta struct {
 			Total int `json:"total"`
 		} `json:"meta"`
 	}
@@ -442,5 +442,3 @@ func TestNodeStats_OfflineIncludesUnknown(t *testing.T) {
 	assert.Equal(t, 2, resp.Offline)
 	assert.Equal(t, 1, resp.Warn)
 }
-
-

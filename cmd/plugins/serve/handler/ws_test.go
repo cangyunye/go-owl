@@ -44,7 +44,7 @@ func TestWSHub_BroadcastTaskUpdate(t *testing.T) {
 	hub.BroadcastTaskUpdate(task)
 
 	var msg struct {
-		Type string `json:"type"`
+		Type string   `json:"type"`
 		Data fakeTask `json:"data"`
 	}
 	err = wsjson.Read(ctx, conn, &msg)

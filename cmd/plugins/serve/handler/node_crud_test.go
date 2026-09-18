@@ -12,9 +12,9 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/gin-gonic/gin"
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func crudTestSetup(t *testing.T) (*sql.DB, *NodeHandler) {

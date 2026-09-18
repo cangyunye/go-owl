@@ -295,6 +295,15 @@ export const api = {
       window.location.href = '/login';
       throw new Error('Unauthorized');
     }
+    if (res.status === 429) {
+      const err = new Error('请求过于频繁');
+      err.isRateLimit = true;
+      let body = null;
+      try { body = await res.json(); } catch {}
+      if (body && body.retry_after) err.retryAfter = body.retry_after;
+      if (body && body.message) err.message = body.message;
+      throw err;
+    }
     if (!res.ok || !res.body) throw new Error(res.statusText || 'stream failed');
     const reader = res.body.getReader();
     const decoder = new TextDecoder();

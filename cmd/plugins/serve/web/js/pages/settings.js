@@ -11,6 +11,10 @@ export function renderSettings(render, navigate, user, api) {
     staging_min_free: {
       desc: '文件中转站最小剩余空间(GB)',
       defaultValue: '10'
+    },
+    'ai.rate_limit_per_min': {
+      desc: 'AI 助手每用户每分钟调用上限（0 = 不限流）',
+      defaultValue: '0'
     }
   };
 

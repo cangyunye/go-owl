@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,13 +19,14 @@ import (
 )
 
 type AIHandler struct {
-	db         *sql.DB
-	auditStore *store.AIAuditStore
-	executor   *WebExecutor
-	agent      *ai2.Agent
-	sessionMgr *ai2.SessionManager
-	keyManager *KeyManager
-	debugMode  bool
+	db          *sql.DB
+	auditStore  *store.AIAuditStore
+	executor    *WebExecutor
+	agent       *ai2.Agent
+	sessionMgr  *ai2.SessionManager
+	keyManager  *KeyManager
+	debugMode   bool
+	rateLimiter *aiRateLimiter
 	// newChatAgent builds an agent bound to the user-provided LLM config.
 	// Overridable in tests to inject a mock chat model.
 	newChatAgent func(llmReq *LLMRequest) (*ai2.Agent, error)
@@ -41,8 +43,9 @@ func NewAIHandler(db *sql.DB, auditStore *store.AIAuditStore, executor *WebExecu
 	h := &AIHandler{
 		db: db, auditStore: auditStore, executor: executor,
 		keyManager: keyManager, agent: agent,
-		sessionMgr: sessionMgr,
-		debugMode:  debugMode,
+		sessionMgr:  sessionMgr,
+		debugMode:   debugMode,
+		rateLimiter: newAIRateLimiter(),
 	}
 	h.newChatAgent = h.buildChatAgent
 	return h
@@ -115,6 +118,19 @@ func (h *AIHandler) resolveChatContext(c *gin.Context) (*aiChatContext, bool) {
 	userID := c.GetString("user_id")
 	if userID == "" {
 		userID = "anonymous"
+	}
+
+	// 每用户滑动窗口限流（ai.rate_limit_per_min，0=不限）；
+	// 在写 SSE 头之前拒绝，Chat 与 StreamChat 都能以 JSON 返回 429
+	if retryAfter, ok := h.allowChat(userID); !ok {
+		secs := int(retryAfter.Seconds() + 0.9)
+		c.Header("Retry-After", strconv.Itoa(secs))
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"code":        429,
+			"message":     fmt.Sprintf("请求过于频繁，请 %d 秒后重试", secs),
+			"retry_after": secs,
+		})
+		return nil, false
 	}
 
 	sessionID := req.SessionID
@@ -539,4 +555,20 @@ func (h *AIHandler) StreamChat(c *gin.Context) {
 	go h.logAudit(userID, "conversation", "success", req.Message, reply, durationMs, h.debugMode)
 
 	writeSSE("done", gin.H{"reply": reply, "session_id": sessionID})
+}
+
+// allowChat 读取 ai.rate_limit_per_min 并做滑动窗口限流判定。
+func (h *AIHandler) allowChat(userID string) (time.Duration, bool) {
+	var v string
+	_ = h.db.QueryRow(`SELECT value FROM settings WHERE key = 'ai.rate_limit_per_min'`).Scan(&v)
+	limit := parseIntOrDefault(v, 0)
+	return h.rateLimiter.Allow(userID, limit, time.Minute)
+}
+
+func parseIntOrDefault(s string, def int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return def
+	}
+	return n
 }

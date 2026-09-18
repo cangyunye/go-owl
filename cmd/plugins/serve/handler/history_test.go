@@ -68,7 +68,9 @@ func TestHistoryList_AndFilters(t *testing.T) {
 	require.Equal(t, 200, w.Code)
 	var resp struct {
 		Data []store.Record `json:"data"`
-		Meta struct{ Total int `json:"total"` } `json:"meta"`
+		Meta struct {
+			Total int `json:"total"`
+		} `json:"meta"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, 2, resp.Meta.Total)
@@ -77,7 +79,9 @@ func TestHistoryList_AndFilters(t *testing.T) {
 	w2 := historyGET(t, r, "/api/v1/history?op_type=command", adminToken())
 	var resp2 struct {
 		Data []store.Record `json:"data"`
-		Meta struct{ Total int `json:"total"` } `json:"meta"`
+		Meta struct {
+			Total int `json:"total"`
+		} `json:"meta"`
 	}
 	json.Unmarshal(w2.Body.Bytes(), &resp2)
 	assert.Equal(t, 1, resp2.Meta.Total)
@@ -85,7 +89,9 @@ func TestHistoryList_AndFilters(t *testing.T) {
 
 	w3 := historyGET(t, r, "/api/v1/history?status=failed", adminToken())
 	var resp3 struct {
-		Meta struct{ Total int `json:"total"` } `json:"meta"`
+		Meta struct {
+			Total int `json:"total"`
+		} `json:"meta"`
 	}
 	json.Unmarshal(w3.Body.Bytes(), &resp3)
 	assert.Equal(t, 1, resp3.Meta.Total)
@@ -93,7 +99,9 @@ func TestHistoryList_AndFilters(t *testing.T) {
 	w4 := historyGET(t, r, "/api/v1/history?command=uptime", adminToken())
 	var resp4 struct {
 		Data []store.Record `json:"data"`
-		Meta struct{ Total int `json:"total"` } `json:"meta"`
+		Meta struct {
+			Total int `json:"total"`
+		} `json:"meta"`
 	}
 	json.Unmarshal(w4.Body.Bytes(), &resp4)
 	assert.Equal(t, 1, resp4.Meta.Total)
@@ -111,7 +119,9 @@ func TestHistoryList_UserFilter(t *testing.T) {
 	require.Equal(t, 200, w.Code)
 	var resp struct {
 		Data []store.Record `json:"data"`
-		Meta struct{ Total int `json:"total"` } `json:"meta"`
+		Meta struct {
+			Total int `json:"total"`
+		} `json:"meta"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, 1, resp.Meta.Total)
@@ -121,7 +131,9 @@ func TestHistoryList_UserFilter(t *testing.T) {
 	w2 := historyGET(t, r, "/api/v1/history?user=alice", adminToken())
 	var resp2 struct {
 		Data []store.Record `json:"data"`
-		Meta struct{ Total int `json:"total"` } `json:"meta"`
+		Meta struct {
+			Total int `json:"total"`
+		} `json:"meta"`
 	}
 	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp2))
 	assert.Equal(t, 1, resp2.Meta.Total)
