@@ -17,6 +17,8 @@ type LLMRequest struct {
 	Model    string
 	APIType  string // "openai" or "anthropic"
 	Messages []LLMMessage
+	// RequestedBy 请求者用户名（serve 内部：安全审计身份），非 API 字段
+	RequestedBy string `json:"-"`
 }
 
 type LLMResponse struct {

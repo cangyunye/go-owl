@@ -67,7 +67,7 @@ func (h *AIHandler) buildChatAgent(llmReq *LLMRequest) (*ai2.Agent, error) {
 		Model:   llmReq.Model,
 		APIKey:  llmReq.APIKey,
 	}))
-	agent.SetSafetyIdentity(func() string { return h.executor.userName })
+	agent.SetSafetyIdentity(func() string { return llmReq.RequestedBy })
 	return agent, nil
 }
 
@@ -99,6 +99,7 @@ type aiChatContext struct {
 	userID     string
 	sessionID  string
 	sessionKey string
+	identity   ExecIdentity
 	session    *ai2.Session
 }
 
@@ -145,9 +146,6 @@ func (h *AIHandler) resolveChatContext(c *gin.Context) (*aiChatContext, bool) {
 		sessionKey = userID + ":" + sessionID
 	}
 
-	h.executor.userRole = c.GetString("role")
-	h.executor.userName = c.GetString("username")
-
 	// 先构建本次请求使用的 agent（用户自带 key 时），命中持久化会话则以
 	// 该 agent 恢复上下文（新 key + 旧上下文），未命中则创建新会话
 	agent := h.agent
@@ -162,10 +160,11 @@ func (h *AIHandler) resolveChatContext(c *gin.Context) (*aiChatContext, bool) {
 				baseURL = defaultBaseURL(req.Provider)
 			}
 			llmReq := &LLMRequest{
-				APIKey:  string(apiKeyBytes),
-				BaseURL: baseURL,
-				Model:   req.Model,
-				APIType: apiType,
+				APIKey:      string(apiKeyBytes),
+				BaseURL:     baseURL,
+				Model:       req.Model,
+				APIType:     apiType,
+				RequestedBy: c.GetString("username"),
 			}
 			if chatAgent, err := h.newChatAgent(llmReq); err == nil {
 				agent = chatAgent
@@ -177,7 +176,8 @@ func (h *AIHandler) resolveChatContext(c *gin.Context) (*aiChatContext, bool) {
 		session = h.sessionMgr.CreateSession(sessionKey, agent)
 	}
 
-	return &aiChatContext{req: &req, userID: userID, sessionID: sessionID, sessionKey: sessionKey, session: session}, true
+	identity := ExecIdentity{Username: c.GetString("username"), Role: c.GetString("role")}
+	return &aiChatContext{req: &req, userID: userID, sessionID: sessionID, sessionKey: sessionKey, identity: identity, session: session}, true
 }
 
 func (h *AIHandler) Chat(c *gin.Context) {
@@ -187,8 +187,9 @@ func (h *AIHandler) Chat(c *gin.Context) {
 	}
 	req, userID, sessionID, session, sessionKey := cc.req, cc.userID, cc.sessionID, cc.session, cc.sessionKey
 
+	ctx := WithIdentity(c.Request.Context(), cc.identity)
 	startTime := time.Now()
-	reply, err := session.Send(c.Request.Context(), req.Message)
+	reply, err := session.Send(ctx, req.Message)
 	if err != nil {
 		// The LLM-backed agent failed (invalid key, provider error, etc.).
 		// Degrade gracefully to the rule-based default agent.
@@ -198,7 +199,7 @@ func (h *AIHandler) Chat(c *gin.Context) {
 		} else {
 			session = h.sessionMgr.CreateSession(fallbackID, h.agent)
 		}
-		reply, err = session.Send(c.Request.Context(), req.Message)
+		reply, err = session.Send(ctx, req.Message)
 	}
 	durationMs := time.Since(startTime).Milliseconds()
 
@@ -523,8 +524,9 @@ func (h *AIHandler) StreamChat(c *gin.Context) {
 	}
 	defer func() { session.OnProgress = nil }()
 
+	ctx := WithIdentity(c.Request.Context(), cc.identity)
 	startTime := time.Now()
-	reply, err := session.Send(c.Request.Context(), req.Message)
+	reply, err := session.Send(ctx, req.Message)
 	if err != nil {
 		// 与 Chat 一致：LLM agent 失败时优雅降级到规则兜底 agent
 		fallbackID := "fallback:" + cc.sessionKey
@@ -543,7 +545,7 @@ func (h *AIHandler) StreamChat(c *gin.Context) {
 				writeSSE("progress", gin.H{"step": step, "detail": detail})
 			}
 		}
-		reply, err = session.Send(c.Request.Context(), req.Message)
+		reply, err = session.Send(ctx, req.Message)
 	}
 	durationMs := time.Since(startTime).Milliseconds()
 

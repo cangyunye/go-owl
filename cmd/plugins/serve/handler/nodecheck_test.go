@@ -50,14 +50,13 @@ func nodeCheckTestExecutor(t *testing.T) (*WebExecutor, *sql.DB) {
 	require.NoError(t, audit.Init(t.Context()))
 
 	e := NewWebExecutor(db, ts, trs, prs, ns, pbs, audit, NewKeyManager(), false)
-	e.userRole = "admin"
 	return e, db
 }
 
 func TestWebExecutor_NodeCheck_GroupSelectsExactMatchOnly(t *testing.T) {
 	e, _ := nodeCheckTestExecutor(t)
 
-	res, err := e.NodeCheck(t.Context(), ai2.NodeCheckParams{Group: "web", Timeout: 1})
+	res, err := e.NodeCheck(adminCtx(t), ai2.NodeCheckParams{Group: "web", Timeout: 1})
 	require.NoError(t, err)
 	assert.Contains(t, res.Text, "检查 1 个节点", "group=web 精确匹配只应命中 n1")
 	assert.Contains(t, res.Text, "[n1]")
@@ -69,7 +68,7 @@ func TestWebExecutor_NodeCheck_GroupSelectsExactMatchOnly(t *testing.T) {
 func TestWebExecutor_NodeCheck_GroupUpdateOnlySelectedNode(t *testing.T) {
 	e, db := nodeCheckTestExecutor(t)
 
-	res, err := e.NodeCheck(t.Context(), ai2.NodeCheckParams{Group: "web", Update: true, Timeout: 1})
+	res, err := e.NodeCheck(adminCtx(t), ai2.NodeCheckParams{Group: "web", Update: true, Timeout: 1})
 	require.NoError(t, err)
 	require.Contains(t, res.Text, "[n1]")
 

@@ -69,7 +69,6 @@ func aiExecutorSetup(t *testing.T) *WebExecutor {
 	require.NoError(t, hs.Init(context.Background()))
 
 	e := NewWebExecutor(db, ts, trs, prs, ns, pbs, audit, NewKeyManager(), false)
-	e.userRole = "admin"
 	e.History = hs
 	e.PlaybookHandler = NewPlaybookHandler(db, pbs, prs, ns, nil)
 	return e
@@ -77,7 +76,7 @@ func aiExecutorSetup(t *testing.T) *WebExecutor {
 
 func TestWebExecutor_ExecuteCommand_E2E(t *testing.T) {
 	e := aiExecutorSetup(t)
-	ctx := context.Background()
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "admin"})
 
 	res, err := e.ExecuteCommand(ctx, ai2.ExecCommandParams{Nodes: []string{"localhost-ai"}, Command: "echo AI_EXEC_OK_123"})
 	require.NoError(t, err)
@@ -94,7 +93,7 @@ func TestWebExecutor_ExecuteCommand_E2E(t *testing.T) {
 
 func TestWebExecutor_NodeCheck_E2E(t *testing.T) {
 	e := aiExecutorSetup(t)
-	ctx := context.Background()
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "admin"})
 
 	res, err := e.NodeCheck(ctx, ai2.NodeCheckParams{Nodes: []string{"localhost-ai"}, Update: true})
 	require.NoError(t, err)
@@ -104,7 +103,7 @@ func TestWebExecutor_NodeCheck_E2E(t *testing.T) {
 
 func TestWebExecutor_TransferFile_E2E(t *testing.T) {
 	e := aiExecutorSetup(t)
-	ctx := context.Background()
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "admin"})
 
 	srcDir := t.TempDir()
 	src := filepath.Join(srcDir, "ai_transfer.txt")
@@ -132,7 +131,7 @@ func TestWebExecutor_TransferFile_E2E(t *testing.T) {
 
 func TestWebExecutor_RunPlaybook_E2E(t *testing.T) {
 	e := aiExecutorSetup(t)
-	ctx := context.Background()
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "admin"})
 
 	pbDir := t.TempDir()
 	pbFile := filepath.Join(pbDir, "ai-test.yaml")
@@ -181,14 +180,13 @@ func aiExecutorSetupOffline(t *testing.T) *WebExecutor {
 	require.NoError(t, hs.Init(context.Background()))
 
 	e := NewWebExecutor(db, ts, trs, prs, ns, pbs, audit, NewKeyManager(), false)
-	e.userRole = "admin"
 	e.History = hs
 	return e
 }
 
 func TestWebExecutor_ResolveAINodeIDs_AllParamsEmpty(t *testing.T) {
 	e := aiExecutorSetupOffline(t)
-	ctx := context.Background()
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "admin"})
 
 	assert.Nil(t, e.resolveAINodeIDs(ctx, nil, "", "", ""))
 	assert.Nil(t, e.resolveAINodeIDs(ctx, []string{}, "", "", ""))
@@ -198,7 +196,7 @@ func TestWebExecutor_ResolveAINodeIDs_AllParamsEmpty(t *testing.T) {
 
 func TestWebExecutor_ExecuteCommand_NoTargetParams_NoFanout(t *testing.T) {
 	e := aiExecutorSetupOffline(t)
-	ctx := context.Background()
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "admin"})
 
 	res, err := e.ExecuteCommand(ctx, ai2.ExecCommandParams{Command: "echo should_not_run"})
 	require.NoError(t, err)
@@ -211,7 +209,7 @@ func TestWebExecutor_ExecuteCommand_NoTargetParams_NoFanout(t *testing.T) {
 
 func TestWebExecutor_ExecuteScript_NoTargetParams_NoFanout(t *testing.T) {
 	e := aiExecutorSetupOffline(t)
-	ctx := context.Background()
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "admin"})
 
 	res, err := e.ExecuteScript(ctx, ai2.ExecScriptParams{Script: "echo should_not_run"})
 	require.NoError(t, err)
@@ -224,8 +222,7 @@ func TestWebExecutor_ExecuteScript_NoTargetParams_NoFanout(t *testing.T) {
 
 func TestWebExecutor_ExecuteCommand_ViewerDenied(t *testing.T) {
 	e := aiExecutorSetupOffline(t)
-	e.userRole = "viewer"
-	ctx := context.Background()
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "viewer"})
 
 	res, err := e.ExecuteCommand(ctx, ai2.ExecCommandParams{Nodes: []string{"n1"}, Command: "echo should_not_run_for_viewer"})
 	require.Error(t, err)
@@ -236,8 +233,7 @@ func TestWebExecutor_ExecuteCommand_ViewerDenied(t *testing.T) {
 
 func TestWebExecutor_ExecuteScript_EditorDenied(t *testing.T) {
 	e := aiExecutorSetupOffline(t)
-	e.userRole = "editor"
-	ctx := context.Background()
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "editor"})
 
 	res, err := e.ExecuteScript(ctx, ai2.ExecScriptParams{Nodes: []string{"n1"}, Script: "echo should_not_run_for_editor"})
 	require.Error(t, err)
@@ -247,8 +243,7 @@ func TestWebExecutor_ExecuteScript_EditorDenied(t *testing.T) {
 
 func TestWebExecutor_TransferFile_ViewerDenied(t *testing.T) {
 	e := aiExecutorSetupOffline(t)
-	e.userRole = "viewer"
-	ctx := context.Background()
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "viewer"})
 
 	res, err := e.TransferFile(ctx, ai2.TransferFileParams{SourceFile: "/etc/hosts", DestDir: "/tmp", Nodes: []string{"n1"}})
 	require.Error(t, err)
@@ -258,7 +253,6 @@ func TestWebExecutor_TransferFile_ViewerDenied(t *testing.T) {
 
 func TestWebExecutor_QueryNodes_ViewerAllowed(t *testing.T) {
 	e := aiExecutorSetupOffline(t)
-	e.userRole = "viewer"
 
 	res, err := e.QueryNodes(t.Context(), ai2.QueryNodesParams{})
 	require.NoError(t, err)
@@ -285,7 +279,6 @@ func aiRenderTestExecutor(t *testing.T) *WebExecutor {
 	require.NoError(t, audit.Init(t.Context()))
 
 	e := NewWebExecutor(db, ts, trs, prs, ns, pbs, audit, NewKeyManager(), false)
-	e.userRole = "admin"
 	return e
 }
 

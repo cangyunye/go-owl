@@ -201,8 +201,9 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 	// svc 指针先行声明（回调闭包引用），稍后赋值
 	// 结果写入 remedy_run_verifications 供前端展示；验证失败不阻断主链路
 	var svc *Service
+	var verifier *owlmonitor.RunVerifier
 	if readVerifyEnabled(db) {
-		verifier := owlmonitor.NewRunVerifier(collector, resolveTarget(db), store)
+		verifier = owlmonitor.NewRunVerifier(collector, resolveTarget(db), store)
 		verifier.SetDelay(time.Duration(readVerifyDelaySeconds(db)) * time.Second)
 		runner.OnRunFinished = func(run *owlmonitor.RemedyRun) {
 			ver, err := verifier.VerifyRun(context.Background(), run.ID)

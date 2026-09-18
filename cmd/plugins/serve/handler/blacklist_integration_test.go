@@ -121,9 +121,8 @@ func TestWebExecutor_ExecuteCommand_DangerousBlocked(t *testing.T) {
 	require.NoError(t, audit.Init(t.Context()))
 
 	e := NewWebExecutor(db, ts, trs, prs, ns, pbs, audit, NewKeyManager(), false)
-	e.userRole = "admin"
 
-	res, err := e.ExecuteCommand(t.Context(), ai2.ExecCommandParams{
+	res, err := e.ExecuteCommand(adminCtx(t), ai2.ExecCommandParams{
 		Nodes:   []string{"test-node"},
 		Command: "rm -rf /var/data",
 	})
@@ -148,9 +147,8 @@ func TestWebExecutor_ExecuteScript_DangerousBlocked(t *testing.T) {
 	require.NoError(t, audit.Init(t.Context()))
 
 	e := NewWebExecutor(db, ts, trs, prs, ns, pbs, audit, NewKeyManager(), false)
-	e.userRole = "admin"
 
-	res, err := e.ExecuteScript(t.Context(), ai2.ExecScriptParams{
+	res, err := e.ExecuteScript(adminCtx(t), ai2.ExecScriptParams{
 		Nodes:  []string{"test-node"},
 		Script: "#!/bin/bash\nrm -rf /var/data",
 	})
@@ -176,7 +174,6 @@ func newBlacklistTestWebExecutor(t *testing.T, db *sql.DB) *WebExecutor {
 	require.NoError(t, hs.Init(t.Context()))
 
 	e := NewWebExecutor(db, ts, trs, prs, ns, pbs, audit, NewKeyManager(), false)
-	e.userRole = "admin"
 	e.History = hs
 	return e
 }
@@ -185,7 +182,7 @@ func TestWebExecutor_ExecuteScript_KeepFalseBenignScriptNotBlocked(t *testing.T)
 	db := blacklistTestNodeDB(t)
 	e := newBlacklistTestWebExecutor(t, db)
 
-	res, err := e.ExecuteScript(t.Context(), ai2.ExecScriptParams{
+	res, err := e.ExecuteScript(adminCtx(t), ai2.ExecScriptParams{
 		Nodes:  []string{"test-node"},
 		Script: "echo hi",
 		Keep:   false,
@@ -199,7 +196,7 @@ func TestWebExecutor_ExecuteScript_DangerousArgsBlocked(t *testing.T) {
 	db := blacklistTestNodeDB(t)
 	e := newBlacklistTestWebExecutor(t, db)
 
-	res, err := e.ExecuteScript(t.Context(), ai2.ExecScriptParams{
+	res, err := e.ExecuteScript(adminCtx(t), ai2.ExecScriptParams{
 		Nodes:  []string{"test-node"},
 		Script: "#!/bin/bash\necho hello",
 		Args:   "; rm -rf /var/data",
@@ -436,4 +433,10 @@ func TestExecutePlaybookRun_V1_DangerousStepBlocked(t *testing.T) {
 	require.Len(t, finished.Results, 1)
 	assert.Equal(t, -1, finished.Results[0].ExitCode)
 	assert.Contains(t, finished.Results[0].Error, "黑名单")
+}
+
+// adminCtx 返回带 admin 身份的 ctx（ctx 化后替代共享 userRole 注入）。
+func adminCtx(t *testing.T) context.Context {
+	t.Helper()
+	return WithIdentity(context.Background(), ExecIdentity{Username: "admin", Role: "admin"})
 }

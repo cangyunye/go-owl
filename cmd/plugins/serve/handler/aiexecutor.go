@@ -28,15 +28,13 @@ type WebExecutor struct {
 	auditStore          *store.AIAuditStore
 	keyManager          *KeyManager
 	debugMode           bool
-	userRole            string
-	userName            string
 	History             *store.HistoryStore
 	PlaybookHandler     *PlaybookHandler
 	checker             *blacklist.Checker
 }
 
-func (e *WebExecutor) requireOperator() error {
-	switch e.userRole {
+func (e *WebExecutor) requireOperator(ctx context.Context) error {
+	switch IdentityFromContext(ctx).Role {
 	case "admin", "operator":
 		return nil
 	default:
@@ -133,7 +131,7 @@ func (e *WebExecutor) QueryNodes(ctx context.Context, params ai2.QueryNodesParam
 }
 
 func (e *WebExecutor) ExecuteCommand(ctx context.Context, params ai2.ExecCommandParams) (*ai2.ExecResult, error) {
-	if err := e.requireOperator(); err != nil {
+	if err := e.requireOperator(ctx); err != nil {
 		return nil, err
 	}
 	nodeIDs := e.resolveAINodeIDs(ctx, params.Nodes, params.Group, params.Label, params.Search)
@@ -200,13 +198,13 @@ func (e *WebExecutor) ExecuteCommand(ctx context.Context, params ai2.ExecCommand
 		sb.WriteString(fmt.Sprintf("%s [%s] exit=%d\n%s\n", mark, r.nodeID, r.exitCode, strings.TrimSpace(r.output)))
 	}
 
-	e.History.RecordOperation(ctx, &store.Operation{TaskID: opID, OpType: "command", Command: params.Command, Targets: nodeIDs, Status: aggregateStatus(successCount, len(results)), Username: e.userName, Origin: "ai", CreatedAt: time.Now().UTC()})
+	e.History.RecordOperation(ctx, &store.Operation{TaskID: opID, OpType: "command", Command: params.Command, Targets: nodeIDs, Status: aggregateStatus(successCount, len(results)), Username: IdentityFromContext(ctx).Username, Origin: "ai", CreatedAt: time.Now().UTC()})
 
 	return &ai2.ExecResult{Text: fmt.Sprintf("在 %d 个节点执行（%d 成功）：\n\n%s", len(nodeIDs), successCount, sb.String())}, nil
 }
 
 func (e *WebExecutor) ExecuteScript(ctx context.Context, params ai2.ExecScriptParams) (*ai2.ExecScriptResult, error) {
-	if err := e.requireOperator(); err != nil {
+	if err := e.requireOperator(ctx); err != nil {
 		return nil, err
 	}
 	nodeIDs := e.resolveAINodeIDs(ctx, params.Nodes, params.Group, params.Label, params.Search)
@@ -293,13 +291,13 @@ func (e *WebExecutor) ExecuteScript(ctx context.Context, params ai2.ExecScriptPa
 		sb.WriteString(fmt.Sprintf("%s [%s] exit=%d\n%s\n", mark, r.nodeID, r.exitCode, strings.TrimSpace(r.output)))
 	}
 
-	e.History.RecordOperation(ctx, &store.Operation{TaskID: opID, OpType: "script", Command: displayCmd, Targets: nodeIDs, Status: aggregateStatus(successCount, len(results)), Username: e.userName, Origin: "ai", CreatedAt: time.Now().UTC()})
+	e.History.RecordOperation(ctx, &store.Operation{TaskID: opID, OpType: "script", Command: displayCmd, Targets: nodeIDs, Status: aggregateStatus(successCount, len(results)), Username: IdentityFromContext(ctx).Username, Origin: "ai", CreatedAt: time.Now().UTC()})
 
 	return &ai2.ExecScriptResult{Text: fmt.Sprintf("在 %d 个节点执行脚本（%d 成功）：\n\n%s", len(nodeIDs), successCount, sb.String())}, nil
 }
 
 func (e *WebExecutor) GeneratePlaybook(ctx context.Context, params ai2.GeneratePlaybookParams) (*ai2.GeneratePlaybookResult, error) {
-	if err := e.requireOperator(); err != nil {
+	if err := e.requireOperator(ctx); err != nil {
 		return nil, err
 	}
 	content := fmt.Sprintf(`name: ai-generated-playbook
@@ -314,7 +312,7 @@ tasks:
 }
 
 func (e *WebExecutor) TransferFile(ctx context.Context, params ai2.TransferFileParams) (*ai2.TransferResult, error) {
-	if err := e.requireOperator(); err != nil {
+	if err := e.requireOperator(ctx); err != nil {
 		return nil, err
 	}
 	nodeIDs := e.resolveAINodeIDs(ctx, params.Nodes, "", "", params.Search)
@@ -366,7 +364,7 @@ func (e *WebExecutor) TransferFile(ctx context.Context, params ai2.TransferFileP
 		sb.WriteString(fmt.Sprintf("%s [%s] %s\n", mark, nid, errMsg))
 	}
 
-	e.History.RecordOperation(ctx, &store.Operation{TaskID: rec.ID, OpType: "file_transfer", Command: fmt.Sprintf("transfer %s -> %s", params.SourceFile, params.DestDir), Targets: nodeIDs, Status: aggregateStatus(successCount, len(nodeIDs)), Username: e.userName, Origin: "ai", CreatedAt: time.Now().UTC()})
+	e.History.RecordOperation(ctx, &store.Operation{TaskID: rec.ID, OpType: "file_transfer", Command: fmt.Sprintf("transfer %s -> %s", params.SourceFile, params.DestDir), Targets: nodeIDs, Status: aggregateStatus(successCount, len(nodeIDs)), Username: IdentityFromContext(ctx).Username, Origin: "ai", CreatedAt: time.Now().UTC()})
 
 	return &ai2.TransferResult{Text: fmt.Sprintf("传输 %s -> %s 到 %d 个节点（%d 成功）：\n%s", params.SourceFile, params.DestDir, len(nodeIDs), successCount, sb.String())}, nil
 }
@@ -434,7 +432,7 @@ func (e *WebExecutor) readPlaybookFile(name string) ([]byte, error) {
 }
 
 func (e *WebExecutor) NodeCheck(ctx context.Context, params ai2.NodeCheckParams) (*ai2.NodeCheckResult, error) {
-	if err := e.requireOperator(); err != nil {
+	if err := e.requireOperator(ctx); err != nil {
 		return nil, err
 	}
 	var nodeIDs []string
@@ -515,7 +513,7 @@ func (e *WebExecutor) QueryDatabase(ctx context.Context, params ai2.QueryDatabas
 }
 
 func (e *WebExecutor) RunPlaybook(ctx context.Context, params ai2.RunPlaybookParams) (*ai2.RunPlaybookResult, error) {
-	if err := e.requireOperator(); err != nil {
+	if err := e.requireOperator(ctx); err != nil {
 		return nil, err
 	}
 	nodeIDs := e.resolveAINodeIDs(ctx, params.Nodes, params.Group, params.Label, params.Search)
