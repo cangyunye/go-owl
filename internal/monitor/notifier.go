@@ -26,6 +26,9 @@ func BuildPayload(event AlertEvent, at AlertType, nodeName, webURL string) Notif
 		MetricSnapshot: a.MetricSnapshot,
 		FirstSeen:      a.FirstSeen,
 		WebURL:         webURL,
+		Event:          string(event.Type),
+		Detail:         event.Detail,
+		RunID:          event.RunID,
 	}
 }
 
@@ -110,4 +113,17 @@ func (d *Dispatcher) sendWithRetry(ctx context.Context, n Notifier, ch NotifyCha
 		}
 	}
 	return err
+}
+
+// NotifyVerification 发送处置疗效验证结果通知（verify_failed 合成事件）。
+// 复用渠道过滤（severity_min / alert_types 白名单）与重试机制。
+func (d *Dispatcher) NotifyVerification(ctx context.Context, alert *Alert, at AlertType,
+	run *RemedyRun, verification *RunVerification, nodeName, webURL string) []error {
+	event := AlertEvent{
+		Type:   EventVerifyFailed,
+		Alert:  alert,
+		Detail: verification.Message,
+		RunID:  run.ID,
+	}
+	return d.Notify(ctx, event, at, nodeName, webURL)
 }

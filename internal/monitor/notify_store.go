@@ -57,6 +57,10 @@ type NotifyPayload struct {
 	MetricSnapshot string      `json:"metric_snapshot"`
 	FirstSeen      int64       `json:"first_seen"`
 	WebURL         string      `json:"web_url"`
+	// 以下字段仅合成事件使用（verify_failed 等）
+	Event  string `json:"event,omitempty"`
+	Detail string `json:"detail,omitempty"`
+	RunID  string `json:"run_id,omitempty"`
 }
 
 func (c NotifyConfig) marshal() ([]byte, error) {

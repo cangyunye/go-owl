@@ -196,8 +196,38 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		verifier := owlmonitor.NewRunVerifier(collector, resolveTarget(db), store)
 		verifier.SetDelay(time.Duration(readVerifyDelaySeconds(db)) * time.Second)
 		runner.OnRunFinished = func(run *owlmonitor.RemedyRun) {
-			if _, err := verifier.VerifyRun(context.Background(), run.ID); err != nil {
+			ver, err := verifier.VerifyRun(context.Background(), run.ID)
+			if err != nil {
 				log.Printf("monitor: 处置验证失败 run=%s: %v", run.ID, err)
+				return
+			}
+			// 疗效确认：对计划中成功执行的对策累加 healed_count（推荐排序加权）
+			if ver != nil && ver.Status == owlmonitor.VerifyRecovered {
+				if fresh, exists, err := store.GetRemedyRun(run.ID); err == nil && exists {
+					seen := map[string]bool{}
+					for i := range fresh.Steps {
+						st := &fresh.Steps[i]
+						if st.Kind == "script" && st.Status == owlmonitor.StepSuccess && st.RemedyID != "" && !seen[st.RemedyID] {
+							seen[st.RemedyID] = true
+							if err := store.IncrementRemedyHealed(st.RemedyID); err != nil {
+								log.Printf("monitor: 疗效计数失败 remedy=%s: %v", st.RemedyID, err)
+							}
+						}
+					}
+				}
+			}
+			// 疗效未确认：发送 verify_failed 通知（复用告警渠道过滤）
+			if ver != nil && ver.Status == owlmonitor.VerifyNotRecovered {
+				if alert, exists, err := store.GetAlert(ver.AlertID); err == nil && exists {
+					if at, ok, err := store.GetAlertType(alert.AlertTypeID); err == nil && ok {
+						if target, err := resolveTarget(db)(run.NodeID); err == nil {
+							notifyURL := strings.TrimSuffix(webURL, "/") + "/alerts/" + alert.ID
+							for _, e := range dispatcher.NotifyVerification(context.Background(), alert, at, run, ver, target.Name, notifyURL) {
+								log.Printf("monitor: 疗效通知失败: %v", e)
+							}
+						}
+					}
+				}
 			}
 		}
 	}

@@ -14,12 +14,17 @@ const (
 	EventOpened    AlertEventType = "opened"
 	EventResolved  AlertEventType = "resolved"
 	EventEscalated AlertEventType = "escalated"
+	// EventVerifyFailed 处置疗效验证未通过（合成事件，不经引擎 dispatch）
+	EventVerifyFailed AlertEventType = "verify_failed"
 )
 
 // AlertEvent 一次告警状态变化。
+// Detail/RunID 仅合成事件使用（如 verify_failed 携带验证结论与执行计划 ID）。
 type AlertEvent struct {
-	Type  AlertEventType
-	Alert *Alert
+	Type   AlertEventType
+	Alert  *Alert
+	Detail string
+	RunID  string
 }
 
 // AlertManager 告警生命周期管理器：开/刷新（去重）/自动恢复/升级/失联。

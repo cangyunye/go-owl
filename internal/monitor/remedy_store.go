@@ -3,6 +3,7 @@ package monitor
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -21,6 +22,7 @@ type Remedy struct {
 	AutoApprove  bool   `json:"auto_approve"` // 该对策是否允许自动执行
 	ExecCount    int    `json:"exec_count"`
 	SuccessCount int    `json:"success_count"`
+	HealedCount  int    `json:"healed_count"`
 	CreatedAt    int64  `json:"created_at"`
 	UpdatedAt    int64  `json:"updated_at"`
 }
@@ -51,11 +53,24 @@ func (s *Store) EnsureRemedyTables() error {
 		auto_approve  INTEGER NOT NULL DEFAULT 0,
 		exec_count    INTEGER NOT NULL DEFAULT 0,
 		success_count INTEGER NOT NULL DEFAULT 0,
+		healed_count  INTEGER NOT NULL DEFAULT 0,
 		created_at    INTEGER NOT NULL,
 		updated_at    INTEGER NOT NULL
 	)`)
 	if err != nil {
 		return fmt.Errorf("monitor: 建对策表失败: %w", err)
+	}
+	// 存量库补列（幂等）：healed_count 疗效计数
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('remedies') WHERE name = 'healed_count'`).Scan(&n); err != nil {
+		return fmt.Errorf("monitor: 检查对策列失败: %w", err)
+	}
+	if n == 0 {
+		if _, err := s.db.Exec(`ALTER TABLE remedies ADD COLUMN healed_count INTEGER NOT NULL DEFAULT 0`); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("monitor: 补对策疗效列失败: %w", err)
+			}
+		}
 	}
 	return nil
 }
@@ -72,16 +87,17 @@ func (s *Store) UpsertRemedy(r Remedy) error {
 	r.UpdatedAt = now
 	_, err := s.db.Exec(`INSERT INTO remedies
 		(id, alert_type_id, name, kind, content, risk, rollback, source, reviewed, auto_approve,
-		 exec_count, success_count, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 exec_count, success_count, healed_count, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, kind=excluded.kind, content=excluded.content,
 			risk=excluded.risk, rollback=excluded.rollback, source=excluded.source,
 			reviewed=excluded.reviewed, auto_approve=excluded.auto_approve,
 			exec_count=excluded.exec_count, success_count=excluded.success_count,
+			healed_count=excluded.healed_count,
 			updated_at=excluded.updated_at`,
 		r.ID, r.AlertTypeID, r.Name, r.Kind, r.Content, r.Risk, r.Rollback, r.Source,
-		boolInt(r.Reviewed), boolInt(r.AutoApprove), r.ExecCount, r.SuccessCount,
+		boolInt(r.Reviewed), boolInt(r.AutoApprove), r.ExecCount, r.SuccessCount, r.HealedCount,
 		r.CreatedAt, r.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("monitor: 写入对策 %s 失败: %w", r.ID, err)
@@ -92,7 +108,7 @@ func (s *Store) UpsertRemedy(r Remedy) error {
 // GetRemedy 按 ID 获取对策。
 func (s *Store) GetRemedy(id string) (Remedy, bool, error) {
 	row := s.db.QueryRow(`SELECT id, alert_type_id, name, kind, content, risk, rollback, source,
-		reviewed, auto_approve, exec_count, success_count, created_at, updated_at
+		reviewed, auto_approve, exec_count, success_count, healed_count, created_at, updated_at
 		FROM remedies WHERE id = ?`, id)
 	r, err := scanRemedy(row)
 	if err == sql.ErrNoRows {
@@ -107,7 +123,7 @@ func (s *Store) GetRemedy(id string) (Remedy, bool, error) {
 // ListRemedies 按告警类型列出对策。
 func (s *Store) ListRemedies(alertTypeID string) ([]Remedy, error) {
 	query := `SELECT id, alert_type_id, name, kind, content, risk, rollback, source,
-		reviewed, auto_approve, exec_count, success_count, created_at, updated_at
+		reviewed, auto_approve, exec_count, success_count, healed_count, created_at, updated_at
 		FROM remedies`
 	var args []any
 	if alertTypeID != "" {
@@ -188,7 +204,8 @@ func (s *Store) RecommendedRemedies(alertTypeID string) ([]Remedy, error) {
 		for j := i; j > 0; j-- {
 			a, b := out[j-1], out[j]
 			if sourceRank[a.Source] > sourceRank[b.Source] ||
-				(sourceRank[a.Source] == sourceRank[b.Source] && riskRank[a.Risk] > riskRank[b.Risk]) {
+				(sourceRank[a.Source] == sourceRank[b.Source] && b.HealedCount > a.HealedCount) ||
+				(sourceRank[a.Source] == sourceRank[b.Source] && b.HealedCount == a.HealedCount && riskRank[a.Risk] > riskRank[b.Risk]) {
 				out[j-1], out[j] = b, a
 			}
 		}
@@ -200,7 +217,7 @@ func scanRemedy(r rowScanner) (Remedy, error) {
 	var rm Remedy
 	var reviewed, autoApprove int
 	err := r.Scan(&rm.ID, &rm.AlertTypeID, &rm.Name, &rm.Kind, &rm.Content, &rm.Risk,
-		&rm.Rollback, &rm.Source, &reviewed, &autoApprove, &rm.ExecCount, &rm.SuccessCount,
+		&rm.Rollback, &rm.Source, &reviewed, &autoApprove, &rm.ExecCount, &rm.SuccessCount, &rm.HealedCount,
 		&rm.CreatedAt, &rm.UpdatedAt)
 	if err != nil {
 		return Remedy{}, err
@@ -208,4 +225,19 @@ func scanRemedy(r rowScanner) (Remedy, error) {
 	rm.Reviewed = reviewed == 1
 	rm.AutoApprove = autoApprove == 1
 	return rm, nil
+}
+
+// IncrementRemedyHealed 疗效计数原子递增（闭环验证 recovered 时调用）。
+func (s *Store) IncrementRemedyHealed(id string) error {
+	res, err := s.db.Exec(`UPDATE remedies SET
+		healed_count = healed_count + 1,
+		updated_at = ?
+		WHERE id = ?`, time.Now().Unix(), id)
+	if err != nil {
+		return fmt.Errorf("monitor: 记录对策疗效失败: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("monitor: 对策 %s 不存在", id)
+	}
+	return nil
 }

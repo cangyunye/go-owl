@@ -164,6 +164,12 @@ func BuildEmailMessage(cfg *EmailConfig, event AlertEvent, at AlertType, nodeNam
 	b.WriteString(fmt.Sprintf("首次触发: %d\r\n", a.FirstSeen))
 	b.WriteString(fmt.Sprintf("指标快照: %s\r\n", a.MetricSnapshot))
 	b.WriteString(fmt.Sprintf("描述: %s\r\n", a.Message))
+	if event.Detail != "" {
+		b.WriteString(fmt.Sprintf("详情: %s\r\n", event.Detail))
+	}
+	if event.RunID != "" {
+		b.WriteString(fmt.Sprintf("执行计划: %s\r\n", event.RunID))
+	}
 	if webURL != "" {
 		b.WriteString(fmt.Sprintf("处理入口: %s\r\n", webURL))
 	}

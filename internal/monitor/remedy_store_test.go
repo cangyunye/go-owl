@@ -138,3 +138,37 @@ func ids(recs []Remedy) []string {
 	}
 	return out
 }
+
+// TestRemedy_IncrementHealed 疗效计数原子递增。
+func TestRemedy_IncrementHealed(t *testing.T) {
+	s := newTestStore(t)
+	require.NoError(t, s.UpsertRemedy(sampleRemedy("RM-H", "OWL-NET-002", "user", true)))
+
+	require.NoError(t, s.IncrementRemedyHealed("RM-H"))
+	require.NoError(t, s.IncrementRemedyHealed("RM-H"))
+
+	rm, _, err := s.GetRemedy("RM-H")
+	require.NoError(t, err)
+	require.Equal(t, 2, rm.HealedCount)
+}
+
+// TestRecommendedRemedies_HealedCountFirst 同 source 同 risk 时疗效计数高者优先。
+func TestRecommendedRemedies_HealedCountFirst(t *testing.T) {
+	s := newTestStore(t)
+
+	a := sampleRemedy("RM-NOHEAL", "OWL-NET-002", "user", true)
+	a.Risk = "low"
+	b := sampleRemedy("RM-HEALED", "OWL-NET-002", "user", true)
+	b.Risk = "low"
+	require.NoError(t, s.UpsertRemedy(a))
+	require.NoError(t, s.UpsertRemedy(b))
+	require.NoError(t, s.IncrementRemedyHealed("RM-HEALED"))
+
+	recs, err := s.RecommendedRemedies("OWL-NET-002")
+	require.NoError(t, err)
+	var ids []string
+	for _, r := range recs {
+		ids = append(ids, r.ID)
+	}
+	require.Equal(t, "RM-HEALED", ids[0], "疗效确认过的对策应排最前")
+}

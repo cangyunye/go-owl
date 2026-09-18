@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/smtp"
@@ -266,4 +267,62 @@ func TestEmailNotifier_EncryptionMode(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBuildPayload_VerifyFailedCarriesContext verify_failed 合成事件的载荷
+// 必须携带事件类型、验证详情与执行计划 ID。
+func TestBuildPayload_VerifyFailedCarriesContext(t *testing.T) {
+	event := AlertEvent{
+		Type:   EventVerifyFailed,
+		Alert:  &Alert{ID: "AL-1", AlertTypeID: "OWL-DSK-001", NodeID: "node-a", Severity: SeverityWarning, Status: StatusOpen, Message: "磁盘 95%"},
+		Detail: "处置后定向采集：指标仍命中告警规则",
+		RunID:  "RUN-9",
+	}
+	at := AlertType{ID: "OWL-DSK-001", Name: "磁盘使用率过高"}
+	p := BuildPayload(event, at, "node-a", "http://x/alerts/AL-1")
+	require.Equal(t, "verify_failed", p.Event)
+	require.Equal(t, "处置后定向采集：指标仍命中告警规则", p.Detail)
+	require.Equal(t, "RUN-9", p.RunID)
+}
+
+// TestDispatcher_NotifyVerification not_recovered 时经 NotifyVerification
+// 发送 verify_failed 通知，载荷走常规渠道过滤。
+func TestDispatcher_NotifyVerification(t *testing.T) {
+	var mu sync.Mutex
+	var payload map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		body, _ := io.ReadAll(r.Body)
+		payload = map[string]interface{}{}
+		_ = json.Unmarshal(body, &payload)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := newTestStore(t)
+	ch := webhookChannel("CH-V", SeverityWarning)
+	ch.Config.Webhook.URL = srv.URL
+	require.NoError(t, s.UpsertNotifyChannel(ch))
+
+	d := NewDispatcher(s)
+	d.delay = 0
+	d.retries = 1
+
+	alert := &Alert{ID: "AL-V", AlertTypeID: "OWL-DSK-001", NodeID: "node-a", Severity: SeverityWarning, Status: StatusOpen}
+	at, _, err := s.GetAlertType("OWL-DSK-001")
+	require.NoError(t, err)
+	run := &RemedyRun{ID: "RUN-NOTREC", AlertID: "AL-V", NodeID: "node-a", Status: RunDone}
+	ver := &RunVerification{RunID: "RUN-NOTREC", AlertID: "AL-V", Status: VerifyNotRecovered,
+		Message: "指标仍命中告警规则（当前 95.00）"}
+
+	errs := d.NotifyVerification(context.Background(), alert, at, run, ver, "node-a", "")
+	require.Empty(t, errs)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotNil(t, payload)
+	require.Equal(t, "verify_failed", payload["event"])
+	require.Equal(t, "RUN-NOTREC", payload["run_id"])
+	require.Contains(t, payload["detail"], "95.00")
 }
