@@ -11,17 +11,17 @@ import (
 
 // DebugCheckResult 一次调试执行的完整结果。
 type DebugCheckResult struct {
-	NodeID       string  `json:"node_id"`
-	Command      string  `json:"command"`
-	Output       string  `json:"output"`
-	ExitCode     int     `json:"exit_code"`
+	NodeID       string   `json:"node_id"`
+	Command      string   `json:"command"`
+	Output       string   `json:"output"`
+	ExitCode     int      `json:"exit_code"`
 	Value        *float64 `json:"value"`
-	ParseErr     string  `json:"parse_err,omitempty"`
-	Metric       string  `json:"metric"`
-	Op           string  `json:"op"`
-	Threshold    float64 `json:"threshold"`
-	WouldTrigger bool   `json:"would_trigger"`
-	DurationMs   int64   `json:"duration_ms"`
+	ParseErr     string   `json:"parse_err,omitempty"`
+	Metric       string   `json:"metric"`
+	Op           string   `json:"op"`
+	Threshold    float64  `json:"threshold"`
+	WouldTrigger bool     `json:"would_trigger"`
+	DurationMs   int64    `json:"duration_ms"`
 }
 
 // DebugCheck 在指定节点上执行一次规则的检查命令并给出阈值判定。
@@ -39,13 +39,13 @@ func (s *Service) DebugCheck(nodeID string, at owlmonitor.AlertType) (*DebugChec
 	start := time.Now()
 	out, code, err := s.debugExec(nodeID, at.CheckCmd, owlmonitor.CustomCheckTimeout)
 	res := &DebugCheckResult{
-		NodeID:   nodeID,
-		Command:  at.CheckCmd,
-		Output:   out,
-		ExitCode: code,
-		Metric:   owlmonitor.CustomMetricID(at.ID),
-		Op:       at.DefaultParams.Op,
-		Threshold: at.DefaultParams.Value,
+		NodeID:     nodeID,
+		Command:    at.CheckCmd,
+		Output:     out,
+		ExitCode:   code,
+		Metric:     owlmonitor.CustomMetricID(at.ID),
+		Op:         at.DefaultParams.Op,
+		Threshold:  at.DefaultParams.Value,
 		DurationMs: time.Since(start).Milliseconds(),
 	}
 	if err != nil {

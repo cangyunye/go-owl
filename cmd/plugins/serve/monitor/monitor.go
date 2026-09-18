@@ -140,10 +140,13 @@ type Service struct {
 	Manager        *owlmonitor.AlertManager
 	Dispatcher     *owlmonitor.Dispatcher
 	runner         *owlmonitor.RunExecutor
-	playbookRunner PlaybookRunner // 剧本执行入口（告警绑定执行用，装配时注入）
+	playbookRunner PlaybookRunner                                                           // 剧本执行入口（告警绑定执行用，装配时注入）
 	debugExec      func(nodeID, command string, timeout time.Duration) (string, int, error) // 规则调试执行
-	db             *sql.DB        // settings 表访问（静默配置）
+	db             *sql.DB                                                                  // settings 表访问（静默配置）
 	webURL         string
+	// 疗效未确认时的自动换方案重试（monitor.heal_retry_*，默认关闭）
+	healRetryEnabled bool
+	healRetryLimit   int
 
 	cancel context.CancelFunc
 }
@@ -189,9 +192,14 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 	}
 	// 失败自动回滚开关（monitor.rollback_enabled，默认开）
 	runner.SetRollbackEnabled(readRollbackEnabled(db))
+	// 疗效未确认自动换方案（monitor.heal_retry_*，默认关闭 + 次数上限防循环）
+	svcHealRetryEnabled := readHealRetryEnabled(db)
+	svcHealRetryLimit := readHealRetryLimit(db)
 
 	// 恢复闭环验证：处置计划完成后定向采集并重新评估告警规则（monitor.verify_*），
+	// svc 指针先行声明（回调闭包引用），稍后赋值
 	// 结果写入 remedy_run_verifications 供前端展示；验证失败不阻断主链路
+	var svc *Service
 	if readVerifyEnabled(db) {
 		verifier := owlmonitor.NewRunVerifier(collector, resolveTarget(db), store)
 		verifier.SetDelay(time.Duration(readVerifyDelaySeconds(db)) * time.Second)
@@ -226,6 +234,11 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 								log.Printf("monitor: 疗效通知失败: %v", e)
 							}
 						}
+						// 疗效未确认：按配置自动换方案重试（默认关闭）
+						go func(alert *owlmonitor.Alert, at owlmonitor.AlertType, run *owlmonitor.RemedyRun, ver *owlmonitor.RunVerification) {
+							defer func() { _ = recover() }()
+							svc.maybeRetryRemedy(alert, at, run, ver)
+						}(alert, at, run, ver)
 					}
 				}
 			}
@@ -235,20 +248,21 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 	engine := owlmonitor.NewEngine(cfg, store, collector, source, manager, dispatcher)
 	engine.SetAutoHealer(healer)
 
-
 	// 启动对账：重启导致执行 goroutine 丢失的绑定运行记录标记为失败
 	if err := store.FailStaleAlertBindingRuns(); err != nil {
 		log.Printf("monitor: 对账悬挂绑定运行失败: %v", err)
 	}
 
-	svc := &Service{
-		Store:      store,
-		Engine:     engine,
-		Manager:    manager,
-		Dispatcher: dispatcher,
-		runner:     runner,
-		db:         db,
-		webURL:     webURL,
+	svc = &Service{
+		Store:            store,
+		Engine:           engine,
+		Manager:          manager,
+		Dispatcher:       dispatcher,
+		runner:           runner,
+		db:               db,
+		webURL:           webURL,
+		healRetryEnabled: svcHealRetryEnabled,
+		healRetryLimit:   svcHealRetryLimit,
 	}
 	// 调试执行入口：告警规则的「执行一次调试」（handler 经 DebugCheck 调用）
 	svc.debugExec = func(nodeID, command string, timeout time.Duration) (string, int, error) {
@@ -490,6 +504,32 @@ func readCollectWindow(db *sql.DB) string {
 
 // readAlertRetentionDays 读取告警记录保留天数（monitor.alert_retention_days）。
 // 未设置/非法/负数 = 0（不启用清理）。
+// readHealRetryEnabled 读取 monitor.heal_retry_enabled（默认 false，保守关闭）。
+func readHealRetryEnabled(db *sql.DB) bool {
+	var v string
+	_ = db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.heal_retry_enabled'`).Scan(&v)
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true", "1", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+// readHealRetryLimit 读取 monitor.heal_retry_limit（默认 1，上限 5）。
+func readHealRetryLimit(db *sql.DB) int {
+	var v string
+	_ = db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.heal_retry_limit'`).Scan(&v)
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return 1
+	}
+	if n > 5 {
+		n = 5
+	}
+	return n
+}
+
 // readRollbackEnabled 读取 monitor.rollback_enabled（默认 true）。
 func readRollbackEnabled(db *sql.DB) bool {
 	var v string
