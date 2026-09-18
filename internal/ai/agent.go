@@ -524,7 +524,7 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 	debugPrint(a.debug, "路由标签: %s", routeLabel)
 
 	if routeLabel == "uncertain" || routeLabel == "" {
-		return "我不确定您要做什么", nil
+		return a.fallbackConversation(ctx, chatModel, userInput, sessionMemory, onProgress)
 	}
 
 	if unsupportedRouteLabels[routeLabel] {
@@ -545,7 +545,7 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		if retryErr == nil {
 			retryLabel := applyRouteAliases(normalizeRouteLabel(retryResp))
 			if retryLabel == "uncertain" || retryLabel == "" {
-				return "我不确定您要做什么", nil
+				return a.fallbackConversation(ctx, chatModel, userInput, sessionMemory, onProgress)
 			}
 			if isValidRouteLabel(retryLabel) {
 				routeLabel = retryLabel
@@ -553,10 +553,8 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 			}
 		}
 		if !isValidRouteLabel(routeLabel) {
-			if onProgress != nil {
-				onProgress("result", "路由失败: 模型未返回有效指令标签")
-			}
-			return "", fmt.Errorf("模型未返回有效指令标签,无法路由请求(原始响应: %.120s)", routeResp)
+			debugPrint(a.debug, "路由标签仍无效,降级为直接对话")
+			return a.fallbackConversation(ctx, chatModel, userInput, sessionMemory, onProgress)
 		}
 	}
 
@@ -611,6 +609,41 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 	})
 	if err != nil {
 		return "", err
+	}
+	return result.reply, nil
+}
+
+// fallbackConversation 路由失败（uncertain/无效标签）时降级为直接对话：
+// 用通用工具提示词进入工具生成循环并允许直接文本回答——闲聊得到自然回复，
+// 运维请求仍可发起工具调用。不再硬报错或收口"我不确定您要做什么"。
+func (a *Agent) fallbackConversation(ctx context.Context, chatModel ChatModel, userInput, sessionMemory string, onProgress ProgressCallback) (string, error) {
+	debugPrint(a.debug, "路由失败,降级为直接对话")
+	if onProgress != nil {
+		onProgress("route", "对话")
+	}
+	messages := []Message{
+		{Role: "system", Content: a.RenderSystemPrompt(aiPrompts.ConversationSystemPrompt)},
+	}
+	if sessionMemory != "" {
+		messages = append(messages, Message{
+			Role:    "system",
+			Content: "以下是此前会话的对话与操作记录，仅作参考背景，不要把它当作新的用户请求：\n" + sessionMemory,
+		})
+	}
+	messages = append(messages, Message{Role: "user", Content: userInput})
+
+	result, err := a.runToolLoop(ctx, chatModel, toolLoopParams{
+		messages:          messages,
+		onProgress:        onProgress,
+		userInput:         userInput,
+		useToolHints:      true,
+		allowDirectAnswer: true,
+	})
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(result.reply) == "" {
+		return "我不确定您要做什么", nil
 	}
 	return result.reply, nil
 }

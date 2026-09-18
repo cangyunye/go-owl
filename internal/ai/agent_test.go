@@ -609,14 +609,16 @@ func TestProcessRoutePlaybook(t *testing.T) {
 }
 
 func TestProcessRouteUncertain(t *testing.T) {
-	agent := newTestAgentForRoute([]string{"uncertain"})
+	// 契约变更：路由 uncertain 不再收口为"我不确定您要做什么"，
+	// 而是降级为直接对话（LLM 文本直接回答）。
+	agent := newTestAgentForRoute([]string{"uncertain", "我是 owl 运维助手。"})
 	ctx := context.Background()
 	resp, err := agent.Process(ctx, "random gibberish", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
-	if resp != "我不确定您要做什么" {
-		t.Errorf("expected rejection, got: %s", resp)
+	if resp != "我是 owl 运维助手。" {
+		t.Errorf("expected conversational fallback, got: %s", resp)
 	}
 }
 
@@ -644,8 +646,9 @@ func TestOfflineProcess_UncertainChinese(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
-	if resp != "我不确定您要做什么" {
-		t.Errorf("expected '我不确定您要做什么', got: %q", resp)
+	// 契约变更：降级对话后返回格式化帮助文案（不再是固定收口语）
+	if resp == "我不确定您要做什么" || strings.TrimSpace(resp) == "" {
+		t.Errorf("expected helpful fallback text, got: %q", resp)
 	}
 	if strings.Contains(resp, "\ufffd") {
 		t.Errorf("response contains replacement character garbage: %q", resp)
@@ -674,14 +677,14 @@ func TestDefaultChatHandler_UsesLastUserMessage(t *testing.T) {
 }
 
 func TestProcessRouteEmpty(t *testing.T) {
-	agent := newTestAgentForRoute([]string{""})
+	agent := newTestAgentForRoute([]string{"", "空路由降级回答。"})
 	ctx := context.Background()
 	resp, err := agent.Process(ctx, "", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
-	if resp != "我不确定您要做什么" {
-		t.Errorf("expected rejection for empty route, got: %s", resp)
+	if resp != "空路由降级回答。" {
+		t.Errorf("expected fallback for empty route, got: %s", resp)
 	}
 }
 
@@ -814,16 +817,17 @@ func TestProcessRouteInvalidLabel_RetryWithStrictInstruction(t *testing.T) {
 	}
 }
 
-func TestProcessRouteInvalidLabelTwice_ReturnsExplicitError(t *testing.T) {
+func TestProcessRouteInvalidLabelTwice_FallsBackToConversation(t *testing.T) {
+	// 契约变更：两次路由都无效时降级为直接对话，不再返回硬错误
 	helpText := "抱歉，我无法确定您要执行的具体操作。\n\n我可以帮助您：\n 1. 查询节点信息\n 2. 执行命令"
-	agent := newTestAgentForRoute([]string{helpText, "抱歉，还是无法确定。"})
+	agent := newTestAgentForRoute([]string{helpText, "抱歉，还是无法确定。", "共 1 个在线节点。"})
 	ctx := context.Background()
 	resp, err := agent.Process(ctx, "列出当前在线节点", nil)
-	if err == nil {
-		t.Fatalf("expected explicit routing error, got resp=%q", resp)
-	}
-	if !strings.Contains(err.Error(), "有效指令标签") {
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp != "共 1 个在线节点。" {
+		t.Fatalf("expected fallback reply, got %q", resp)
 	}
 }
 

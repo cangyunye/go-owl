@@ -318,3 +318,62 @@ func TestAgentTextProtocolStreamDeltaForwarding(t *testing.T) {
 		t.Fatalf("expected summary delta forwarded, got %v", deltas)
 	}
 }
+
+// TestAgentRouteUncertainFallsBackToConversation 路由 uncertain 时降级为直接对话：
+// LLM 文本直接回答（不再收口为"我不确定您要做什么"），仍保留调工具的能力。
+func TestAgentRouteUncertainFallsBackToConversation(t *testing.T) {
+	m := &mockChatModel{responses: []string{
+		"uncertain",
+		"你好！我是 owl 智能运维助手，可以帮你查询节点、执行命令、管理剧本等。",
+	}}
+	agent := newNativeTestAgent(&Config{}, m)
+
+	reply, err := agent.Process(context.Background(), "你是谁", nil)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if reply != "你好！我是 owl 智能运维助手，可以帮你查询节点、执行命令、管理剧本等。" {
+		t.Fatalf("expected conversational fallback reply, got %q", reply)
+	}
+}
+
+// TestAgentRouteInvalidLabelFallsBack 无效标签（重试仍失败）同样降级对话而非硬报错。
+func TestAgentRouteInvalidLabelFallsBack(t *testing.T) {
+	m := &mockChatModel{responses: []string{
+		"这不是一个有效标签",
+		"这也不是有效标签",
+		"当前共有 107 个节点。",
+	}}
+	agent := newNativeTestAgent(&Config{}, m)
+
+	reply, err := agent.Process(context.Background(), "随便说点什么", nil)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if reply != "当前共有 107 个节点。" {
+		t.Fatalf("expected fallback reply, got %q", reply)
+	}
+}
+
+// TestAgentRouteFallbackCanStillCallTools 降级对话模式保留工具调用能力。
+func TestAgentRouteFallbackCanStillCallTools(t *testing.T) {
+	toolCallJSON := "```json\n" + `{"tool_calls":[{"name":"query_nodes","arguments":{}}]}` + "\n```"
+	m := &mockChatModel{responses: []string{
+		"uncertain",
+		toolCallJSON,
+		"查询完成。",
+	}}
+	agent := newNativeTestAgent(&Config{}, m)
+
+	reply, err := agent.Process(context.Background(), "列出所有节点", nil)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	// 三条 mock 全部消费 = 路由降级 → 工具调用 → 总结，链路完整
+	if reply != "查询完成。" {
+		t.Fatalf("expected summary reply from full loop, got %q", reply)
+	}
+	if m.callCount != 3 {
+		t.Fatalf("expected 3 LLM calls (route+tool+summary), got %d", m.callCount)
+	}
+}
