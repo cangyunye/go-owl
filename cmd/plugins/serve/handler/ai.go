@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +28,8 @@ type AIHandler struct {
 	keyManager  *KeyManager
 	debugMode   bool
 	rateLimiter *aiRateLimiter
+	// approvalStore 高危操作审批单（nil=不启用持久审批）
+	approvalStore *store.AIApprovalStore
 	// newChatAgent builds an agent bound to the user-provided LLM config.
 	// Overridable in tests to inject a mock chat model.
 	newChatAgent func(llmReq *LLMRequest) (*ai2.Agent, error)
@@ -209,6 +212,7 @@ func (h *AIHandler) Chat(c *gin.Context) {
 	}
 
 	go h.logAudit(userID, "conversation", "success", req.Message, reply, durationMs, h.debugMode)
+	h.syncApprovalAfterSend(cc, session, reply)
 
 	c.JSON(http.StatusOK, gin.H{
 		"reply":      reply,
@@ -555,6 +559,7 @@ func (h *AIHandler) StreamChat(c *gin.Context) {
 	}
 
 	go h.logAudit(userID, "conversation", "success", req.Message, reply, durationMs, h.debugMode)
+	h.syncApprovalAfterSend(cc, session, reply)
 
 	writeSSE("done", gin.H{"reply": reply, "session_id": sessionID})
 }
@@ -617,4 +622,38 @@ func (h *AIHandler) ImportAISession(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"session_id": req.SessionID, "host": "web"})
+}
+
+// SetApprovalStore 注入审批单存储（server 装配时调用；nil=关闭审批落单）。
+func (h *AIHandler) SetApprovalStore(s *store.AIApprovalStore) {
+	h.approvalStore = s
+}
+
+// syncApprovalAfterSend 会话发送后同步审批单：
+// 确认门挂起 → 落单（幂等）；挂起消失且已执行/取消 → 关闭对应单。
+func (h *AIHandler) syncApprovalAfterSend(cc *aiChatContext, session *ai2.Session, reply string) {
+	if h.approvalStore == nil {
+		return
+	}
+	ctx := context.Background()
+	if tool, summary, ok := session.PendingApproval(); ok {
+		argsJSON, _ := json.Marshal(tool.Arguments)
+		if _, _, err := h.approvalStore.CreateIfAbsent(ctx, &store.AIApproval{
+			SessionKey: cc.sessionKey, UserID: cc.userID, Username: cc.identity.Username,
+			ToolName: tool.Name, ArgumentsJSON: string(argsJSON), Summary: summary,
+		}); err != nil {
+			debugLogPrint("记录审批单失败: %v", err)
+		}
+		return
+	}
+	switch {
+	case strings.HasPrefix(reply, "已执行："):
+		_ = h.approvalStore.CloseBySession(ctx, cc.sessionKey, store.AIApprovalExecuted, truncateApprovalResult(reply, 2000))
+	case reply == "已取消该操作":
+		_ = h.approvalStore.CloseBySession(ctx, cc.sessionKey, store.AIApprovalRejected, reply)
+	}
+}
+
+func debugLogPrint(format string, args ...interface{}) {
+	log.Printf(format, args...)
 }

@@ -68,6 +68,8 @@ type Server struct {
 	auditStore          *store.AIAuditStore
 	keyManager          *handler.KeyManager
 	aiHandler           *handler.AIHandler
+	aiApprovalStore     *store.AIApprovalStore
+	aiApprovalHandler   *handler.AIApprovalHandler
 	wsHub               *handler.WSHub
 	wsTickets           *handler.WSTicketManager
 	historyHandler      *handler.HistoryHandler
@@ -215,6 +217,13 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	}
 
 	s.aiHandler = handler.NewAIHandler(db, s.auditStore, webExecutor, s.keyManager, agent, s.Config.AIDebugMode)
+	// AI 高危操作审批单：确认门挂起时落单，可从 AI 页审批入口批准/拒绝
+	s.aiApprovalStore = store.NewAIApprovalStore(db)
+	if err := s.aiApprovalStore.Init(context.Background()); err != nil {
+		return nil, fmt.Errorf("init ai approval store: %w", err)
+	}
+	s.aiHandler.SetApprovalStore(s.aiApprovalStore)
+	s.aiApprovalHandler = handler.NewAIApprovalHandler(s.aiApprovalStore, agent)
 	s.playbookHandler = handler.NewPlaybookHandler(db, playbookStore, playbookRunStore, nodeStore, s.wsHub)
 
 	s.History = store.NewHistoryStore(db)
@@ -306,6 +315,7 @@ func (s *Server) setupRoutes() {
 		reader.POST("/ai/chat", s.aiHandler.Chat)
 		reader.POST("/ai/chat/stream", s.aiHandler.StreamChat)
 		reader.GET("/ai/sessions", s.aiHandler.ListAISessions)
+		reader.GET("/ai/approvals", s.aiApprovalHandler.List)
 		reader.POST("/ai/sessions/import", s.aiHandler.ImportAISession)
 		reader.POST("/ai/audit", s.aiHandler.Audit)
 		reader.POST("/ai/models", s.aiHandler.Models)
@@ -365,6 +375,8 @@ func (s *Server) setupRoutes() {
 			operator.POST("/plans/:id/stop", s.monitorHandler.StopRemedyPlan)
 			operator.POST("/plans/:id/approve", s.monitorHandler.ApproveRemedyPlan)
 			operator.POST("/plans/:id/reject", s.monitorHandler.RejectRemedyPlan)
+			operator.POST("/ai/approvals/:id/approve", s.aiApprovalHandler.Approve)
+			operator.POST("/ai/approvals/:id/reject", s.aiApprovalHandler.Reject)
 			operator.POST("/alerts/:id/bindings/run", s.monitorHandler.RunAlertBindings)
 		}
 

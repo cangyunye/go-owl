@@ -154,4 +154,3 @@ func TestPlaybooksUI_RunDetailProgress(t *testing.T) {
 	assert.True(t, strings.Contains(src, "仅看失败"), "run detail must offer a failed-only filter")
 	assert.True(t, strings.Contains(css, ".run-progress"), "app.css must style the progress bar")
 }
-

@@ -42,7 +42,7 @@ func TestValidateToken(t *testing.T) {
 
 func TestValidateToken_Expired(t *testing.T) {
 	auth := &AuthService{
-		secret:   []byte("test-secret-key-32-bytes-long!!"),
+		secret:      []byte("test-secret-key-32-bytes-long!!"),
 		TokenExpiry: -1 * time.Hour,
 	}
 

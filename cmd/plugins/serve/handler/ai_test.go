@@ -1136,3 +1136,103 @@ func TestAISessions_ListAndImport(t *testing.T) {
 	_, ok := h.sessionMgr.GetOrLoadSession("alice:e2e-cli-session", h.agent)
 	require.True(t, ok, "导入后 web 命名空间应可恢复会话")
 }
+
+// ---- AI 高危操作审批单 ----
+
+func TestAIApproval_Flow(t *testing.T) {
+	db, h := aiTestSetup(t)
+	defer db.Close()
+
+	approvals := store.NewAIApprovalStore(db)
+	require.NoError(t, approvals.Init(context.Background()))
+	ah := NewAIApprovalHandler(approvals, h.agent)
+
+	// 1. 确认挂起 → 落单（幂等）
+	rec, created, err := approvals.CreateIfAbsent(context.Background(), &store.AIApproval{
+		SessionKey: "alice:S-1", UserID: "alice", Username: "alice",
+		ToolName: "execute_command", ArgumentsJSON: `{"command":"uptime","nodes":["n1"]}`,
+		Summary: "execute_command(nodes=[n1], command=uptime)",
+	})
+	require.NoError(t, err)
+	require.True(t, created)
+	again, created2, err := approvals.CreateIfAbsent(context.Background(), &store.AIApproval{
+		SessionKey: "alice:S-1", UserID: "alice", Username: "alice",
+		ToolName: "execute_command", ArgumentsJSON: `{"command":"uptime","nodes":["n1"]}`,
+	})
+	require.NoError(t, err)
+	require.False(t, created2, "同会话同操作幂等")
+	require.Equal(t, rec.ID, again.ID)
+
+	// 2. 列表：本人可见
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "alice")
+		c.Set("username", "alice")
+		c.Set("role", "operator")
+		c.Next()
+	})
+	router.GET("/ai/approvals", ah.List)
+	router.POST("/ai/approvals/:id/approve", ah.Approve)
+	router.POST("/ai/approvals/:id/reject", ah.Reject)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/ai/approvals?status=pending", nil))
+	require.Equal(t, 200, w.Code)
+	require.Contains(t, w.Body.String(), rec.ID)
+
+	// 3. 非本人无权处理（bob）
+	routerBob := gin.New()
+	routerBob.Use(func(c *gin.Context) {
+		c.Set("user_id", "bob")
+		c.Set("username", "bob")
+		c.Set("role", "operator")
+		c.Next()
+	})
+	routerBob.POST("/ai/approvals/:id/approve", ah.Approve)
+	w = httptest.NewRecorder()
+	routerBob.ServeHTTP(w, httptest.NewRequest("POST", "/ai/approvals/"+rec.ID+"/approve", nil))
+	require.Equal(t, http.StatusForbidden, w.Code)
+
+	// 4. 本人批准 → 重放执行（内核黑名单/scope 生效），状态 executed/failed
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("POST", "/ai/approvals/"+rec.ID+"/approve", nil))
+	require.Equal(t, 200, w.Code, w.Body.String())
+	got, err := approvals.Get(context.Background(), rec.ID)
+	require.NoError(t, err)
+	require.Contains(t, []string{store.AIApprovalExecuted, store.AIApprovalFailed}, got.Status)
+	require.NotEmpty(t, got.Result)
+
+	// 5. 重复处理被拒
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("POST", "/ai/approvals/"+rec.ID+"/approve", nil))
+	require.Equal(t, http.StatusConflict, w.Code)
+}
+
+func TestAIApproval_Reject(t *testing.T) {
+	db, _ := aiTestSetup(t)
+	defer db.Close()
+	approvals := store.NewAIApprovalStore(db)
+	require.NoError(t, approvals.Init(context.Background()))
+	ah := NewAIApprovalHandler(approvals, nil)
+
+	rec, _, err := approvals.CreateIfAbsent(context.Background(), &store.AIApproval{
+		SessionKey: "s", UserID: "alice", Username: "alice",
+		ToolName: "node_remove", ArgumentsJSON: `{"nodes":["n1"]}`, Summary: "移除节点",
+	})
+	require.NoError(t, err)
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "alice")
+		c.Set("username", "alice")
+		c.Set("role", "operator")
+		c.Next()
+	})
+	router.POST("/ai/approvals/:id/reject", ah.Reject)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("POST", "/ai/approvals/"+rec.ID+"/reject", nil))
+	require.Equal(t, 200, w.Code)
+	got, _ := approvals.Get(context.Background(), rec.ID)
+	require.Equal(t, store.AIApprovalRejected, got.Status)
+}

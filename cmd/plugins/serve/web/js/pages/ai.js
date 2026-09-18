@@ -265,6 +265,58 @@ export async function renderAI(render, navigate, user, api, shell) {
     loadHistory();
   }
 
+  // ---- 高危操作审批单 ----
+  async function loadApprovals() {
+    const btn = document.getElementById('ai-approvals-btn');
+    if (!btn) return;
+    try {
+      const res = await api.listAIApprovals('pending');
+      const n = (res.items || []).length;
+      btn.textContent = '🛡 待审批' + (n > 0 ? ' (' + n + ')' : '');
+      btn.style.opacity = n > 0 ? '1' : '.85';
+    } catch {}
+  }
+
+  function showApprovals() {
+    const old = document.getElementById('ai-approvals-overlay');
+    if (old) old.remove();
+    api.listAIApprovals('pending').then(res => {
+      const items = res.items || [];
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay open';
+      overlay.id = 'ai-approvals-overlay';
+      overlay.innerHTML = `
+        <div class="modal" style="max-width:640px">
+          <h3>待审批的 AI 高危操作</h3>
+          <div style="max-height:50vh;overflow:auto;margin:10px 0">
+            ${items.length === 0 ? '<p style="color:var(--muted)">暂无待审批操作</p>' : items.map(it => `
+              <div style="border:1px solid var(--border);border-radius:var(--radius);padding:10px;margin-bottom:8px;background:var(--bg)">
+                <div style="font-weight:600;font-size:var(--fs-sm)">${esc(it.summary || it.tool_name)}</div>
+                <div style="color:var(--muted);font-size:var(--fs-xs);margin-top:4px">请求人: ${esc(it.username || '-')} · ${new Date((it.requested_at || 0) * 1000).toLocaleString()}</div>
+                <div style="margin-top:8px;display:flex;gap:8px">
+                  <button class="btn btn-primary btn-sm" data-approve="${esc(it.id)}">批准并执行</button>
+                  <button class="btn btn-ghost btn-sm" data-reject="${esc(it.id)}">拒绝</button>
+                </div>
+              </div>`).join('')}
+          </div>
+          <div class="modal-actions"><button class="btn btn-secondary" id="ai-approvals-close">关闭</button></div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      overlay.querySelector('#ai-approvals-close').addEventListener('click', () => overlay.remove());
+      overlay.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', async () => {
+        b.disabled = true;
+        try { await api.approveAIApproval(b.dataset.approve); } catch (err) { alert('批准失败: ' + (err.message || err)); }
+        overlay.remove(); loadApprovals();
+      }));
+      overlay.querySelectorAll('[data-reject]').forEach(b => b.addEventListener('click', async () => {
+        b.disabled = true;
+        try { await api.rejectAIApproval(b.dataset.reject); } catch (err) { alert('拒绝失败: ' + (err.message || err)); }
+        overlay.remove(); loadApprovals();
+      }));
+    }).catch(() => {});
+  }
+
   // 从服务端拉取 CLI 持久化会话并导入为 Web 会话（跨端续聊）
   async function importCLISession() {
     let items = [];
@@ -634,6 +686,7 @@ export async function renderAI(render, navigate, user, api, shell) {
         </div>
         <button class="ai-new-conv-btn" id="ai-new-conv-btn">＋ 新建对话</button>
         <button class="ai-new-conv-btn" id="ai-import-cli-btn" style="margin-top:6px;opacity:.75">⤵ 导入 CLI 会话</button>
+        <button class="ai-new-conv-btn" id="ai-approvals-btn" style="margin-top:6px;opacity:.85">🛡 待审批</button>
         <div class="ai-conv-list" id="ai-conv-list">
           <div class="ai-conv-empty">暂无历史会话</div>
         </div>
@@ -736,6 +789,8 @@ export async function renderAI(render, navigate, user, api, shell) {
     // New conversation
     document.getElementById('ai-new-conv-btn').addEventListener('click', newConversation);
     document.getElementById('ai-import-cli-btn')?.addEventListener('click', importCLISession);
+    document.getElementById('ai-approvals-btn')?.addEventListener('click', showApprovals);
+    loadApprovals();
 
     // Send
     const input = document.getElementById('ai-chat-input');

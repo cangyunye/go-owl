@@ -1182,6 +1182,15 @@ func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	return response, nil
 }
 
+// PendingApproval 返回当前挂起的待确认操作（确认门拦截时写入）。
+// serve 端据此创建持久审批单；用户聊天框确认后会正常重放并关闭。
+func (s *Session) PendingApproval() (ToolCall, string, bool) {
+	if s.pendingContext == nil || s.pendingContext.State != "awaiting_confirmation" {
+		return ToolCall{}, "", false
+	}
+	return s.pendingContext.ToolCall, s.pendingContext.Summary, true
+}
+
 func (s *Session) toolCallJSON(call ToolCall) string {
 	argsJSON, _ := json.Marshal(call.Arguments)
 	return fmt.Sprintf(`{"tool_calls":[{"name":%q,"arguments":%s}]}`, call.Name, argsJSON)

@@ -152,7 +152,7 @@ func TestWebUINodeChipsPill(t *testing.T) {
 		"selected chip dot must adopt the fill color")
 
 	for _, name := range []string{"exec.js", "files.js"} {
-		src := readWebLF(t, "web/js/pages/" + name)
+		src := readWebLF(t, "web/js/pages/"+name)
 		assert.Contains(t, src, `<button type="button" class="node-chip ${`,
 			"%s node chips must be buttons with aria-pressed", name)
 		assert.Contains(t, src, "aria-pressed=",
