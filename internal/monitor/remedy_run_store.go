@@ -3,6 +3,7 @@ package monitor
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -40,6 +41,7 @@ func (s *Store) EnsureRemedyRunTables() error {
 			alert_id      TEXT NOT NULL DEFAULT '',
 			node_id       TEXT NOT NULL DEFAULT '',
 			alert_type_id TEXT NOT NULL DEFAULT '',
+			kind          TEXT NOT NULL DEFAULT 'remedy',
 			status        TEXT NOT NULL DEFAULT '',
 			metric        TEXT NOT NULL DEFAULT '',
 			value         REAL NOT NULL DEFAULT 0,
@@ -50,6 +52,18 @@ func (s *Store) EnsureRemedyRunTables() error {
 	for _, q := range schemas {
 		if _, err := s.db.Exec(q); err != nil {
 			return fmt.Errorf("monitor: 建处置计划表失败: %w", err)
+		}
+	}
+	// 存量库补列（幂等）：kind 验证来源
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('remedy_run_verifications') WHERE name = 'kind'`).Scan(&n); err != nil {
+		return fmt.Errorf("monitor: 检查验证列失败: %w", err)
+	}
+	if n == 0 {
+		if _, err := s.db.Exec(`ALTER TABLE remedy_run_verifications ADD COLUMN kind TEXT NOT NULL DEFAULT 'remedy'`); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("monitor: 补验证来源列失败: %w", err)
+			}
 		}
 	}
 	return nil

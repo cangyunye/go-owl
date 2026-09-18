@@ -181,6 +181,18 @@ func (s *Service) execBindingItem(rec *owlmonitor.AlertBindingRun, b owlmonitor.
 		if done {
 			if success {
 				finish("success", "")
+				// 绑定执行成功后的疗效定向验证（闭环；失败只记日志）
+				if s.verifier != nil {
+					verifier := s.verifier
+					go func(recID, aID, nID string) {
+						defer func() { _ = recover() }()
+						if _, err := verifier.VerifyAlertNow(context.Background(), aID, nID,
+							owlmonitor.KindVerificationBinding, recID); err != nil {
+							logger.Warn("绑定疗效验证失败", logger.WithOperation("alert_bindings"),
+								logger.WithField("record_id", recID), logger.WithError(err))
+						}
+					}(rec.ID, alertID, nodeID)
+				}
 			} else {
 				finish("failed", "运行结束： "+status)
 			}

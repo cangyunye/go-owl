@@ -17,29 +17,32 @@ const (
 // RunVerification 是一次处置疗效的定向核查记录。
 // 正式 resolved 仍由引擎周期采集（连续未命中）判定，本记录只做即时核查与留痕。
 type RunVerification struct {
-	RunID       string  `json:"run_id"`
-	AlertID     string  `json:"alert_id"`
-	NodeID      string  `json:"node_id"`
-	AlertTypeID string  `json:"alert_type_id"`
-	Status      string  `json:"status"`
-	Metric      string  `json:"metric,omitempty"`
-	Value       float64 `json:"value,omitempty"`
-	Message     string  `json:"message,omitempty"`
-	VerifiedAt  int64   `json:"verified_at"`
+	RunID       string `json:"run_id"` // remedy run ID 或绑定运行记录 ID（见 Kind）
+	AlertID     string `json:"alert_id"`
+	NodeID      string `json:"node_id"`
+	AlertTypeID string `json:"alert_type_id"`
+	// Kind 验证来源：remedy（处置计划）| binding（告警绑定执行）
+	Kind       string  `json:"kind,omitempty"`
+	Status     string  `json:"status"`
+	Metric     string  `json:"metric,omitempty"`
+	Value      float64 `json:"value,omitempty"`
+	Message    string  `json:"message,omitempty"`
+	VerifiedAt int64   `json:"verified_at"`
 }
 
 // SaveVerification 写入验证记录（同 run 覆盖）。
 func (s *Store) SaveVerification(v *RunVerification) error {
 	_, err := s.db.Exec(`
-		INSERT INTO remedy_run_verifications (run_id, alert_id, node_id, alert_type_id, status, metric, value, message, verified_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO remedy_run_verifications (run_id, alert_id, node_id, alert_type_id, kind, status, metric, value, message, verified_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(run_id) DO UPDATE SET
 			status = excluded.status,
+			kind = excluded.kind,
 			metric = excluded.metric,
 			value = excluded.value,
 			message = excluded.message,
 			verified_at = excluded.verified_at
-	`, v.RunID, v.AlertID, v.NodeID, v.AlertTypeID, v.Status, v.Metric, v.Value, v.Message, v.VerifiedAt)
+	`, v.RunID, v.AlertID, v.NodeID, v.AlertTypeID, v.Kind, v.Status, v.Metric, v.Value, v.Message, v.VerifiedAt)
 	if err != nil {
 		return fmt.Errorf("monitor: 保存验证记录失败: %w", err)
 	}
@@ -52,9 +55,9 @@ func (s *Store) GetVerificationByRun(runID string) (*RunVerification, error) {
 	var metric, message *string
 	var value *float64
 	err := s.db.QueryRow(`
-		SELECT run_id, alert_id, node_id, alert_type_id, status, metric, value, message, verified_at
+		SELECT run_id, alert_id, node_id, alert_type_id, kind, status, metric, value, message, verified_at
 		FROM remedy_run_verifications WHERE run_id = ?`, runID).
-		Scan(&v.RunID, &v.AlertID, &v.NodeID, &v.AlertTypeID, &v.Status, &metric, &value, &message, &v.VerifiedAt)
+		Scan(&v.RunID, &v.AlertID, &v.NodeID, &v.AlertTypeID, &v.Kind, &v.Status, &metric, &value, &message, &v.VerifiedAt)
 	if err != nil {
 		return nil, fmt.Errorf("monitor: 查询验证记录失败: %w", err)
 	}
@@ -73,7 +76,7 @@ func (s *Store) GetVerificationByRun(runID string) (*RunVerification, error) {
 // ListVerificationsByAlert 按告警列出验证记录（时间倒序）。
 func (s *Store) ListVerificationsByAlert(alertID string) ([]*RunVerification, error) {
 	rows, err := s.db.Query(`
-		SELECT run_id, alert_id, node_id, alert_type_id, status, metric, value, message, verified_at
+		SELECT run_id, alert_id, node_id, alert_type_id, kind, status, metric, value, message, verified_at
 		FROM remedy_run_verifications WHERE alert_id = ? ORDER BY verified_at DESC`, alertID)
 	if err != nil {
 		return nil, fmt.Errorf("monitor: 列出验证记录失败: %w", err)
@@ -85,7 +88,7 @@ func (s *Store) ListVerificationsByAlert(alertID string) ([]*RunVerification, er
 		var v RunVerification
 		var metric, message *string
 		var value *float64
-		if err := rows.Scan(&v.RunID, &v.AlertID, &v.NodeID, &v.AlertTypeID, &v.Status, &metric, &value, &message, &v.VerifiedAt); err != nil {
+		if err := rows.Scan(&v.RunID, &v.AlertID, &v.NodeID, &v.AlertTypeID, &v.Kind, &v.Status, &metric, &value, &message, &v.VerifiedAt); err != nil {
 			continue
 		}
 		if metric != nil {
@@ -161,18 +164,46 @@ func (v *RunVerifier) VerifyRun(ctx context.Context, runID string) (*RunVerifica
 
 	verification := &RunVerification{
 		RunID: run.ID, AlertID: alert.ID, NodeID: run.NodeID,
-		AlertTypeID: at.ID, VerifiedAt: v.now().Unix(),
+		AlertTypeID: at.ID, Kind: KindVerificationRemedy, VerifiedAt: v.now().Unix(),
 	}
+	return v.verifyTarget(ctx, verification, at, run.NodeID, v.delay)
+}
 
-	if v.delay > 0 {
+// VerifyAlertNow 告警绑定执行完成后的定向核查（kind=binding，RecordID 为绑定运行记录 ID）。
+func (v *RunVerifier) VerifyAlertNow(ctx context.Context, alertID, nodeID, kind, recordID string) (*RunVerification, error) {
+	alert, exists, err := v.store.GetAlert(alertID)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, fmt.Errorf("monitor: 关联告警 %s 不存在", alertID)
+	}
+	at, exists, err := v.store.GetAlertType(alert.AlertTypeID)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, fmt.Errorf("monitor: 告警类型 %s 不存在", alert.AlertTypeID)
+	}
+	verification := &RunVerification{
+		RunID: recordID, AlertID: alert.ID, NodeID: nodeID,
+		AlertTypeID: at.ID, Kind: kind, VerifiedAt: v.now().Unix(),
+	}
+	return v.verifyTarget(ctx, verification, at, nodeID, 0)
+}
+
+// verifyTarget 定向采集目标节点并按告警规则评估，写回验证记录。
+func (v *RunVerifier) verifyTarget(ctx context.Context, verification *RunVerification,
+	at AlertType, nodeID string, delay time.Duration) (*RunVerification, error) {
+	if delay > 0 {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(v.delay):
+		case <-time.After(delay):
 		}
 	}
 
-	target, err := v.resolve(run.NodeID)
+	target, err := v.resolve(nodeID)
 	if err != nil {
 		verification.Status = VerifyInconclusive
 		verification.Message = "解析采集节点失败: " + err.Error()
@@ -187,7 +218,7 @@ func (v *RunVerifier) VerifyRun(ctx context.Context, runID string) (*RunVerifica
 		return verification, nil
 	}
 
-	result, err := at.DefaultParams.Evaluate(samples, run.NodeID)
+	result, err := at.DefaultParams.Evaluate(samples, nodeID)
 	if err != nil {
 		verification.Status = VerifyInconclusive
 		verification.Message = "规则评估失败: " + err.Error()
@@ -210,3 +241,9 @@ func (v *RunVerifier) VerifyRun(ctx context.Context, runID string) (*RunVerifica
 	}
 	return verification, nil
 }
+
+// 验证来源常量
+const (
+	KindVerificationRemedy  = "remedy"
+	KindVerificationBinding = "binding"
+)

@@ -239,3 +239,26 @@ func TestClosedLoop_EndToEnd(t *testing.T) {
 	require.Equal(t, VerifyRecovered, v.Status)
 	require.Equal(t, "AL-CL", v.AlertID)
 }
+
+// TestVerifyAlertNow_BindingKind 告警绑定执行成功后的定向验证：
+// 共享 verifyAlertNow，kind=binding，RecordID 为绑定运行记录 ID。
+func TestVerifyAlertNow_BindingKind(t *testing.T) {
+	fake := &fakeExecer{outputs: sampleOutputs()}
+	s := newTestStore(t)
+
+	v := newTestVerifier(t, s, fake)
+	now := time.Now().Unix()
+	require.NoError(t, s.InsertAlert(&Alert{ID: "AL-B", AlertTypeID: "OWL-DSK-001", NodeID: "node-a",
+		Severity: SeverityWarning, Status: StatusOpen, Message: "磁盘", FirstSeen: now, LastSeen: now}))
+
+	ver, err := v.VerifyAlertNow(context.Background(), "AL-B", "node-a", "binding", "ABR-1")
+	require.NoError(t, err)
+	require.Equal(t, VerifyRecovered, ver.Status)
+	require.Equal(t, "binding", ver.Kind)
+	require.Equal(t, "ABR-1", ver.RunID)
+
+	// 落库 + 按告警可查
+	got, err := s.GetVerificationByRun("ABR-1")
+	require.NoError(t, err)
+	require.Equal(t, "binding", got.Kind)
+}

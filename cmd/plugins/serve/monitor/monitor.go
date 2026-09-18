@@ -147,6 +147,7 @@ type Service struct {
 	// 疗效未确认时的自动换方案重试（monitor.heal_retry_*，默认关闭）
 	healRetryEnabled bool
 	healRetryLimit   int
+	verifier         *owlmonitor.RunVerifier // 绑定执行的疗效验证（Setup 注入）
 
 	cancel context.CancelFunc
 }
@@ -264,6 +265,7 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		healRetryEnabled: svcHealRetryEnabled,
 		healRetryLimit:   svcHealRetryLimit,
 	}
+	svc.verifier = verifier
 	// 调试执行入口：告警规则的「执行一次调试」（handler 经 DebugCheck 调用）
 	svc.debugExec = func(nodeID, command string, timeout time.Duration) (string, int, error) {
 		t, err := resolveTarget(db)(nodeID)
