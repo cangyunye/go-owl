@@ -27,10 +27,10 @@ type SessionRecord struct {
 
 // SessionMeta 是会话列表的元信息
 type SessionMeta struct {
-	SessionID string
-	Host      string
-	Title     string
-	UpdatedAt time.Time
+	SessionID string    `json:"session_id"`
+	Host      string    `json:"host"`
+	Title     string    `json:"title"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // SessionStore 是会话持久化接口。实现方可为 SQLite（双宿主共用）、

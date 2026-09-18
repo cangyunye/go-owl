@@ -305,6 +305,8 @@ func (s *Server) setupRoutes() {
 		reader.GET("/ai/context", s.aiHandler.GetContext)
 		reader.POST("/ai/chat", s.aiHandler.Chat)
 		reader.POST("/ai/chat/stream", s.aiHandler.StreamChat)
+		reader.GET("/ai/sessions", s.aiHandler.ListAISessions)
+		reader.POST("/ai/sessions/import", s.aiHandler.ImportAISession)
 		reader.POST("/ai/audit", s.aiHandler.Audit)
 		reader.POST("/ai/models", s.aiHandler.Models)
 		reader.POST("/ai/test", s.aiHandler.Test)

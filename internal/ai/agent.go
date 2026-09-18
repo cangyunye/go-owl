@@ -1381,6 +1381,37 @@ func (m *SessionManager) GetOrLoadSession(sessionID string, agent *Agent) (*Sess
 	return restored, true
 }
 
+// Store 返回持久化存储（未配置时返回 nil）。
+func (m *SessionManager) Store() SessionStore {
+	return m.store
+}
+
+// ListPersisted 列出指定宿主持久化的会话元信息。
+func (m *SessionManager) ListPersisted(host string, limit int) ([]SessionMeta, error) {
+	if m.store == nil {
+		return nil, fmt.Errorf("session store not configured")
+	}
+	return m.store.List(host, limit)
+}
+
+// ImportSession 把 fromHost 的持久化会话复制到 toHost 命名空间下
+// （跨端续聊：CLI 会话导入为 Web 会话），返回目标会话 ID。
+func (m *SessionManager) ImportSession(fromHost, fromSessionID, toHost, toSessionID string) (*SessionRecord, error) {
+	if m.store == nil {
+		return nil, fmt.Errorf("session store not configured")
+	}
+	rec, err := m.store.Load(fromSessionID, fromHost)
+	if err != nil {
+		return nil, err
+	}
+	rec.SessionID = toSessionID
+	rec.Host = toHost
+	if err := m.store.Save(rec); err != nil {
+		return nil, err
+	}
+	return rec, nil
+}
+
 // DeleteSession 删除内存与持久化层中的会话。
 func (m *SessionManager) DeleteSession(sessionID string) {
 	m.mu.Lock()

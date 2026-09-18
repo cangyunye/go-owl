@@ -1087,3 +1087,52 @@ func TestStreamChat_BadRequest(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+// ---- 跨端会话续聊 ----
+
+func TestAISessions_ListAndImport(t *testing.T) {
+	db, h := aiTestSetup(t)
+	defer db.Close()
+
+	// 预置：sessionManager 直写一条 host=cli 的持久化会话
+	rec := &ai2.SessionRecord{
+		SessionID: "e2e-cli-session", Host: "cli", Title: "CLI 里的对话",
+		State: &ai2.SessionState{Messages: []ai2.Message{
+			{Role: "user", Content: "列出节点"}, {Role: "assistant", Content: "完成"},
+		}},
+	}
+	require.NoError(t, h.sessionMgr.Store().Save(rec))
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "alice")
+		c.Set("role", "admin")
+		c.Set("username", "alice")
+		c.Next()
+	})
+	router.GET("/ai/sessions", h.ListAISessions)
+	router.POST("/ai/sessions/import", h.ImportAISession)
+
+	// 列表：能看到 cli 会话，看不到 web 命名空间的
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/ai/sessions", nil))
+	require.Equal(t, 200, w.Code)
+	var list struct {
+		Items []ai2.SessionMeta `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &list))
+	require.Len(t, list.Items, 1)
+	require.Equal(t, "e2e-cli-session", list.Items[0].SessionID)
+	require.Equal(t, "CLI 里的对话", list.Items[0].Title)
+
+	// 导入：复制为 alice 命名空间下的 web 会话
+	w2 := httptest.NewRecorder()
+	body, _ := json.Marshal(map[string]string{"session_id": "e2e-cli-session"})
+	router.ServeHTTP(w2, httptest.NewRequest("POST", "/ai/sessions/import", bytes.NewReader(body)))
+	require.Equal(t, 200, w2.Code, w2.Body.String())
+	require.Contains(t, w2.Body.String(), `"session_id":"e2e-cli-session"`)
+
+	// 导入后 alice 以该 session 发消息即可续聊（GetOrLoad 命中 web 命名空间）
+	_, ok := h.sessionMgr.GetOrLoadSession("alice:e2e-cli-session", h.agent)
+	require.True(t, ok, "导入后 web 命名空间应可恢复会话")
+}

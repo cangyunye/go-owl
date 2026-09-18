@@ -572,3 +572,47 @@ func parseIntOrDefault(s string, def int) int {
 	}
 	return n
 }
+
+// ListAISessions 列出指定宿主（默认 cli）的持久化会话，供跨端续聊导入。
+func (h *AIHandler) ListAISessions(c *gin.Context) {
+	host := c.DefaultQuery("host", "cli")
+	metas, err := h.sessionMgr.ListPersisted(host, 50)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"items": []ai2.SessionMeta{}})
+		return
+	}
+	if metas == nil {
+		metas = []ai2.SessionMeta{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": metas})
+}
+
+// ImportAISession 把 CLI 会话复制到当前用户的 web 命名空间下，
+// 之后以同一 session_id 发消息即可延续 CLI 里的对话上下文。
+func (h *AIHandler) ImportAISession(c *gin.Context) {
+	var req struct {
+		SessionID string `json:"session_id"`
+		Host      string `json:"host"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.SessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "session_id is required"})
+		return
+	}
+	fromHost := req.Host
+	if fromHost == "" {
+		fromHost = "cli"
+	}
+	userID := c.GetString("user_id")
+	if userID == "" {
+		userID = "anonymous"
+	}
+	targetID := req.SessionID
+	if userID != "anonymous" {
+		targetID = userID + ":" + req.SessionID
+	}
+	if _, err := h.sessionMgr.ImportSession(fromHost, req.SessionID, "web", targetID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "source session not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"session_id": req.SessionID, "host": "web"})
+}

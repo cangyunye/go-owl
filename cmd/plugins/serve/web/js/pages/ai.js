@@ -76,10 +76,12 @@ export async function renderAI(render, navigate, user, api, shell) {
   }
 
 
+  let initialSessionId = null;  // 页面加载时的默认服务端会话（新建对话时回退用）
   async function loadSessionKey() {
     try {
       const data = await api.getSessionKey();
       sessionId = data.session_id;
+      if (!initialSessionId) initialSessionId = data.session_id;
       publicKeySpki = data.public_key_spki;
     } catch (e) {
       console.error('Failed to load session key', e);
@@ -254,12 +256,40 @@ export async function renderAI(render, navigate, user, api, shell) {
     const conv = {
       id: currentConvId || (userId + '::' + Date.now()),
       userId: userId,
+      sessionId: sessionId,   // 服务端会话 ID（重启/切换后可续聊）
       messages: chatMessages,
       createdAt: new Date().toISOString()
     };
     if (!currentConvId) currentConvId = conv.id;
     await window.AIStorage.saveConversation(conv, userId).catch(() => {});
     loadHistory();
+  }
+
+  // 从服务端拉取 CLI 持久化会话并导入为 Web 会话（跨端续聊）
+  async function importCLISession() {
+    let items = [];
+    try { items = (await api.listAISessions('cli')).items || []; } catch (e) {
+      alert('获取 CLI 会话失败: ' + (e.message || e));
+      return;
+    }
+    if (!items.length) { alert('没有可导入的 CLI 会话'); return; }
+    const lines = items.map((m, i) => `${i + 1}. [${(m.title || '未命名').slice(0, 24)}] ${m.session_id} (${new Date(m.updated_at * 1000).toLocaleString()})`);
+    const pick = prompt('选择要导入的 CLI 会话（输入序号）：\n' + lines.join('\n'));
+    if (!pick) return;
+    const idx = parseInt(pick, 10) - 1;
+    if (isNaN(idx) || !items[idx]) { alert('无效选择'); return; }
+    try {
+      const res = await api.importAISession(items[idx].session_id);
+      // 以导入的会话开启对话（服务端上下文已复制到当前用户命名空间）
+      currentConvId = null;
+      chatMessages = [];
+      sessionId = res.session_id;
+      addMsg('assistant', '已导入 CLI 会话 **' + res.session_id + '**，可以继续之前的对话。');
+      chatMessages.push({ role: 'assistant', content: '已导入 CLI 会话 ' + res.session_id + '，可以继续之前的对话。' });
+      await saveCurrentConv();
+    } catch (e) {
+      alert('导入失败: ' + (e.message || e));
+    }
   }
 
   async function loadHistory() {
@@ -311,6 +341,8 @@ export async function renderAI(render, navigate, user, api, shell) {
     if (!conv) return;
     currentConvId = conv.id;
     chatMessages = conv.messages || [];
+    // 恢复该会话绑定的服务端会话 ID：切换历史会话即续聊同一上下文
+    if (conv.sessionId) sessionId = conv.sessionId;
     renderMessages();
     // highlight active
     document.querySelectorAll('.ai-conv-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
@@ -339,6 +371,7 @@ export async function renderAI(render, navigate, user, api, shell) {
   function newConversation() {
     currentConvId = null;
     chatMessages = [];
+    sessionId = initialSessionId;  // 新对话回到默认服务端会话
     const chatArea = document.getElementById('ai-chat-messages');
     if (chatArea) chatArea.style.display = 'none';
     const emptyState = document.getElementById('ai-empty-state');
@@ -600,6 +633,7 @@ export async function renderAI(render, navigate, user, api, shell) {
           <span class="ai-sidebar-header-title">会话</span>
         </div>
         <button class="ai-new-conv-btn" id="ai-new-conv-btn">＋ 新建对话</button>
+        <button class="ai-new-conv-btn" id="ai-import-cli-btn" style="margin-top:6px;opacity:.75">⤵ 导入 CLI 会话</button>
         <div class="ai-conv-list" id="ai-conv-list">
           <div class="ai-conv-empty">暂无历史会话</div>
         </div>
@@ -701,6 +735,7 @@ export async function renderAI(render, navigate, user, api, shell) {
 
     // New conversation
     document.getElementById('ai-new-conv-btn').addEventListener('click', newConversation);
+    document.getElementById('ai-import-cli-btn')?.addEventListener('click', importCLISession);
 
     // Send
     const input = document.getElementById('ai-chat-input');

@@ -339,6 +339,8 @@ export const api = {
     return done;
   },
   getAiContext: () => request('GET', '/ai/context'),
+  listAISessions: (host = 'cli') => request('GET', `/ai/sessions?host=${encodeURIComponent(host)}`),
+  importAISession: (sessionId, host = 'cli') => request('POST', '/ai/sessions/import', { session_id: sessionId, host }),
   aiAudit: (record) => request('POST', '/ai/audit', record),
   aiModels: (sessionId, encryptedApiKey, baseUrl, apiType) => request('POST', '/ai/models', { session_id: sessionId, encrypted_api_key: encryptedApiKey, base_url: baseUrl, api_type: apiType }),
   aiTest: (sessionId, encryptedApiKey, baseUrl, apiType, model) => request('POST', '/ai/test', { session_id: sessionId, encrypted_api_key: encryptedApiKey, base_url: baseUrl, api_type: apiType, model }),
