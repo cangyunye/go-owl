@@ -603,8 +603,8 @@ func TestChat_SpinnerAdvancesOnTick(t *testing.T) {
 func TestChat_WindowSizeBudget(t *testing.T) {
 	m := newChat(t)
 	m = feed(m, tea.WindowSizeMsg{Width: 100, Height: 30})
-	if m.width != 98 {
-		t.Fatalf("width = %d, want 98", m.width)
+	if m.width != 96 {
+		t.Fatalf("width = %d, want 96 (左右各 2 列边距)", m.width)
 	}
 	if m.height != 21 || m.view.Height != 21 {
 		t.Fatalf("高度预算应精确(30-9): height=%d view.Height=%d", m.height, m.view.Height)

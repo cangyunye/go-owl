@@ -238,8 +238,9 @@ func (m Model) Init() tea.Cmd { return nil }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		if msg.Width > 0 {
-			m.width = msg.Width - 2
+		// 宽度预算: 左右各留 2 列边距,内容不贴窗口边缘
+		if msg.Width > 4 {
+			m.width = msg.Width - 4
 		}
 		// 高度精确预算: App chrome 3 + 状态行 1 + 视口 + 输入框 4 + 提示行 1
 		if msg.Height > appChromeRows+panelChromeRows {

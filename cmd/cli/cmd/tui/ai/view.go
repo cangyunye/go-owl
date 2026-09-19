@@ -23,16 +23,19 @@ var (
 			Padding(0, 1)
 )
 
+// panelIndent 面板内容统一左边距,避免贴窗口边缘。
+var panelIndent = lipgloss.NewStyle().MarginLeft(2)
+
 func (m Model) View() string {
 	var b strings.Builder
 	b.WriteString(m.statusLine() + "\n")
-	b.WriteString(m.view.View())
+	b.WriteString(panelIndent.Render(m.view.View()))
 	b.WriteString("\n")
 	if m.menuRows() > 0 {
-		b.WriteString(m.menuView())
+		b.WriteString(panelIndent.Render(m.menuView()))
 		b.WriteString("\n")
 	}
-	b.WriteString(m.inputBox())
+	b.WriteString(panelIndent.Render(m.inputBox()))
 	b.WriteString("\n")
 	b.WriteString(styleDim.Render("  Enter 发送  Ctrl+J 换行  / 命令  Tab 切面板  Esc 失焦/返回"))
 	return b.String()
