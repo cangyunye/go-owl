@@ -13,6 +13,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
+	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
 	nodeselect "github.com/cangyunye/go-owl/internal/node/select"
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
@@ -31,6 +32,7 @@ type WebExecutor struct {
 	History             *store.HistoryStore
 	PlaybookHandler     *PlaybookHandler
 	checker             *blacklist.Checker
+	monitorStore        *owlmonitor.Store // 告警数据（与监控服务共享），未注入时告警工具不可用
 }
 
 func (e *WebExecutor) requireOperator(ctx context.Context) error {

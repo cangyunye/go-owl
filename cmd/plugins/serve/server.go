@@ -255,6 +255,8 @@ func (s *Server) Init() (*AdminCredentials, error) {
 		return nil, fmt.Errorf("init monitor service: %w", err)
 	}
 	s.monitor = monSvc
+	// AI 告警工具与监控服务共享同一存储实例（告警查询/修复对策）
+	webExecutor.SetMonitorStore(monSvc.Store)
 	s.monitorHandler = handler.NewMonitorHandler(db, monSvc)
 	// 告警绑定：注入剧本存储（绑定校验）与剧本执行入口（手动/自动执行）
 	s.monitorHandler.SetPlaybookStore(playbookStore)
