@@ -81,6 +81,9 @@ func (m *App) switchPanel(i int, entry Entry) {
 	if m.panel == 1 {
 		m.exec.CancelRun()
 	}
+	if m.panel == 3 {
+		m.ai.BlurInput()
+	}
 	m.panel = i
 	if m.panel == 1 {
 		m.exec.CaptureTargets(m.nodes.Visible())
@@ -93,6 +96,9 @@ func (m *App) switchPanel(i int, entry Entry) {
 		if entry == EntryBySelection {
 			m.applyFileSelectionEntry()
 		}
+	}
+	if m.panel == 3 {
+		m.ai.FocusInput() // 对话式: 切到 AI 面板直接可打字
 	}
 }
 
@@ -164,6 +170,12 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	// Tab 全局切换面板: AI 面板自动聚焦后常处 Insert 模式,且 Tab 本就不是任何表单的输入键,
+	// 必须在 Insert 转发之前拦截,否则聚焦 AI 输入框后无法切走。
+	if km, ok := msg.(tea.KeyMsg); ok && km.String() == "tab" {
+		m.switchPanel((m.panel+1)%4, EntryNeutral)
+		return m, nil
+	}
 	if m.currentPanel().InsertMode() {
 		return m.forward(msg)
 	}
@@ -179,9 +191,6 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "?":
 			m.Help = true
-			return m, nil
-		case "tab":
-			m.switchPanel((m.panel+1)%4, EntryNeutral)
 			return m, nil
 		case "1":
 			m.switchPanel(0, EntryNeutral)

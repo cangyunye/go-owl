@@ -82,17 +82,17 @@ func TestChat_EnterToInsertAndSend(t *testing.T) {
 		t.Fatalf("user message missing: %+v", m.messages)
 	}
 
-	msg := cmd()
-	done, ok := msg.(ChatDoneMsg)
-	if !ok {
-		t.Fatalf("expected ChatDoneMsg, got %T", msg)
+	msgs := execCmd(cmd)
+	var done ChatDoneMsg
+	for _, msg := range msgs {
+		if d, ok := msg.(ChatDoneMsg); ok {
+			done = d
+		}
 	}
+	m = feed(m, msgs...)
 	if done.Text != "回答: ab" {
 		t.Fatalf("unexpected done text: %q", done.Text)
 	}
-
-	nm, _ = m.Update(done)
-	m = nm.(Model)
 	if m.busy {
 		t.Fatal("expected not busy after done")
 	}
@@ -142,8 +142,7 @@ func TestChat_SendErrorShownAsAssistant(t *testing.T) {
 	m = nm.(Model)
 	nm, cmd := m.Update(key(tea.KeyEnter))
 	m = nm.(Model)
-	nm, _ = m.Update(cmd())
-	m = nm.(Model)
+	m = feed(m, execCmd(cmd)...)
 	if len(m.messages) != 2 || !strings.Contains(m.messages[1].Content, "网络错误") {
 		t.Fatalf("error not rendered: %+v", m.messages)
 	}
@@ -168,8 +167,7 @@ func TestChat_ConfirmQuestionFlowsAsMessage(t *testing.T) {
 		}
 		nm, cmd := m.Update(key(tea.KeyEnter))
 		m = nm.(Model)
-		nm, _ = m.Update(cmd())
-		m = nm.(Model)
+		m = feed(m, execCmd(cmd)...)
 	}
 	send("删除 web-1")
 	if len(m.messages) != 2 || !strings.Contains(m.messages[1].Content, "是否继续") {
@@ -245,7 +243,7 @@ func (c *chanSink) drain() []tea.Msg {
 	}
 }
 
-// typeAndSend 进 Insert 模式输入 text 并回车发送,返回发送后的 Model 与 sendCmd。
+// typeAndSend 进 Insert 模式输入 text 并回车发送,返回发送后的 Model 与 sendCmd(未执行)。
 func typeAndSend(t *testing.T, m Model, text string) (Model, tea.Cmd) {
 	t.Helper()
 	nm, _ := m.Update(runeKey('i'))
@@ -256,6 +254,32 @@ func typeAndSend(t *testing.T, m Model, text string) (Model, tea.Cmd) {
 	}
 	nm, cmd := m.Update(key(tea.KeyEnter))
 	return nm.(Model), cmd
+}
+
+// execCmd 执行 tea.Cmd(递归展开 tea.Batch),返回全部消息。
+func execCmd(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{msg}
+	}
+	var out []tea.Msg
+	for _, c := range batch {
+		out = append(out, execCmd(c)...)
+	}
+	return out
+}
+
+// feed 依次把消息喂给 Model.Update,返回最终 Model。
+func feed(m Model, msgs ...tea.Msg) Model {
+	for _, msg := range msgs {
+		nm, _ := m.Update(msg)
+		m = nm.(Model)
+	}
+	return m
 }
 
 func TestChat_ProgressMsgMapping(t *testing.T) {
@@ -309,24 +333,23 @@ func TestChat_DeltaStreamsIntoPendingLine(t *testing.T) {
 	if !m.busy || !m.streaming {
 		t.Fatalf("send 后应 busy+streaming, busy=%v streaming=%v", m.busy, m.streaming)
 	}
+	if !m.tickArmed {
+		t.Fatal("send 应挂起节流节拍(spinner+flush 共用)")
+	}
 	if len(m.messages) != 1 {
 		t.Fatalf("send 后应只有 user 消息, got %+v", m.messages)
 	}
-	v := m.View()
-	if !strings.Contains(v, "AI:") || !strings.Contains(v, "▍") {
+	if v := m.View(); !strings.Contains(v, "▍") {
 		t.Fatalf("send 后应有待位行+光标: %s", v)
 	}
 
-	nm, tick := m.Update(ChatDeltaMsg{Text: "db 组共 "})
+	nm, cmd := m.Update(ChatDeltaMsg{Text: "db 组共 "})
 	m = nm.(Model)
-	if tick == nil {
-		t.Fatal("首个 delta 应挂 flush tick")
+	if cmd != nil {
+		t.Fatal("节拍已挂起时 delta 不应重复挂")
 	}
-	nm, tick2 := m.Update(ChatDeltaMsg{Text: "25 个节点"})
+	nm, _ = m.Update(ChatDeltaMsg{Text: "25 个节点"})
 	m = nm.(Model)
-	if tick2 != nil {
-		t.Fatal("tick 已挂起时不应重复挂")
-	}
 	if m.streamBuf != "db 组共 25 个节点" {
 		t.Fatalf("streamBuf = %q", m.streamBuf)
 	}
@@ -336,35 +359,40 @@ func TestChat_DeltaStreamsIntoPendingLine(t *testing.T) {
 	if v := m.View(); strings.Contains(v, "db 组共 25 个节点") {
 		t.Fatal("未 flush 前视口不应显示增量")
 	}
+
+	nm, rearm := m.Update(FlushTickMsg{})
+	m = nm.(Model)
+	if v := m.View(); !strings.Contains(v, "db 组共 25 个节点") || !strings.Contains(v, "▍") {
+		t.Fatalf("flush 后视口应含流式文本+光标: %s", v)
+	}
+	if rearm == nil {
+		t.Fatal("busy 期间节拍应续订")
+	}
 }
 
 func TestChat_FlushTickRefreshesViewportAndRearms(t *testing.T) {
 	m := newChat(t)
 	m.sender = fakeSender{}
 	m, _ = typeAndSend(t, m, "hello")
-	nm, tick := m.Update(ChatDeltaMsg{Text: "流式回复中"})
+	nm, _ := m.Update(ChatDeltaMsg{Text: "流式回复中"})
 	m = nm.(Model)
-	if tick == nil {
-		t.Fatal("expected tick cmd")
+	if v := m.View(); strings.Contains(v, "流式回复中") {
+		t.Fatal("未 flush 前不应出现增量")
 	}
-	tickMsg := tick()
-	if _, ok := tickMsg.(FlushTickMsg); !ok {
-		t.Fatalf("expected FlushTickMsg, got %T", tickMsg)
-	}
-	nm, rearm := m.Update(tickMsg)
+	nm, rearm := m.Update(FlushTickMsg{})
 	m = nm.(Model)
 	if v := m.View(); !strings.Contains(v, "流式回复中") {
 		t.Fatalf("flush 后视口应含增量: %s", v)
 	}
 	if rearm == nil {
-		t.Fatal("streaming 期间应续订 tick")
+		t.Fatal("busy 期间应续订 tick")
 	}
 	nm, _ = m.Update(ChatDoneMsg{Text: "流式回复中"})
 	m = nm.(Model)
 	nm, rearm2 := m.Update(rearm())
 	m = nm.(Model)
 	if rearm2 != nil {
-		t.Fatal("streaming 结束后不应续订")
+		t.Fatal("busy 结束后不应续订")
 	}
 }
 
@@ -374,20 +402,20 @@ func TestChat_DoneSettlesStream(t *testing.T) {
 		return "db 组共 25 个节点", nil
 	}}
 	m, cmd := typeAndSend(t, m, "列一下 db 组")
-	for _, msg := range []tea.Msg{
+	m = feed(m,
 		ChatDeltaMsg{Text: "db 组共 "},
 		ChatDeltaMsg{Text: "25 个"},
 		ToolProgressMsg{Phase: "execute", Name: "query_nodes"},
-	} {
-		nm, _ := m.Update(msg)
-		m = nm.(Model)
+	)
+	if len(m.messages) != 2 || m.messages[1].Role != "tool" || m.messages[1].Content != "query_nodes" {
+		t.Fatalf("execute 应追加工具活动行: %+v", m.messages)
 	}
-	nm, _ := m.Update(cmd())
-	m = nm.(Model)
+	m = feed(m, execCmd(cmd)...)
 	if m.busy || m.streaming || m.streamBuf != "" || m.toolPhase != "" {
 		t.Fatalf("流式状态未结算: busy=%v streaming=%v buf=%q phase=%q", m.busy, m.streaming, m.streamBuf, m.toolPhase)
 	}
-	if len(m.messages) != 2 || m.messages[1].Content != "db 组共 25 个节点" {
+	// 工具活动行保留在对话流里,最终文本追加其后
+	if len(m.messages) != 3 || m.messages[2].Content != "db 组共 25 个节点" {
 		t.Fatalf("结算应用服务端最终文本: %+v", m.messages)
 	}
 	if v := m.View(); strings.Contains(v, "▍") {
@@ -401,10 +429,8 @@ func TestChat_DoneErrorClearsStream(t *testing.T) {
 		return "", fmt.Errorf("网络错误")
 	}}
 	m, cmd := typeAndSend(t, m, "x")
-	nm, _ := m.Update(ChatDeltaMsg{Text: "半截"})
-	m = nm.(Model)
-	nm, _ = m.Update(cmd())
-	m = nm.(Model)
+	m = feed(m, ChatDeltaMsg{Text: "半截"})
+	m = feed(m, execCmd(cmd)...)
 	if m.streaming || m.streamBuf != "" {
 		t.Fatalf("出错也应结算流式状态: streaming=%v buf=%q", m.streaming, m.streamBuf)
 	}
@@ -495,10 +521,14 @@ func TestChat_SendStreamsThroughBridge(t *testing.T) {
 		return "db 组共 25 个节点", nil
 	}}
 	m, cmd := typeAndSend(t, m, "列一下 db 组")
-	doneMsg := cmd()
-	done, ok := doneMsg.(ChatDoneMsg)
-	if !ok || done.Text != "db 组共 25 个节点" {
-		t.Fatalf("expected ChatDoneMsg, got %#v", doneMsg)
+	var doneMsg tea.Msg
+	for _, msg := range execCmd(cmd) {
+		if _, ok := msg.(ChatDoneMsg); ok {
+			doneMsg = msg
+		}
+	}
+	if doneMsg == nil {
+		t.Fatal("send 消息中缺 ChatDoneMsg")
 	}
 	msgs := sink.drain()
 	if len(msgs) != 4 {
@@ -513,21 +543,76 @@ func TestChat_SendStreamsThroughBridge(t *testing.T) {
 	if d, ok := msgs[2].(ChatDeltaMsg); !ok || d.Text != "db 组共 " {
 		t.Fatalf("msgs[2] = %#v", msgs[2])
 	}
-	for _, msg := range msgs {
-		nm, _ := m.Update(msg)
-		m = nm.(Model)
-	}
+	m = feed(m, msgs...)
 	nm, _ := m.Update(FlushTickMsg{})
 	m = nm.(Model)
 	if v := m.View(); !strings.Contains(v, "db 组共 25 个节点") || !strings.Contains(v, "▍") {
 		t.Fatalf("flush 后应见流式文本+光标: %s", v)
 	}
-	nm, _ = m.Update(doneMsg)
-	m = nm.(Model)
+	m = feed(m, doneMsg)
 	if m.busy || m.streaming {
 		t.Fatalf("done 后应复位: busy=%v streaming=%v", m.busy, m.streaming)
 	}
-	if len(m.messages) != 2 || m.messages[1].Content != "db 组共 25 个节点" {
+	if len(m.messages) != 3 || m.messages[2].Content != "db 组共 25 个节点" {
 		t.Fatalf("最终文本不一致: %+v", m.messages)
+	}
+}
+
+func TestChat_ToolProgressGenerateDoesNotAppend(t *testing.T) {
+	m := newChat(t)
+	m.sender = fakeSender{}
+	m, _ = typeAndSend(t, m, "x")
+	m = feed(m, ToolProgressMsg{Phase: "generate", Name: "query_nodes"})
+	if len(m.messages) != 1 {
+		t.Fatalf("generate 只是准备调用,不应追加工具行: %+v", m.messages)
+	}
+	if m.toolPhase == "" {
+		t.Fatal("generate 应更新状态栏阶段")
+	}
+	m = feed(m, ToolProgressMsg{Phase: "execute", Name: "query_nodes"})
+	if len(m.messages) != 2 || m.messages[1].Role != "tool" {
+		t.Fatalf("execute 应追加工具活动行: %+v", m.messages)
+	}
+	if v := m.View(); !strings.Contains(v, "⏺ query_nodes") {
+		t.Fatalf("对话流应可见工具活动行: %s", v)
+	}
+}
+
+func TestChat_SpinnerAdvancesOnTick(t *testing.T) {
+	m := newChat(t)
+	m.sender = fakeSender{}
+	m, _ = typeAndSend(t, m, "x")
+	before := m.spinnerIdx
+	nm, rearm := m.Update(FlushTickMsg{})
+	m = nm.(Model)
+	if m.spinnerIdx == before {
+		t.Fatal("busy 期间节拍应推进 spinner")
+	}
+	if rearm == nil {
+		t.Fatal("busy 期间应续订")
+	}
+	m = feed(m, ChatDoneMsg{Text: "ok"})
+	nm, rearm2 := m.Update(FlushTickMsg{})
+	m = nm.(Model)
+	if rearm2 != nil {
+		t.Fatal("busy 结束后不应续订")
+	}
+}
+
+func TestChat_WindowSizeBudget(t *testing.T) {
+	m := newChat(t)
+	m = feed(m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	if m.width != 98 {
+		t.Fatalf("width = %d, want 98", m.width)
+	}
+	if m.height != 21 || m.view.Height != 21 {
+		t.Fatalf("高度预算应精确(30-9): height=%d view.Height=%d", m.height, m.view.Height)
+	}
+	if m.ta.Width() <= 0 || m.ta.Width() >= 98 {
+		t.Fatalf("textarea 宽度应适配边框: %d", m.ta.Width())
+	}
+	// 面板 View 行数 = 状态 1 + 视口 21 + 输入框 4 + 提示 1 = 27,加 App chrome 3 行恰为 30,不截断
+	if lines := strings.Count(m.View(), "\n") + 1; lines != 27 {
+		t.Fatalf("面板 View 行数 = %d, want 27", lines)
 	}
 }

@@ -290,6 +290,29 @@ func TestApp_AIEscReturnsToNodes(t *testing.T) {
 	}
 }
 
+func TestApp_AIPanelAutoFocus(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(runeKey('4'))
+	m = nm.(*App)
+	if !m.ai.InsertMode() {
+		t.Fatal("切到 AI 面板应自动聚焦输入(Insert)")
+	}
+	nm, _ = m.Update(key(tea.KeyTab))
+	m = nm.(*App)
+	if m.ai.InsertMode() {
+		t.Fatal("离开 AI 面板应失焦回 Normal")
+	}
+	nm, _ = m.Update(key(tea.KeyTab))
+	m = nm.(*App)
+	nm, _ = m.Update(key(tea.KeyTab))
+	m = nm.(*App)
+	nm, _ = m.Update(key(tea.KeyTab))
+	m = nm.(*App)
+	if !m.ai.InsertMode() {
+		t.Fatal("Tab 绕回 AI 面板也应自动聚焦")
+	}
+}
+
 func TestApp_XWithMarksFillsNodes(t *testing.T) {
 	m := newApp(t)
 	// 勾选 n1, n2 (seed: n1/n2)

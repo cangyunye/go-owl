@@ -6,7 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	bubbleskey "github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -40,6 +41,15 @@ const streamFlushInterval = 90 * time.Millisecond
 
 // streamCursor 流式进行中追加在缓冲尾部的光标。
 const streamCursor = "▍"
+
+// spinnerFrames 状态行 spinner(braille 字符),随 FlushTickMsg 推进。
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// panelChromeRows 面板自身固定占用行数: 状态行 1 + 输入框 4 + 提示行 1。
+const panelChromeRows = 6
+
+// appChromeRows App 层固定占用行数: 菜单栏 + 路径/模式 + 分隔线。
+const appChromeRows = 3
 
 // Sender 会话发送接口; *owlavi.Session 天然满足,测试注入 fake。
 type Sender interface {
@@ -92,11 +102,12 @@ type Model struct {
 	toolPhase    string // 工具阶段状态栏文案
 	tickArmed    bool   // flush tick 是否已挂起
 	pendingFlush bool   // 有未刷入视口的增量
+	spinnerIdx   int    // 状态行 spinner 帧
 	prog         msgSink
 
 	session *owlavi.Session
 	sender  Sender
-	input   textinput.Model
+	ta      textarea.Model
 	view    viewport.Model
 
 	width  int
@@ -106,23 +117,26 @@ type Model struct {
 func NewModel(store common.NodeStore) Model {
 	m := Model{
 		store:  store,
-		input:  newInput(),
-		view:   viewport.New(78, 18),
+		ta:     newTextarea(),
+		view:   viewport.New(78, 9),
 		width:  78,
-		height: 18,
+		height: 9,
 	}
 	m.resetSession()
 	m.sender = m.session
 	return m
 }
 
-func newInput() textinput.Model {
-	ti := textinput.New()
-	ti.Placeholder = "输入指令… (Enter 发送, Esc 退出输入)"
-	ti.Width = 40
-	ti.CharLimit = 512
-	ti.Blur()
-	return ti
+func newTextarea() textarea.Model {
+	ta := textarea.New()
+	ta.Placeholder = "输入指令, / 唤起命令…"
+	ta.ShowLineNumbers = false
+	ta.SetHeight(2)
+	ta.CharLimit = 4096
+	// Enter 留给发送,换行走 Ctrl+J
+	ta.KeyMap.InsertNewline = bubbleskey.NewBinding(bubbleskey.WithKeys("ctrl+j"))
+	ta.Blur()
+	return ta
 }
 
 func (m *Model) resetSession() {
@@ -185,6 +199,18 @@ func progressMsg(step, detail string) tea.Msg {
 
 func (m Model) InsertMode() bool { return m.mode != ModeNormal }
 
+// FocusInput 面板被激活时由 App 调用:自动进入输入模式(对话式,免先按 Enter)。
+func (m *Model) FocusInput() {
+	m.mode = ModeInsert
+	m.ta.Focus()
+}
+
+// BlurInput 面板失活时由 App 调用:回到 Normal 模式。
+func (m *Model) BlurInput() {
+	m.mode = ModeNormal
+	m.ta.Blur()
+}
+
 func (m Model) IsDirty() bool { return false }
 
 func (m Model) Path() []string { return []string{"ai"} }
@@ -197,12 +223,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Width > 0 {
 			m.width = msg.Width - 2
 		}
-		if msg.Height > 0 {
-			m.height = msg.Height - 8
+		// 高度精确预算: App chrome 3 + 状态行 1 + 视口 + 输入框 4 + 提示行 1
+		if msg.Height > appChromeRows+panelChromeRows {
+			m.height = msg.Height - appChromeRows - panelChromeRows
 		}
 		m.view.Width = m.width
 		m.view.Height = m.height
-		m.input.Width = m.width - 10
+		m.ta.SetWidth(m.width - 6)
 		return m, nil
 	case ChatDeltaMsg:
 		m.streaming = true
@@ -214,22 +241,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tickArmed = true
 		return m, flushTickCmd()
 	case FlushTickMsg:
+		// 节拍双职: 推进状态行 spinner + 节流刷新视口
+		m.spinnerIdx = (m.spinnerIdx + 1) % len(spinnerFrames)
 		m.tickArmed = false
-		if !m.streaming {
-			return m, nil
-		}
-		if m.pendingFlush {
+		if m.streaming && m.pendingFlush {
 			m.pendingFlush = false
 			m.refreshViewport()
 		}
-		m.tickArmed = true
-		return m, flushTickCmd()
+		// 续订只跟 busy 走(spinner 生命周期);闲时的孤儿节拍直接熄火
+		if m.busy {
+			m.tickArmed = true
+			return m, flushTickCmd()
+		}
+		return m, nil
 	case ToolProgressMsg:
 		switch msg.Phase {
 		case "generate":
 			m.toolPhase = "🤖 正在生成 " + msg.Name + "…"
 		case "execute":
 			m.toolPhase = "🔧 正在执行 " + msg.Name + "…"
+			// 工具活动进对话流(仅渲染,不进 LLM 上下文)
+			m.messages = append(m.messages, ChatMsg{Role: "tool", Content: msg.Name})
+			m.refreshViewport()
 		}
 		return m, nil
 	case ChatDoneMsg:
@@ -254,11 +287,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch km.String() {
 			case "esc":
 				m.mode = ModeNormal
-				m.input.Blur()
+				m.ta.Blur()
 				return m, nil
 			case "enter":
-				text := strings.TrimSpace(m.input.Value())
-				m.input.SetValue("")
+				text := strings.TrimSpace(m.ta.Value())
+				m.ta.Reset()
 				if text == "" {
 					return m, nil
 				}
@@ -272,13 +305,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.streamBuf = ""
 				m.toolPhase = ""
 				m.pendingFlush = false
+				m.tickArmed = true // spinner 从发送即开始转动
 				m.status = "AI 处理中…"
 				m.refreshViewportFollow()
-				return m, m.sendCmd(text)
+				return m, tea.Batch(m.sendCmd(text), flushTickCmd())
 			}
 		}
 		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
+		m.ta, cmd = m.ta.Update(msg)
 		return m, cmd
 	}
 	km, ok := msg.(tea.KeyMsg)
@@ -288,20 +322,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch km.String() {
 	case "enter", "i":
 		m.mode = ModeInsert
-		m.input.Focus()
+		m.ta.Focus()
 	case "n":
 		if m.busy {
 			m.status = "处理中,请等待…"
 			return m, nil
 		}
-		m.messages = nil
-		m.status = ""
-		m.streaming = false
-		m.streamBuf = ""
-		m.toolPhase = ""
-		m.pendingFlush = false
-		m.resetSession()
-		m.refreshViewportFollow()
+		m.resetChatState()
 	case "up", "down", "pgup", "pgdown", "home", "end":
 		var cmd tea.Cmd
 		m.view, cmd = m.view.Update(msg)
@@ -310,6 +337,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, func() tea.Msg { return LeavePanelMsg{} }
 	}
 	return m, nil
+}
+
+// resetChatState 清空对话并重建会话(n 键/斜杠命令共用)。
+func (m *Model) resetChatState() {
+	m.messages = nil
+	m.status = ""
+	m.streaming = false
+	m.streamBuf = ""
+	m.toolPhase = ""
+	m.pendingFlush = false
+	m.resetSession()
+	m.refreshViewportFollow()
 }
 
 func (m *Model) sendCmd(input string) tea.Cmd {
