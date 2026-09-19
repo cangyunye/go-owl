@@ -8,7 +8,13 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
 	"github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/control/playbook"
+	internalhistory "github.com/cangyunye/go-owl/internal/history"
 )
+
+// owlDBPath 解析共享 owl.db 路径（与 history/节点库一致，含 OWL_DB_PATH 覆盖）。
+func owlDBPath() string {
+	return internalhistory.DefaultConfig().DBPath
+}
 
 // SetupSession 装配 owl ai 的完整依赖链: 节点桥/管理器/CLI 执行器/LLM 配置/Agent。
 // owl ai 命令与 TUI AI 面板共用此入口,避免装配逻辑漂移。
@@ -38,6 +44,11 @@ func SetupSession(store common.NodeStore, cfg *ai.Config, verbose bool) (*ai.Age
 	}
 
 	executor := ai.NewCLIExecutor(nodeMgr, nodeStoreAdapter)
+	// 告警数据适配：与 owl-serve 共享同一 owl.db（WAL 并发安全）。
+	// 节点存储未落库（内存回退）时不注入，告警工具返回友好提示。
+	if nsdb, ok := store.(*common.NodeStoreDB); ok && nsdb.DB() != nil {
+		executor.SetAlertData(newOwlAlertData(store, owlDBPath()))
+	}
 	playbookParser := playbook.NewParser()
 	agent, err := ai.NewAgent(executor, cfg, nodeMgr, nodeStoreAdapter, playbookParser, verbose)
 	if err != nil {

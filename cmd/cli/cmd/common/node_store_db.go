@@ -27,6 +27,9 @@ func NewNodeStoreDB(db *sql.DB) *NodeStoreDB {
 	return &NodeStoreDB{db: db, conflictPrompt: true}
 }
 
+// DB 返回底层共享连接（AI 告警数据适配等同库访问场景用）。
+func (s *NodeStoreDB) DB() *sql.DB { return s.db }
+
 // SetConflictPrompt 开关 ensureConsistent 的交互式冲突提示。
 // 关闭后冲突检测仅记录警告,不弹交互提示、不阻塞读路径。
 func (s *NodeStoreDB) SetConflictPrompt(enabled bool) {

@@ -17,5 +17,7 @@ func TaskSlashCommands() []input.SlashCommand {
 		{Name: "playbook", Category: "task", Icon: "🛠️", Label: i18n.T("ai.slash.playbook_label"), Desc: i18n.T("ai.slash.playbook_desc"), Template: i18n.T("ai.slash.playbook_template"), Args: []string{"requirement"}},
 		{Name: "transfer", Category: "task", Icon: "📤", Label: i18n.T("ai.slash.transfer_label"), Desc: i18n.T("ai.slash.transfer_desc"), Template: i18n.T("ai.slash.transfer_template"), Args: []string{"source_file", "nodes", "dest_dir"}},
 		{Name: "script", Category: "task", Icon: "🧩", Label: i18n.T("ai.slash.script_label"), Desc: i18n.T("ai.slash.script_desc"), Template: i18n.T("ai.slash.script_template"), Args: []string{"nodes", "script"}},
+		{Name: "alerts", Category: "task", Icon: "🔔", Label: i18n.T("ai.slash.alerts_label"), Desc: i18n.T("ai.slash.alerts_desc"), Template: i18n.T("ai.slash.alerts_template"), Args: []string{"condition"}},
+		{Name: "fix-alert", Category: "task", Icon: "🚑", Label: i18n.T("ai.slash.fix_alert_label"), Desc: i18n.T("ai.slash.fix_alert_desc"), Template: i18n.T("ai.slash.fix_alert_template"), Args: []string{"code"}},
 	}
 }

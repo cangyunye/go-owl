@@ -11,7 +11,7 @@ import (
 // CLI REPL 与 TUI 都从这里取模板,文案走 i18n。
 func TestTaskSlashCommandsCatalog(t *testing.T) {
 	cmds := TaskSlashCommands()
-	want := []string{"exec", "check", "diagnose", "query", "playbook", "transfer", "script"}
+	want := []string{"exec", "check", "diagnose", "query", "playbook", "transfer", "script", "alerts", "fix-alert"}
 	if len(cmds) != len(want) {
 		t.Fatalf("expected %d commands, got %d", len(want), len(cmds))
 	}
