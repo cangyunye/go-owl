@@ -30,6 +30,8 @@ type App struct {
 	ai    tuiai.Model
 	panel int // 0=Nodes 1=Exec 2=File 3=AI
 
+	lastWidth int // 最近一次窗口宽度(分隔线用),默认 60
+
 	Help        bool
 	QuitConfirm bool
 }
@@ -37,7 +39,7 @@ type App struct {
 var panelNames = []string{"Nodes", "Exec", "File", "AI"}
 
 func NewApp(store common.NodeStore) *App {
-	m := &App{nodes: nodes.NewModel(store)}
+	m := &App{nodes: nodes.NewModel(store), lastWidth: 60}
 	m.exec = exec.NewModel(store)
 	m.exec.CaptureTargets(m.nodes.Visible())
 	m.file = file.NewModel(store)
@@ -127,6 +129,23 @@ func (m *App) applyFileSelectionEntry() {
 }
 
 func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		// 尺寸广播给全部面板: bubbletea 只把 WindowSizeMsg 发给程序,App 若只转发给
+		// 当前面板,其余面板会一直用 NewModel 的默认尺寸(AI 面板表现为视口 9 行、
+		// 输入框 78 列)。exec/file 不消费该消息,广播无副作用。
+		if ws.Width > 0 {
+			m.lastWidth = ws.Width
+		}
+		nm, _ := m.nodes.Update(msg)
+		m.nodes = nm.(nodes.Model)
+		em, _ := m.exec.Update(msg)
+		m.exec = em.(exec.ExecModel)
+		fm, _ := m.file.Update(msg)
+		m.file = fm.(file.FileModel)
+		am, _ := m.ai.Update(msg)
+		m.ai = am.(tuiai.Model)
+		return m, nil
+	}
 	if _, ok := msg.(exec.LeavePanelMsg); ok {
 		m.switchPanel(0, EntryNeutral)
 		return m, nil
@@ -243,7 +262,7 @@ func (m *App) View() string {
 	}
 	b.WriteString(menuBar(m.panel) + "\n")
 	b.WriteString(fmt.Sprintf("/%s   Mode:%s\n", strings.Join(p.Path(), "/"), mode))
-	b.WriteString(strings.Repeat("─", 60) + "\n")
+	b.WriteString(strings.Repeat("─", m.lastWidth) + "\n")
 	b.WriteString(p.View())
 	if m.Help {
 		b.WriteString("\n\n" + helpView())

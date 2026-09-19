@@ -290,6 +290,22 @@ func TestApp_AIEscReturnsToNodes(t *testing.T) {
 	}
 }
 
+func TestApp_WindowSizeBroadcastToAllPanels(t *testing.T) {
+	m := newApp(t)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = nm.(*App)
+	nm, _ = m.Update(runeKey('4'))
+	m = nm.(*App)
+	// AI 面板必须拿到真实窗口尺寸(否则一直用 NewModel 默认 78x9):
+	// 视口 21 行 → 面板 27 行 + App chrome 3 行 = 30 行
+	if lines := strings.Count(m.View(), "\n") + 1; lines != 30 {
+		t.Fatalf("AI 面板未收到窗口尺寸广播, View 行数 = %d, want 30", lines)
+	}
+	if !strings.Contains(m.View(), strings.Repeat("─", 100)) {
+		t.Fatal("App 分隔线应按窗口宽度绘制")
+	}
+}
+
 func TestApp_AIPanelAutoFocus(t *testing.T) {
 	m := newApp(t)
 	nm, _ := m.Update(runeKey('4'))
