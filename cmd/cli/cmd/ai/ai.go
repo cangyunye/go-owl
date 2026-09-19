@@ -376,20 +376,12 @@ func runAI(cmd *cobra.Command, args []string) {
 		currentSession.SetDefaultConfirmGate()
 		fmt.Println(i18n.T("ai.chat.new_session"))
 	}
-	slashCommands := []input.SlashCommand{
-		{Name: "exec", Category: "task", Icon: "▶️", Label: i18n.T("ai.slash.exec_label"), Desc: i18n.T("ai.slash.exec_desc"), Template: i18n.T("ai.slash.exec_template"), Args: []string{"nodes", "command"}},
-		{Name: "check", Category: "task", Icon: "🩺", Label: i18n.T("ai.slash.check_label"), Desc: i18n.T("ai.slash.check_desc"), Template: i18n.T("ai.slash.check_template"), Args: []string{"nodes"}},
-		{Name: "diagnose", Category: "task", Icon: "🔍", Label: i18n.T("ai.slash.diagnose_label"), Desc: i18n.T("ai.slash.diagnose_desc"), Template: i18n.T("ai.slash.diagnose_template"), Args: []string{"target"}},
-		{Name: "query", Category: "task", Icon: "📊", Label: i18n.T("ai.slash.query_label"), Desc: i18n.T("ai.slash.query_desc"), Template: i18n.T("ai.slash.query_template"), Args: []string{"condition"}},
-		{Name: "playbook", Category: "task", Icon: "🛠️", Label: i18n.T("ai.slash.playbook_label"), Desc: i18n.T("ai.slash.playbook_desc"), Template: i18n.T("ai.slash.playbook_template"), Args: []string{"requirement"}},
-		{Name: "transfer", Category: "task", Icon: "📤", Label: i18n.T("ai.slash.transfer_label"), Desc: i18n.T("ai.slash.transfer_desc"), Template: i18n.T("ai.slash.transfer_template"), Args: []string{"source_file", "nodes", "dest_dir"}},
-		{Name: "script", Category: "task", Icon: "🧩", Label: i18n.T("ai.slash.script_label"), Desc: i18n.T("ai.slash.script_desc"), Template: i18n.T("ai.slash.script_template"), Args: []string{"nodes", "script"}},
-
-		{Name: "help", Category: "action", Icon: "ℹ️", Label: i18n.T("ai.slash.help_label"), Desc: i18n.T("ai.slash.help_desc"), Action: func() { printHelp() }},
-		{Name: "new", Category: "action", Icon: "➕", Label: i18n.T("ai.slash.new_label"), Desc: i18n.T("ai.slash.new_desc"), Action: func() { resetSession() }},
-		{Name: "clear", Category: "action", Icon: "🗑️", Label: i18n.T("ai.slash.clear_label"), Desc: i18n.T("ai.slash.clear_desc"), Action: func() { resetSession() }},
-		{Name: "quit", Category: "action", Icon: "👋", Label: i18n.T("ai.slash.quit_label"), Desc: i18n.T("ai.slash.quit_desc"), Action: func() { quitRequested = true }},
-	}
+	slashCommands := append(TaskSlashCommands(),
+		input.SlashCommand{Name: "help", Category: "action", Icon: "ℹ️", Label: i18n.T("ai.slash.help_label"), Desc: i18n.T("ai.slash.help_desc"), Action: func() { printHelp() }},
+		input.SlashCommand{Name: "new", Category: "action", Icon: "➕", Label: i18n.T("ai.slash.new_label"), Desc: i18n.T("ai.slash.new_desc"), Action: func() { resetSession() }},
+		input.SlashCommand{Name: "clear", Category: "action", Icon: "🗑️", Label: i18n.T("ai.slash.clear_label"), Desc: i18n.T("ai.slash.clear_desc"), Action: func() { resetSession() }},
+		input.SlashCommand{Name: "quit", Category: "action", Icon: "👋", Label: i18n.T("ai.slash.quit_label"), Desc: i18n.T("ai.slash.quit_desc"), Action: func() { quitRequested = true }},
+	)
 
 	// 单行输入处理: 返回 true 表示退出交互。
 	handleLine := func(input string) bool {

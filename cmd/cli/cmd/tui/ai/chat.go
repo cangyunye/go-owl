@@ -12,7 +12,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	aisetup "github.com/cangyunye/go-owl/cmd/cli/cmd/ai"
+	"github.com/cangyunye/go-owl/cmd/cli/cmd/ai/input"
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	owlavi "github.com/cangyunye/go-owl/internal/ai"
 )
 
@@ -50,6 +52,9 @@ const panelChromeRows = 6
 
 // appChromeRows App 层固定占用行数: 菜单栏 + 路径/模式 + 分隔线。
 const appChromeRows = 3
+
+// maxMenuRows 斜杠菜单最多渲染行数。
+const maxMenuRows = 4
 
 // Sender 会话发送接口; *owlavi.Session 天然满足,测试注入 fake。
 type Sender interface {
@@ -104,6 +109,8 @@ type Model struct {
 	pendingFlush bool   // 有未刷入视口的增量
 	spinnerIdx   int    // 状态行 spinner 帧
 	prog         msgSink
+	menu         *input.SlashMenu // 斜杠命令补全(纯逻辑状态机,复用 CLI 实现)
+	menuOpen     bool
 
 	session *owlavi.Session
 	sender  Sender
@@ -121,10 +128,21 @@ func NewModel(store common.NodeStore) Model {
 		view:   viewport.New(78, 9),
 		width:  78,
 		height: 9,
+		menu:   input.NewSlashMenu(tuiSlashCommands()),
 	}
 	m.resetSession()
 	m.sender = m.session
 	return m
+}
+
+// tuiSlashCommands TUI 侧斜杠命令目录: 共享 task 模板 + TUI 语义的 action。
+// 不用 Action 闭包(confirm 按 Name 分发),避免 Model 值拷贝导致的闭包别名。
+func tuiSlashCommands() []input.SlashCommand {
+	return append(aisetup.TaskSlashCommands(),
+		input.SlashCommand{Name: "help", Category: "action", Icon: "ℹ️", Label: i18n.T("ai.slash.help_label"), Desc: i18n.T("ai.slash.help_desc")},
+		input.SlashCommand{Name: "new", Category: "action", Icon: "➕", Label: i18n.T("ai.slash.new_label"), Desc: i18n.T("ai.slash.new_desc")},
+		input.SlashCommand{Name: "clear", Category: "action", Icon: "🗑️", Label: i18n.T("ai.slash.clear_label"), Desc: i18n.T("ai.slash.clear_desc")},
+	)
 }
 
 func newTextarea() textarea.Model {
@@ -228,7 +246,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.height = msg.Height - appChromeRows - panelChromeRows
 		}
 		m.view.Width = m.width
-		m.view.Height = m.height
+		m.view.Height = m.height - m.menuRows()
 		m.ta.SetWidth(m.width - 6)
 		return m, nil
 	case ChatDeltaMsg:
@@ -284,6 +302,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if m.mode == ModeInsert {
 		if km, ok := msg.(tea.KeyMsg); ok {
+			// 菜单打开时优先消费导航/确认键,↑↓ 不进输入框
+			if m.menuOpen {
+				switch km.String() {
+				case "up":
+					m.menu.MoveUp()
+					return m, nil
+				case "down":
+					m.menu.MoveDown()
+					return m, nil
+				case "tab", "enter":
+					cmd := m.confirmSlash()
+					return m, cmd
+				case "esc":
+					m.menuOpen = false
+					m.syncViewportHeight()
+					return m, nil
+				}
+			}
 			switch km.String() {
 			case "esc":
 				m.mode = ModeNormal
@@ -310,6 +346,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.refreshViewportFollow()
 				return m, tea.Batch(m.sendCmd(text), flushTickCmd())
 			}
+			var cmd tea.Cmd
+			m.ta, cmd = m.ta.Update(msg)
+			m.syncMenu()
+			return m, cmd
 		}
 		var cmd tea.Cmd
 		m.ta, cmd = m.ta.Update(msg)
@@ -349,6 +389,77 @@ func (m *Model) resetChatState() {
 	m.pendingFlush = false
 	m.resetSession()
 	m.refreshViewportFollow()
+}
+
+// syncMenu 按当前输入更新斜杠菜单开关与过滤词,并同步视口高度。
+func (m *Model) syncMenu() {
+	v := m.ta.Value()
+	if strings.HasPrefix(v, "/") {
+		m.menuOpen = true
+		m.menu.SetQuery(strings.TrimPrefix(v, "/"))
+	} else {
+		m.menuOpen = false
+	}
+	m.syncViewportHeight()
+}
+
+// menuRows 菜单渲染占用行数(0=关闭);无匹配时渲染 1 行占位提示。
+func (m *Model) menuRows() int {
+	if !m.menuOpen {
+		return 0
+	}
+	n := m.menu.Len()
+	if n == 0 {
+		return 1
+	}
+	if n > maxMenuRows {
+		n = maxMenuRows
+	}
+	return n
+}
+
+// syncViewportHeight 菜单打开时收缩视口,保证面板总行数不超窗口。
+func (m *Model) syncViewportHeight() {
+	m.view.Height = m.height - m.menuRows()
+}
+
+// confirmSlash 菜单确认: action 按 Name 分发,task 展开模板并定位占位符。
+func (m *Model) confirmSlash() tea.Cmd {
+	cmd, ok := m.menu.Selected()
+	m.menuOpen = false
+	m.ta.Reset()
+	m.syncViewportHeight()
+	if !ok {
+		return nil
+	}
+	if cmd.Category == "action" {
+		switch cmd.Name {
+		case "help":
+			m.messages = append(m.messages, ChatMsg{Role: "assistant", Content: m.helpText()})
+			m.refreshViewportFollow()
+		case "new", "clear":
+			m.resetChatState()
+		}
+		return nil
+	}
+	// task 类: 填入提示词模板,光标定位到首个 {arg}
+	m.ta.SetValue(cmd.Template)
+	if start, _, ok := input.PlaceholderRange(cmd.Template); ok {
+		m.ta.SetCursor(start)
+	}
+	return nil
+}
+
+// helpText 斜杠帮助: 命令目录 + 快捷键(仅作为对话流消息渲染,不进 LLM)。
+func (m Model) helpText() string {
+	var b strings.Builder
+	b.WriteString("斜杠命令:\n")
+	for _, c := range tuiSlashCommands() {
+		b.WriteString(fmt.Sprintf("  /%s %s %s — %s\n", c.Name, c.Icon, c.Label, c.Desc))
+	}
+	b.WriteString("快捷键: Enter 发送 · Ctrl+J 换行 · Esc 失焦/返回 · Tab 切面板 · 失焦后 n 新会话\n")
+	b.WriteString("退出 owl tui 请用 q 或 Ctrl+C")
+	return b.String()
 }
 
 func (m *Model) sendCmd(input string) tea.Cmd {

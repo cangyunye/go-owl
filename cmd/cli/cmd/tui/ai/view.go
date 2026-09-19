@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -27,9 +28,43 @@ func (m Model) View() string {
 	b.WriteString(m.statusLine() + "\n")
 	b.WriteString(m.view.View())
 	b.WriteString("\n")
+	if m.menuRows() > 0 {
+		b.WriteString(m.menuView())
+		b.WriteString("\n")
+	}
 	b.WriteString(m.inputBox())
 	b.WriteString("\n")
 	b.WriteString(styleDim.Render("  Enter 发送  Ctrl+J 换行  / 命令  Tab 切面板  Esc 失焦/返回"))
+	return b.String()
+}
+
+// menuView 斜杠菜单: 就地渲染在输入框上方,最多 maxMenuRows 行,选中行高亮。
+func (m Model) menuView() string {
+	if m.menu.Len() == 0 {
+		return styleDim.Render("  无匹配命令")
+	}
+	v := m.menu.Visible()
+	start := 0
+	if m.menu.Active() >= maxMenuRows {
+		start = m.menu.Active() - maxMenuRows + 1
+	}
+	end := start + maxMenuRows
+	if end > len(v) {
+		end = len(v)
+	}
+	var b strings.Builder
+	for i := start; i < end; i++ {
+		c := v[i]
+		line := fmt.Sprintf("/%s %s %s — %s", c.Name, c.Icon, c.Label, c.Desc)
+		if i == m.menu.Active() {
+			b.WriteString(theme.Style(theme.SlotSelected).Render("❯ "+line))
+		} else {
+			b.WriteString(styleDim.Render("  " + line))
+		}
+		if i < end-1 {
+			b.WriteString("\n")
+		}
+	}
 	return b.String()
 }
 

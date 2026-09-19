@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	"github.com/cangyunye/go-owl/internal/i18n"
 	owlavi "github.com/cangyunye/go-owl/internal/ai"
 )
 
@@ -615,4 +616,148 @@ func TestChat_WindowSizeBudget(t *testing.T) {
 	if lines := strings.Count(m.View(), "\n") + 1; lines != 27 {
 		t.Fatalf("面板 View 行数 = %d, want 27", lines)
 	}
+}
+
+// ---- 斜杠命令 ----
+
+// typeRaw 在 Insert 模式下输入原始文本(不进模式、不回车)。
+func typeRaw(t *testing.T, m Model, text string) Model {
+	t.Helper()
+	for _, r := range text {
+		nm, _ := m.Update(runeKey(r))
+		m = nm.(Model)
+	}
+	return m
+}
+
+func TestChat_SlashMenuOpensAndFilters(t *testing.T) {
+	m := newChat(t)
+	m = feed(m, runeKey('i'))
+	m = typeRaw(t, m, "/")
+	if !m.menuOpen {
+		t.Fatal("输入 / 应打开命令菜单")
+	}
+	if v := m.View(); !strings.Contains(v, "/exec") {
+		t.Fatalf("菜单应列出命令: %s", v)
+	}
+	m = typeRaw(t, m, "cl")
+	if !m.menuOpen {
+		t.Fatal("继续输入应保持菜单")
+	}
+	if v := m.View(); strings.Contains(v, "/exec ") {
+		t.Fatalf("前缀过滤后不应再显示 exec: %s", v)
+	}
+	if !strings.Contains(m.View(), "/clear") {
+		t.Fatalf("过滤后应显示 clear: %s", m.View())
+	}
+	// 非 / 开头 → 菜单关闭
+	m.ta.Reset()
+	m.syncMenu()
+	m = typeRaw(t, m, "hi")
+	if m.menuOpen {
+		t.Fatal("非 / 开头输入应关闭菜单")
+	}
+}
+
+func TestChat_SlashMenuNavAndEscKeepsInput(t *testing.T) {
+	m := newChat(t)
+	m = feed(m, runeKey('i'))
+	m = typeRaw(t, m, "/")
+	first := m.menu.Active()
+	nm, _ := m.Update(key(tea.KeyDown))
+	m = nm.(Model)
+	if m.menu.Active() != first+1 {
+		t.Fatalf("down 应下移选择: %d -> %d", first, m.menu.Active())
+	}
+	nm, _ = m.Update(key(tea.KeyUp))
+	m = nm.(Model)
+	if m.menu.Active() != first {
+		t.Fatal("up 应移回选择")
+	}
+	nm, _ = m.Update(key(tea.KeyEsc))
+	m = nm.(Model)
+	if m.menuOpen {
+		t.Fatal("esc 应仅关闭菜单")
+	}
+	if !m.InsertMode() || m.ta.Value() != "/" {
+		t.Fatal("esc 关菜单不应清输入/不应失焦")
+	}
+}
+
+func TestChat_SlashConfirmActionNew(t *testing.T) {
+	m := newChat(t)
+	m.messages = []ChatMsg{{Role: "user", Content: "旧消息"}}
+	m, _ = typeAndSend2(t, m, "/new")
+	if len(m.messages) != 0 {
+		t.Fatalf("/new 应清空对话: %+v", m.messages)
+	}
+	if m.menuOpen || m.busy {
+		t.Fatalf("/new 不应发送消息/应关菜单: menuOpen=%v busy=%v", m.menuOpen, m.busy)
+	}
+}
+
+func TestChat_SlashConfirmActionHelp(t *testing.T) {
+	m := newChat(t)
+	m = feed(m, tea.WindowSizeMsg{Width: 100, Height: 40}) // 视口足够高,帮助全文可见
+	m, _ = typeAndSend2(t, m, "/help")
+	if m.busy {
+		t.Fatal("/help 不应进入发送流程")
+	}
+	if len(m.messages) != 1 || m.messages[0].Role != "assistant" {
+		t.Fatalf("/help 应插入帮助消息: %+v", m.messages)
+	}
+	if v := m.View(); !strings.Contains(v, "/exec") || !strings.Contains(v, "/new") {
+		t.Fatalf("帮助应列出命令: %s", v)
+	}
+}
+
+func TestChat_SlashConfirmTaskExpandsTemplate(t *testing.T) {
+	m := newChat(t)
+	m, _ = typeAndSend2(t, m, "/exec")
+	if m.busy {
+		t.Fatal("task 命令只展开模板,不应发送")
+	}
+	if len(m.messages) != 0 {
+		t.Fatalf("task 命令不应产生消息: %+v", m.messages)
+	}
+	if m.menuOpen {
+		t.Fatal("确认后菜单应关闭")
+	}
+	if want := i18n.T("ai.slash.exec_template"); m.ta.Value() != want || want == "" {
+		t.Fatalf("应展开模板: got %q want %q", m.ta.Value(), want)
+	}
+}
+
+func TestChat_MenuShrinksViewport(t *testing.T) {
+	m := newChat(t)
+	m = feed(m, tea.WindowSizeMsg{Width: 100, Height: 30}, runeKey('i'))
+	if m.view.Height != 21 {
+		t.Fatalf("precond: view.Height = %d", m.view.Height)
+	}
+	m = typeRaw(t, m, "/")
+	if got := m.view.Height; got >= 21 {
+		t.Fatalf("菜单打开应收缩视口: %d", got)
+	}
+	if lines := strings.Count(m.View(), "\n") + 1; lines > 27 {
+		t.Fatalf("菜单打开后面板行数超预算: %d > 27", lines)
+	}
+	m.ta.Reset()
+	m.syncMenu()
+	m = typeRaw(t, m, "hi")
+	if got := m.view.Height; got != 21 {
+		t.Fatalf("菜单关闭应恢复视口高度: %d", got)
+	}
+}
+
+// typeAndSend2 输入 text 并回车(不执行 sendCmd,用于斜杠命令确认场景)。
+func typeAndSend2(t *testing.T, m Model, text string) (Model, tea.Cmd) {
+	t.Helper()
+	nm, _ := m.Update(runeKey('i'))
+	m = nm.(Model)
+	for _, r := range text {
+		nm, _ = m.Update(runeKey(r))
+		m = nm.(Model)
+	}
+	nm, cmd := m.Update(key(tea.KeyEnter))
+	return nm.(Model), cmd
 }
