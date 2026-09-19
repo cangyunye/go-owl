@@ -258,6 +258,10 @@ func (a *Agent) localFallbackChain(ctx context.Context, userInput string, onProg
 		toolCallJSON = a.buildToolCall("transfer_file", params)
 	case IntentFileDownload:
 		toolCallJSON = a.buildToolCall("file_download", params)
+	case IntentAlertList:
+		toolCallJSON = a.buildToolCall("alert_list", params)
+	case IntentAlertRemedy:
+		toolCallJSON = a.buildToolCall("alert_remedy", params)
 	default:
 		return "", false
 	}

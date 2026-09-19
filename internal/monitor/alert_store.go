@@ -320,6 +320,17 @@ func (s *Store) alertFilterSQL(f AlertFilter) (string, []any) {
 		query += ` AND alert_type_id = ?`
 		args = append(args, f.AlertTypeID)
 	}
+	if len(f.AlertTypeIDs) > 0 {
+		query += ` AND alert_type_id IN (`
+		for i, id := range f.AlertTypeIDs {
+			if i > 0 {
+				query += `,`
+			}
+			query += `?`
+			args = append(args, id)
+		}
+		query += `)`
+	}
 	if groups := splitGroups(f.Group); len(groups) > 0 && s.hasNodesTable() {
 		// 分组筛选：nodes.groups 为 JSON 数组，取与 nodes 页一致的 LIKE 匹配
 		query += ` AND node_id IN (SELECT id FROM nodes WHERE 1=0`

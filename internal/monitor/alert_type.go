@@ -224,3 +224,27 @@ func FindAlertType(id string) (AlertType, bool) {
 func (at AlertType) String() string {
 	return fmt.Sprintf("%s(%s)", at.ID, at.Name)
 }
+
+// RuleDescription 人类可读的触发规则描述（AI 对策/前端展示共用）。
+func (at AlertType) RuleDescription() string {
+	p := at.DefaultParams
+	if p.Metric == "" {
+		if at.CheckCmd != "" {
+			return fmt.Sprintf("自定义检查命令：%s", at.CheckCmd)
+		}
+		return "引擎信号规则（非指标阈值）"
+	}
+	op := p.Op
+	if op == "" {
+		op = ">"
+	}
+	threshold := fmt.Sprintf("%g", p.Value)
+	if p.PerCore > 0 {
+		threshold = fmt.Sprintf("核数×%g", p.PerCore)
+	}
+	desc := fmt.Sprintf("%s %s %s", p.Metric, op, threshold)
+	if p.Duration > 1 {
+		desc += fmt.Sprintf("，连续 %d 次采样触发", p.Duration)
+	}
+	return desc
+}

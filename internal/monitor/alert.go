@@ -28,14 +28,16 @@ type Alert struct {
 
 // AlertFilter 告警列表筛选。Status 为 "active" 时表示活跃（未解决）。
 // Group 为逗号分隔的节点分组（任一命中），依赖同库 nodes 表。
+// AlertTypeIDs 与 AlertTypeID 二选一（前者为多码 IN 过滤，供 AI 类别展开用）。
 type AlertFilter struct {
-	Status      AlertStatus
-	NodeID      string
-	Severity    string
-	AlertTypeID string
-	Group       string
-	Limit       int
-	Offset      int
+	Status       AlertStatus
+	NodeID       string
+	Severity     string
+	AlertTypeID  string
+	AlertTypeIDs []string
+	Group        string
+	Limit        int
+	Offset       int
 }
 
 // NewAlertID 生成可读告警实例 ID：AL-<unix>-<序号>。

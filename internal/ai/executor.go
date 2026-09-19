@@ -71,6 +71,9 @@ type (
 	ValidateResult         struct{ Text string }
 	NodeCheckResult        struct{ Text string }
 	QueryDatabaseResult    struct{ Text string }
+	AlertListResult        struct{ Text string }
+	AlertTypesResult       struct{ Text string }
+	AlertRemedyResult      struct{ Text string }
 )
 
 type Executor interface {
@@ -95,6 +98,9 @@ type Executor interface {
 	NodeImport(ctx context.Context, params NodeImportParams) (*NodeResult, error)
 	NodeExport(ctx context.Context, params NodeExportParams) (*NodeResult, error)
 	FileDownload(ctx context.Context, params FileDownloadParams) (*FileDownloadResult, error)
+	ListAlerts(ctx context.Context, params AlertListParams) (*AlertListResult, error)
+	ListAlertTypes(ctx context.Context) (*AlertTypesResult, error)
+	GetAlertRemedies(ctx context.Context, params AlertRemedyParams) (*AlertRemedyResult, error)
 	PlaybookTemplateList(ctx context.Context) (*PlaybookTemplateListResult, error)
 	PlaybookTemplateInfo(ctx context.Context, params PlaybookTemplateInfoParams) (*PlaybookTemplateInfoResult, error)
 	PlaybookTemplateExport(ctx context.Context, params PlaybookTemplateExportParams) (*PlaybookTemplateExportResult, error)
@@ -277,5 +283,23 @@ type (
 		Format string   `json:"format"`
 		Nodes  []string `json:"nodes"`
 		Groups []string `json:"groups"`
+	}
+
+	// AlertListParams 告警查询条件（alert_list 工具）。
+	// Status 空值由宿主按默认 active 处理；AlertTypeID 为原始输入，
+	// 归一化/模糊匹配/类别展开由宿主结合告警类型表完成。
+	AlertListParams struct {
+		AlertTypeID string `json:"alert_type_id"`
+		Category    string `json:"category"`
+		Node        string `json:"node"`
+		Group       string `json:"group"`
+		Severity    string `json:"severity"`
+		Status      string `json:"status"`
+		Limit       int    `json:"limit"`
+	}
+
+	// AlertRemedyParams 告警对策查询（alert_remedy 工具），AlertTypeID 已归一化。
+	AlertRemedyParams struct {
+		AlertTypeID string `json:"alert_type_id"`
 	}
 )

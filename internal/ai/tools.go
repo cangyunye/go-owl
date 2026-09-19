@@ -20,6 +20,7 @@ import (
 type CLIExecutor struct {
 	nodeMgr   node.Manager
 	nodeStore NodeStoreAdapter
+	alertData AlertData
 }
 
 func NewCLIExecutor(nodeMgr node.Manager, nodeStore NodeStoreAdapter) *CLIExecutor {

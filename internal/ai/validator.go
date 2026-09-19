@@ -333,7 +333,60 @@ func (v *Validator) ValidateParams(intent IntentType, params map[string]interfac
 		return v.ValidateGeneratePlaybook(params)
 	case IntentTransferFile:
 		return v.ValidateTransferFile(params)
+	case IntentAlertList:
+		return v.ValidateAlertListParams(params)
+	case IntentAlertRemedy:
+		return v.ValidateAlertRemedyParams(params)
 	default:
 		return fmt.Errorf("unknown intent type")
 	}
+}
+
+// ValidateAlertListParams 告警查询参数校验（宽松：所有字段可选，只查类型）。
+func (v *Validator) ValidateAlertListParams(params map[string]interface{}) error {
+	if s, ok := params["status"]; ok {
+		statusStr, ok := s.(string)
+		if !ok {
+			return fmt.Errorf("status must be a string")
+		}
+		switch statusStr {
+		case "", "active", "open", "acked", "resolved":
+		default:
+			return fmt.Errorf("invalid status: %s, must be one of: active/open/acked/resolved", statusStr)
+		}
+	}
+	if s, ok := params["severity"]; ok {
+		if _, ok := s.(string); !ok {
+			return fmt.Errorf("severity must be a string")
+		}
+	}
+	if s, ok := params["alert_type_id"]; ok {
+		if _, ok := s.(string); !ok {
+			return fmt.Errorf("alert_type_id must be a string")
+		}
+	}
+	if s, ok := params["node"]; ok {
+		if _, ok := s.(string); !ok {
+			return fmt.Errorf("node must be a string")
+		}
+	}
+	if s, ok := params["group"]; ok {
+		if _, ok := s.(string); !ok {
+			return fmt.Errorf("group must be a string")
+		}
+	}
+	return nil
+}
+
+// ValidateAlertRemedyParams 修复方案查询参数校验：告警码必填。
+func (v *Validator) ValidateAlertRemedyParams(params map[string]interface{}) error {
+	code, ok := params["alert_type_id"]
+	if !ok {
+		return fmt.Errorf("alert_type_id is required")
+	}
+	codeStr, ok := code.(string)
+	if !ok || codeStr == "" {
+		return fmt.Errorf("alert_type_id must be a non-empty string")
+	}
+	return nil
 }

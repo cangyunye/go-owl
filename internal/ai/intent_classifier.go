@@ -13,6 +13,8 @@ const (
 	IntentGeneratePlaybook IntentType = "generate_playbook"
 	IntentTransferFile     IntentType = "transfer_file"
 	IntentFileDownload     IntentType = "file_download"
+	IntentAlertList        IntentType = "alert_list"
+	IntentAlertRemedy      IntentType = "alert_remedy"
 	IntentUncertain        IntentType = "uncertain"
 )
 
@@ -62,6 +64,14 @@ func NewIntentClassifier() *IntentClassifier {
 				"拉取", "拉到本地", "取回",
 				"从节点", "从服务器",
 			},
+			IntentAlertList: {
+				"告警", "报警", "警告",
+				"alert", "alerts",
+			},
+			IntentAlertRemedy: {
+				"修复", "修好", "处理", "解决", "处置", "方案",
+				"remedy", "fix",
+			},
 		},
 	}
 }
@@ -91,6 +101,16 @@ func (c *IntentClassifier) Classify(input string) *IntentResult {
 	hasDownload := strings.Contains(lowerInput, "下载") || strings.Contains(lowerInput, "download")
 	if hasDownload {
 		scores[IntentFileDownload] += 5
+	}
+
+	// 告警话题加权：出现告警词或 OWL 告警码时压过"列出/查看/节点"等泛查询词；
+	// 同时含修复/方案类词时归入修复意图（修复场景仍以查询告警为第一步）。
+	alertMentioned := containsAnyOf(lowerInput, []string{"告警", "报警", "警告", "alert", "owl"})
+	if alertMentioned {
+		scores[IntentAlertList] += 5
+		if containsAnyOf(lowerInput, []string{"修复", "修好", "处理", "解决", "处置", "方案", "remedy", "fix"}) {
+			scores[IntentAlertRemedy] += 10
+		}
 	}
 
 	if c.isPathOrFileTransfer(input) && !hasDownload {
@@ -131,8 +151,17 @@ func (c *IntentClassifier) Classify(input string) *IntentResult {
 	return result
 }
 
-func (c *IntentClassifier) isPathOrFileTransfer(input string) bool {
-	lowerInput := strings.ToLower(input)
+// containsAnyOf 判断输入是否包含任一关键词。
+func containsAnyOf(input string, keywords []string) bool {
+	for _, kw := range keywords {
+		if strings.Contains(input, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *IntentClassifier) isPathOrFileTransfer(input string) bool {	lowerInput := strings.ToLower(input)
 	if strings.HasPrefix(input, "/") ||
 		strings.Contains(input, "./") ||
 		strings.Contains(lowerInput, ".tar") ||

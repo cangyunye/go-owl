@@ -63,9 +63,71 @@ func (e *ParamExtractor) ExtractParams(intent IntentType, input string) map[stri
 		e.extractTransferParams(input, params)
 	case IntentFileDownload:
 		e.extractFileDownloadParams(input, params)
+	case IntentAlertList, IntentAlertRemedy:
+		e.extractAlertParams(input, params)
 	}
 
 	return params
+}
+
+// alertCodePattern 匹配 OWL-XXX-NNN / OWL_XXX_001 / OWL CUS xxx 等告警码写法
+// （归一化交给 NormalizeAlertCode，这里只负责截取候选片段）。
+var alertCodePattern = regexp.MustCompile(`(?i)\bOWL[-_ ][A-Z0-9]{2,12}[-_ ][A-Z0-9]{2,12}\b`)
+
+// extractAlertParams 提取告警查询/修复参数：告警码、节点、状态。
+func (e *ParamExtractor) extractAlertParams(input string, params map[string]interface{}) {
+	if m := alertCodePattern.FindString(input); m != "" {
+		params["alert_type_id"] = strings.TrimSpace(m)
+	}
+
+	// 节点：按已知节点名匹配（单个）
+	for _, n := range e.nodeNames {
+		if strings.Contains(input, n) {
+			params["node"] = n
+			break
+		}
+	}
+
+	// 分组：XX组/XX 分组
+	if idx := strings.Index(input, "组"); idx > 0 {
+		group := strings.TrimSpace(input[:idx])
+		if group = lastWord(group); group != "" && isAllChineseOrAlnum(group) {
+			params["group"] = group
+		}
+	}
+
+	lowerInput := strings.ToLower(input)
+	switch {
+	case strings.Contains(lowerInput, "已恢复") || strings.Contains(lowerInput, "resolved"):
+		params["status"] = "resolved"
+	case strings.Contains(lowerInput, "已确认") || strings.Contains(lowerInput, "acked"):
+		params["status"] = "acked"
+	}
+}
+
+// lastWord 取字符串末尾的连续词（中文/字母/数字）。
+func lastWord(s string) string {
+	runes := []rune(strings.TrimSpace(s))
+	for i := len(runes) - 1; i >= 0; i-- {
+		r := runes[i]
+		isWord := isChineseRune(r) || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+		if !isWord {
+			return string(runes[i+1:])
+		}
+	}
+	return string(runes)
+}
+
+func isAllChineseOrAlnum(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !isChineseRune(r) && !(r >= 'a' && r <= 'z') && !(r >= 'A' && r <= 'Z') && !(r >= '0' && r <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 // extractFileDownloadParams 提取下载参数：远端文件路径 + 目标节点。

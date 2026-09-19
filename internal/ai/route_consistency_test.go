@@ -26,6 +26,7 @@ func TestRegistryCoveredByPrompts(t *testing.T) {
 		"PlaybookRunSystemPrompt", "PlaybookValidateSystemPrompt",
 		"GenericToolSystemPrompt", "PlaybookPrompt", "ExecuteCommandPrompt",
 		"ExecuteScriptPrompt", "TransferPrompt",
+		"AlertListSystemPrompt", "AlertRemedySystemPrompt",
 	} {
 		if v, ok := promptTextByName(name); ok {
 			allPromptText += v
@@ -90,6 +91,10 @@ func promptTextByName(name string) (string, bool) {
 		return aiPrompts.ExecuteScriptPrompt, true
 	case "TransferPrompt":
 		return aiPrompts.TransferPrompt, true
+	case "AlertListSystemPrompt":
+		return aiPrompts.AlertListSystemPrompt, true
+	case "AlertRemedySystemPrompt":
+		return aiPrompts.AlertRemedySystemPrompt, true
 	}
 	return "", false
 }

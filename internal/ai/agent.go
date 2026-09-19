@@ -296,6 +296,8 @@ var groupPrompts = map[string]string{
 	"node_check":        aiPrompts.NodeCheckSystemPrompt,
 	"exec_run":          aiPrompts.ExecRunSystemPrompt,
 	"exec_script":       aiPrompts.ExecScriptSystemPrompt,
+	"alert_list":        aiPrompts.AlertListSystemPrompt,
+	"alert_remedy":      aiPrompts.AlertRemedySystemPrompt,
 	"file":              aiPrompts.FileSystemPrompt,
 	"playbook_list":     aiPrompts.PlaybookListSystemPrompt,
 	"playbook_run":      aiPrompts.PlaybookRunSystemPrompt,
@@ -343,6 +345,10 @@ func applyRouteAliases(label string) string {
 		return "playbook_list"
 	case "node":
 		return "node_list"
+	case "alert", "alerts", "alert_query":
+		return "alert_list"
+	case "alert_fix", "alert_repair", "fix_alert", "remediate":
+		return "alert_remedy"
 	}
 	return label
 }
@@ -406,6 +412,9 @@ func NewAgent(executor Executor, config *Config, nodeMgr node.Manager, nodeStore
 	registry.Register(NewNodeLabelsTool(executor))
 	registry.Register(NewNodeImportTool(executor))
 	registry.Register(NewNodeExportTool(executor))
+	registry.Register(NewAlertListTool(executor))
+	registry.Register(NewAlertTypesTool(executor))
+	registry.Register(NewAlertRemedyTool(executor))
 
 	isDebug := len(debug) > 0 && debug[0]
 
@@ -950,6 +959,13 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 		return "", fmt.Errorf("no user message in input")
 	}
 
+	// 工具循环回注的工具结果（文本协议以 user 角色携带 TOOL_CALL_RESULT 标记）：
+	// 不是新的用户输入，不得再分类/再发起工具调用，返回空让循环以
+	// 最后一个工具结果收口。否则会依据结果文本中的关键词重复触发工具。
+	if strings.Contains(input, "[TOOL_CALL_RESULT]") {
+		return "", nil
+	}
+
 	nodes := a.nodeMgr.List()
 	nodeNames := make([]string, 0, len(nodes))
 	for _, n := range nodes {
@@ -968,6 +984,17 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 			return "uncertain", nil
 		}
 		return formatter.FormatUncertainHelp(), nil
+	}
+
+	// 路由阶段：本地分类命中的告警意图直接映射为路由标签，
+	// 使无 LLM 环境也能走专属场景提示词（与有 LLM 时的路由行为一致）。
+	if isRoute {
+		switch intentResult.Type {
+		case IntentAlertList:
+			return "alert_list", nil
+		case IntentAlertRemedy:
+			return "alert_remedy", nil
+		}
 	}
 
 	params := extractor.ExtractParams(intentResult.Type, input)
@@ -992,6 +1019,10 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 		toolCallJSON = a.buildToolCall("transfer_file", params)
 	case IntentFileDownload:
 		toolCallJSON = a.buildToolCall("file_download", params)
+	case IntentAlertList:
+		toolCallJSON = a.buildToolCall("alert_list", params)
+	case IntentAlertRemedy:
+		toolCallJSON = a.buildToolCall("alert_remedy", params)
 	}
 
 	return toolCallJSON, nil
