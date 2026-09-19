@@ -50,6 +50,9 @@ type ExecModel struct {
 
 	targets []*common.NodeInfo
 
+	// cmenu 输入补全菜单(仅 Insert 态的节点/分组/标签字段);nil=关闭。
+	cmenu *completionMenu
+
 	runCh     chan command.CommandResult
 	runCancel context.CancelFunc
 	lastCmd   string
@@ -166,6 +169,53 @@ func (m *ExecModel) fieldAt(i int) *textinput.Model {
 	}
 }
 
+// syncCompletion 按激活字段刷新补全菜单;仅 Insert 态的节点/分组/标签字段启用,
+// 候选来自节点库全量(与 resolveTargets 的匹配范围一致)。
+func (m *ExecModel) syncCompletion() {
+	if m.mode != ModeInsert || m.cursor == 0 {
+		m.cmenu = nil
+		return
+	}
+	all, err := m.store.List()
+	if err != nil {
+		m.cmenu = nil
+		return
+	}
+	var cands []candidate
+	switch m.cursor {
+	case 1:
+		cands = nodeCandidates(all)
+	case 2:
+		cands = groupCandidates(all)
+	default:
+		cands = labelCandidates(all)
+	}
+	f := m.fieldAt(m.cursor)
+	start, end := tokenAt(f.Value(), f.Position())
+	query := string([]rune(f.Value())[start:end])
+	if m.cmenu == nil {
+		m.cmenu = &completionMenu{}
+	}
+	m.cmenu.sync(cands, query)
+}
+
+// confirmCompletion 把选中候选回填到光标所在 token,菜单保持打开进入下一段。
+func (m *ExecModel) confirmCompletion() {
+	if m.cmenu == nil {
+		return
+	}
+	cand, ok := m.cmenu.Selected()
+	if !ok {
+		return
+	}
+	f := m.fieldAt(m.cursor)
+	runes := []rune(f.Value())
+	start, end := tokenAt(f.Value(), f.Position())
+	f.SetValue(string(runes[:start]) + cand.value + string(runes[end:]))
+	f.SetCursor(start + len([]rune(cand.value)))
+	m.syncCompletion()
+}
+
 func (m ExecModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.current() {
 	case LocAdvanced:
@@ -181,7 +231,25 @@ func (m ExecModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m ExecModel) updateRun(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.mode == ModeInsert {
-		if km, ok := msg.(tea.KeyMsg); ok && km.String() == "esc" {
+		km, isKey := msg.(tea.KeyMsg)
+		// 菜单打开时优先消费导航/确认键
+		if isKey && m.cmenu != nil {
+			switch km.String() {
+			case "up":
+				m.cmenu.MoveUp()
+				return m, nil
+			case "down":
+				m.cmenu.MoveDown()
+				return m, nil
+			case "tab", "enter":
+				m.confirmCompletion()
+				return m, nil
+			case "esc":
+				m.cmenu = nil
+				return m, nil
+			}
+		}
+		if isKey && km.String() == "esc" {
 			m.mode = ModeNormal
 			m.fieldAt(m.cursor).Blur()
 			return m, nil
@@ -189,6 +257,7 @@ func (m ExecModel) updateRun(msg tea.Msg) (tea.Model, tea.Cmd) {
 		f := m.fieldAt(m.cursor)
 		var cmd tea.Cmd
 		*f, cmd = f.Update(msg)
+		m.syncCompletion()
 		return m, cmd
 	}
 	km, ok := msg.(tea.KeyMsg)
@@ -203,6 +272,7 @@ func (m ExecModel) updateRun(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.mode = ModeInsert
 		m.fieldAt(m.cursor).Focus()
+		m.syncCompletion()
 	case "f":
 		m.formatIdx = (m.formatIdx + 1) % len(formats)
 		m.format = formats[m.formatIdx]

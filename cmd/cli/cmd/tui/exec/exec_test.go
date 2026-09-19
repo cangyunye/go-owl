@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -796,5 +797,100 @@ func TestFillConditions_ClearsWhenNil(t *testing.T) {
 	m.FillConditions(nil, nil)
 	if m.nodesInput.Value() != "" || m.groupsInput.Value() != "" || m.labelsInput.Value() != "" {
 		t.Fatal("expected all fields cleared")
+	}
+}
+
+// ---- 输入补全 ----
+
+func feedKeys(m ExecModel, msgs ...tea.Msg) ExecModel {
+	for _, msg := range msgs {
+		nm, _ := m.Update(msg)
+		m = nm.(ExecModel)
+	}
+	return m
+}
+
+func typeRunes(m ExecModel, text string) ExecModel {
+	for _, r := range text {
+		nm, _ := m.Update(runeKey(r))
+		m = nm.(ExecModel)
+	}
+	return m
+}
+
+func TestExecCompletionNodesField(t *testing.T) {
+	m := newTestModel(t)
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // cursor=节点, 进 Insert
+	if v := m.View(); !strings.Contains(v, "❯ n1") {
+		t.Fatalf("节点字段编辑应显示候选菜单: %s", v)
+	}
+	m = typeRunes(m, "n2")
+	if v := m.View(); !strings.Contains(v, "❯ n2") || strings.Contains(v, "❯ n1") {
+		t.Fatalf("应按 token 前缀过滤: %s", v)
+	}
+	nm, _ := m.Update(key(tea.KeyEnter))
+	m = nm.(ExecModel)
+	if got := m.nodesInput.Value(); got != "n2" {
+		t.Fatalf("确认应回填候选, got %q", got)
+	}
+	if pos := m.nodesInput.Position(); pos != 2 {
+		t.Fatalf("光标应落在候选尾部, got %d", pos)
+	}
+	m = feedKeys(m, runeKey(','))
+	if v := m.View(); !strings.Contains(v, "❯ n1") {
+		t.Fatalf("逗号后新段应重新显示全量候选: %s", v)
+	}
+}
+
+func TestExecCompletionGroupsAndLabels(t *testing.T) {
+	m := newTestModel(t)
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyDown), key(tea.KeyEnter)) // cursor=分组
+	if v := m.View(); !strings.Contains(v, "❯ cache") {
+		t.Fatalf("分组字段应显示分组候选: %s", v)
+	}
+	m = typeRunes(m, "w")
+	if v := m.View(); !strings.Contains(v, "❯ web") || strings.Contains(v, "❯ cache") {
+		t.Fatalf("分组候选应过滤: %s", v)
+	}
+	m = feedKeys(m, key(tea.KeyEnter))
+	if got := m.GroupsValue(); got != "web" {
+		t.Fatalf("分组确认回填, got %q", got)
+	}
+	// 标签字段: k=v 两段补全(菜单开着时 Esc 只关菜单,需再 Esc 退编辑才能 ↓ 换字段)
+	m = feedKeys(m, key(tea.KeyEsc), key(tea.KeyEsc), key(tea.KeyDown), key(tea.KeyEnter)) // cursor=标签
+	if v := m.View(); !strings.Contains(v, "❯ env —") {
+		t.Fatalf("标签字段应显示标签候选: %s", v)
+	}
+	m = typeRunes(m, "env=")
+	if v := m.View(); !strings.Contains(v, "env=dev") || !strings.Contains(v, "env=prod") {
+		t.Fatalf("k= 应补全候选值: %s", v)
+	}
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // 选中 env=prod
+	if got := m.labelsInput.Value(); got != "env=prod" {
+		t.Fatalf("标签确认回填, got %q", got)
+	}
+}
+
+func TestExecCompletionEscLayersAndCmdField(t *testing.T) {
+	m := newTestModel(t)
+	m = feedKeys(m, key(tea.KeyEnter)) // cursor=命令
+	if strings.Contains(m.View(), "❯ ") {
+		t.Fatal("命令字段不应有补全菜单")
+	}
+	m = feedKeys(m, key(tea.KeyEsc), key(tea.KeyDown), key(tea.KeyEnter)) // cursor=节点, Insert+菜单
+	m = typeRunes(m, "n")
+	if !strings.Contains(m.View(), "❯ n1") {
+		t.Fatal("菜单应打开")
+	}
+	m = feedKeys(m, key(tea.KeyEsc))
+	if strings.Contains(m.View(), "❯ n1") {
+		t.Fatal("esc 应仅关闭菜单")
+	}
+	if !m.InsertMode() || m.nodesInput.Value() != "n" {
+		t.Fatalf("esc 关菜单不应退出编辑/清输入: insert=%v value=%q", m.InsertMode(), m.nodesInput.Value())
+	}
+	m = feedKeys(m, key(tea.KeyEsc))
+	if m.InsertMode() {
+		t.Fatal("菜单关闭后 esc 应退出编辑")
 	}
 }

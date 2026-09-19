@@ -27,6 +27,9 @@ func (m ExecModel) View() string {
 	}
 }
 
+// maxCompletionRows 补全菜单最多渲染行数。
+const maxCompletionRows = 4
+
 func (m ExecModel) runView() string {
 	var b strings.Builder
 	b.WriteString("┌─ Exec Run ───────────────────────────\n")
@@ -37,6 +40,9 @@ func (m ExecModel) runView() string {
 			marker = ">"
 		}
 		b.WriteString(fmt.Sprintf("%s %s%-4s %s\n", marker, " ", labels[i], m.fieldAt(i).View()))
+	}
+	if menu := m.completionView(); menu != "" {
+		b.WriteString(menu + "\n")
 	}
 	b.WriteString("  格式  " + styleSelected.Render(m.format) + styleDim.Render("  f 切换") + "\n")
 	if m.advanced != nil {
@@ -52,6 +58,39 @@ func (m ExecModel) runView() string {
 	}
 	b.WriteString(styleDim.Render("  ↑↓移动 Enter编辑 f格式 a高级 r执行 Esc返回") + "\n")
 	b.WriteString("└─")
+	return b.String()
+}
+
+// completionView 补全候选菜单: 贴在字段行下方,≤4 行,选中行高亮;无匹配不渲染。
+func (m ExecModel) completionView() string {
+	if m.cmenu == nil || m.cmenu.Len() == 0 {
+		return ""
+	}
+	v := m.cmenu.Visible()
+	start := 0
+	if m.cmenu.Active() >= maxCompletionRows {
+		start = m.cmenu.Active() - maxCompletionRows + 1
+	}
+	end := start + maxCompletionRows
+	if end > len(v) {
+		end = len(v)
+	}
+	var b strings.Builder
+	for i := start; i < end; i++ {
+		c := v[i]
+		line := c.value
+		if c.desc != "" {
+			line += " — " + c.desc
+		}
+		if i == m.cmenu.Active() {
+			b.WriteString(styleSelected.Render("  ❯ " + line))
+		} else {
+			b.WriteString(styleDim.Render("    " + line))
+		}
+		if i < end-1 {
+			b.WriteString("\n")
+		}
+	}
 	return b.String()
 }
 
