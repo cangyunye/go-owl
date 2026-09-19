@@ -306,17 +306,23 @@ func TestApp_WindowSizeBroadcastToAllPanels(t *testing.T) {
 	}
 }
 
-func TestApp_AIPanelAutoFocus(t *testing.T) {
+func TestApp_AIPanelStaysNormalOnSwitch(t *testing.T) {
 	m := newApp(t)
 	nm, _ := m.Update(runeKey('4'))
 	m = nm.(*App)
-	if !m.ai.InsertMode() {
-		t.Fatal("切到 AI 面板应自动聚焦输入(Insert)")
-	}
-	nm, _ = m.Update(key(tea.KeyTab))
-	m = nm.(*App)
 	if m.ai.InsertMode() {
-		t.Fatal("离开 AI 面板应失焦回 Normal")
+		t.Fatal("切到 AI 面板应保持 Normal 模式")
+	}
+	// Insert 状态下切走,再切回 AI 面板也应回到 Normal
+	nm, _ = m.Update(key(tea.KeyEnter))
+	m = nm.(*App)
+	if !m.ai.InsertMode() {
+		t.Fatal("precond: Enter 应进入输入模式")
+	}
+	nm, _ = m.Update(key(tea.KeyTab))
+	m = nm.(*App)
+	if m.panel != 0 {
+		t.Fatalf("precond: Tab 从 AI 应回到 Nodes, got %d", m.panel)
 	}
 	nm, _ = m.Update(key(tea.KeyTab))
 	m = nm.(*App)
@@ -324,8 +330,11 @@ func TestApp_AIPanelAutoFocus(t *testing.T) {
 	m = nm.(*App)
 	nm, _ = m.Update(key(tea.KeyTab))
 	m = nm.(*App)
-	if !m.ai.InsertMode() {
-		t.Fatal("Tab 绕回 AI 面板也应自动聚焦")
+	if m.panel != 3 {
+		t.Fatalf("precond: Tab 绕回应到 AI, got %d", m.panel)
+	}
+	if m.ai.InsertMode() {
+		t.Fatal("切走时已失焦,回到 AI 面板应保持 Normal")
 	}
 }
 

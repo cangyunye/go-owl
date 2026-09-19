@@ -37,8 +37,16 @@ func (m Model) View() string {
 	}
 	b.WriteString(panelIndent.Render(m.inputBox()))
 	b.WriteString("\n")
-	b.WriteString(styleDim.Render("  Enter 发送  Ctrl+J 换行  / 命令  Tab 切面板  Esc 失焦/返回"))
+	b.WriteString(m.hintLine())
 	return b.String()
+}
+
+// hintLine 按模式给出按键提示: Normal 是进入/滚屏,Insert 是发送/换行。
+func (m Model) hintLine() string {
+	if m.mode == ModeInsert {
+		return styleDim.Render("  Enter 发送  Ctrl+J 换行  / 命令  Tab 切面板  Esc 失焦/返回")
+	}
+	return styleDim.Render("  Enter/i 输入  n 新会话  ↑↓ 滚屏  Tab 切面板  Esc 返回 Nodes")
 }
 
 // menuView 斜杠菜单: 就地渲染在输入框上方,最多 maxMenuRows 行,选中行高亮。

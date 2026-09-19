@@ -217,13 +217,7 @@ func progressMsg(step, detail string) tea.Msg {
 
 func (m Model) InsertMode() bool { return m.mode != ModeNormal }
 
-// FocusInput 面板被激活时由 App 调用:自动进入输入模式(对话式,免先按 Enter)。
-func (m *Model) FocusInput() {
-	m.mode = ModeInsert
-	m.ta.Focus()
-}
-
-// BlurInput 面板失活时由 App 调用:回到 Normal 模式。
+// BlurInput 面板失活时由 App 调用:回到 Normal 模式,保证下次切回时不是输入态。
 func (m *Model) BlurInput() {
 	m.mode = ModeNormal
 	m.ta.Blur()

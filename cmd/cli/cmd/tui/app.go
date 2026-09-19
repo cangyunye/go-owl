@@ -99,9 +99,7 @@ func (m *App) switchPanel(i int, entry Entry) {
 			m.applyFileSelectionEntry()
 		}
 	}
-	if m.panel == 3 {
-		m.ai.FocusInput() // 对话式: 切到 AI 面板直接可打字
-	}
+	// 切到 AI 面板保持 Normal 模式(离开时已失焦),按 Enter/i 才进入输入
 }
 
 // applySelectionEntry 按 x 语义填充 Exec 表单: 勾选优先, 否则纯组/标签过滤; 含搜索/状态回退快照(当前可见集)

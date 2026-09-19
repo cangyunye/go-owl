@@ -57,10 +57,16 @@ func TestView_ShowsMessagesInputAndKeys(t *testing.T) {
 	m.status = "完成"
 	m.refreshViewport()
 	got := m.View()
-	for _, want := range []string{"查询 web", "⏺ query_nodes", "完成", "Enter 发送", "/ 命令", "Tab 切面板", "Esc"} {
+	// Normal 模式提示行
+	for _, want := range []string{"查询 web", "⏺ query_nodes", "完成", "Enter/i 输入", "n 新会话", "Tab 切面板", "Esc 返回 Nodes"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("view missing %q: %s", want, got)
 		}
+	}
+	// Insert 模式提示行
+	m.mode = ModeInsert
+	if got := m.View(); !strings.Contains(got, "Enter 发送") || !strings.Contains(got, "Ctrl+J 换行") {
+		t.Fatalf("Insert 提示行缺失: %s", got)
 	}
 }
 
