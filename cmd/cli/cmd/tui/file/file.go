@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	complete "github.com/cangyunye/go-owl/cmd/cli/cmd/tui/complete"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
 )
 
@@ -58,6 +59,9 @@ type FileModel struct {
 	advanced *AdvancedForm
 	browser  *FileBrowser
 	error    string
+
+	// comp 输入补全(仅 Insert 态的节点/分组/标签字段)。
+	comp complete.Completion
 
 	lastUpload   *uploadRunState
 	lastDownload *downloadRunState
@@ -211,14 +215,36 @@ func (m FileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m FileModel) updateFile(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.mode == ModeInsert {
-		if km, ok := msg.(tea.KeyMsg); ok && km.String() == "esc" {
-			m.mode = ModeNormal
-			m.fieldAt(m.cursor).Blur()
-			return m, nil
-		}
 		f := m.fieldAt(m.cursor)
+		if km, ok := msg.(tea.KeyMsg); ok {
+			if m.comp.HandleKey(f, km) {
+				m.syncCompletion()
+				return m, nil
+			}
+			if !m.comp.MenuOpen() {
+				// 菜单关闭时 ↑↓ 直接切换字段(保持编辑态)
+				switch km.String() {
+				case "down":
+					m.moveField(1)
+					return m, nil
+				case "up":
+					m.moveField(-1)
+					return m, nil
+				}
+			}
+			if km.String() == "esc" {
+				m.mode = ModeNormal
+				f.Blur()
+				m.comp.Close()
+				return m, nil
+			}
+		}
+		before := f.Value()
 		var cmd tea.Cmd
 		*f, cmd = f.Update(msg)
+		if _, ok := msg.(tea.KeyMsg); ok {
+			m.comp.AfterEdit(f, before, m.completionCands)
+		}
 		return m, cmd
 	}
 	km, ok := msg.(tea.KeyMsg)
@@ -238,7 +264,9 @@ func (m FileModel) updateFile(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.mode = ModeInsert
+		m.comp.Reset()
 		m.fieldAt(m.cursor).Focus()
+		m.syncCompletion()
 	case "left":
 		m.op = Op((int(m.op) - 1 + 3) % 3)
 		m.applyOpPlaceholders()

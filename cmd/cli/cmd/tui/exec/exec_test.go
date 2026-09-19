@@ -959,7 +959,7 @@ func newBigModel(t *testing.T) ExecModel {
 func TestExecCompletionScrollWindow(t *testing.T) {
 	m := newBigModel(t)
 	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // 节点字段
-	m = typeRunes(m, "n")                                 // 30 条候选全部前缀匹配
+	m = typeRunes(m, "n")                                // 30 条候选全部前缀匹配
 	v := m.View()
 	if !strings.Contains(v, "❯ n01") {
 		t.Fatalf("首屏选中项应为 n01: %s", v)

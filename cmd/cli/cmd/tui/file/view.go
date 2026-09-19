@@ -85,6 +85,9 @@ func (m FileModel) fileView() string {
 		}
 		b.WriteString(fmt.Sprintf("%s %s%-6s %s\n", marker, " ", labels[i], m.fieldAt(i).View()))
 	}
+	if menu := m.comp.View(); menu != "" {
+		b.WriteString(menu + "\n")
+	}
 	if nodes, err := m.resolveTargets(); err == nil {
 		b.WriteString(styleDim.Render(fmt.Sprintf("  目标 %d 台", len(nodes))) + "\n")
 	}

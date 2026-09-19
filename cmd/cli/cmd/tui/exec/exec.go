@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	complete "github.com/cangyunye/go-owl/cmd/cli/cmd/tui/complete"
 	"github.com/cangyunye/go-owl/internal/control/command"
 )
 
@@ -50,10 +51,8 @@ type ExecModel struct {
 
 	targets []*common.NodeInfo
 
-	// cmenu 输入补全菜单(仅 Insert 态的节点/分组/标签字段);nil=关闭。
-	// cmenuOff: Esc 关闭后的抑制态,值再次变化才恢复弹出。
-	cmenu    *completionMenu
-	cmenuOff bool
+	// comp 输入补全(仅 Insert 态的节点/分组/标签字段)。
+	comp complete.Completion
 
 	runCh     chan command.CommandResult
 	runCancel context.CancelFunc
@@ -171,64 +170,12 @@ func (m *ExecModel) fieldAt(i int) *textinput.Model {
 	}
 }
 
-// syncCompletion 按激活字段刷新补全菜单;仅 Insert 态的节点/分组/标签字段启用,
-// 候选来自节点库全量(与 resolveTargets 的匹配范围一致)。
-func (m *ExecModel) syncCompletion() {
-	if m.mode != ModeInsert || m.cursor == 0 || m.cmenuOff {
-		m.cmenu = nil
-		return
-	}
-	all, err := m.store.List()
-	if err != nil {
-		m.cmenu = nil
-		return
-	}
-	var cands []candidate
-	switch m.cursor {
-	case 1:
-		cands = nodeCandidates(all)
-	case 2:
-		cands = groupCandidates(all)
-	default:
-		cands = labelCandidates(all)
-	}
-	f := m.fieldAt(m.cursor)
-	start, end := tokenAt(f.Value(), f.Position())
-	query := strings.TrimSpace(string([]rune(f.Value())[start:end]))
-	if query == "" {
-		// 空 token 不弹菜单,打了字才弹
-		m.cmenu = nil
-		return
-	}
-	if m.cmenu == nil {
-		m.cmenu = &completionMenu{}
-	}
-	m.cmenu.sync(cands, query)
-}
-
-// moveField 编辑态内直接切换字段(菜单关闭时 ↑↓),保持 Insert 并重置补全抑制。
+// moveField 编辑态内直接切换字段(补全菜单关闭时 ↑↓),保持 Insert 并重置补全抑制。
 func (m *ExecModel) moveField(d int) {
 	m.fieldAt(m.cursor).Blur()
 	m.cursor = (m.cursor + d + 4) % 4
-	m.cmenuOff = false
+	m.comp.Reset()
 	m.fieldAt(m.cursor).Focus()
-	m.syncCompletion()
-}
-
-// confirmCompletion 把选中候选回填到光标所在 token,菜单保持打开进入下一段。
-func (m *ExecModel) confirmCompletion() {
-	if m.cmenu == nil {
-		return
-	}
-	cand, ok := m.cmenu.Selected()
-	if !ok {
-		return
-	}
-	f := m.fieldAt(m.cursor)
-	runes := []rune(f.Value())
-	start, end := tokenAt(f.Value(), f.Position())
-	f.SetValue(string(runes[:start]) + cand.value + string(runes[end:]))
-	f.SetCursor(start + len([]rune(cand.value)))
 	m.syncCompletion()
 }
 
@@ -247,51 +194,36 @@ func (m ExecModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m ExecModel) updateRun(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.mode == ModeInsert {
-		km, isKey := msg.(tea.KeyMsg)
-		// 菜单打开时优先消费导航/确认键
-		if isKey && m.cmenu != nil {
-			switch km.String() {
-			case "up":
-				m.cmenu.MoveUp()
-				return m, nil
-			case "down":
-				m.cmenu.MoveDown()
-				return m, nil
-			case "tab", "enter":
-				m.confirmCompletion()
-				return m, nil
-			case "esc":
-				// 仅关菜单并进入抑制态;值再次变化才恢复弹出
-				m.cmenu = nil
-				m.cmenuOff = true
-				return m, nil
-			}
-		}
-		if isKey && m.cmenu == nil {
-			// 菜单关闭时 ↑↓ 直接切换字段(保持编辑态)
-			switch km.String() {
-			case "down":
-				m.moveField(1)
-				return m, nil
-			case "up":
-				m.moveField(-1)
-				return m, nil
-			}
-		}
-		if isKey && km.String() == "esc" {
-			m.mode = ModeNormal
-			m.fieldAt(m.cursor).Blur()
-			m.cmenu = nil
-			return m, nil
-		}
 		f := m.fieldAt(m.cursor)
+		if km, ok := msg.(tea.KeyMsg); ok {
+			if m.comp.HandleKey(f, km) {
+				m.syncCompletion()
+				return m, nil
+			}
+			if !m.comp.MenuOpen() {
+				// 菜单关闭时 ↑↓ 直接切换字段(保持编辑态)
+				switch km.String() {
+				case "down":
+					m.moveField(1)
+					return m, nil
+				case "up":
+					m.moveField(-1)
+					return m, nil
+				}
+			}
+			if km.String() == "esc" {
+				m.mode = ModeNormal
+				f.Blur()
+				m.comp.Close()
+				return m, nil
+			}
+		}
 		before := f.Value()
 		var cmd tea.Cmd
 		*f, cmd = f.Update(msg)
-		if f.Value() != before {
-			m.cmenuOff = false
+		if _, ok := msg.(tea.KeyMsg); ok {
+			m.comp.AfterEdit(f, before, m.completionCands)
 		}
-		m.syncCompletion()
 		return m, cmd
 	}
 	km, ok := msg.(tea.KeyMsg)
@@ -305,7 +237,7 @@ func (m ExecModel) updateRun(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = (m.cursor + 1) % 4
 	case "enter":
 		m.mode = ModeInsert
-		m.cmenuOff = false
+		m.comp.Reset()
 		m.fieldAt(m.cursor).Focus()
 		m.syncCompletion()
 	case "f":
@@ -404,6 +336,7 @@ func (m ExecModel) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
 // CancelRun 取消正在运行的流(App 离开 Exec 面板时调用;无运行流时幂等)
 func (m *ExecModel) CancelRun() {
 	if m.runCancel != nil {
