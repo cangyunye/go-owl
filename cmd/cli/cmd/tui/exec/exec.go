@@ -51,7 +51,9 @@ type ExecModel struct {
 	targets []*common.NodeInfo
 
 	// cmenu 输入补全菜单(仅 Insert 态的节点/分组/标签字段);nil=关闭。
-	cmenu *completionMenu
+	// cmenuOff: Esc 关闭后的抑制态,值再次变化才恢复弹出。
+	cmenu    *completionMenu
+	cmenuOff bool
 
 	runCh     chan command.CommandResult
 	runCancel context.CancelFunc
@@ -172,7 +174,7 @@ func (m *ExecModel) fieldAt(i int) *textinput.Model {
 // syncCompletion 按激活字段刷新补全菜单;仅 Insert 态的节点/分组/标签字段启用,
 // 候选来自节点库全量(与 resolveTargets 的匹配范围一致)。
 func (m *ExecModel) syncCompletion() {
-	if m.mode != ModeInsert || m.cursor == 0 {
+	if m.mode != ModeInsert || m.cursor == 0 || m.cmenuOff {
 		m.cmenu = nil
 		return
 	}
@@ -192,11 +194,25 @@ func (m *ExecModel) syncCompletion() {
 	}
 	f := m.fieldAt(m.cursor)
 	start, end := tokenAt(f.Value(), f.Position())
-	query := string([]rune(f.Value())[start:end])
+	query := strings.TrimSpace(string([]rune(f.Value())[start:end]))
+	if query == "" {
+		// 空 token 不弹菜单,打了字才弹
+		m.cmenu = nil
+		return
+	}
 	if m.cmenu == nil {
 		m.cmenu = &completionMenu{}
 	}
 	m.cmenu.sync(cands, query)
+}
+
+// moveField 编辑态内直接切换字段(菜单关闭时 ↑↓),保持 Insert 并重置补全抑制。
+func (m *ExecModel) moveField(d int) {
+	m.fieldAt(m.cursor).Blur()
+	m.cursor = (m.cursor + d + 4) % 4
+	m.cmenuOff = false
+	m.fieldAt(m.cursor).Focus()
+	m.syncCompletion()
 }
 
 // confirmCompletion 把选中候选回填到光标所在 token,菜单保持打开进入下一段。
@@ -245,18 +261,36 @@ func (m ExecModel) updateRun(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmCompletion()
 				return m, nil
 			case "esc":
+				// 仅关菜单并进入抑制态;值再次变化才恢复弹出
 				m.cmenu = nil
+				m.cmenuOff = true
+				return m, nil
+			}
+		}
+		if isKey && m.cmenu == nil {
+			// 菜单关闭时 ↑↓ 直接切换字段(保持编辑态)
+			switch km.String() {
+			case "down":
+				m.moveField(1)
+				return m, nil
+			case "up":
+				m.moveField(-1)
 				return m, nil
 			}
 		}
 		if isKey && km.String() == "esc" {
 			m.mode = ModeNormal
 			m.fieldAt(m.cursor).Blur()
+			m.cmenu = nil
 			return m, nil
 		}
 		f := m.fieldAt(m.cursor)
+		before := f.Value()
 		var cmd tea.Cmd
 		*f, cmd = f.Update(msg)
+		if f.Value() != before {
+			m.cmenuOff = false
+		}
 		m.syncCompletion()
 		return m, cmd
 	}
@@ -271,6 +305,7 @@ func (m ExecModel) updateRun(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = (m.cursor + 1) % 4
 	case "enter":
 		m.mode = ModeInsert
+		m.cmenuOff = false
 		m.fieldAt(m.cursor).Focus()
 		m.syncCompletion()
 	case "f":

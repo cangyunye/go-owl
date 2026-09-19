@@ -822,8 +822,8 @@ func typeRunes(m ExecModel, text string) ExecModel {
 func TestExecCompletionNodesField(t *testing.T) {
 	m := newTestModel(t)
 	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // cursor=节点, 进 Insert
-	if v := m.View(); !strings.Contains(v, "❯ n1") {
-		t.Fatalf("节点字段编辑应显示候选菜单: %s", v)
+	if strings.Contains(m.View(), "❯") {
+		t.Fatal("空 token 不应弹菜单(打了字才弹)")
 	}
 	m = typeRunes(m, "n2")
 	if v := m.View(); !strings.Contains(v, "❯ n2") || strings.Contains(v, "❯ n1") {
@@ -838,16 +838,20 @@ func TestExecCompletionNodesField(t *testing.T) {
 		t.Fatalf("光标应落在候选尾部, got %d", pos)
 	}
 	m = feedKeys(m, runeKey(','))
+	if strings.Contains(m.View(), "❯") {
+		t.Fatal("空 token(逗号后)不应弹菜单")
+	}
+	m = typeRunes(m, "n")
 	if v := m.View(); !strings.Contains(v, "❯ n1") {
-		t.Fatalf("逗号后新段应重新显示全量候选: %s", v)
+		t.Fatalf("打字后应重新弹出候选: %s", v)
 	}
 }
 
 func TestExecCompletionGroupsAndLabels(t *testing.T) {
 	m := newTestModel(t)
 	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyDown), key(tea.KeyEnter)) // cursor=分组
-	if v := m.View(); !strings.Contains(v, "❯ cache") {
-		t.Fatalf("分组字段应显示分组候选: %s", v)
+	if strings.Contains(m.View(), "❯") {
+		t.Fatal("分组字段空 token 不应弹菜单")
 	}
 	m = typeRunes(m, "w")
 	if v := m.View(); !strings.Contains(v, "❯ web") || strings.Contains(v, "❯ cache") {
@@ -859,10 +863,11 @@ func TestExecCompletionGroupsAndLabels(t *testing.T) {
 	}
 	// 标签字段: k=v 两段补全(菜单开着时 Esc 只关菜单,需再 Esc 退编辑才能 ↓ 换字段)
 	m = feedKeys(m, key(tea.KeyEsc), key(tea.KeyEsc), key(tea.KeyDown), key(tea.KeyEnter)) // cursor=标签
+	m = typeRunes(m, "e")
 	if v := m.View(); !strings.Contains(v, "❯ env —") {
-		t.Fatalf("标签字段应显示标签候选: %s", v)
+		t.Fatalf("标签字段打字后应弹出候选: %s", v)
 	}
-	m = typeRunes(m, "env=")
+	m = typeRunes(m, "nv=")
 	if v := m.View(); !strings.Contains(v, "env=dev") || !strings.Contains(v, "env=prod") {
 		t.Fatalf("k= 应补全候选值: %s", v)
 	}
@@ -890,9 +895,40 @@ func TestExecCompletionEscLayersAndCmdField(t *testing.T) {
 	if !m.InsertMode() || m.nodesInput.Value() != "n" {
 		t.Fatalf("esc 关菜单不应退出编辑/清输入: insert=%v value=%q", m.InsertMode(), m.nodesInput.Value())
 	}
-	m = feedKeys(m, key(tea.KeyEsc))
+	// 关闭后打字(值变化)才恢复弹出
+	m = typeRunes(m, "2")
+	if !strings.Contains(m.View(), "❯ n2") {
+		t.Fatalf("值变化后应恢复弹出: %s", m.View())
+	}
+	m = feedKeys(m, key(tea.KeyEsc), key(tea.KeyEsc))
 	if m.InsertMode() {
 		t.Fatal("菜单关闭后 esc 应退出编辑")
+	}
+}
+
+func TestExecCompletionArrowSwitchesFieldWhenDismissed(t *testing.T) {
+	// 用户报告的场景: 节点补全后 Esc,↓ 应直接切到分组字段而不是被困住
+	m := newTestModel(t)
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // 节点字段 Insert
+	m = typeRunes(m, "n")
+	m = feedKeys(m, key(tea.KeyEsc)) // 关菜单(进入抑制态)
+	m = feedKeys(m, key(tea.KeyDown))
+	if m.cursor != 2 {
+		t.Fatalf("菜单关闭时 ↓ 应切到分组字段, cursor=%d", m.cursor)
+	}
+	if !m.InsertMode() {
+		t.Fatal("切字段应保持编辑态")
+	}
+	if strings.Contains(m.View(), "❯") {
+		t.Fatal("新字段空 token 不应立即弹菜单")
+	}
+	m = typeRunes(m, "w")
+	if v := m.View(); !strings.Contains(v, "❯ web") {
+		t.Fatalf("分组字段打字后应弹分组候选: %s", v)
+	}
+	m = feedKeys(m, key(tea.KeyEnter))
+	if got := m.GroupsValue(); got != "web" {
+		t.Fatalf("跨字段补全回填: got %q", got)
 	}
 }
 
@@ -922,7 +958,8 @@ func newBigModel(t *testing.T) ExecModel {
 
 func TestExecCompletionScrollWindow(t *testing.T) {
 	m := newBigModel(t)
-	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // 节点字段, 30 条候选
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // 节点字段
+	m = typeRunes(m, "n")                                 // 30 条候选全部前缀匹配
 	v := m.View()
 	if !strings.Contains(v, "❯ n01") {
 		t.Fatalf("首屏选中项应为 n01: %s", v)
@@ -946,6 +983,7 @@ func TestExecCompletionScrollWindow(t *testing.T) {
 	}
 	// 分组 8 条同样只显示窗口
 	m = feedKeys(m, key(tea.KeyEsc), key(tea.KeyEsc), key(tea.KeyDown), key(tea.KeyEnter))
+	m = typeRunes(m, "g")
 	if v := m.View(); !strings.Contains(v, "❯ g1") || strings.Contains(v, "❯ g5") {
 		t.Fatalf("分组窗口应只显示 4 条: %s", v)
 	}
@@ -953,7 +991,9 @@ func TestExecCompletionScrollWindow(t *testing.T) {
 
 func TestExecCompletionNodesChain(t *testing.T) {
 	m := newTestModel(t)
-	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter), key(tea.KeyEnter)) // 确认 n1
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // 节点字段 Insert
+	m = typeRunes(m, "n1")
+	m = feedKeys(m, key(tea.KeyEnter)) // 确认 n1
 	if got := m.nodesInput.Value(); got != "n1" {
 		t.Fatalf("第一段: got %q", got)
 	}
@@ -1010,8 +1050,7 @@ func TestExecCompletionMidTokenKeepsTrailing(t *testing.T) {
 	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // 节点字段 Insert
 	m.nodesInput.SetValue("n,x")
 	m.nodesInput.SetCursor(1)
-	m = feedKeys(m, key(tea.KeyEsc))  // 先关菜单
-	m = feedKeys(m, key(tea.KeyDown)) // 死键触发 sync,菜单按 token "n" 重新打开(active 0)
+	m = feedKeys(m, key(tea.KeyEnter)) // 死键触发 sync,菜单按 token "n" 打开(active 0)
 	m = feedKeys(m, key(tea.KeyEnter)) // 确认 n1
 	if got := m.nodesInput.Value(); got != "n1,x" {
 		t.Fatalf("中段替换应保留尾段: got %q", got)
