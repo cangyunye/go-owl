@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -892,5 +893,130 @@ func TestExecCompletionEscLayersAndCmdField(t *testing.T) {
 	m = feedKeys(m, key(tea.KeyEsc))
 	if m.InsertMode() {
 		t.Fatal("菜单关闭后 esc 应退出编辑")
+	}
+}
+
+// ---- 多段链式 / 大数据集补全 ----
+
+// newBigModel 30 节点 / 8 分组 / 4 个标签键,验证菜单滚动窗口与大数据去重。
+func newBigModel(t *testing.T) ExecModel {
+	t.Helper()
+	store := common.NewInMemoryNodeStoreAt(filepath.Join(t.TempDir(), "nodes.json"))
+	for i := 1; i <= 30; i++ {
+		n := &common.NodeInfo{
+			ID:     fmt.Sprintf("n%02d", i),
+			Name:   fmt.Sprintf("node-%02d", i),
+			Status: "online",
+			Groups: []string{fmt.Sprintf("g%d", (i-1)%8+1)},
+			Labels: map[string]string{"env": fmt.Sprintf("e%d", (i-1)%4+1)},
+		}
+		if err := store.Add(n); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	m := NewModel(store)
+	nodes, _ := store.List()
+	m.CaptureTargets(nodes)
+	return m
+}
+
+func TestExecCompletionScrollWindow(t *testing.T) {
+	m := newBigModel(t)
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // 节点字段, 30 条候选
+	v := m.View()
+	if !strings.Contains(v, "❯ n01") {
+		t.Fatalf("首屏选中项应为 n01: %s", v)
+	}
+	for _, id := range []string{"n02 —", "n03 —", "n04 —"} {
+		if !strings.Contains(v, id) {
+			t.Fatalf("首屏应含 %s: %s", id, v)
+		}
+	}
+	if strings.Contains(v, "n05 —") {
+		t.Fatalf("首屏只应显示 4 条: %s", v)
+	}
+	// ↓×4: 窗口滚动,第 5 条进入视野,第 1 条滚出
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyDown), key(tea.KeyDown), key(tea.KeyDown))
+	v = m.View()
+	if !strings.Contains(v, "❯ n05") {
+		t.Fatalf("选中第 5 条应滚动窗口: %s", v)
+	}
+	if strings.Contains(v, "n01 —") {
+		t.Fatalf("窗口外候选不应渲染: %s", v)
+	}
+	// 分组 8 条同样只显示窗口
+	m = feedKeys(m, key(tea.KeyEsc), key(tea.KeyEsc), key(tea.KeyDown), key(tea.KeyEnter))
+	if v := m.View(); !strings.Contains(v, "❯ g1") || strings.Contains(v, "❯ g5") {
+		t.Fatalf("分组窗口应只显示 4 条: %s", v)
+	}
+}
+
+func TestExecCompletionNodesChain(t *testing.T) {
+	m := newTestModel(t)
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter), key(tea.KeyEnter)) // 确认 n1
+	if got := m.nodesInput.Value(); got != "n1" {
+		t.Fatalf("第一段: got %q", got)
+	}
+	m = feedKeys(m, runeKey(','))
+	m = typeRunes(m, "n2")
+	m = feedKeys(m, key(tea.KeyEnter))
+	if got := m.nodesInput.Value(); got != "n1,n2" {
+		t.Fatalf("第二段: got %q", got)
+	}
+	m = feedKeys(m, runeKey(','))
+	m = typeRunes(m, "n3")
+	m = feedKeys(m, key(tea.KeyEnter))
+	if got := m.nodesInput.Value(); got != "n1,n2,n3" {
+		t.Fatalf("第三段: got %q", got)
+	}
+	if pos := m.nodesInput.Position(); pos != len("n1,n2,n3") {
+		t.Fatalf("光标应落在末尾, got %d", pos)
+	}
+	// 补全结果与执行语义闭环
+	targets, err := m.ResolveForTest()
+	if err != nil || len(targets) != 3 {
+		t.Fatalf("链式补全应解析出 3 台目标, got %d err=%v", len(targets), err)
+	}
+}
+
+func TestExecCompletionGroupsChain(t *testing.T) {
+	m := newTestModel(t)
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyDown), key(tea.KeyEnter)) // 分组字段
+	m = typeRunes(m, "w")
+	m = feedKeys(m, key(tea.KeyEnter)) // web
+	m = feedKeys(m, runeKey(','))
+	m = typeRunes(m, "ca")
+	m = feedKeys(m, key(tea.KeyEnter)) // cache
+	if got := m.groupsInput.Value(); got != "web,cache" {
+		t.Fatalf("分组链式回填: got %q", got)
+	}
+}
+
+func TestExecCompletionLabelsChain(t *testing.T) {
+	m := newTestModel(t)
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyDown), key(tea.KeyDown), key(tea.KeyEnter)) // 标签字段
+	m = typeRunes(m, "env=")
+	m = feedKeys(m, key(tea.KeyEnter)) // env=dev
+	m = feedKeys(m, runeKey(','))
+	m = typeRunes(m, "ro")
+	m = feedKeys(m, key(tea.KeyEnter)) // 裸 key role
+	if got := m.labelsInput.Value(); got != "env=dev,role" {
+		t.Fatalf("标签链式回填: got %q", got)
+	}
+}
+
+func TestExecCompletionMidTokenKeepsTrailing(t *testing.T) {
+	m := newTestModel(t)
+	m = feedKeys(m, key(tea.KeyDown), key(tea.KeyEnter)) // 节点字段 Insert
+	m.nodesInput.SetValue("n,x")
+	m.nodesInput.SetCursor(1)
+	m = feedKeys(m, key(tea.KeyEsc))  // 先关菜单
+	m = feedKeys(m, key(tea.KeyDown)) // 死键触发 sync,菜单按 token "n" 重新打开(active 0)
+	m = feedKeys(m, key(tea.KeyEnter)) // 确认 n1
+	if got := m.nodesInput.Value(); got != "n1,x" {
+		t.Fatalf("中段替换应保留尾段: got %q", got)
+	}
+	if pos := m.nodesInput.Position(); pos != 2 {
+		t.Fatalf("光标应落在替换段尾部, got %d", pos)
 	}
 }
