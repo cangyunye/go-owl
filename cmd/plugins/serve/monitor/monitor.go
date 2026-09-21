@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/internal/logger"
 	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
@@ -59,7 +60,9 @@ func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 			return nil, fmt.Errorf("monitor: 扫描节点失败: %w", err)
 		}
 		t.Services = servicesFromLabels(labels)
-		t.Groups = groupsFromJSON(groups)
+		// groups JSON 解析与非法归一收敛到 store 包（labels 解析为
+		// monitor.services 列表属监控域逻辑，保留本地）
+		t.Groups = store.ParseNodeGroups(groups)
 		if pw, err := secrets.Decrypt(t.SSHPassword); err != nil {
 			return nil, fmt.Errorf("monitor: 节点 %s 凭据解密失败: %w", t.ID, err)
 		} else {
@@ -96,18 +99,6 @@ func (s *NodesTargetSource) ListTargets() ([]owlmonitor.Target, error) {
 			logger.WithField("merged_nodes", strings.Join(ids, ",")))
 	}
 	return targets, nil
-}
-
-// groupsFromJSON 解析节点分组 JSON 数组（非法视为空）。
-func groupsFromJSON(raw string) []string {
-	if raw == "" {
-		return nil
-	}
-	var out []string
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil
-	}
-	return out
 }
 
 // servicesFromLabels 从节点 labels JSON 中读取 monitor.services

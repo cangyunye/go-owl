@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	ai2 "github.com/cangyunye/go-owl/internal/ai"
 )
 
 // dbNodeStoreAdapter implements ai2.NodeStoreAdapter backed by the serve nodes
