@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
 )
@@ -152,6 +153,15 @@ func TestSessionManager_PersistAndRestore(t *testing.T) {
 	}
 	if !foundPrev {
 		t.Error("expected previous user input in restored messages")
+	}
+}
+
+// TestRestoreSession_CarriesCreatedAt：恢复会话时必须还原持久化的创建时间。
+func TestRestoreSession_CarriesCreatedAt(t *testing.T) {
+	created := time.Now().Add(-time.Hour).Truncate(time.Second)
+	s := restoreSession(&Agent{}, &SessionRecord{CreatedAt: created})
+	if !s.createdAt.Equal(created) {
+		t.Fatalf("expected restored createdAt %v, got %v", created, s.createdAt)
 	}
 }
 
