@@ -54,8 +54,18 @@ func runHistory(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// --last 按时间窗口过滤（如 1h、30m、1d）；--node 按节点过滤
+	var since time.Duration
+	if historyLast != "" {
+		d, err := history.ParseDuration(historyLast)
+		if err != nil {
+			return fmt.Errorf("%s: %w", i18n.T("session.history.flag_last"), err)
+		}
+		since = d
+	}
+
 	if sessionID != "" {
-		displaySessionHistory(sessionID)
+		displaySessionHistory(sessionID, historyNode, since)
 	} else {
 		displayRecentHistory()
 	}
@@ -63,7 +73,7 @@ func runHistory(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func displaySessionHistory(sessionID string) {
+func displaySessionHistory(sessionID string, nodeFilter string, since time.Duration) {
 	session, err := history.GetSession(sessionID)
 	if err != nil || session == nil {
 		fmt.Printf("%s", i18n.T("session.history.not_found", sessionID))
@@ -85,7 +95,7 @@ func displaySessionHistory(sessionID string) {
 	fmt.Printf("%s", i18n.T("session.history.label_failed", i18n.F(session.ErrorCount)))
 	fmt.Println("─────────────────────────────────────")
 
-	commands, err := history.QuerySessionCommands(sessionID, "", 0, 100)
+	commands, err := history.QuerySessionCommands(sessionID, nodeFilter, since, 100)
 	if err != nil || len(commands) == 0 {
 		fmt.Println(i18n.T("session.history.no_commands"))
 		return

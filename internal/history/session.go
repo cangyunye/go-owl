@@ -2,6 +2,8 @@ package history
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -199,4 +201,29 @@ func QuerySessionCommands(sessionID string, nodeID string, since time.Duration, 
 	}
 
 	return commands, nil
+}
+
+// ParseDuration 解析 --last 类参数的时长：支持 Go 原生格式（30m、90s）
+// 与 h/d 后缀简写（1h、2d）。空串返回 0（不过滤）；无法解析返回错误。
+func ParseDuration(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, nil
+	}
+	suffix := s[len(s)-1]
+	switch suffix {
+	case 'h', 'H':
+		v, err := strconv.ParseFloat(s[:len(s)-1], 64)
+		if err != nil {
+			return 0, fmt.Errorf("无效时长 %q: %w", s, err)
+		}
+		return time.Duration(v) * time.Hour, nil
+	case 'd', 'D':
+		v, err := strconv.ParseFloat(s[:len(s)-1], 64)
+		if err != nil {
+			return 0, fmt.Errorf("无效时长 %q: %w", s, err)
+		}
+		return time.Duration(v) * 24 * time.Hour, nil
+	default:
+		return time.ParseDuration(s)
+	}
 }
