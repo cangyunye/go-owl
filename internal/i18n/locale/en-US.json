@@ -488,6 +488,7 @@
   "exec.script.flag_silent": "Silent mode; output execution results as a table only",
   "exec.script.warn_history_db": "Warning: failed to initialize history database: %v",
   "exec.script.err_script_not_found": "Error: script file does not exist: %s",
+  "exec.script.err_fetch": "Error: failed to fetch script from URL: %s",
   "exec.script.no_target_nodes": "No target nodes found",
   "exec.script.info_script": "📜 Script: %s",
   "exec.script.info_target_nodes": "🎯 Target nodes: %s",

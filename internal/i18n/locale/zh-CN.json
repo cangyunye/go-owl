@@ -489,6 +489,7 @@
   "exec.script.flag_silent": "静默模式，仅以表格形式输出执行结果",
   "exec.script.warn_history_db": "警告: 无法初始化历史记录数据库: %v",
   "exec.script.err_script_not_found": "错误: 脚本文件不存在: %s",
+  "exec.script.err_fetch": "错误: 从 URL 拉取脚本失败: %s",
   "exec.script.no_target_nodes": "未找到目标节点",
   "exec.script.info_script": "📜 脚本: %s",
   "exec.script.info_target_nodes": "🎯 目标节点: %s 个",
