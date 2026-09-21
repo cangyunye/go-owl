@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -78,14 +79,32 @@ func NewHTTPModel(opts ModelOptions) *HTTPModel {
 		timeout = defaultModelTimeoutSeconds
 	}
 	return &HTTPModel{
-		apiType: apiType,
-		apiKey:  opts.APIKey,
-		baseURL: opts.BaseURL,
-		model:   opts.Model,
-		httpClient: &http.Client{
-			Timeout: time.Duration(timeout) * time.Second,
-		},
+		apiType:    apiType,
+		apiKey:     opts.APIKey,
+		baseURL:    opts.BaseURL,
+		model:      opts.Model,
+		httpClient: sharedHTTPClient(timeout),
 	}
+}
+
+// 共享的传输层：http.Client 的连接池按 (key, proxy) 维度复用，
+// 进程级单例避免每条消息新建连接并重新 TLS 握手（Web 端每请求
+// buildChatAgent 原先都会 new 一个 client）。
+var (
+	sharedClientsMu sync.Mutex
+	sharedClients   = map[time.Duration]*http.Client{}
+)
+
+func sharedHTTPClient(timeoutSeconds int) *http.Client {
+	d := time.Duration(timeoutSeconds) * time.Second
+	sharedClientsMu.Lock()
+	defer sharedClientsMu.Unlock()
+	if c, ok := sharedClients[d]; ok {
+		return c
+	}
+	c := &http.Client{Timeout: d}
+	sharedClients[d] = c
+	return c
 }
 
 // Generate 调用 LLM 生成文本（实现 ChatModel/LLMClient 接口）。

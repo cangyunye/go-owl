@@ -738,21 +738,31 @@ func generateWithRetry(ctx context.Context, chatModel ChatModel, messages []Mess
 	return "", fmt.Errorf("%s重试%d次后仍失败: %w", label, maxRetries, lastErr)
 }
 
+// 场景提示词是常量集合，按内容缓存解析结果避免每请求重新 Parse。
+var promptTemplateCache sync.Map // string -> *template.Template
+
 func (a *Agent) formatPrompt(systemPrompt, nodeInfo, toolDescs string) string {
-	tmpl, err := template.New("system").Parse(systemPrompt)
-	if err != nil {
-		return systemPrompt
+	var tmpl *template.Template
+	if cached, ok := promptTemplateCache.Load(systemPrompt); ok {
+		tmpl = cached.(*template.Template)
+	} else {
+		parsed, parseErr := template.New("system").Parse(systemPrompt)
+		if parseErr != nil {
+			return systemPrompt
+		}
+		actual, _ := promptTemplateCache.LoadOrStore(systemPrompt, parsed)
+		tmpl = actual.(*template.Template)
 	}
 
 	var buf bytes.Buffer
-	err = tmpl.Execute(&buf, struct {
+	executeErr := tmpl.Execute(&buf, struct {
 		ToolDescriptions string
 		NodeInfo         string
 	}{
 		ToolDescriptions: toolDescs,
 		NodeInfo:         nodeInfo,
 	})
-	if err != nil {
+	if executeErr != nil {
 		return systemPrompt
 	}
 
