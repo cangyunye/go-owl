@@ -308,6 +308,8 @@
   "playbook.run.warn_label": "警告: 按标签查询节点失败: %v\n",
   "playbook.run.warn_list": "警告: 获取节点列表失败: %v\n",
   "playbook.run.sample_start": "\n执行示例剧本...",
+  "playbook.run.sample_notice": "⚠️ 未找到 Playbook 文件: %s\n以下内容仅为演示样例，未在任何节点上实际执行任何操作。",
+  "playbook.run.sample_end": "演示结束。请检查文件路径后重试：owl playbook run <文件路径>",
   "playbook.scaffold.short": "输出 Playbook 骨架",
   "playbook.scaffold.long": "输出带注释的 Playbook 骨架到标准输出。\n\n示例：\n  owl playbook scaffold\n  owl playbook scaffold --type command > ./playbooks/my-playbook.yaml\n\n可用类型:\n  basic    - 通用骨架\n",
   "playbook.scaffold.flag_type": "骨架类型: ",

@@ -1536,7 +1536,7 @@ func (t *GeneratePlaybookTool) Name() string {
 }
 
 func (t *GeneratePlaybookTool) Description() string {
-	return "Generate Ansible-like YAML playbook from natural language requirements. Requires user confirmation before execution."
+	return "Return a starter YAML playbook TEMPLATE for the requirement (a scaffold for reference, not a final product; review and edit before any execution). Requires user confirmation before execution."
 }
 
 func (t *GeneratePlaybookTool) Parameters() string {

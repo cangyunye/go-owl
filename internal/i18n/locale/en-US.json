@@ -307,6 +307,8 @@
   "playbook.run.warn_label": "Warning: failed to query nodes by label: %v\n",
   "playbook.run.warn_list": "Warning: failed to get node list: %v\n",
   "playbook.run.sample_start": "\nExecuting sample playbook...",
+  "playbook.run.sample_notice": "⚠️ Playbook file not found: %s\nThe following is a DEMO only — nothing was executed on any node.",
+  "playbook.run.sample_end": "Demo finished. Check the file path and retry: owl playbook run <path>",
   "playbook.scaffold.short": "Output a Playbook scaffold",
   "playbook.scaffold.long": "Output a commented Playbook scaffold to stdout.\n\nExamples:\n  owl playbook scaffold\n  owl playbook scaffold --type command > ./playbooks/my-playbook.yaml\n\nAvailable types:\n  basic    - Generic scaffold\n",
   "playbook.scaffold.flag_type": "Scaffold type: ",

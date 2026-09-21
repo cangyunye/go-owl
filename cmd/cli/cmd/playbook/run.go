@@ -276,7 +276,10 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 	// 确保剧本已解析。如果第一次解析成功则复用，否则重新解析
 	if parsedPlaybook == nil || parsedPlaybook.Raw == nil {
 		if _, err := os.Stat(playbookFile); os.IsNotExist(err) {
+			// 文件不存在时仅输出演示样例：必须醒目告知用户没有任何真实执行
+			fmt.Printf("%s", i18n.T("playbook.run.sample_notice", playbookFile))
 			runSamplePlaybook(targetNodes)
+			fmt.Printf("%s", i18n.T("playbook.run.sample_end"))
 			return
 		}
 		parser := pbexec.NewParser()
@@ -446,31 +449,31 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 
 	// 记录每个任务结果
 	if !pbRunCheck {
-			for taskName, results := range execution.Results {
-				for _, result := range results {
-					errorMsg := ""
-					if result.Error != nil {
-						errorMsg = result.Error.Error()
-					}
-					// 日志的 command 列记录实际下发的命令串（回退到动作名），而非动作动词
-					command := result.Command
-					if command == "" {
-						command = result.Action
-					}
-					history.RecordCommandExecution(&history.CommandExecution{
-						TaskID:     taskID,
-						NodeID:     result.NodeID,
-						Command:    command,
-						ExitCode:   result.ExitCode,
-						Stdout:     truncateStr(result.Output, 4096),
-						Stderr:     errorMsg,
-						DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
-						Success:    result.ExitCode == 0,
-						CreatedAt:  time.Now(),
-					})
-					nodeLogWriter.AppendEntry(result.NodeID, taskName, command, result.ExitCode, result.Output, errorMsg, result.EndTime.Sub(result.StartTime))
+		for taskName, results := range execution.Results {
+			for _, result := range results {
+				errorMsg := ""
+				if result.Error != nil {
+					errorMsg = result.Error.Error()
 				}
+				// 日志的 command 列记录实际下发的命令串（回退到动作名），而非动作动词
+				command := result.Command
+				if command == "" {
+					command = result.Action
+				}
+				history.RecordCommandExecution(&history.CommandExecution{
+					TaskID:     taskID,
+					NodeID:     result.NodeID,
+					Command:    command,
+					ExitCode:   result.ExitCode,
+					Stdout:     truncateStr(result.Output, 4096),
+					Stderr:     errorMsg,
+					DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
+					Success:    result.ExitCode == 0,
+					CreatedAt:  time.Now(),
+				})
+				nodeLogWriter.AppendEntry(result.NodeID, taskName, command, result.ExitCode, result.Output, errorMsg, result.EndTime.Sub(result.StartTime))
 			}
+		}
 
 		recordStepStates(runID, parsedPlaybook, execution)
 	}
