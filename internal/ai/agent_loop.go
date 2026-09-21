@@ -207,7 +207,6 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 	return toolLoopResult{messages: msgs, reply: lastToolResult}, nil
 }
 
-
 // generateToolsForLoop 原生 function calling 调用：优先流式实现，delta 经
 // OnProgress("delta", ...) 转发给宿主。
 func (a *Agent) generateToolsForLoop(ctx context.Context, chatModel ChatModel, msgs []Message, onProgress ProgressCallback) (*ModelResponse, error) {

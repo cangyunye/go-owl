@@ -610,10 +610,10 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 	messages = append(messages, Message{Role: "user", Content: userInput})
 
 	result, err := a.runToolLoop(ctx, chatModel, toolLoopParams{
-		messages:      messages,
-		onProgress:    onProgress,
-		userInput:     userInput,
-			useToolHints:  true,
+		messages:     messages,
+		onProgress:   onProgress,
+		userInput:    userInput,
+		useToolHints: true,
 	})
 	if err != nil {
 		return "", err
