@@ -1,3 +1,6 @@
+//go:build !duckdb
+// +build !duckdb
+
 package history
 
 import (
