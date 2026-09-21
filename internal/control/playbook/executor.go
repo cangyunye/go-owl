@@ -40,6 +40,9 @@ type TaskResult struct {
 	TaskName  string
 	NodeID    string
 	Action    string
+	// Command 是插值后实际下发执行的命令/资源描述（command/shell/script 等），
+	// 供执行日志与历史的 command 列使用；动作未产生命令串时为空。
+	Command   string
 	ExitCode  int
 	Output    string
 	Error     error
@@ -222,6 +225,7 @@ func (r *defaultActionRunner) runCommand(result *TaskResult, args map[string]int
 
 	// 替换变量
 	cmd = r.interpolateVariables(cmd, vars)
+	result.Command = cmd
 
 	mergedOpts := MergeActionOptions(actionOpts, r.getGlobalDefaults())
 
@@ -260,6 +264,7 @@ func (r *defaultActionRunner) runScript(result *TaskResult, args map[string]inte
 
 	// 解析路径和替换变量
 	scriptPath = r.resolvePath(r.interpolateVariables(scriptPath, vars))
+	result.Command = "bash " + scriptPath
 
 	// 检查脚本文件是否存在
 	if !(len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://")) {
@@ -343,6 +348,8 @@ func (r *defaultActionRunner) runUpload(result *TaskResult, args map[string]inte
 		}
 	}
 
+	result.Command = fmt.Sprintf("upload %s -> %s", src, dest)
+
 	// 构建上传选项
 	opts := &transfer.UploadOptions{
 		Parallel:  true,
@@ -399,6 +406,8 @@ func (r *defaultActionRunner) runDownload(result *TaskResult, args map[string]in
 	// 解析路径和替换变量
 	src = r.interpolateVariables(src, vars)
 	dest = r.resolveDownloadDest(dest, vars)
+
+	result.Command = fmt.Sprintf("download %s -> %s", src, dest)
 
 	// 构建下载选项
 	opts := &transfer.DownloadOptions{
