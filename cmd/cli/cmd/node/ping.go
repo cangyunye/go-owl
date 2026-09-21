@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -69,33 +70,15 @@ func runPing(nodeIDs []string) {
 
 	fmt.Print(i18n.T("node.ping.checking", i18n.F(len(nodes)), i18n.F(pingTimeout), i18n.F(pingCount)))
 
+	// 有界并行探测：节点多且部分不可达时，串行探测会被超时线性放大
+	//（默认 3s 超时 × count，100 个不可达节点 ≈ 5 分钟）。结果按输入序打印。
+	results := pingNodesParallel(nodes, pingTimeout, pingCount)
+
 	reachable := 0
 	unreachable := 0
 
 	for _, node := range nodes {
-		addr := node.Address
-		if host, _, err := net.SplitHostPort(addr); err == nil {
-			addr = host
-		}
-
-		var latencies []time.Duration
-		success := false
-
-		for i := 0; i < pingCount; i++ {
-			start := time.Now()
-			conn, err := net.DialTimeout("tcp", net.JoinHostPort(addr, strconv.Itoa(node.Port)), pingTimeout)
-			latency := time.Since(start)
-
-			if err == nil {
-				conn.Close()
-				latencies = append(latencies, latency)
-				success = true
-			}
-
-			if i < pingCount-1 && success {
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
+		latencies := results[node.ID]
 
 		if len(latencies) > 0 {
 			var total time.Duration
@@ -130,4 +113,75 @@ func runPing(nodeIDs []string) {
 	}
 
 	fmt.Print(i18n.T("node.ping.summary", i18n.F(reachable), i18n.F(unreachable), i18n.F(len(nodes))))
+}
+
+// pingNodeTCP 对单个节点做 count 次 TCP 探测，返回成功样本。
+func pingNodeTCP(addr string, port int, timeout time.Duration, count int) (res struct {
+	reachable bool
+	latencies []time.Duration
+}) {
+	var success bool
+	for i := 0; i < count; i++ {
+		start := time.Now()
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(addr, strconv.Itoa(port)), timeout)
+		latency := time.Since(start)
+
+		if err == nil {
+			conn.Close()
+			res.latencies = append(res.latencies, latency)
+			success = true
+		}
+
+		if i < count-1 && success {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	res.reachable = len(res.latencies) > 0
+	return res
+}
+
+// pingNodesParallel 有界并行探测全部节点（默认并发 10），结果按键 node.ID 返回。
+func pingNodesParallel(nodes []*common.NodeInfo, timeout time.Duration, count int) map[string][]time.Duration {
+	const defaultConcurrency = 10
+	conc := defaultConcurrency
+	if len(nodes) < conc {
+		conc = len(nodes)
+	}
+
+	type job struct {
+		id      string
+		address string
+		port    int
+	}
+
+	jobs := make([]job, len(nodes))
+	for i, n := range nodes {
+		addr := n.Address
+		if host, _, err := net.SplitHostPort(addr); err == nil {
+			addr = host
+		}
+		jobs[i] = job{id: n.ID, address: addr, port: n.Port}
+	}
+
+	results := make(map[string][]time.Duration, len(nodes))
+	var mu sync.Mutex
+	sem := make(chan struct{}, conc)
+	var wg sync.WaitGroup
+
+	for _, j := range jobs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(j job) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			r := pingNodeTCP(j.address, j.port, timeout, count)
+			mu.Lock()
+			if r.reachable {
+				results[j.id] = r.latencies
+			}
+			mu.Unlock()
+		}(j)
+	}
+	wg.Wait()
+	return results
 }
