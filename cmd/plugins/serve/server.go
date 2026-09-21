@@ -60,6 +60,7 @@ type Server struct {
 	userHandler         *handler.UserHandler
 	nodeHandler         *handler.NodeHandler
 	settingsHandler     *handler.SettingsHandler
+	dbStatsHandler      *handler.DBStatsHandler
 	execHandler         *handler.ExecHandler
 	playbookHandler     *handler.PlaybookHandler
 	stagingHandler      *handler.StagingHandler
@@ -159,6 +160,7 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	s.shortcutHandler = handler.NewShortcutHandler(s.commands, s.Users)
 	s.nodeHandler = handler.NewNodeHandler(db)
 	s.settingsHandler = handler.NewSettingsHandler(db)
+	s.dbStatsHandler = handler.NewDBStatsHandler(db, s.Config.DBPath)
 	s.wsHub = handler.NewWSHub()
 	s.wsTickets = handler.NewWSTicketManager()
 	s.execHandler = handler.NewExecHandler(db, s.Tasks, s.wsHub)
@@ -391,6 +393,9 @@ func (s *Server) setupRoutes() {
 			admin.GET("/settings", s.settingsHandler.List)
 			admin.GET("/settings/:key", s.settingsHandler.Get)
 			admin.PUT("/settings/:key", s.settingsHandler.Set)
+			// 数据库可观测性：各表行数/占用与手动空间回收（admin）
+			admin.GET("/db/stats", s.dbStatsHandler.Stats)
+			admin.POST("/db/vacuum", s.dbStatsHandler.Vacuum)
 			admin.GET("/users", s.userHandler.List)
 			admin.GET("/users/:id", s.userHandler.Get)
 			admin.POST("/users", s.userHandler.Create)
