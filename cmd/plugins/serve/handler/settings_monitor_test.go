@@ -49,6 +49,26 @@ func TestSettingsHandler_MonitorKeysValidation(t *testing.T) {
 		{"monitor.verify_delay_seconds", "601", 400},
 		{"monitor.verify_delay_seconds", "0", 200},
 		{"monitor.verify_delay_seconds", "120", 200},
+		// 指标保留天数：1..3650 天，必须显式保留数据
+		{"monitor.retention_days", "abc", 400},
+		{"monitor.retention_days", "-1", 400},
+		{"monitor.retention_days", "0", 400},
+		{"monitor.retention_days", "1", 200},
+		{"monitor.retention_days", "90", 200},
+		{"monitor.retention_days", "3651", 400},
+		// 清理计划档位：daily | weekly | monthly
+		{"monitor.cleanup_schedule", "hourly", 400},
+		{"monitor.cleanup_schedule", "", 400},
+		{"monitor.cleanup_schedule", "daily", 200},
+		{"monitor.cleanup_schedule", "weekly", 200},
+		{"monitor.cleanup_schedule", "monthly", 200},
+		// 采集间隔（写入频率）：10..86400 秒
+		{"monitor.interval_seconds", "abc", 400},
+		{"monitor.interval_seconds", "9", 400},
+		{"monitor.interval_seconds", "10", 200},
+		{"monitor.interval_seconds", "300", 200},
+		{"monitor.interval_seconds", "86400", 200},
+		{"monitor.interval_seconds", "86401", 400},
 	}
 	for _, tc := range cases {
 		w := doSettingsPut(router, token, tc.key, tc.value)

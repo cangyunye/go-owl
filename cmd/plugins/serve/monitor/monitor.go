@@ -182,6 +182,7 @@ func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 		AlertRetentionDays: func() int { return readAlertRetentionDays(db) },
 		WebURL:             webURL,
 	}
+	applyStorageSettings(db, &cfg)
 	// 失败自动回滚开关（monitor.rollback_enabled，默认开）
 	runner.SetRollbackEnabled(readRollbackEnabled(db))
 	// 疗效未确认自动换方案（monitor.heal_retry_*，默认关闭 + 次数上限防循环）
@@ -570,6 +571,71 @@ func readAlertRetentionDays(db *sql.DB) int {
 	n, err := strconv.Atoi(strings.TrimSpace(v))
 	if err != nil || n < 0 {
 		return 0
+	}
+	return n
+}
+
+// applyStorageSettings 把指标保留期、清理档位与采集间隔（写入频率）接入
+// 引擎配置：每轮/每次清理前经 settings 表重读，运行期调整即时生效。
+func applyStorageSettings(db *sql.DB, cfg *owlmonitor.EngineConfig) {
+	cfg.RetentionDaysFn = func() int { return readMetricsRetentionDays(db) }
+	cfg.IntervalFn = func() time.Duration {
+		return time.Duration(readIntervalSeconds(db)) * time.Second
+	}
+	cfg.CleanupScheduleFn = func() string { return readCleanupSchedule(db) }
+}
+
+// readMetricsRetentionDays 读取指标保留天数（monitor.retention_days）。
+// 未设置/非法 = 默认 30；越界收敛到 1..3650。
+func readMetricsRetentionDays(db *sql.DB) int {
+	var v string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.retention_days'`).Scan(&v); err != nil {
+		return 30
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil {
+		return 30
+	}
+	if n < 1 {
+		return 1
+	}
+	if n > 3650 {
+		return 3650
+	}
+	return n
+}
+
+// readCleanupSchedule 读取清理计划档位（monitor.cleanup_schedule）。
+// 未设置/非法 = daily；大小写与首尾空白归一。
+func readCleanupSchedule(db *sql.DB) string {
+	var v string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.cleanup_schedule'`).Scan(&v); err != nil {
+		return "daily"
+	}
+	switch s := strings.ToLower(strings.TrimSpace(v)); s {
+	case "weekly", "monthly":
+		return s
+	default:
+		return "daily"
+	}
+}
+
+// readIntervalSeconds 读取采集间隔秒数（monitor.interval_seconds）。
+// 未设置/非法 = 默认 60；越界收敛到 10..86400。
+func readIntervalSeconds(db *sql.DB) int {
+	var v string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.interval_seconds'`).Scan(&v); err != nil {
+		return 60
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil {
+		return 60
+	}
+	if n < 10 {
+		return 10
+	}
+	if n > 86400 {
+		return 86400
 	}
 	return n
 }
