@@ -744,7 +744,7 @@ func TestModelsEndpoint_AnthropicType_ReturnsHardcodedModels(t *testing.T) {
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Greater(t, len(resp.Models), 0)
-	assert.Equal(t, "claude-sonnet-4-20250514", resp.Models[0].ID)
+	assert.Equal(t, "claude-sonnet-5", resp.Models[0].ID)
 }
 
 func TestTestEndpoint_MissingModel_Returns400(t *testing.T) {
