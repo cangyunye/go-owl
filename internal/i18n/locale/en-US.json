@@ -413,6 +413,7 @@
   "exec.run.flag_group_deprecated": "(deprecated, use --groups)",
   "exec.run.flag_label": "Select nodes by label (format: key=value)",
   "exec.run.flag_status": "Select nodes by status: online, offline",
+  "exec.run.err_invalid_status": "Error: invalid status filter: %s (expected online, offline, unknown)",
   "exec.run.flag_timeout": "Command execution timeout (deprecated, use --connect-timeout and --command-timeout)",
   "exec.run.flag_connect_timeout": "SSH connection timeout",
   "exec.run.flag_command_timeout": "Command execution timeout",

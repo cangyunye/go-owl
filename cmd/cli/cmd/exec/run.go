@@ -14,6 +14,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/settings"
 	"github.com/cangyunye/go-owl/internal/control/async"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
+	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/command"
 	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/logfile"
@@ -150,6 +151,16 @@ func runExecRun(cmd *cobra.Command, args []string) {
 			labels[execLabel[0]] = ""
 		}
 		selectOpts.Labels = labels
+	}
+	if execStatus != "" {
+		status := strings.ToLower(strings.TrimSpace(execStatus))
+		switch model.NodeStatus(status) {
+		case model.NodeStatusOnline, model.NodeStatusOffline, model.NodeStatusUnknown:
+			selectOpts.Status = status
+		default:
+			fmt.Fprintf(os.Stderr, "%s", i18n.T("exec.run.err_invalid_status", execStatus))
+			os.Exit(1)
+		}
 	}
 	selected, err := selector.Select(context.Background(), selectOpts)
 	if err != nil {
@@ -455,6 +466,9 @@ func escapeJSON(s string) string {
 }
 
 func printResult(result command.CommandResult) {
+	if execNoColor && result.Output != "" {
+		result.Output = common.StripANSI(result.Output)
+	}
 	if execFormat == "json" {
 		fmt.Printf(`{"node":"%s","success":%v,"output":"%s","exit_code":%d}`+"\n",
 			result.NodeID, result.Success, escapeJSON(result.Output), result.ExitCode)

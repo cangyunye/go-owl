@@ -414,6 +414,7 @@
   "exec.run.flag_group_deprecated": "(已废弃，请使用 --groups)",
   "exec.run.flag_label": "按标签选择节点 (格式: key=value)",
   "exec.run.flag_status": "按状态选择节点: online, offline",
+  "exec.run.err_invalid_status": "错误: 无效的状态筛选值: %s（可选 online, offline, unknown）",
   "exec.run.flag_timeout": "命令执行超时时间 (已废弃，推荐使用 --connect-timeout 和 --command-timeout)",
   "exec.run.flag_connect_timeout": "SSH 连接超时时间",
   "exec.run.flag_command_timeout": "命令执行超时时间",

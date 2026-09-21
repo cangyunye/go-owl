@@ -250,7 +250,7 @@ func runDiffusionTransfer(ctx context.Context, nodeResolver *node.NodeResolver, 
 	fmt.Println(i18n.T("file.transfer.building_tree"))
 
 	modelNodes := resolvedToModelNodes(resolvedNodes)
-	treeBuilder := transfer.NewTreeBuilder(transferFanOut, 10, transferThreshold)
+	treeBuilder := transfer.NewTreeBuilderWithSources(transferFanOut, transferSourceCount, 10, transferThreshold)
 	tree := treeBuilder.Build(modelNodes)
 
 	diffTransfer := transfer.NewDiffusionTransfer(taskID, getFileNameFromPath(fileName), fileName, remotePath, fileSize, "", tree)
