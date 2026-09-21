@@ -28,11 +28,6 @@ func NewPlaybookTemplateExportCmd() *cobra.Command {
 
 func runTemplateExport(cmd *cobra.Command, args []string) {
 	name := args[0]
-	entry, err := pb.GetTemplate(name, pb.DefaultUserTemplatePath())
-	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.template.export.err_get", err))
-		return
-	}
 
 	toDir := templateExportTo
 	if toDir == "" {
@@ -40,12 +35,31 @@ func runTemplateExport(cmd *cobra.Command, args []string) {
 	}
 
 	outPath := filepath.Join(toDir, name+".yaml")
+
+	var content []byte
+	entry, err := pb.GetTemplate(name, pb.DefaultUserTemplatePath())
+	if err != nil {
+		// 规范骨架不在模板体系中，直接导出共享生成器内容，
+		// 保证与 scaffold / new / template create 产出逐字节一致。
+		if name != CanonicalSkeletonName {
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.template.export.err_get", err))
+			return
+		}
+		content, err = GeneratePlaybookSkeleton(SkeletonOptions{})
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.template.export.err_get", err))
+			return
+		}
+	} else {
+		content = entry.Content
+	}
+
 	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.template.export.err_mkdir", err))
 		return
 	}
 
-	if err := os.WriteFile(outPath, entry.Content, 0644); err != nil {
+	if err := os.WriteFile(outPath, content, 0644); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.template.export.err_write", err))
 		return
 	}

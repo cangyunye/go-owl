@@ -58,20 +58,17 @@ func runPlaybookTemplate(cmd *cobra.Command, args []string) {
 	defaultConfig := promptForDefaultConfig(reader)
 	tasks := promptForTasks(reader)
 
-	tpl := playbook.TemplatePlaybook{
-		Name:          name,
+	// 向导收集的参数统一交给共享生成器渲染，
+	// 与 scaffold / new / template export 产出同一份规范骨架。
+	// 名称仅用于输出文件名，不写入 YAML（与内置模板格式一致）。
+	playbookYAML, err := GeneratePlaybookSkeleton(SkeletonOptions{
 		Description:   description,
 		Version:       version,
-		Hosts:         []string{},
 		ExecutionMode: mode,
 		Default:       defaultConfig,
 		Vars:          vars,
-		PreTasks:      []playbook.TemplateTask{},
 		Tasks:         tasks,
-		PostTasks:     []playbook.TemplateTask{},
-	}
-
-	playbookYAML, err := playbook.RenderTemplateYAML(&tpl)
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.template.err_yaml", err))
 		os.Exit(1)
