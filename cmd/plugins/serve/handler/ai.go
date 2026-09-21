@@ -312,10 +312,6 @@ func (h *AIHandler) GetContext(c *gin.Context) {
 	})
 }
 
-func (h *AIHandler) Audit(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "server-side audit is the primary path"})
-}
-
 func (h *AIHandler) logAudit(userID, intent, result, prompt, reply string, durationMs int64, debug bool) {
 	promptText := ""
 	if debug {

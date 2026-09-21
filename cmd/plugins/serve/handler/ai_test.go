@@ -460,19 +460,6 @@ func TestGetContext(t *testing.T) {
 	assert.NotNil(t, resp.PlaybookRuns)
 }
 
-func TestAudit_Returns501(t *testing.T) {
-	_, h := aiTestSetup(t)
-
-	router := gin.New()
-	router.POST("/api/v1/ai/audit", h.Audit)
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/api/v1/ai/audit", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, 501, w.Code)
-}
-
 func TestAIDebugMode_IncludesPromptTextInAudit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

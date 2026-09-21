@@ -319,7 +319,6 @@ func (s *Server) setupRoutes() {
 		reader.GET("/ai/sessions", s.aiHandler.ListAISessions)
 		reader.GET("/ai/approvals", s.aiApprovalHandler.List)
 		reader.POST("/ai/sessions/import", s.aiHandler.ImportAISession)
-		reader.POST("/ai/audit", s.aiHandler.Audit)
 		reader.POST("/ai/models", s.aiHandler.Models)
 		reader.POST("/ai/test", s.aiHandler.Test)
 		reader.GET("/history", s.historyHandler.List)
