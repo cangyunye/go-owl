@@ -164,7 +164,7 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 			if p.onProgress != nil {
 				p.onProgress("execute", call.Name)
 			}
-			if ok, question := a.confirmToolCall(call); !ok {
+			if ok, question := a.confirmToolCall(call, resolveGate(ctx, a)); !ok {
 				if p.onProgress != nil {
 					p.onProgress("result", "等待确认")
 				}

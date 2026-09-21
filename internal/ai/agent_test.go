@@ -255,7 +255,8 @@ func TestSessionDefaultConfirmGate(t *testing.T) {
 	session := NewSession(agent)
 
 	call := ToolCall{Name: "execute_command", Arguments: map[string]interface{}{"command": "uptime"}}
-	d := agent.confirmGate(call)
+	// 新契约：确认门是会话私有（随 ctx 传递），不再写入共享 Agent 单槽
+	d := session.confirmGateFn(call)
 	if !d.Confirm {
 		t.Fatal("expected write operation to require confirmation")
 	}
@@ -270,7 +271,7 @@ func TestSessionDefaultConfirmGate(t *testing.T) {
 	}
 
 	readCall := ToolCall{Name: "query_nodes", Arguments: map[string]interface{}{}}
-	if d := agent.confirmGate(readCall); d.Confirm {
+	if d := session.confirmGateFn(readCall); d.Confirm {
 		t.Error("expected read-only operation to pass through")
 	}
 }

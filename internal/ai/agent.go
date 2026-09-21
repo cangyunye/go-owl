@@ -138,6 +138,37 @@ func (a *Agent) SetNodeContextHook(hook func(nodes []string, source string)) {
 	a.nodeContextHook = hook
 }
 
+// sessionHooks 携带会话私有的回调，经 ctx 在工具执行链上传递。
+type sessionHooks struct {
+	gate func(ToolCall) ConfirmationDecision
+	hook func(nodes []string, source string)
+}
+
+type ctxKeySessionHooks struct{}
+
+func withSessionHooks(ctx context.Context, s *Session) context.Context {
+	return context.WithValue(ctx, ctxKeySessionHooks{}, &sessionHooks{gate: s.confirmGateFn, hook: s.nodeHookFn})
+}
+
+func hooksFromCtx(ctx context.Context) *sessionHooks {
+	if v, ok := ctx.Value(ctxKeySessionHooks{}).(*sessionHooks); ok {
+		return v
+	}
+	return nil
+}
+
+// resolveGate 解析生效的确认门：会话 ctx 优先，回退 Agent 单槽
+// （直连 Agent.Process 的非会话调用方仍走 SetConfirmGate 注册的槽）。
+func resolveGate(ctx context.Context, a *Agent) func(ToolCall) ConfirmationDecision {
+	if h := hooksFromCtx(ctx); h != nil && h.gate != nil {
+		return h.gate
+	}
+	a.mu.RLock()
+	gate := a.confirmGate
+	a.mu.RUnlock()
+	return gate
+}
+
 // nodeTargetTools 执行后需要记录节点上下文的工具。
 var nodeTargetTools = map[string]bool{
 	"query_nodes":     true,
@@ -842,10 +873,7 @@ func (a *Agent) parseToolCalls(response string) []ToolCall {
 // confirmToolCall 执行前过确认门。返回 (true,"") 表示放行；
 // 返回 (false, question) 表示已拦截，question 为返回给用户的文案。
 // 未注册确认门时，写操作默认拒绝（安全兜底），只读操作放行。
-func (a *Agent) confirmToolCall(call ToolCall) (bool, string) {
-	a.mu.RLock()
-	gate := a.confirmGate
-	a.mu.RUnlock()
+func (a *Agent) confirmToolCall(call ToolCall, gate func(ToolCall) ConfirmationDecision) (bool, string) {
 	if gate != nil {
 		policy := a.safety()
 		lowRiskOff := policy.ConfirmLowRisk != nil && !*policy.ConfirmLowRisk
@@ -876,7 +904,7 @@ func (a *Agent) runToolCalls(ctx context.Context, calls []ToolCall, onProgress P
 		if onProgress != nil {
 			onProgress("execute", call.Name)
 		}
-		if ok, question := a.confirmToolCall(call); !ok {
+		if ok, question := a.confirmToolCall(call, resolveGate(ctx, a)); !ok {
 			if onProgress != nil {
 				onProgress("result", "等待确认")
 			}
@@ -922,9 +950,10 @@ func (a *Agent) executeToolCall(ctx context.Context, call ToolCall) (string, err
 	if err == nil && nodeTargetTools[call.Name] && a.nodeMgr != nil {
 		nodes, source := a.resolveToolTargets(call)
 		if len(nodes) > 0 {
-			a.mu.RLock()
 			hook := a.nodeContextHook
-			a.mu.RUnlock()
+			if h := hooksFromCtx(ctx); h != nil && h.hook != nil {
+				hook = h.hook
+			}
 			if hook != nil {
 				hook(nodes, source)
 			}
@@ -1079,6 +1108,10 @@ type Session struct {
 	lastActive     time.Time
 	OnProgress     ProgressCallback
 	pendingContext *PendingContext
+	// 会话私有的确认门/节点回调：随 ctx 传递，不写入共享 Agent
+	// （Agent 可能被 Web 端多用户并发共享，单槽会互相覆盖）。
+	confirmGateFn func(ToolCall) ConfirmationDecision
+	nodeHookFn    func(nodes []string, source string)
 	// persist 由 SessionManager 注入：Send 成功后持久化快照（nil=纯内存）
 	persist func(*Session)
 }
@@ -1102,12 +1135,11 @@ func NewSession(agent *Agent) *Session {
 	return s
 }
 
-// registerNodeContextHook 注册节点上下文回调。agent 可能被多会话共享，
-// 每次 Send 前需重新注册，保证最近注册的是本会话的回调。
+// registerNodeContextHook 设置会话私有的节点上下文回调（不再覆写共享 Agent）。
 func (s *Session) registerNodeContextHook() {
-	s.agent.SetNodeContextHook(func(nodes []string, source string) {
+	s.nodeHookFn = func(nodes []string, source string) {
 		s.nodeContext = &NodeContext{Nodes: nodes, Source: source}
-	})
+	}
 }
 
 var affirmativeReplies = map[string]bool{
@@ -1138,8 +1170,8 @@ func (a *Agent) RenderSystemPrompt(prompt string) string {
 func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	s.lastActive = time.Now()
 	s.history = append(s.history, fmt.Sprintf("User: %s", userInput))
-	// agent 可被多会话共享，每次 Send 前重新注册本会话的节点上下文回调
-	s.registerNodeContextHook()
+	// 会话回调随 ctx 传递：共享 Agent 时各会话互不覆盖
+	ctx = withSessionHooks(ctx, s)
 
 	// 有待确认操作时，先处理确认/取消，其余输入一律提示，保证单 pending 队列。
 	if s.pendingContext != nil && s.pendingContext.State == "awaiting_confirmation" {
@@ -1316,7 +1348,7 @@ func (s *Session) appendDialogue(userInput, response string) {
 // SetDefaultConfirmGate 注册本会话的默认确认门（写操作拦截、保存 pending）。
 // 每次调用 Send 前由 CLI 或调用方执行，保证最近注册的是本会话的门。
 func (s *Session) SetDefaultConfirmGate() {
-	s.agent.SetConfirmGate(func(call ToolCall) ConfirmationDecision {
+	s.confirmGateFn = func(call ToolCall) ConfirmationDecision {
 		if !confirmRequiredTools[call.Name] {
 			return ConfirmationDecision{Confirm: false}
 		}
@@ -1329,7 +1361,7 @@ func (s *Session) SetDefaultConfirmGate() {
 			ToolCall: call,
 		}
 		return ConfirmationDecision{Confirm: true, Summary: summary, Question: question}
-	})
+	}
 }
 
 func (s *Session) GetHistory() []string {

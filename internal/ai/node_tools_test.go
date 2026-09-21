@@ -95,7 +95,7 @@ func TestNodeWriteOpsRequireConfirmation(t *testing.T) {
 			continue
 		}
 		call := ToolCall{Name: name, Arguments: map[string]interface{}{}}
-		d := sess.agent.confirmGate(call)
+		d := sess.confirmGateFn(call)
 		if !d.Confirm {
 			t.Errorf("write op %s should require confirmation", name)
 		}
