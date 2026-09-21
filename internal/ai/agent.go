@@ -613,8 +613,7 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		messages:      messages,
 		onProgress:    onProgress,
 		userInput:     userInput,
-		localFallback: true,
-		useToolHints:  true,
+			useToolHints:  true,
 	})
 	if err != nil {
 		return "", err
@@ -995,6 +994,16 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 		case IntentAlertRemedy:
 			return "alert_remedy", nil
 		}
+	}
+
+	// 危险执行类意图绝不基于本地字符串猜测构造工具调用：
+	// 参数（节点/命令）来自滑窗猜测，曾出现找不到节点时静默落到第一个节点。
+	switch intentResult.Type {
+	case IntentExecuteCmd, IntentExecuteScript, IntentTransferFile, IntentFileDownload:
+		if isRoute {
+			return "uncertain", nil
+		}
+		return formatter.FormatUncertainHelp() + " " + offlineExecutionRefusal, nil
 	}
 
 	params := extractor.ExtractParams(intentResult.Type, input)
@@ -1658,3 +1667,6 @@ func (a *Agent) safetyBlockedReason(call ToolCall) string {
 	}
 	return policy.CheckCommand(user, command)
 }
+
+// offlineExecutionRefusal 离线（无 LLM）模式下拒绝猜测执行类操作的说明。
+const offlineExecutionRefusal = "提示：执行命令/脚本、传输文件等写操作需要配置 LLM 服务后由模型精确生成参数（运行 owl ai setup 配置），离线模式下仅支持查询节点、查看告警等只读操作。"

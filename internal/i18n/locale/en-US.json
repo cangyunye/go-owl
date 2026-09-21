@@ -653,7 +653,7 @@
   "ai.help.ex3_query": "  generate a deployment script",
   "ai.help.ex3_arrow": "  → generate a playbook to deploy nginx",
   "ai.direct.executing": "\u001b[90m[Direct execution: %s]\u001b[0m\n",
-  "ai.direct.not_supported": "(The direct command feature requires the full CLI environment)",
+  "ai.direct.not_supported": "Direct shell execution is not available inside the AI session. Either 1) type exit, then run %s; or 2) describe the goal in natural language and I will execute it precisely via tools.",
   "ai.slash.exec_label": "Execute command",
   "ai.slash.exec_desc": "Run a shell command on the specified nodes",
   "ai.slash.exec_template": "run the command {command} on {nodes}",

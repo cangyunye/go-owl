@@ -654,7 +654,7 @@
   "ai.help.ex3_query": "  生成部署脚本",
   "ai.help.ex3_arrow": "  → 生成一个部署 nginx 的剧本",
   "ai.direct.executing": "\u001b[90m[直接执行: %s]\u001b[0m\n",
-  "ai.direct.not_supported": "（直接命令功能需要在完整 CLI 环境中执行）",
+  "ai.direct.not_supported": "AI 会话内不支持直接执行 shell 命令。两种方式：① 先 exit 退出会话，再运行 %s；② 直接用自然语言告诉我目标，我会通过工具精确执行并回显结果。",
   "ai.slash.exec_label": "执行命令",
   "ai.slash.exec_desc": "在指定节点上执行 shell 命令",
   "ai.slash.exec_template": "在 {nodes} 上执行命令 {command}",
