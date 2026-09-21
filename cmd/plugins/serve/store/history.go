@@ -61,24 +61,10 @@ type FileTransfer struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-type NodeCommunication struct {
-	ID          int64     `json:"id"`
-	TaskID      string    `json:"task_id"`
-	NodeID      string    `json:"node_id"`
-	NodeAddress string    `json:"node_address"`
-	Direction   string    `json:"direction"`
-	MessageType string    `json:"message_type"`
-	Payload     string    `json:"payload"`
-	Success     bool      `json:"success"`
-	Error       string    `json:"error"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
 type Record struct {
-	Operation         *Operation           `json:"operation"`
-	CommandExecutions []*CommandExecution  `json:"command_executions,omitempty"`
-	Transfers         []*FileTransfer      `json:"transfers,omitempty"`
-	Communications    []*NodeCommunication `json:"communications,omitempty"`
+	Operation         *Operation          `json:"operation"`
+	CommandExecutions []*CommandExecution `json:"command_executions,omitempty"`
+	Transfers         []*FileTransfer     `json:"transfers,omitempty"`
 }
 
 type QueryOptions struct {
@@ -92,6 +78,11 @@ type QueryOptions struct {
 	EndTime   time.Time
 	Limit     int
 	Offset    int
+	// SummaryOnly 轻量列表模式（opt-in）：不回拉每条 operation 的明细
+	// （command_executions / file_transfers 子查询，含不限长 stdout/stderr），
+	// 避免列表页 N+1（50 条 = 151 查询）与大字段回传；默认 false 保持全量，
+	// 详情（GetByTaskID）与导出走默认即可。
+	SummaryOnly bool
 }
 
 type Stats struct {
@@ -162,21 +153,9 @@ func (s *HistoryStore) Init(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_transfers_task_id ON file_transfers (task_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_transfers_node_id ON file_transfers (node_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_transfers_created_at ON file_transfers (created_at)`,
-		`CREATE TABLE IF NOT EXISTS node_communications (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			task_id TEXT,
-			node_id TEXT,
-			node_address TEXT,
-			direction TEXT,
-			message_type TEXT,
-			payload TEXT,
-			success INTEGER,
-			error TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_communications_task_id ON node_communications (task_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_communications_node_id ON node_communications (node_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_communications_created_at ON node_communications (created_at)`,
+		// node_communications 表已删除：RecordNodeCommunication 全仓 0 调用、
+		// 查询结果永远为空集的死特性链。已有库中的同名表保留不动（CLI 侧
+		// internal/history 的建表与 Cleanup 仍引用它），serve 不再读写。
 	}
 	for _, stmt := range statements {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -300,20 +279,6 @@ func (s *HistoryStore) RecordFileTransfer(ctx context.Context, tr *FileTransfer)
 	return err
 }
 
-func (s *HistoryStore) RecordNodeCommunication(ctx context.Context, c *NodeCommunication) error {
-	if s == nil {
-		return nil
-	}
-	if c.CreatedAt.IsZero() {
-		c.CreatedAt = time.Now().UTC()
-	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO node_communications (task_id, node_id, node_address, direction, message_type, payload, success, error, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.TaskID, c.NodeID, c.NodeAddress, c.Direction, c.MessageType, c.Payload, c.Success, c.Error, c.CreatedAt)
-	return err
-}
-
 func (s *HistoryStore) Query(ctx context.Context, opts *QueryOptions) ([]*Record, int, error) {
 	if s == nil {
 		return nil, 0, nil
@@ -384,14 +349,17 @@ func (s *HistoryStore) Query(ctx context.Context, opts *QueryOptions) ([]*Record
 		records = append(records, &Record{Operation: &op})
 	}
 
-	for _, rec := range records {
-		rec.CommandExecutions, _ = s.executionsByTaskID(ctx, rec.Operation.TaskID)
-		rec.Transfers, _ = s.transfersByTaskID(ctx, rec.Operation.TaskID)
-		rec.Communications, _ = s.commsByTaskID(ctx, rec.Operation.TaskID)
+	// 轻量列表模式（SummaryOnly）：不回拉明细子查询（列表页只展示 operation 概要）。
+	if !opts.SummaryOnly {
+		for _, rec := range records {
+			rec.CommandExecutions, _ = s.executionsByTaskID(ctx, rec.Operation.TaskID)
+			rec.Transfers, _ = s.transfersByTaskID(ctx, rec.Operation.TaskID)
+		}
 	}
 	return records, total, nil
 }
 
+// GetByTaskID 详情路径：始终包含 executions/transfers 明细。
 func (s *HistoryStore) GetByTaskID(ctx context.Context, taskID string) (*Record, error) {
 	recs, _, err := s.Query(ctx, &QueryOptions{TaskID: taskID})
 	if err != nil {
@@ -441,25 +409,6 @@ func (s *HistoryStore) transfersByTaskID(ctx context.Context, taskID string) ([]
 	return results, nil
 }
 
-func (s *HistoryStore) commsByTaskID(ctx context.Context, taskID string) ([]*NodeCommunication, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, task_id, node_id, node_address, direction, message_type, payload, success, error, created_at
-		FROM node_communications WHERE task_id = ? ORDER BY created_at`, taskID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	results := []*NodeCommunication{}
-	for rows.Next() {
-		var c NodeCommunication
-		if err := rows.Scan(&c.ID, &c.TaskID, &c.NodeID, &c.NodeAddress, &c.Direction, &c.MessageType, &c.Payload, &c.Success, &c.Error, &c.CreatedAt); err != nil {
-			continue
-		}
-		results = append(results, &c)
-	}
-	return results, nil
-}
-
 func (s *HistoryStore) UpdateOperationStatus(ctx context.Context, taskID, status string) error {
 	if s == nil {
 		return nil
@@ -474,7 +423,9 @@ func (s *HistoryStore) Cleanup(ctx context.Context, retentionDays int) (int64, e
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays)
 	var total int64
-	for _, table := range []string{"operations", "command_executions", "file_transfers", "node_communications"} {
+	// node_communications 已随死特性链移除；表如存在于旧库，交由 CLI 侧
+	// internal/history 的 Cleanup 继续按保留期清理。
+	for _, table := range []string{"operations", "command_executions", "file_transfers"} {
 		res, err := s.db.ExecContext(ctx, "DELETE FROM "+table+" WHERE created_at < ?", cutoff)
 		if err != nil {
 			return total, err

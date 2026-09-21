@@ -14,7 +14,7 @@ func LoadConfigForTest(t *testing.T) *Config {
 			AI: AIConfig{
 				Provider: "openai",
 				APIKey:   "test-key",
-				Model:    "gpt-4o",
+				Model:    "gpt-5.6-terra",
 				BaseURL:  "https://api.openai.com/v1",
 				Timeout:  120,
 			},
@@ -57,8 +57,8 @@ func TestAIConfig(t *testing.T) {
 	if cfg.AI.Provider != "openai" {
 		t.Errorf("expected default provider 'openai', got '%s'", cfg.AI.Provider)
 	}
-	if cfg.AI.Model != "gpt-4o" {
-		t.Errorf("expected default model 'gpt-4o', got '%s'", cfg.AI.Model)
+	if cfg.AI.Model != "gpt-5.6-terra" {
+		t.Errorf("expected default model 'gpt-5.6-terra', got '%s'", cfg.AI.Model)
 	}
 	if cfg.AI.Timeout != 120 {
 		t.Errorf("expected default timeout 120, got %d", cfg.AI.Timeout)
@@ -114,7 +114,7 @@ func TestDefaultConfig_Structure(t *testing.T) {
 	if cfg.AI.Provider != "openai" {
 		t.Errorf("expected provider 'openai', got '%s'", cfg.AI.Provider)
 	}
-	if cfg.AI.Model != "gpt-4o" {
+	if cfg.AI.Model != "gpt-5.6-terra" {
 		t.Errorf("expected model 'gpt-4o', got '%s'", cfg.AI.Model)
 	}
 	if cfg.AI.Timeout != 120 {

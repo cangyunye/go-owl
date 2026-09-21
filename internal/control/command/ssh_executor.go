@@ -11,9 +11,9 @@ import (
 	"github.com/cangyunye/go-owl/internal/control/async"
 	controlnode "github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/cangyunye/go-owl/internal/control/task"
+	"github.com/cangyunye/go-owl/internal/logger"
 	"github.com/cangyunye/go-owl/internal/node"
 	"github.com/cangyunye/go-owl/internal/ssh"
-	"github.com/cangyunye/go-owl/internal/logger"
 	"go.uber.org/zap"
 )
 
@@ -74,33 +74,118 @@ func (e *Executor) runWithRetry(ctx context.Context, nodeIDs []string, command s
 	return results
 }
 
-func (e *Executor) runParallel(ctx context.Context, nodeIDs []string, command string, opts *ExecuteOptions) []CommandResult {
-	resultsChan := make(chan CommandResult, len(nodeIDs))
-	var wg sync.WaitGroup
-	wg.Add(len(nodeIDs))
+// defaultMaxConcurrency 并行执行的默认并发上限，与监控引擎的节点采集
+// 并发默认值（internal/monitor EngineConfig.Concurrency = 10）对齐。
+const defaultMaxConcurrency = 10
 
-	for _, nodeID := range nodeIDs {
-		go func(id string) {
+// effectiveConcurrency 从执行选项解析并发上限（nil/0/负数 → 默认值）。
+func effectiveConcurrency(opts *ExecuteOptions) int {
+	if opts != nil && opts.MaxConcurrency > 0 {
+		return opts.MaxConcurrency
+	}
+	return defaultMaxConcurrency
+}
+
+// runParallelLimited 以固定 worker 池限并发执行 fn（至多 limit 个同时执行），
+// 结果按完成顺序聚合；ctx 已取消时剩余节点被跳过（不出结果），与
+// 原无上限实现的语义一致。limit <= 0 时按默认上限处理。
+func runParallelLimited[T any](ctx context.Context, ids []string, limit int, fn func(context.Context, string) T) []T {
+	if limit <= 0 {
+		limit = defaultMaxConcurrency
+	}
+	results := make(chan T, len(ids))
+	jobs := make(chan string)
+
+	workers := limit
+	if workers > len(ids) {
+		workers = len(ids)
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
 			defer wg.Done()
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				resultsChan <- e.runOnNode(ctx, id, command, opts)
+			for id := range jobs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					results <- fn(ctx, id)
+				}
 			}
-		}(nodeID)
+		}()
 	}
 
 	go func() {
+		defer close(results)
+		for _, id := range ids {
+			select {
+			case <-ctx.Done():
+				close(jobs)
+				return
+			case jobs <- id:
+			}
+		}
+		close(jobs)
 		wg.Wait()
-		close(resultsChan)
 	}()
 
-	results := make([]CommandResult, 0, len(nodeIDs))
-	for result := range resultsChan {
-		results = append(results, result)
+	out := make([]T, 0, len(ids))
+	for r := range results {
+		out = append(out, r)
 	}
-	return results
+	return out
+}
+
+// runIndexedLimited 以固定 worker 池限并发执行 fn，结果严格按输入顺序
+// 返回且与输入一一对应（fn 必须对每个输入都产出结果）。
+func runIndexedLimited[T any](ctx context.Context, ids []string, limit int, fn func(context.Context, string) T) []T {
+	if limit <= 0 {
+		limit = defaultMaxConcurrency
+	}
+	out := make([]T, len(ids))
+	if len(ids) == 0 {
+		return out
+	}
+	jobs := make(chan int)
+
+	workers := limit
+	if workers > len(ids) {
+		workers = len(ids)
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				// 各 worker 写互不相同的下标，无数据竞争
+				out[idx] = fn(ctx, ids[idx])
+			}
+		}()
+	}
+
+	for idx := range ids {
+		jobs <- idx
+	}
+	close(jobs)
+	wg.Wait()
+	return out
+}
+
+func (e *Executor) runParallel(ctx context.Context, nodeIDs []string, command string, opts *ExecuteOptions) []CommandResult {
+	return runParallelLimited(ctx, nodeIDs, effectiveConcurrency(opts),
+		func(ctx context.Context, id string) CommandResult {
+			return e.runOnNode(ctx, id, command, opts)
+		})
 }
 
 func (e *Executor) runSequential(ctx context.Context, nodeIDs []string, command string, opts *ExecuteOptions) []CommandResult {
@@ -323,22 +408,12 @@ func (e *Executor) RunStreaming(ctx context.Context, nodeIDs []string, command s
 		defer close(results)
 
 		if opts != nil && opts.Parallel {
-			var wg sync.WaitGroup
-			wg.Add(len(nodeIDs))
-
-			for _, nodeID := range nodeIDs {
-				go func(id string) {
-					defer wg.Done()
-					select {
-					case <-ctx.Done():
-						return
-					default:
-						results <- e.runOnNode(ctx, id, command, opts)
-					}
-				}(nodeID)
+			for _, result := range runParallelLimited(ctx, nodeIDs, effectiveConcurrency(opts),
+				func(ctx context.Context, id string) CommandResult {
+					return e.runOnNode(ctx, id, command, opts)
+				}) {
+				results <- result
 			}
-
-			wg.Wait()
 		} else {
 			for _, nodeID := range nodeIDs {
 				select {

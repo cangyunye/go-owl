@@ -118,7 +118,7 @@ export function renderSettings(render, navigate, user, api) {
   const PROVIDER_DEFAULTS = {
     anthropic: {
       provider: 'anthropic', baseUrl: 'https://api.anthropic.com',
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5',
       thinking: { budget_tokens: 4096, temperature: 0.7, thinking_mode: 'extended' }
     },
     deepseek: {
@@ -128,7 +128,7 @@ export function renderSettings(render, navigate, user, api) {
     },
     openai: {
       provider: 'openai', baseUrl: 'https://api.openai.com/v1',
-      model: 'gpt-4o',
+      model: 'gpt-5.6-terra',
       thinking: { reasoning_effort: 'high', temperature: 0.7, max_tokens: 4096 }
     },
     qwen: {
@@ -167,7 +167,8 @@ export function renderSettings(render, navigate, user, api) {
       modelHtml = `<input type="text" class="ai-model-select" value="${esc(d.model)}" data-provider="${provider}" placeholder="输入模型名称" spellcheck="false" />`;
     } else {
       const opts = {
-        anthropic: ['claude-sonnet-4-20250514','claude-4-20250514','claude-opus-4-20250514','claude-3-5-haiku-20241022','claude-3-opus-20240229'],
+        anthropic: ['claude-sonnet-5','claude-opus-4-8','claude-sonnet-4-6','claude-haiku-4-5'],
+        openai:    ['gpt-5.6-terra','gpt-5.6-sol','gpt-5.6-luna'],
         deepseek:  ['deepseek-flash','deepseek-v4-pro'],
         qwen:      ['qwen-max','qwen-plus','qwen-turbo','qwen-long','qwq-32b','qwen2.5-72b-instruct'],
         volcengine: ['doubao-pro-32k','doubao-pro-128k','doubao-lite-32k','doubao-lite-128k','doubao-1.5-pro-256k'],

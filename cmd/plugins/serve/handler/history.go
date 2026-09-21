@@ -85,6 +85,9 @@ func (h *HistoryHandler) parseOptions(c *gin.Context) *store.QueryOptions {
 
 func (h *HistoryHandler) List(c *gin.Context) {
 	opts := h.parseOptions(c)
+	// 轻量列表模式：前端列表只展示 operation 概要，不回拉明细子查询
+	// （executions/transfers 与不限长 stdout/stderr），避免 N+1。
+	opts.SummaryOnly = true
 	records, total, err := h.history.Query(c.Request.Context(), opts)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query failed"})
@@ -122,6 +125,8 @@ func (h *HistoryHandler) Export(c *gin.Context) {
 	opts := h.parseOptions(c)
 	opts.Limit = 1000
 	opts.Offset = 0
+	// 导出保持全量明细（默认非 SummaryOnly，显式声明以防 parseOptions 变化）
+	opts.SummaryOnly = false
 	records, _, err := h.history.Query(c.Request.Context(), opts)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "export failed"})

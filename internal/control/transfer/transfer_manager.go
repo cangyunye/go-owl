@@ -13,10 +13,10 @@ import (
 )
 
 type TransferManager struct {
-	nodeResolver      *node.NodeResolver
-	sshConfigPath     string
-	rsyncAvailable    map[string]bool // nodeID -> available
-	mu                sync.RWMutex
+	nodeResolver   *node.NodeResolver
+	sshConfigPath  string
+	rsyncAvailable map[string]bool // nodeID -> available
+	mu             sync.RWMutex
 }
 
 func NewTransferManager(nodeResolver *node.NodeResolver) *TransferManager {
@@ -37,6 +37,9 @@ type TransferResult struct {
 	Duration   time.Duration
 }
 
+// defaultMaxConcurrency 并行上传的默认并发上限。
+const defaultMaxConcurrency = 10
+
 type UploadOptions struct {
 	Parallel     bool
 	Overwrite    bool
@@ -44,6 +47,9 @@ type UploadOptions struct {
 	PreservePerm bool
 	Resume       bool
 	ChunkSize    int64
+	// MaxConcurrency 并行上传（Parallel=true）时的最大并发节点数。
+	// 0 或负数 = 使用默认值 10。现有调用方无需修改即获得默认上限。
+	MaxConcurrency int
 }
 
 type DownloadOptions struct {
@@ -95,6 +101,54 @@ func (tm *TransferManager) checkRsyncRemotely(nodeInfo *node.ResolvedNode, connI
 	return err == nil && exitCode == 0
 }
 
+// effectiveUploadConcurrency 从上传选项解析并发上限（nil/0/负数 → 默认值）。
+func effectiveUploadConcurrency(opts *UploadOptions) int {
+	if opts != nil && opts.MaxConcurrency > 0 {
+		return opts.MaxConcurrency
+	}
+	return defaultMaxConcurrency
+}
+
+// parallelLimited 以固定 worker 池限并发执行 fn（至多 limit 个同时执行），
+// 结果严格按输入顺序返回且与输入一一对应。limit <= 0 时按默认上限处理。
+func parallelLimited[T any](ctx context.Context, ids []string, limit int, fn func(context.Context, string) T) []T {
+	if limit <= 0 {
+		limit = defaultMaxConcurrency
+	}
+	out := make([]T, len(ids))
+	if len(ids) == 0 {
+		return out
+	}
+	jobs := make(chan int)
+
+	workers := limit
+	if workers > len(ids) {
+		workers = len(ids)
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				// 各 worker 写互不相同的下标，无数据竞争
+				out[idx] = fn(ctx, ids[idx])
+			}
+		}()
+	}
+
+	for idx := range ids {
+		jobs <- idx
+	}
+	close(jobs)
+	wg.Wait()
+	return out
+}
+
 func (tm *TransferManager) Upload(ctx context.Context, nodeIDs []string, localPath, remotePath string, opts *UploadOptions) []TransferResult {
 	if opts == nil {
 		opts = &UploadOptions{
@@ -103,26 +157,17 @@ func (tm *TransferManager) Upload(ctx context.Context, nodeIDs []string, localPa
 		}
 	}
 
-	results := make([]TransferResult, len(nodeIDs))
-
 	if opts.Parallel {
-		var wg sync.WaitGroup
-		wg.Add(len(nodeIDs))
-
-		for i, nodeID := range nodeIDs {
-			go func(idx int, id string) {
-				defer wg.Done()
-				results[idx] = tm.smartUpload(ctx, id, localPath, remotePath, opts)
-			}(i, nodeID)
-		}
-
-		wg.Wait()
-	} else {
-		for i, nodeID := range nodeIDs {
-			results[i] = tm.smartUpload(ctx, nodeID, localPath, remotePath, opts)
-		}
+		return parallelLimited(ctx, nodeIDs, effectiveUploadConcurrency(opts),
+			func(ctx context.Context, id string) TransferResult {
+				return tm.smartUpload(ctx, id, localPath, remotePath, opts)
+			})
 	}
 
+	results := make([]TransferResult, len(nodeIDs))
+	for i, nodeID := range nodeIDs {
+		results[i] = tm.smartUpload(ctx, nodeID, localPath, remotePath, opts)
+	}
 	return results
 }
 
@@ -152,34 +197,34 @@ func (tm *TransferManager) smartUpload(ctx context.Context, nodeID, localPath, r
 func (tm *TransferManager) rsyncUpload(ctx context.Context, nodeID, localPath, remotePath string, opts *UploadOptions, connInfo *ssh.ConnectionInfo, startTime time.Time) TransferResult {
 	// 构建 rsync 参数
 	otherArgs := []string{"-avz", "--partial", "--partial-dir=.rsync-partial", "--progress", "--stats"}
-	
+
 	if opts.NoOverwrite {
 		otherArgs = append(otherArgs, "--update")
 	}
-	
+
 	// 使用 ConnectionInfo 构建完整 rsync 命令（带认证信息）
 	args := connInfo.BuildRsyncCommand(false, localPath, remotePath, otherArgs)
-	
+
 	cmd := exec.CommandContext(ctx, "rsync", args...)
-	
+
 	output, err := cmd.CombinedOutput()
-	
+
 	duration := time.Since(startTime)
-	
+
 	result := TransferResult{
 		NodeID:   nodeID,
 		Path:     remotePath,
 		Method:   "rsync",
 		Duration: duration,
 	}
-	
+
 	if err != nil {
 		result.Error = fmt.Errorf("rsync 上传失败: %w\n输出: %s", err, string(output))
 		return result
 	}
-	
+
 	result.Speed = extractSpeed(string(output))
-	
+
 	return result
 }
 
@@ -275,29 +320,29 @@ func (tm *TransferManager) smartDownload(ctx context.Context, nodeID, remotePath
 
 func (tm *TransferManager) rsyncDownload(ctx context.Context, nodeID, remotePath, localPath string, opts *DownloadOptions, connInfo *ssh.ConnectionInfo, startTime time.Time) TransferResult {
 	otherArgs := []string{"-avz", "--partial", "--partial-dir=.rsync-partial", "--progress", "--stats"}
-	
+
 	args := connInfo.BuildRsyncCommand(true, localPath, remotePath, otherArgs)
-	
+
 	cmd := exec.CommandContext(ctx, "rsync", args...)
-	
+
 	output, err := cmd.CombinedOutput()
-	
+
 	duration := time.Since(startTime)
-	
+
 	result := TransferResult{
 		NodeID:   nodeID,
 		Path:     localPath,
 		Method:   "rsync",
 		Duration: duration,
 	}
-	
+
 	if err != nil {
 		result.Error = fmt.Errorf("rsync 下载失败: %w\n输出: %s", err, string(output))
 		return result
 	}
-	
+
 	result.Speed = extractSpeed(string(output))
-	
+
 	return result
 }
 

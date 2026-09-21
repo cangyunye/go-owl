@@ -368,12 +368,11 @@ func (h *AIHandler) Models(c *gin.Context) {
 	switch apiType {
 	case "anthropic":
 		models := []gin.H{
-			{"id": "claude-sonnet-4-20250514", "owned_by": "anthropic"},
-			{"id": "claude-sonnet-4-20250514-thinking", "owned_by": "anthropic"},
-			{"id": "claude-3-5-sonnet-20241022", "owned_by": "anthropic"},
-			{"id": "claude-3-5-haiku-20241022", "owned_by": "anthropic"},
-			{"id": "claude-3-opus-20240229", "owned_by": "anthropic"},
-			{"id": "claude-3-haiku-20240307", "owned_by": "anthropic"},
+			{"id": "claude-sonnet-5", "owned_by": "anthropic"},
+			{"id": "claude-sonnet-5-thinking", "owned_by": "anthropic"},
+			{"id": "claude-opus-4-8", "owned_by": "anthropic"},
+			{"id": "claude-sonnet-4-6", "owned_by": "anthropic"},
+			{"id": "claude-haiku-4-5", "owned_by": "anthropic"},
 		}
 		c.JSON(http.StatusOK, gin.H{"models": models})
 		return

@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 )
 
 type NodeStore struct {
@@ -36,11 +35,7 @@ func (s *NodeStore) ListByGroups(ctx context.Context, groups []string) ([]string
 		if err := rows.Scan(&id, &groupsJSON); err != nil {
 			continue
 		}
-		var nodeGroups []string
-		if err := json.Unmarshal([]byte(groupsJSON), &nodeGroups); err != nil {
-			continue
-		}
-		for _, ng := range nodeGroups {
+		for _, ng := range ParseNodeGroups(groupsJSON) {
 			if groupSet[ng] {
 				ids = append(ids, id)
 				break

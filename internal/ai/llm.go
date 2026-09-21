@@ -148,7 +148,7 @@ func NewAnthropicClient(config *Config) *HTTPModel {
 	}
 	model := config.AI.Model
 	if model == "" {
-		model = "claude-sonnet-4-20250514"
+		model = "claude-sonnet-5"
 	}
 	return NewHTTPModel(ModelOptions{
 		APIType:        "anthropic",

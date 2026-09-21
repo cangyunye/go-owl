@@ -36,12 +36,36 @@ type TaskStore struct {
 	db *sql.DB
 }
 
+// taskScanner 兼容 *sql.Row 与 *sql.Rows 的最小扫描接口。
+type taskScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+// taskFullColumns 详情/对账路径的列清单（含 output 大字段）。
+const taskFullColumns = `id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at`
+
+// scanTaskFull 扫描含 output 的完整任务行。
+func scanTaskFull(s taskScanner) (*Task, error) {
+	t := &Task{}
+	var startedAt, completedAt sql.NullTime
+	if err := s.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
+		return nil, err
+	}
+	if startedAt.Valid {
+		t.StartedAt = &startedAt.Time
+	}
+	if completedAt.Valid {
+		t.CompletedAt = &completedAt.Time
+	}
+	return t, nil
+}
+
 func NewTaskStore(db *sql.DB) *TaskStore {
 	return &TaskStore{db: db}
 }
 
 func (s *TaskStore) Init(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `
+	if _, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS tasks (
 			id TEXT PRIMARY KEY,
 			node_id TEXT NOT NULL,
@@ -55,8 +79,23 @@ func (s *TaskStore) Init(ctx context.Context) error {
 			started_at TIMESTAMP,
 			completed_at TIMESTAMP
 		)
-	`)
-	return err
+	`); err != nil {
+		return err
+	}
+	// tasks 表由命令执行/传输/监控共享，record_id/node_id/status 上的
+	// 索引覆盖 ListByRecord（按 record 对账）、ListByNode、updateOpStatus
+	// （按 record_id 聚合状态）与 ListByCommandPrefix 之外的常规过滤；
+	// CREATE INDEX IF NOT EXISTS 对存量库幂等生效。
+	for _, stmt := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_tasks_record_id ON tasks (record_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_node_id ON tasks (node_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status)`,
+	} {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *TaskStore) Create(ctx context.Context, nodeID, command string) (*Task, error) {
@@ -83,29 +122,19 @@ func (s *TaskStore) CreateWithRecord(ctx context.Context, nodeID, command, recor
 }
 
 func (s *TaskStore) Get(ctx context.Context, id string) (*Task, error) {
-	t := &Task{}
-	var startedAt, completedAt sql.NullTime
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at FROM tasks WHERE id = ?`, id).
-		Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt)
-	if err != nil {
-		return nil, err
-	}
-	if startedAt.Valid {
-		t.StartedAt = &startedAt.Time
-	}
-	if completedAt.Valid {
-		t.CompletedAt = &completedAt.Time
-	}
-	return t, nil
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+taskFullColumns+` FROM tasks WHERE id = ?`, id)
+	return scanTaskFull(row)
 }
 
+// List 任务列表：不回传 output 大字段（流式输出全程累积，列表页会全量带回）。
+// 列表 UI 只展示 node/command/status；output 由详情 Get 与 WS 提供。
 func (s *TaskStore) List(ctx context.Context, limit, offset int) ([]*Task, int, error) {
 	var total int
 	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks`).Scan(&total)
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at
+		`SELECT id, node_id, command, status, exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at
 		FROM tasks ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -116,7 +145,7 @@ func (s *TaskStore) List(ctx context.Context, limit, offset int) ([]*Task, int, 
 	for rows.Next() {
 		t := &Task{}
 		var startedAt, completedAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
 			continue
 		}
 		if startedAt.Valid {
@@ -173,8 +202,7 @@ func (s *TaskStore) FailOrphaned(ctx context.Context) ([]string, error) {
 // 拉取全部任务状态，避免按节点发 N 次请求。
 func (s *TaskStore) ListByRecord(ctx context.Context, recordID string) ([]*Task, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at
-		FROM tasks WHERE record_id = ? ORDER BY created_at`, recordID)
+		`SELECT `+taskFullColumns+` FROM tasks WHERE record_id = ? ORDER BY created_at`, recordID)
 	if err != nil {
 		return nil, err
 	}
@@ -182,16 +210,9 @@ func (s *TaskStore) ListByRecord(ctx context.Context, recordID string) ([]*Task,
 
 	tasks := make([]*Task, 0)
 	for rows.Next() {
-		t := &Task{}
-		var startedAt, completedAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
+		t, err := scanTaskFull(rows)
+		if err != nil {
 			continue
-		}
-		if startedAt.Valid {
-			t.StartedAt = &startedAt.Time
-		}
-		if completedAt.Valid {
-			t.CompletedAt = &completedAt.Time
 		}
 		tasks = append(tasks, t)
 	}
@@ -203,8 +224,7 @@ func (s *TaskStore) ListByCommandPrefix(ctx context.Context, prefix string, limi
 	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE command LIKE ?`, prefix+"%").Scan(&total)
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at
-		FROM tasks WHERE command LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, prefix+"%", limit, offset)
+		`SELECT `+taskFullColumns+` FROM tasks WHERE command LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, prefix+"%", limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -212,16 +232,9 @@ func (s *TaskStore) ListByCommandPrefix(ctx context.Context, prefix string, limi
 
 	tasks := make([]*Task, 0)
 	for rows.Next() {
-		t := &Task{}
-		var startedAt, completedAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
+		t, err := scanTaskFull(rows)
+		if err != nil {
 			continue
-		}
-		if startedAt.Valid {
-			t.StartedAt = &startedAt.Time
-		}
-		if completedAt.Valid {
-			t.CompletedAt = &completedAt.Time
 		}
 		tasks = append(tasks, t)
 	}
@@ -262,8 +275,7 @@ func (s *TaskStore) UpdateStatusGuarded(ctx context.Context, id string, status T
 
 func (s *TaskStore) ListByNode(ctx context.Context, nodeID string, status TaskStatus) ([]*Task, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, node_id, command, status, COALESCE(output, ''), exit_code, COALESCE(record_id, ''), created_at, updated_at, started_at, completed_at
-		FROM tasks WHERE node_id = ? AND status = ? ORDER BY created_at DESC`, nodeID, status)
+		`SELECT `+taskFullColumns+` FROM tasks WHERE node_id = ? AND status = ? ORDER BY created_at DESC`, nodeID, status)
 	if err != nil {
 		return nil, err
 	}
@@ -271,16 +283,9 @@ func (s *TaskStore) ListByNode(ctx context.Context, nodeID string, status TaskSt
 
 	tasks := make([]*Task, 0)
 	for rows.Next() {
-		t := &Task{}
-		var startedAt, completedAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.NodeID, &t.Command, &t.Status, &t.Output, &t.ExitCode, &t.RecordID, &t.CreatedAt, &t.UpdatedAt, &startedAt, &completedAt); err != nil {
+		t, err := scanTaskFull(rows)
+		if err != nil {
 			continue
-		}
-		if startedAt.Valid {
-			t.StartedAt = &startedAt.Time
-		}
-		if completedAt.Valid {
-			t.CompletedAt = &completedAt.Time
 		}
 		tasks = append(tasks, t)
 	}

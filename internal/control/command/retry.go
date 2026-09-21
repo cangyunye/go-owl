@@ -6,7 +6,6 @@ import (
 	"math"
 	"math/rand"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -34,11 +33,11 @@ type RetryConfig struct {
 // DefaultRetryConfig 默认重试配置
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
-		MaxRetries:              3,
-		InitialInterval:         1 * time.Second,
-		MaxInterval:             30 * time.Second,
-		BackoffMultiplier:       2.0,
-		RetryableErrors:         []string{"connection refused", "timeout", "temporary failure"},
+		MaxRetries:               3,
+		InitialInterval:          1 * time.Second,
+		MaxInterval:              30 * time.Second,
+		BackoffMultiplier:        2.0,
+		RetryableErrors:          []string{"connection refused", "timeout", "temporary failure"},
 		EnableExponentialBackoff: true,
 	}
 }
@@ -63,11 +62,11 @@ type RetryResult struct {
 
 // RetryAttempt 单次重试尝试
 type RetryAttempt struct {
-	Attempt    int
-	StartTime  time.Time
-	EndTime    time.Time
-	Error      error
-	Duration   time.Duration
+	Attempt   int
+	StartTime time.Time
+	EndTime   time.Time
+	Error     error
+	Duration  time.Duration
 }
 
 // IsRetryable 判断错误是否可重试
@@ -235,24 +234,16 @@ func (e *RetryExecutor) runOnNodeWithRetry(ctx context.Context, nodeID, command 
 		CommandResult: CommandResult{Success: false, Error: fmt.Errorf("max retries exceeded")},
 		TotalAttempts: totalAttempts,
 		RetryHistory:  history,
-		FinalError:   fmt.Errorf("max retries exceeded"),
-		Retried:      true,
+		FinalError:    fmt.Errorf("max retries exceeded"),
+		Retried:       true,
 	}
 }
 
-// RunParallelWithRetry 并行执行命令并重试
+// RunParallelWithRetry 并行执行命令并重试（并发受 ExecuteOptions.MaxConcurrency
+// 限制，默认 10；结果按输入顺序排列）。
 func (e *RetryExecutor) RunParallelWithRetry(ctx context.Context, nodeIDs []string, command string, opts *ExecuteOptions) []RetryResult {
-	results := make([]RetryResult, len(nodeIDs))
-	var wg sync.WaitGroup
-	wg.Add(len(nodeIDs))
-
-	for i, nodeID := range nodeIDs {
-		go func(idx int, id string) {
-			defer wg.Done()
-			results[idx] = e.runOnNodeWithRetry(ctx, id, command, opts)
-		}(i, nodeID)
-	}
-
-	wg.Wait()
-	return results
+	return runIndexedLimited(ctx, nodeIDs, effectiveConcurrency(opts),
+		func(ctx context.Context, id string) RetryResult {
+			return e.runOnNodeWithRetry(ctx, id, command, opts)
+		})
 }

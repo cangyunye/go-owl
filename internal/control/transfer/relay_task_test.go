@@ -467,11 +467,11 @@ func TestCheckRsyncAvailable_CacheInitialState(t *testing.T) {
 // 使用 bool 参数模拟 rsync 可用性 + 密码存在性，测试是否进入正确的分支。
 func TestSmartUpload_DecisionLogic(t *testing.T) {
 	tests := []struct {
-		name         string
-		resume       bool
-		rsyncOK      bool
-		hasPassword  bool
-		expectRsync  bool // true=期望使用 rsync, false=期望使用 scp
+		name        string
+		resume      bool
+		rsyncOK     bool
+		hasPassword bool
+		expectRsync bool // true=期望使用 rsync, false=期望使用 scp
 	}{
 		{
 			name:        "rsync 可用 + 无密码 + 启用续传 → 使用 rsync",
