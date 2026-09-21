@@ -37,7 +37,16 @@ type EngineConfig struct {
 	// AlertRetentionDays 返回告警记录保留天数（nil/0 = 不启用）；
 	// 只清理已解决且解决时间超期的记录
 	AlertRetentionDays func() int
-	WebURL             string // 告警处理入口链接前缀
+	// RetentionDaysFn 返回指标保留天数（nil 或 <=0 = 用静态 RetentionDays）；
+	// 每次清理前求值，支持运行期经 settings 调整
+	RetentionDaysFn func() int
+	// IntervalFn 返回采集间隔秒数（nil 或 <=0 = 用静态 Interval）；
+	// 每轮采集前求值，支持运行期经 settings 调整写入频率
+	IntervalFn func() time.Duration
+	// CleanupScheduleFn 返回清理计划档位 "daily"|"weekly"|"monthly"
+	// （nil/空/非法 = daily）；每次清理排期时求值
+	CleanupScheduleFn func() string
+	WebURL            string // 告警处理入口链接前缀
 }
 
 // Engine 监控引擎：周期采集 → 入库 → 规则评估 → 告警 → 通知，每日清理。
@@ -94,7 +103,9 @@ func (e *Engine) SetAutoHealer(h *AutoHealer) {
 	e.healer = h
 }
 
-// Run 阻塞运行：立即执行一轮与清理，之后按 Interval 周期执行，24h 清理一次。
+// Run 阻塞运行：立即执行一轮与清理，之后按采集间隔周期执行，
+// 清理按 CleanupScheduleFn 档位排期（每日 02:00 / 每周一 02:00 /
+// 每月 1 日 02:00，本地时区）。间隔与档位每轮重读，运行期可调。
 // ctx 取消时优雅退出。
 func (e *Engine) Run(ctx context.Context) error {
 	if err := e.CleanupOnce(); err != nil {
@@ -102,9 +113,9 @@ func (e *Engine) Run(ctx context.Context) error {
 	}
 	_ = e.TickOnce(ctx)
 
-	tick := time.NewTicker(e.cfg.Interval)
+	tick := time.NewTimer(e.collectInterval())
 	defer tick.Stop()
-	cleanup := time.NewTicker(24 * time.Hour)
+	cleanup := time.NewTimer(e.cleanupDelay())
 	defer cleanup.Stop()
 
 	for {
@@ -115,10 +126,12 @@ func (e *Engine) Run(ctx context.Context) error {
 			if err := e.TickOnce(ctx); err != nil {
 				logger.Warn("监控采集轮次失败", logger.WithOperation("monitor_tick"), logger.WithError(err))
 			}
+			tick.Reset(e.collectInterval()) // 间隔运行期可调
 		case <-cleanup.C:
 			if err := e.CleanupOnce(); err != nil {
 				logger.Warn("监控清理任务失败", logger.WithOperation("monitor_cleanup"), logger.WithError(err))
 			}
+			cleanup.Reset(e.cleanupDelay()) // 档位运行期可调
 		}
 	}
 }
@@ -382,12 +395,26 @@ func (e *Engine) dispatch(ctx context.Context, events []AlertEvent, types []Aler
 	}
 }
 
-// CleanupOnce 执行一次保留期清理（幂等，可每日调用）：
-// 指标按 RetentionDays 清理；告警记录按 AlertRetentionDays 清理
-// （只删已解决且解决时间超期的，未解决告警永不删除）。
+// CleanupOnce 执行一次保留期清理（幂等，可按计划调度）：
+// 指标按 RetentionDaysFn（缺省静态 RetentionDays）清理；告警记录按
+// AlertRetentionDays 清理（只删已解决且解决时间超期的，未解决告警永不删除）。
+// 实际删除/DROP 过数据时追加 VACUUM，把 freelist 页归还操作系统，
+// 否则 owl.db 只涨不缩。
 func (e *Engine) CleanupOnce() error {
-	if err := e.store.Cleanup(e.cfg.RetentionDays); err != nil {
+	retention := e.cfg.RetentionDays
+	if e.cfg.RetentionDaysFn != nil {
+		if d := e.cfg.RetentionDaysFn(); d > 0 {
+			retention = d
+		}
+	}
+	sum, err := e.store.Cleanup(retention)
+	if err != nil {
 		return err
+	}
+	if sum.DroppedTables > 0 || sum.DeletedRows > 0 {
+		if verr := e.store.Vacuum(); verr != nil {
+			return verr
+		}
 	}
 	if e.cfg.AlertRetentionDays == nil {
 		return nil
@@ -396,6 +423,66 @@ func (e *Engine) CleanupOnce() error {
 		return e.store.CleanupAlerts(days)
 	}
 	return nil
+}
+
+// collectInterval 当前采集间隔：IntervalFn 优先，非法/未设置回退静态 Interval。
+func (e *Engine) collectInterval() time.Duration {
+	if e.cfg.IntervalFn != nil {
+		if d := e.cfg.IntervalFn(); d > 0 {
+			return d
+		}
+	}
+	return e.cfg.Interval
+}
+
+// cleanupSchedule 当前清理档位：daily | weekly | monthly（非法归一 daily）。
+func (e *Engine) cleanupSchedule() string {
+	if e.cfg.CleanupScheduleFn == nil {
+		return "daily"
+	}
+	switch s := strings.ToLower(strings.TrimSpace(e.cfg.CleanupScheduleFn())); s {
+	case "weekly", "monthly":
+		return s
+	default:
+		return "daily"
+	}
+}
+
+// cleanupDelay 距下次清理的时长，按当前档位计算。
+func (e *Engine) cleanupDelay() time.Duration {
+	now := e.now()
+	return nextCleanupAfter(now, e.cleanupSchedule()).Sub(now)
+}
+
+// nextCleanupAfter 计算晚于 now 的下一次清理时刻（本地时区，02:00 低峰）：
+// daily = 次日 02:00；weekly = 下周一 02:00；monthly = 下月 1 日 02:00。
+// 已在当天/当周/当月时间点之前的（如周一 01:00）取当天 02:00；
+// 恰好 02:00 视为刚执行过，取下一周期。非法档位按 daily。
+func nextCleanupAfter(now time.Time, schedule string) time.Time {
+	nextAt := func(t time.Time) time.Time {
+		return time.Date(t.Year(), t.Month(), t.Day(), 2, 0, 0, 0, t.Location())
+	}
+	var candidate time.Time
+	switch schedule {
+	case "weekly":
+		candidate = nextAt(now)
+		daysAhead := (int(time.Monday) - int(now.Weekday()) + 7) % 7
+		candidate = candidate.AddDate(0, 0, daysAhead)
+		if !candidate.After(now) {
+			candidate = candidate.AddDate(0, 0, 7)
+		}
+	case "monthly":
+		candidate = nextAt(now)
+		if !candidate.After(now) {
+			candidate = time.Date(now.Year(), now.Month(), 1, 2, 0, 0, 0, now.Location()).AddDate(0, 1, 0)
+		}
+	default: // daily（含非法档位兜底）
+		candidate = nextAt(now)
+		if !candidate.After(now) {
+			candidate = candidate.AddDate(0, 0, 1)
+		}
+	}
+	return candidate
 }
 
 // inCollectWindow 判断当前时间是否在采集时段窗口 "HH:MM-HH:MM" 内。

@@ -189,15 +189,24 @@ func (s *Store) tableExists(name string) (bool, error) {
 	return n > 0, err
 }
 
+// CleanupSummary 一次保留期清理的回收量统计。
+type CleanupSummary struct {
+	DroppedTables int   // 整体过期的分区表张数（DROP）
+	DeletedRows   int64 // 剩余分区表中删除的过期行数
+}
+
 // Cleanup 清理过期数据：删除各分区表中早于 cutoff 的行，并 DROP
 // 整体早于 cutoff 所在月份的旧分区表。幂等，可每日调用。
-func (s *Store) Cleanup(retentionDays int) error {
+// DELETE/DROP 只把页移入 freelist，文件并不缩小；需要随后调用
+// Vacuum 才会把空间归还操作系统。
+func (s *Store) Cleanup(retentionDays int) (CleanupSummary, error) {
+	var sum CleanupSummary
 	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays)
 	cutoffUnix := cutoff.Unix()
 
 	tables, err := s.listMetricTables()
 	if err != nil {
-		return err
+		return sum, err
 	}
 	for _, t := range tables {
 		month := strings.TrimPrefix(t, "metrics_")
@@ -205,13 +214,30 @@ func (s *Store) Cleanup(retentionDays int) error {
 		if monthCutoff, perr := time.Parse("200601", month); perr == nil &&
 			monthCutoff.Before(cutoffMonth(cutoff)) {
 			if _, derr := s.db.Exec("DROP TABLE IF EXISTS " + t); derr != nil {
-				return fmt.Errorf("monitor: 删除过期分区表 %s 失败: %w", t, derr)
+				return sum, fmt.Errorf("monitor: 删除过期分区表 %s 失败: %w", t, derr)
 			}
+			sum.DroppedTables++
 			continue
 		}
-		if _, derr := s.db.Exec("DELETE FROM "+t+" WHERE ts < ?", cutoffUnix); derr != nil {
-			return fmt.Errorf("monitor: 清理分区表 %s 过期行失败: %w", t, derr)
+		res, derr := s.db.Exec("DELETE FROM "+t+" WHERE ts < ?", cutoffUnix)
+		if derr != nil {
+			return sum, fmt.Errorf("monitor: 清理分区表 %s 过期行失败: %w", t, derr)
 		}
+		if n, aerr := res.RowsAffected(); aerr == nil {
+			sum.DeletedRows += n
+		}
+	}
+	return sum, nil
+}
+
+// Vacuum 空间回收：重建数据库文件（VACUUM）并把 WAL 截断为零。
+// VACUUM 期间本连接独占，批量写入会在其后排队继续；建议低峰期调用。
+func (s *Store) Vacuum() error {
+	if _, err := s.db.Exec("VACUUM"); err != nil {
+		return fmt.Errorf("monitor: VACUUM 失败: %w", err)
+	}
+	if _, err := s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		return fmt.Errorf("monitor: WAL checkpoint 失败: %w", err)
 	}
 	return nil
 }

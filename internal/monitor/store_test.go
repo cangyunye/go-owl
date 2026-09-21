@@ -85,7 +85,8 @@ func TestStore_Cleanup(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, all, 3)
 
-	require.NoError(t, s.Cleanup(30))
+	_, err = s.Cleanup(30)
+	require.NoError(t, err)
 
 	// 过期行被删除
 	kept, err := s.QuerySamples("n1", "load.load1", 0, now.AddDate(0, 0, 1).Unix())
@@ -107,8 +108,10 @@ func TestStore_Cleanup_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	require.NoError(t, s.Cleanup(30))
-	require.NoError(t, s.Cleanup(30))
+	_, err = s.Cleanup(30)
+	require.NoError(t, err)
+	_, err = s.Cleanup(30)
+	require.NoError(t, err)
 }
 
 // TestStore_DedupOverwrite 验证同 (node, metric, ts) 重复写入为覆盖而非重复。
