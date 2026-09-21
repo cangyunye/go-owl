@@ -254,6 +254,7 @@ var operationColumnSpecsDuckDB = []struct {
 	{"current_task_index", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS current_task_index INTEGER DEFAULT 0`},
 	{"current_task_phase", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS current_task_phase VARCHAR DEFAULT ''`},
 	{"forced", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS forced INTEGER DEFAULT 0`},
+	{"origin", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS origin VARCHAR DEFAULT ''`},
 }
 
 // EnsureOperationColumns 为存量库补齐 operations 缺失的列（幂等）。
