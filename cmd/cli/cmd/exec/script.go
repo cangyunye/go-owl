@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+	commonutil "github.com/cangyunye/go-owl/internal/common"
 	"io"
 	"net/http"
 	"os"
@@ -29,8 +30,8 @@ func NewScriptCmd() *cobra.Command {
 		Use:   "script <script-file-or-url>",
 		Short: i18n.T("exec.script.short"),
 		Long:  i18n.T("exec.script.long"),
-		Args: cobra.ExactArgs(1),
-		Run:  runScript,
+		Args:  cobra.ExactArgs(1),
+		Run:   runScript,
 	}
 
 	scriptCmd.Flags().StringVarP(&scriptNodes, "nodes", "N", "",
@@ -141,11 +142,12 @@ func runScript(cmd *cobra.Command, args []string) {
 	} else {
 		var scriptContent []byte
 		if strings.HasPrefix(scriptPath, "http://") || strings.HasPrefix(scriptPath, "https://") {
-			resp, fetchErr := http.Get(scriptPath)
-			if fetchErr == nil {
-				defer resp.Body.Close()
-				scriptContent, _ = io.ReadAll(resp.Body)
+			content, fetchErr := fetchScriptFromURL(scriptPath)
+			if fetchErr != nil {
+				fmt.Fprintln(os.Stderr, i18n.T("exec.script.err_fetch", fetchErr))
+				os.Exit(1)
 			}
+			scriptContent = content
 		} else if scriptInline {
 			// 内联模式:参数本身就是脚本内容,同样纳入黑名单检查
 			scriptContent = []byte(scriptPath)
@@ -237,7 +239,7 @@ func runScript(cmd *cobra.Command, args []string) {
 	// 处理结果
 	success := 0
 	failed := 0
-	
+
 	for _, result := range results {
 		if result.Success() {
 			if !scriptSilent {
@@ -313,12 +315,12 @@ func runScript(cmd *cobra.Command, args []string) {
 	} else {
 		fmt.Println(i18n.T("exec.script.summary", i18n.F(success), i18n.F(failed)))
 	}
-	
+
 	if execErr != nil {
 		fmt.Fprintln(os.Stderr, i18n.T("exec.script.exec_error", execErr))
 		os.Exit(1)
 	}
-	
+
 	if failed > 0 {
 		os.Exit(1)
 	}
@@ -330,7 +332,7 @@ func selectScriptTargetNodesWithResolver(resolver *node.NodeResolver) []*node.Re
 
 	for _, n := range allNodes {
 		included := false
-		
+
 		// 检查 --nodes 筛选
 		if scriptNodes != "" {
 			nodeIDs := common.ParseNodeList(scriptNodes)
@@ -397,11 +399,35 @@ func splitLines(s string) []string {
 	return lines
 }
 
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
+// scriptHTTPClient 独立成包级变量，便于测试注入短超时。
+var scriptHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+// maxScriptURLBytes 限制通过 URL 拉取的脚本大小，防止误拉大文件塞满内存。
+var maxScriptURLBytes int64 = 8 << 20 // 8 MiB
+
+// fetchScriptFromURL 通过 HTTP(S) 拉取脚本内容：带超时、校验状态码、限制大小。
+// 任何一步不满足都返回错误——绝不把错误页/半截响应当脚本下发执行。
+func fetchScriptFromURL(rawURL string) ([]byte, error) {
+	resp, err := scriptHTTPClient.Get(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch script: %w", err)
 	}
-	return s[:maxLen-3] + "..."
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, fmt.Errorf("fetch script %s: unexpected status %d", rawURL, resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxScriptURLBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("fetch script: %w", err)
+	}
+	if int64(len(body)) > maxScriptURLBytes {
+		return nil, fmt.Errorf("fetch script %s: exceeds size limit %d bytes", rawURL, maxScriptURLBytes)
+	}
+	return body, nil
+}
+
+func truncateString(s string, maxLen int) string {
+	return commonutil.Truncate(s, maxLen)
 }
 
 func splitLabelEq(s string) []string {

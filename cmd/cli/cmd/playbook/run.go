@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/google/uuid"
+	"github.com/spf13/cobra"
 
 	"github.com/cangyunye/go-owl/cmd/cli/cmd/common"
+	commonutil "github.com/cangyunye/go-owl/internal/common"
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/command"
 	pbexec "github.com/cangyunye/go-owl/internal/control/playbook"
@@ -66,8 +67,8 @@ func newAdapterNodeManager(resolver *node.NodeResolver, resolvedNodes []*node.Re
 	return m
 }
 
-func (m *adapterNodeManager) Register(node *model.Node) error  { return nil }
-func (m *adapterNodeManager) Unregister(id string) error        { return nil }
+func (m *adapterNodeManager) Register(node *model.Node) error                       { return nil }
+func (m *adapterNodeManager) Unregister(id string) error                            { return nil }
 func (m *adapterNodeManager) UpdateStatus(id string, status model.NodeStatus) error { return nil }
 
 func (m *adapterNodeManager) GetByID(id string) (*model.Node, error) {
@@ -386,14 +387,14 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 	}
 
 	history.RecordOperation(&history.Operation{
-		TaskID:    taskID,
-		OpType:    "playbook",
-		Command:   string(meta),
-		Targets:   targetNodeIDs,
-		Status:    "running",
+		TaskID:        taskID,
+		OpType:        "playbook",
+		Command:       string(meta),
+		Targets:       targetNodeIDs,
+		Status:        "running",
 		ExecutionMode: string(parsedPlaybook.ExecutionMode),
 		PlaybookPath:  playbookFile,
-		CreatedAt: startTime,
+		CreatedAt:     startTime,
 	})
 
 	var runID string
@@ -445,26 +446,31 @@ func runPlaybookRun(cmd *cobra.Command, args []string) {
 
 	// 记录每个任务结果
 	if !pbRunCheck {
-		for taskName, results := range execution.Results {
-			for _, result := range results {
-				errorMsg := ""
-				if result.Error != nil {
-					errorMsg = result.Error.Error()
+			for taskName, results := range execution.Results {
+				for _, result := range results {
+					errorMsg := ""
+					if result.Error != nil {
+						errorMsg = result.Error.Error()
+					}
+					// 日志的 command 列记录实际下发的命令串（回退到动作名），而非动作动词
+					command := result.Command
+					if command == "" {
+						command = result.Action
+					}
+					history.RecordCommandExecution(&history.CommandExecution{
+						TaskID:     taskID,
+						NodeID:     result.NodeID,
+						Command:    command,
+						ExitCode:   result.ExitCode,
+						Stdout:     truncateStr(result.Output, 4096),
+						Stderr:     errorMsg,
+						DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
+						Success:    result.ExitCode == 0,
+						CreatedAt:  time.Now(),
+					})
+					nodeLogWriter.AppendEntry(result.NodeID, taskName, command, result.ExitCode, result.Output, errorMsg, result.EndTime.Sub(result.StartTime))
 				}
-				history.RecordCommandExecution(&history.CommandExecution{
-				TaskID:     taskID,
-				NodeID:     result.NodeID,
-				Command:    taskName,
-				ExitCode:   result.ExitCode,
-				Stdout:     truncateStr(result.Output, 4096),
-				Stderr:     errorMsg,
-				DurationMs: result.EndTime.Sub(result.StartTime).Milliseconds(),
-				Success:    result.ExitCode == 0,
-				CreatedAt:  time.Now(),
-			})
-			nodeLogWriter.AppendEntry(result.NodeID, taskName, result.Action, result.ExitCode, result.Output, errorMsg, result.EndTime.Sub(result.StartTime))
 			}
-		}
 
 		recordStepStates(runID, parsedPlaybook, execution)
 	}
@@ -731,10 +737,7 @@ func runSamplePlaybook(nodes []*model.Node) {
 }
 
 func truncateStr(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
+	return commonutil.Truncate(s, maxLen)
 }
 
 func splitLines(s string) []string {

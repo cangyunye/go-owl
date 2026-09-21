@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	commonutil "github.com/cangyunye/go-owl/internal/common"
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/node"
 	"gopkg.in/yaml.v3"
@@ -995,10 +996,7 @@ func formatLabels(labels map[string]string) string {
 }
 
 func truncateStr(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
+	return commonutil.Truncate(s, maxLen)
 }
 
 func truncateByWidth(s string, maxWidth int) string {

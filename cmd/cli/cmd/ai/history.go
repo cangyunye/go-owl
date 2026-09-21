@@ -2,6 +2,7 @@ package ai
 
 import (
 	"fmt"
+	commonutil "github.com/cangyunye/go-owl/internal/common"
 	"os"
 	"strings"
 
@@ -147,8 +148,5 @@ func runAIHistoryClean(cmd *cobra.Command, args []string) {
 }
 
 func truncateStr(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
+	return commonutil.Truncate(s, maxLen)
 }

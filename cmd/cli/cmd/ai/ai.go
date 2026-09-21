@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	commonutil "github.com/cangyunye/go-owl/internal/common"
 	"os"
 	"path/filepath"
 	"strings"
@@ -231,10 +232,7 @@ func debugLog(debug bool, format string, args ...interface{}) {
 }
 
 func truncateForDB(s string, maxLen int) string {
-	if len(s) > maxLen {
-		return s[:maxLen]
-	}
-	return s
+	return commonutil.Truncate(s, maxLen)
 }
 
 func runAI(cmd *cobra.Command, args []string) {
