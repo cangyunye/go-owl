@@ -57,6 +57,12 @@ func OpenStore(path string) (*Store, error) {
 	return s, nil
 }
 
+// NewStoreFromDB 复用现有 *sql.DB 构造 Store，不执行任何建表或种子初始化。
+// 供测试注入备选驱动（如 duckdb 兼容验证）；生产路径请使用 OpenStore。
+func NewStoreFromDB(db *sql.DB) *Store {
+	return &Store{db: db}
+}
+
 // Close 关闭存储。
 func (s *Store) Close() error {
 	return s.db.Close()
