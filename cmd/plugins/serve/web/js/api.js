@@ -187,6 +187,12 @@ export const api = {
   updateSetting: (key, value) =>
     request('PUT', `/settings/${encodeURIComponent(key)}`, { value }),
 
+  dbStats: () =>
+    request('GET', '/db/stats'),
+
+  dbVacuum: () =>
+    request('POST', '/db/vacuum'),
+
   users: (params = {}) => {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {

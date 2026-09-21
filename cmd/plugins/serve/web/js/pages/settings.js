@@ -46,6 +46,9 @@ export function renderSettings(render, navigate, user, api) {
     document.getElementById('mon-escalate').value = get('monitor.escalate_after_minutes') || '60';
     document.getElementById('mon-realert').value = get('monitor.realert_window_minutes') || '1440';
     document.getElementById('mon-retention').value = get('monitor.alert_retention_days') || '0';
+    document.getElementById('mon-data-retention').value = get('monitor.retention_days') || '30';
+    document.getElementById('mon-cleanup-schedule').value = get('monitor.cleanup_schedule') || 'daily';
+    document.getElementById('mon-interval').value = get('monitor.interval_seconds') || '60';
   }
 
   async function saveMonitorCard() {
@@ -57,6 +60,9 @@ export function renderSettings(render, navigate, user, api) {
       ['monitor.escalate_after_minutes', val('mon-escalate')],
       ['monitor.realert_window_minutes', val('mon-realert')],
       ['monitor.alert_retention_days', val('mon-retention')],
+      ['monitor.retention_days', val('mon-data-retention')],
+      ['monitor.cleanup_schedule', val('mon-cleanup-schedule')],
+      ['monitor.interval_seconds', val('mon-interval')],
     ];
     try {
       for (const [key, value] of entries) {
@@ -65,6 +71,58 @@ export function renderSettings(render, navigate, user, api) {
       if (msg) { msg.textContent = '✓ 已保存，运行期即时生效'; setTimeout(() => { msg.textContent = ''; }, 2500); }
     } catch (e) {
       if (msg) msg.textContent = '保存失败: ' + (e.message || e);
+    }
+  }
+
+  // ---- 数据库统计卡片 ----
+  function fmtBytes(n) {
+    if (!n && n !== 0) return '-';
+    if (n < 1024) return n + ' B';
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let v = n;
+    for (const u of units) { v /= 1024; if (v < 1024) return v.toFixed(v < 10 ? 2 : 1) + ' ' + u; }
+    return v.toFixed(1) + ' PB';
+  }
+
+  async function loadDbStats() {
+    const tbody = document.getElementById('db-stats-list');
+    const summary = document.getElementById('db-stats-summary');
+    try {
+      const res = await api.dbStats();
+      const d = res.data || {};
+      const file = d.file || {};
+      if (summary) {
+        summary.textContent = `文件 ${fmtBytes(file.size_bytes)}，WAL ${fmtBytes(file.wal_size_bytes)}，`
+          + `可回收（freelist）${fmtBytes(file.freelist_bytes)}，共 ${(d.tables || []).length} 张表`;
+      }
+      if (tbody) {
+        const tables = (d.tables || []).slice().sort((a, b) => (b.size_bytes || 0) - (a.size_bytes || 0));
+        tbody.innerHTML = tables.map(t => `<tr>
+          <td style="font-family:var(--font-mono);font-size:var(--fs-xs)">${esc(t.name)}</td>
+          <td>${Number(t.rows).toLocaleString()}</td>
+          <td>${fmtBytes(t.size_bytes)}</td>
+        </tr>`).join('') || '<tr><td colspan="3" class="empty-state">无表</td></tr>';
+      }
+    } catch (e) {
+      if (summary) summary.textContent = '加载失败: ' + (e.message || e) + '（需要管理员权限）';
+      if (tbody) tbody.innerHTML = '';
+    }
+  }
+
+  async function vacuumDb() {
+    const msg = document.getElementById('db-stats-msg');
+    try {
+      if (msg) msg.textContent = '回收中…（大库可能需要数十秒，期间写入短暂排队）';
+      const res = await api.dbVacuum();
+      const d = res.data || {};
+      const reclaimed = (d.size_bytes_before || 0) - (d.size_bytes_after || 0);
+      if (msg) {
+        msg.textContent = `✓ 已回收，文件 ${fmtBytes(d.size_bytes_before)} → ${fmtBytes(d.size_bytes_after)}`
+          + (reclaimed > 0 ? `（释放 ${fmtBytes(reclaimed)}）` : '');
+      }
+      loadDbStats();
+    } catch (e) {
+      if (msg) msg.textContent = '回收失败: ' + (e.message || e);
     }
   }
 
@@ -350,11 +408,54 @@ export function renderSettings(render, navigate, user, api) {
             <input id="mon-retention" type="number" min="0" step="1">
             <span class="field-hint">自动删除超过 N 天的已解决告警；0 = 不启用</span>
           </div>
+          <div class="field">
+            <span class="field-label">指标保留（天）</span>
+            <input id="mon-data-retention" type="number" min="1" max="3650" step="1">
+            <span class="field-hint">指标采样保留期，过期数据按清理计划自动删除</span>
+          </div>
+          <div class="field">
+            <span class="field-label">清理计划</span>
+            <select id="mon-cleanup-schedule">
+              <option value="daily">每日（02:00）</option>
+              <option value="weekly">每周一（02:00）</option>
+              <option value="monthly">每月 1 日（02:00）</option>
+            </select>
+            <span class="field-hint">过期指标/告警的清理与空间回收频率</span>
+          </div>
+          <div class="field">
+            <span class="field-label">采集间隔（秒）</span>
+            <input id="mon-interval" type="number" min="10" max="86400" step="1">
+            <span class="field-hint">即指标写入频率，10~86400 秒；默认 60，调大可显著降低库体积</span>
+          </div>
         </div>
       </div>
       <div class="panel-foot">
         <button class="btn btn-primary btn-sm" id="mon-save">保存监控设置</button>
         <span id="mon-msg" class="field-hint"></span>
+      </div>
+    </div>
+    </div>
+
+    <div id="settings-db-card">
+    <div class="section-card">
+      <div class="panel-head">
+        <div style="flex:1;min-width:0">
+          <h3 class="panel-title"><svg width="15" height="15" aria-hidden="true"><use href="#icon-dashboard"/></svg> 数据库（owl.db）</h3>
+          <div class="panel-desc">各表行数与磁盘占用；清理删除的数据在空间回收后才真正释放磁盘</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="db-stats-summary" class="field-hint" style="margin-bottom:10px">加载中…</div>
+        <div style="max-height:320px;overflow:auto">
+          <table>
+            <thead><tr><th>表名</th><th>行数</th><th>占用</th></tr></thead>
+            <tbody id="db-stats-list"><tr><td colspan="3" class="loading">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel-foot">
+        <button class="btn btn-primary btn-sm" id="db-vacuum-btn">立即空间回收（VACUUM）</button>
+        <span id="db-stats-msg" class="field-hint"></span>
       </div>
     </div>
     </div>
@@ -740,6 +841,10 @@ export function renderSettings(render, navigate, user, api) {
 
     // ---- KV Settings Modal Logic ----
     document.getElementById('mon-save').addEventListener('click', saveMonitorCard);
+    document.getElementById('db-vacuum-btn').addEventListener('click', () => {
+      if (confirm('立即执行 VACUUM 空间回收？大库可能需要数十秒，期间数据库写入短暂排队。')) vacuumDb();
+    });
+    loadDbStats();
     document.getElementById('settings-cancel').addEventListener('click', () => {
       document.getElementById('settings-modal').classList.remove('open');
     });
@@ -787,8 +892,8 @@ export function renderSettings(render, navigate, user, api) {
     function readSections() {
       try {
         const s = JSON.parse(localStorage.getItem('owl-settings-sections') || '{}');
-        return { ai: s.ai !== false, kv: s.kv !== false, monitor: s.monitor !== false };
-      } catch { return { ai: true, kv: true, monitor: true }; }
+        return { ai: s.ai !== false, kv: s.kv !== false, monitor: s.monitor !== false, db: s.db !== false };
+      } catch { return { ai: true, kv: true, monitor: true, db: true }; }
     }
 
     function applySections() {
@@ -796,9 +901,11 @@ export function renderSettings(render, navigate, user, api) {
       const kv = document.getElementById('settings-kv-card');
       const ai = document.getElementById('settings-ai-card');
       const mon = document.getElementById('settings-monitor-card');
+      const db = document.getElementById('settings-db-card');
       if (kv) kv.style.display = st.kv ? '' : 'none';
       if (ai) ai.style.display = st.ai ? '' : 'none';
       if (mon) mon.style.display = st.monitor ? '' : 'none';
+      if (db) db.style.display = st.db ? '' : 'none';
     }
 
     const onSectionsChange = () => applySections();
