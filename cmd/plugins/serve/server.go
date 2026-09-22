@@ -78,6 +78,7 @@ type Server struct {
 	logHandler          *handler.LogHandler
 	History             *store.HistoryStore
 	terminalHandler     *handler.TerminalHandler
+	sftpBrowserHandler  *handler.SFTPBrowserHandler
 	commands            *store.CommandStore
 	historyDB           history.DBInterface
 	userCreatedHooks    []UserCreatedHook
@@ -252,6 +253,7 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	s.historyHandler = handler.NewHistoryHandler(s.History)
 	s.logHandler = handler.NewLogHandler()
 	s.terminalHandler = handler.NewTerminalHandler(db, s.wsTickets)
+	s.sftpBrowserHandler = handler.NewSFTPBrowserHandler(db)
 
 	// 监控服务：复用 serve 的 owl.db，提供告警/对策/通知/静默 API
 	monSvc, err := serveMonitor.Setup(s.Config.DBPath, db, "http://"+s.Config.ListenAddr)
@@ -353,6 +355,16 @@ func (s *Server) setupRoutes() {
 			writer.POST("/nodes/import", s.nodeHandler.Import)
 			writer.POST("/nodes/ping", s.nodeHandler.Ping)
 			writer.POST("/nodes/check", s.nodeHandler.Check)
+
+			// SFTP 文件浏览器（v1.8.0）：viewer 不能打开，全部端点 editor+
+			writer.GET("/sftp/ls", s.sftpBrowserHandler.List)
+			writer.GET("/sftp/stat", s.sftpBrowserHandler.Stat)
+			writer.GET("/sftp/file", s.sftpBrowserHandler.Download)
+			writer.PUT("/sftp/file", s.sftpBrowserHandler.Upload)
+			writer.GET("/sftp/archive", s.sftpBrowserHandler.Archive)
+			writer.POST("/sftp/mkdir", s.sftpBrowserHandler.Mkdir)
+			writer.POST("/sftp/rename", s.sftpBrowserHandler.Rename)
+			writer.POST("/sftp/delete", s.sftpBrowserHandler.Delete)
 		}
 
 		operator := auth.Group("", s.authHandler.RBACMiddleware(model.RoleOperator, model.RoleAdmin))
