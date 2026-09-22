@@ -1,6 +1,7 @@
 package ai
 
 import (
+	xterm "golang.org/x/term"
 	"bufio"
 	"context"
 	"errors"
@@ -151,6 +152,20 @@ func NewModelsCmd() *cobra.Command {
 	return modelsCmd
 }
 
+// aiStdoutTTY 缓存的 stdout 终端检测：管道/重定向时禁用 ANSI 颜色，
+// 避免 owl ai | tee 或非交互场景输出原始转义序列。
+var aiStdoutTTY = func() bool {
+	return xterm.IsTerminal(int(os.Stdout.Fd()))
+}()
+
+// aiOut 按输出目标是否为终端决定保留或剥离 ANSI 转义序列。
+func aiOut(s string) string {
+	if aiStdoutTTY {
+		return s
+	}
+	return common.StripANSI(s)
+}
+
 func progressLog(sessionID string, debug bool, step string, detail string) {
 	timestamp := time.Now().Format("15:04:05")
 
@@ -175,7 +190,11 @@ func progressLog(sessionID string, debug bool, step string, detail string) {
 		label = detail
 	}
 
-	fmt.Fprintf(os.Stderr, "[%s] owl-ai: %s\n", timestamp, label)
+	// 进度行仅 debug 模式输出：stderr 与 REPL UI 混排是交互输出杂乱的主因；
+	// 审计记录（RecordAiChatGlobal）不受影响
+	if debug {
+		fmt.Fprintf(os.Stderr, "[%s] owl-ai: %s\n", timestamp, label)
+	}
 
 	chat := &internalhistory.AiChat{
 		SessionID: sessionID,
@@ -326,18 +345,18 @@ func runAI(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Println("\033[36m╔════════════════════════════════════════════════════════════╗\033[0m")
-	fmt.Println(i18n.T("ai.banner.title"))
-	fmt.Println("\033[36m╚════════════════════════════════════════════════════════════╝\033[0m")
+	fmt.Println(aiOut("\033[36m╔════════════════════════════════════════════════════════════╗\033[0m"))
+	fmt.Println(aiOut(i18n.T("ai.banner.title")))
+	fmt.Println(aiOut("\033[36m╚════════════════════════════════════════════════════════════╝\033[0m"))
 	fmt.Println()
-	fmt.Println(i18n.T("ai.welcome.intro"))
+	fmt.Println(aiOut(i18n.T("ai.welcome.intro")))
 	fmt.Println()
-	fmt.Println(i18n.T("ai.welcome.item_query"))
-	fmt.Println(i18n.T("ai.welcome.item_exec"))
-	fmt.Println(i18n.T("ai.welcome.item_playbook"))
-	fmt.Println(i18n.T("ai.welcome.item_transfer"))
+	fmt.Println(aiOut(i18n.T("ai.welcome.item_query")))
+	fmt.Println(aiOut(i18n.T("ai.welcome.item_exec")))
+	fmt.Println(aiOut(i18n.T("ai.welcome.item_playbook")))
+	fmt.Println(aiOut(i18n.T("ai.welcome.item_transfer")))
 	fmt.Println()
-	fmt.Println(i18n.T("ai.welcome.quit_hint"))
+	fmt.Println(aiOut(i18n.T("ai.welcome.quit_hint")))
 	fmt.Println()
 
 	var sessionStore ai.SessionStore
@@ -409,14 +428,14 @@ func runAI(cmd *cobra.Command, args []string) {
 
 		response, err := currentSession.Send(ctx, input)
 		if err != nil {
-			fmt.Printf("%s", i18n.T("ai.chat.error", err))
+			fmt.Printf("%s", aiOut(i18n.T("ai.chat.error", err)))
 		} else if !replFinishStream(response) {
-			fmt.Printf("\033[36mAI>\033[0m %s\n", response)
+			fmt.Printf("%s %s\n", aiOut("\033[36mAI>\033[0m"), response)
 		}
 
 		msgCount := currentSession.MessageCount()
 		if msgCount > 0 {
-			fmt.Printf("%s", i18n.T("ai.chat.context_count", i18n.F(msgCount)))
+			fmt.Printf("%s", aiOut(i18n.T("ai.chat.context_count", i18n.F(msgCount))))
 		}
 		fmt.Println()
 		return false
