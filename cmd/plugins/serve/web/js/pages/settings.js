@@ -19,6 +19,10 @@ export function renderSettings(render, navigate, user, api) {
     'logs.executions_retention_days': {
       desc: '执行日志批次保留天数（0 = 关闭定期清理）',
       defaultValue: '30'
+    },
+    'history.retention_days': {
+      desc: '历史记录保留天数（0 = 关闭定期清理）',
+      defaultValue: '90'
     }
   };
 

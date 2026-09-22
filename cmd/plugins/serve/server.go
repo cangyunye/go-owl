@@ -605,8 +605,8 @@ func (s *Server) Serve(ctx context.Context) error {
 		s.monitor.Start(ctx)
 	}
 
-	// 执行日志批次每日定期清理（保留期经 settings 运行期可调）
-	s.startExecLogsJanitor(ctx)
+	// 执行日志批次与 owl.db 历史表每日定期清理（保留期经 settings 运行期可调）
+	s.startJanitor(ctx)
 
 	// 回收过期的 AI 会话密钥：每次 /ai/session-key 都会生成一把 2048 位 RSA
 	// 私钥，不回收则常驻内存无界增长。

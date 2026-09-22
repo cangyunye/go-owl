@@ -178,6 +178,12 @@ func (h *SettingsHandler) Set(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "logs.executions_retention_days must be 0-3650 (0 = disable periodic cleanup)"})
 			return
 		}
+	case "history.retention_days":
+		n, err := strconv.Atoi(strings.TrimSpace(req.Value))
+		if err != nil || n < 0 || n > 3650 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "history.retention_days must be 0-3650 (0 = disable periodic cleanup)"})
+			return
+		}
 	}
 
 	_, err := h.db.Exec(
