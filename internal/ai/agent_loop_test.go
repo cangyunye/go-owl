@@ -35,9 +35,8 @@ func (m *mockToolCallingModel) GenerateTools(ctx context.Context, messages []Mes
 	m.toolMsgs = append(m.toolMsgs, append([]Message{}, messages...))
 	m.toolsReceived = append(m.toolsReceived, tools)
 	if m.toolErr != nil {
-		e := m.toolErr
-		m.toolErr = nil
-		return nil, e
+		// 持续返回：真实 provider 的“不支持原生 tools”不会一次性消失
+		return nil, m.toolErr
 	}
 	if m.toolIdx >= len(m.toolResponses) {
 		return nil, fmt.Errorf("mock: no more tool responses")

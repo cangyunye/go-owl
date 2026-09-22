@@ -81,6 +81,21 @@ type ModelsResponse struct {
 	} `json:"error"`
 }
 
+// APIStatusError 携带 HTTP 状态码的 LLM API 错误：
+// generateWithRetry 据此跳过 4xx（key 无效/参数错）的盲目重试。
+type APIStatusError struct {
+	StatusCode int
+	Message    string
+	Body       string
+}
+
+func (e *APIStatusError) Error() string {
+	if e.Message != "" {
+		return fmt.Sprintf("API error: %s", e.Message)
+	}
+	return fmt.Sprintf("API error, status: %d, body: %s", e.StatusCode, e.Body)
+}
+
 // ListModels 从 OpenAI 兼容 API 获取可用模型列表
 func (m *HTTPModel) ListModels(ctx context.Context) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET",
@@ -105,9 +120,9 @@ func (m *HTTPModel) ListModels(ctx context.Context) ([]string, error) {
 	if resp.StatusCode != http.StatusOK {
 		var errorResp ModelsResponse
 		if json.Unmarshal(respBody, &errorResp) == nil && errorResp.Error != nil {
-			return nil, fmt.Errorf("API error: %s", errorResp.Error.Message)
+			return nil, &APIStatusError{StatusCode: resp.StatusCode, Message: errorResp.Error.Message}
 		}
-		return nil, fmt.Errorf("API error, status: %d, body: %s", resp.StatusCode, string(respBody))
+		return nil, &APIStatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
 	var modelsResp ModelsResponse

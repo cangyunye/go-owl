@@ -288,6 +288,9 @@ export const api = {
   createPlaybookTemplate: (data) =>
     request('POST', '/playbook/template', data),
 
+  deletePlaybook: (id) =>
+    request('DELETE', `/playbooks/${encodeURIComponent(id)}`),
+
   getSessionKey: () => request('GET', '/ai/session-key'),
   aiPermissions: () => request('GET', '/ai/permissions'),
   aiChat: (message, sessionId, encryptedApiKey, provider, model, baseUrl, apiType) => request('POST', '/ai/chat', { message, session_id: sessionId, encrypted_api_key: encryptedApiKey, provider, model, base_url: baseUrl, api_type: apiType }),

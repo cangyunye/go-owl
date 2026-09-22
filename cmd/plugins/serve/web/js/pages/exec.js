@@ -663,6 +663,7 @@ export function renderExec(render, navigate, user, api, shell) {
     }
 
     clearTerminal();
+    const suppressOutput = document.getElementById('suppress-output')?.checked || false;
     const dl = document.getElementById('exec-log-downloads');
     if (dl) dl.style.display = 'none';
     const modeLabel = execMode === 'script' ? '[脚本]' : '';
@@ -686,12 +687,14 @@ export function renderExec(render, navigate, user, api, shell) {
 
       if (isSingle) {
         appendTerminal(`任务已创建: ${esc(tasks[0].id)}`, 'ok');
+      } else if (suppressOutput) {
+        appendTerminal(`已在 ${tasks.length} 个节点创建任务（已开启「不输出节点响应」）`, 'ok');
       } else {
         tasks.forEach(t => {
           appendTerminal(`[${esc(t.node_id)}] 任务: ${esc(t.id)}`, 'out');
         });
       }
-      appendTerminal('等待实时输出…', 'ts');
+      appendTerminal(suppressOutput ? '等待任务结束…（各节点输出已抑制，完整输出见任务历史）' : '等待实时输出…', 'ts');
 
       if (wsCleanup) wsCleanup.close();
       const finished = new Set();
@@ -704,6 +707,12 @@ export function renderExec(render, navigate, user, api, shell) {
       // finalize：收齐全部节点终态后收尾——对账回填、日志下载区、关 WS、停轮询
       const finalize = () => {
         stopReconcile();
+        if (suppressOutput) {
+          appendTerminal('— 全部任务已结束，节点响应已抑制，完整输出见任务历史 —', 'ts');
+          renderLogDownloads();
+          if (wsCleanup) wsCleanup.close();
+          return;
+        }
         const updates = currentTaskIDs.map(id => taskUpdates[id]).filter(Boolean);
         const incomplete = updates.some(u => outputLineCount(u.output) > (receivedLines[u.id] || 0));
         if (incomplete) {
@@ -731,6 +740,7 @@ export function renderExec(render, navigate, user, api, shell) {
           const t = msg.data;
           if (!t || !currentTaskIDs.includes(t.task_id)) return;
           receivedLines[t.task_id] = (receivedLines[t.task_id] || 0) + 1;
+          if (suppressOutput) return;
           const prefix = isSingle ? '' : `[${esc(t.node_id)}] `;
           appendTerminal(prefix + esc(t.line), t.type === 'stderr' ? 'err' : 'out');
         } else if (msg.type === 'task_update') {
@@ -804,7 +814,7 @@ free -m</textarea>
             </div>
             <div class="filter-row" id="script-staging-row" style="display:none">
               <label>中转站脚本</label>
-              <select id="script-staging-select" class="exec-input"></select>
+              <select id="script-staging-select" class="exec-select"></select>
             </div>
             <div class="param-group" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
               <div class="param-row">
@@ -897,6 +907,11 @@ free -m</textarea>
               <input type="checkbox" id="debug-toggle">
               <span class="toggle-track"><span class="toggle-thumb"></span></span>
               <span style="font-size:12px;color:var(--muted)">调试模式</span>
+            </label>
+            <label class="toggle-row" style="margin-top:8px">
+              <input type="checkbox" id="suppress-output">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span style="font-size:12px;color:var(--muted)" title="批量执行时不打印各节点的输出，仅显示任务状态，完整输出见任务历史">不输出节点响应</span>
             </label>
           </div>
         </div>

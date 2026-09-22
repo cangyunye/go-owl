@@ -1,0 +1,21 @@
+== 问题1 中转站下拉框箭头（修复后）==
+[light-sky] bgRepeat=no-repeat bgPos=calc(100% - 8px) 50% padRight=24px  → 单个箭头，无平铺
+
+== 问题2 运维(operator) 剧本写权限 ==
+operator save template: 201 created
+operator list, found target: True
+operator delete playbook: 200 deleted
+still present after delete: False
+operator refresh (should be 403): 403   # 刷新目录仍限 admin
+UI 两段式删除: 删除 -> 确认删除 -> 列表移除成功
+
+== 问题3 批量执行「不输出节点响应」==
+suppress-output present: True | label: 不输出节点响应   (dark-warm / light-sky 均存在)
+
+== 问题4 签名 ==
+login-signature text: github.com/cangyunye/go-owl · cangyunye
+nav-signature text: cangyunye/go-owl
+
+== 回归 ==
+go test ./cmd/plugins/serve/...  → ok (playbooksui 禁 alert/confirm 断言通过)
+make build-serve → owl-serve darwin/arm64 OK

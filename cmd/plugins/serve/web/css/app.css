@@ -251,6 +251,26 @@ a:hover { color: var(--accent-hover, var(--primary-hover)); }
 }
 .nav-rail.expanded .nav-avatar { align-self: flex-start; margin-left: 12px; }
 .nav-avatar:hover { border-color: var(--accent); color: var(--fg); }
+/* Repo + author signature pinned to the bottom of the nav rail */
+.nav-signature {
+  width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 0;
+  margin-top: 4px;
+  color: var(--muted);
+  text-decoration: none;
+  font: 500 var(--fs-xs)/1 var(--font-mono);
+  flex-shrink: 0;
+  transition: color var(--transition);
+}
+.nav-signature:hover { color: var(--accent); }
+.nav-signature svg { width: 18px; height: 18px; flex-shrink: 0; }
+.nav-signature-text { display: none; white-space: nowrap; }
+.nav-rail.expanded .nav-signature { width: 100%; justify-content: flex-start; padding: 8px 12px; }
+.nav-rail.expanded .nav-signature-text { display: inline; }
 
 /* ---- Expandable Panel ---- */
 .panel {
@@ -2505,6 +2525,7 @@ tr:hover td { background: var(--surface-2); }
    ================================================================ */
 .login-page {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
@@ -2533,6 +2554,15 @@ tr:hover td { background: var(--surface-2); }
   margin-top: 8px;
 }
 .login-card button:hover { background: var(--accent-hover, var(--primary-hover)); }
+.login-signature {
+  margin-top: 16px;
+  color: var(--muted);
+  text-decoration: none;
+  font: 500 var(--fs-xs)/1.5 var(--font-mono);
+  letter-spacing: 0.3px;
+  transition: color var(--transition);
+}
+.login-signature:hover { color: var(--accent); }
 
 /* ================================================================
    ANIMATIONS

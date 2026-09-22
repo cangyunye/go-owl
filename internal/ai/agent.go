@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -535,6 +536,19 @@ func (a *Agent) Process(ctx context.Context, userInput string, onProgress Progre
 		}
 	}
 
+	// 原生 function calling：路由与工具选择合并为一次调用（P3.1）。
+	// 合并模式未命中（既无工具也无有效回答）时回退下方两段式路由。
+	if a.nativeToolsEnabled(chatModel) {
+		result, handled, mergedErr := a.processMergedRouting(ctx, chatModel, userInput, sessionMemory, onProgress)
+		if mergedErr != nil {
+			return "", mergedErr
+		}
+		if handled {
+			return result, nil
+		}
+		debugPrint(a.debug, "合并路由未命中，回退两段式路由")
+	}
+
 	routeResp, err := generateWithRetry(ctx, chatModel, routerMessages, "路由")
 	if err != nil {
 		if onProgress != nil {
@@ -726,6 +740,11 @@ func generateWithRetry(ctx context.Context, chatModel ChatModel, messages []Mess
 		if err == nil {
 			return resp, nil
 		}
+		// 4xx（key 无效/参数错/模型不存在）重试必然复现，立即失败
+		var statusErr *APIStatusError
+		if errors.As(err, &statusErr) && statusErr.StatusCode >= 400 && statusErr.StatusCode < 500 {
+			return "", err
+		}
 		lastErr = err
 		if attempt < maxRetries {
 			select {
@@ -769,6 +788,13 @@ func (a *Agent) formatPrompt(systemPrompt, nodeInfo, toolDescs string) string {
 	return buf.String()
 }
 
+// nodeInfoFullListMax 超过该规模时，节点上下文按组压缩（计数+每组少量
+// 示例），避免每次请求把数百个节点名全量注入提示词。
+const nodeInfoFullListMax = 40
+
+// nodeInfoExamplesPerGroup 压缩模式下每组保留的示例节点名数量。
+const nodeInfoExamplesPerGroup = 3
+
 func (a *Agent) getNodeInfo() string {
 	nodes := a.nodeMgr.List()
 	if len(nodes) == 0 {
@@ -779,7 +805,11 @@ func (a *Agent) getNodeInfo() string {
 	sb.WriteString(fmt.Sprintf("Total %d nodes:\n\n", len(nodes)))
 
 	groups := make(map[string][]string)
+	ungrouped := 0
 	for _, n := range nodes {
+		if len(n.Groups) == 0 {
+			ungrouped++
+		}
 		for _, g := range n.Groups {
 			groups[g] = append(groups[g], n.Name)
 		}
@@ -788,7 +818,20 @@ func (a *Agent) getNodeInfo() string {
 	if len(groups) > 0 {
 		sb.WriteString("Groups:\n")
 		for group, nodeNames := range groups {
+			if len(nodes) > nodeInfoFullListMax {
+				examples := nodeNames
+				if len(examples) > nodeInfoExamplesPerGroup {
+					examples = examples[:nodeInfoExamplesPerGroup]
+				}
+				sb.WriteString(fmt.Sprintf("  %s: %d 节点（示例: %s%s）\n",
+					group, len(nodeNames), strings.Join(examples, ", "),
+					map[bool]string{true: " 等", false: ""}[len(nodeNames) > nodeInfoExamplesPerGroup]))
+				continue
+			}
 			sb.WriteString(fmt.Sprintf("  %s: %s\n", group, strings.Join(nodeNames, ", ")))
+		}
+		if ungrouped > 0 {
+			sb.WriteString(fmt.Sprintf("  （未分组: %d 节点）\n", ungrouped))
 		}
 	}
 
@@ -1179,7 +1222,7 @@ func (a *Agent) RenderSystemPrompt(prompt string) string {
 
 func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	s.lastActive = time.Now()
-	s.history = append(s.history, fmt.Sprintf("User: %s", userInput))
+	s.history = capHistoryLines(append(s.history, fmt.Sprintf("User: %s", userInput)), historyMaxLines)
 	// 会话回调随 ctx 传递：共享 Agent 时各会话互不覆盖
 	ctx = withSessionHooks(ctx, s)
 
@@ -1200,14 +1243,14 @@ func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 			)
 			msg := fmt.Sprintf("已执行：%s\n%s", pending.Summary, result)
 			s.appendDialogue(userInput, msg)
-			s.history = append(s.history, fmt.Sprintf("Assistant: %s", msg))
+			s.history = capHistoryLines(append(s.history, fmt.Sprintf("Assistant: %s", msg)), historyMaxLines)
 			s.persistNow()
 			return msg, nil
 		}
 		if negativeReplies[lowerInput] {
 			s.pendingContext = nil
 			s.appendDialogue(userInput, "已取消该操作")
-			s.history = append(s.history, "Assistant: 已取消该操作")
+			s.history = capHistoryLines(append(s.history, "Assistant: 已取消该操作"), historyMaxLines)
 			s.persistNow()
 			return "已取消该操作", nil
 		}
@@ -1227,14 +1270,16 @@ func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 			Message{Role: "assistant", Content: response},
 		)
 		s.appendDialogue(userInput, response)
-		s.history = append(s.history, fmt.Sprintf("Assistant: %s", response))
+		s.history = capHistoryLines(append(s.history, fmt.Sprintf("Assistant: %s", response)), historyMaxLines)
 		s.persistNow()
 		return response, nil
 	}
 
 	// 多轮对话，继续使用 ProcessWithContext；注入会话记忆作为背景。
+	// 上下文只携带最近窗口：全文历史与记忆摘要不再同时发送（双重注入）。
 	s.messages = append(s.messages, Message{Role: "user", Content: userInput})
-	msgs := s.messages
+	windowed, _ := s.windowedMessages()
+	msgs := windowed
 	// 首条若非带工具目录的 system 引导（如确认重放后首条是 assistant），
 	// 补渲染后的通用工具引导，否则 LLM 生成阶段看不到工具目录。
 	if len(msgs) == 0 || msgs[0].Role != "system" || !strings.Contains(msgs[0].Content, "输出契约") {
@@ -1247,10 +1292,11 @@ func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	}
 	updatedMessages, response, err := s.agent.ProcessWithContext(ctx, msgs, s.OnProgress)
 	if err == nil {
-		if len(msgs) > len(s.messages) {
-			s.messages = updatedMessages[1:]
-		} else {
-			s.messages = updatedMessages
+		// 存储保留全量历史（窗口化只作用于发给 LLM 的上下文）：
+		// updatedMessages = [system] + windowed(旧) + 本轮 user/assistant
+		added := len(updatedMessages) - len(msgs)
+		if added >= 2 {
+			s.messages = append(s.messages, updatedMessages[len(updatedMessages)-2:]...)
 		}
 	}
 
@@ -1259,7 +1305,7 @@ func (s *Session) Send(ctx context.Context, userInput string) (string, error) {
 	}
 
 	s.appendDialogue(userInput, response)
-	s.history = append(s.history, fmt.Sprintf("Assistant: %s", response))
+	s.history = capHistoryLines(append(s.history, fmt.Sprintf("Assistant: %s", response)), historyMaxLines)
 	s.persistNow()
 	return response, nil
 }
@@ -1353,6 +1399,38 @@ func (s *Session) appendDialogue(userInput, response string) {
 	if len(s.dialogue) > 12 {
 		s.dialogue = s.dialogue[len(s.dialogue)-12:]
 	}
+}
+
+// msgWindow 多轮上下文携带的最近消息数上限：更早轮次由 buildMemory
+// 的对话/操作摘要兜底，消除"全文历史 + 记忆摘要"双重注入。
+const msgWindow = 16
+
+// historyMaxLines 会话摘要（history）保留的最大行数，与持久化截断对齐。
+const historyMaxLines = 40
+
+// windowedMessages 返回多轮请求携带的消息窗口：
+// 超过窗口时以一条省略标记开头，其后是最近 msgWindow 条消息。
+// 返回 (窗口消息, 被省略条数)。s.messages 不含 system 头。
+func (s *Session) windowedMessages() ([]Message, int) {
+	total := len(s.messages)
+	if total <= msgWindow {
+		return s.messages, 0
+	}
+	omitted := total - msgWindow
+	windowed := make([]Message, 0, msgWindow+1)
+	windowed = append(windowed, Message{
+		Role:    "user",
+		Content: fmt.Sprintf("[系统注：更早的 %d 条消息已压缩进会话记忆，以下为最近对话。请勿回应本标记。]", omitted),
+	})
+	windowed = append(windowed, s.messages[omitted:]...)
+	return windowed, omitted
+}
+
+func capHistoryLines(h []string, max int) []string {
+	if len(h) > max {
+		return h[len(h)-max:]
+	}
+	return h
 }
 
 // SetDefaultConfirmGate 注册本会话的默认确认门（写操作拦截、保存 pending）。
