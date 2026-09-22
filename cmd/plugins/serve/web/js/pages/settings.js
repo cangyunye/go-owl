@@ -15,6 +15,10 @@ export function renderSettings(render, navigate, user, api) {
     'ai.rate_limit_per_min': {
       desc: 'AI 助手每用户每分钟调用上限（0 = 不限流）',
       defaultValue: '0'
+    },
+    'logs.executions_retention_days': {
+      desc: '执行日志批次保留天数（0 = 关闭定期清理）',
+      defaultValue: '30'
     }
   };
 
