@@ -10,6 +10,8 @@ import (
 )
 
 // fakeExecer 按命令返回固定输出，模拟远端节点。
+// 识别复合采集命令（含段开始标记）时，按 collectSteps 顺序组装分段输出，
+// 与 /bin/sh 真实执行复合命令的行为一致：段内命令失败 → 空输出 + rc=1。
 type fakeExecer struct {
 	outputs  map[string]string
 	fail     map[string]bool
@@ -18,10 +20,32 @@ type fakeExecer struct {
 
 func (f *fakeExecer) Execute(command string, timeout time.Duration) (int, string, error) {
 	f.executed = append(f.executed, command)
+	if strings.Contains(command, sectionMarkerPrefix) {
+		return 0, f.assembleComposite(), nil
+	}
 	if f.fail[command] {
 		return 1, "", &execErr{cmd: command}
 	}
 	return 0, f.outputs[command], nil
+}
+
+// assembleComposite 按固定命令表顺序拼装复合输出（POSIX sh 协议）。
+func (f *fakeExecer) assembleComposite() string {
+	var b strings.Builder
+	for _, step := range collectSteps {
+		b.WriteString(sectionMarkerPrefix + step.name + sectionMarkerSuffix + "\n")
+		if f.fail[step.command] {
+			b.WriteString(rcMarkerPrefix + step.name + sectionMarkerSuffix + "1\n")
+			continue
+		}
+		out := f.outputs[step.command]
+		b.WriteString(out)
+		if !strings.HasSuffix(out, "\n") {
+			b.WriteString("\n")
+		}
+		b.WriteString(rcMarkerPrefix + step.name + sectionMarkerSuffix + "0\n")
+	}
+	return b.String()
 }
 
 type execErr struct{ cmd string }

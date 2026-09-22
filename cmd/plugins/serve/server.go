@@ -60,6 +60,8 @@ type Server struct {
 	userHandler         *handler.UserHandler
 	nodeHandler         *handler.NodeHandler
 	settingsHandler     *handler.SettingsHandler
+	dbStatsHandler      *handler.DBStatsHandler
+	execLogsHandler     *handler.ExecLogsAdminHandler
 	execHandler         *handler.ExecHandler
 	playbookHandler     *handler.PlaybookHandler
 	stagingHandler      *handler.StagingHandler
@@ -159,6 +161,8 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	s.shortcutHandler = handler.NewShortcutHandler(s.commands, s.Users)
 	s.nodeHandler = handler.NewNodeHandler(db)
 	s.settingsHandler = handler.NewSettingsHandler(db)
+	s.dbStatsHandler = handler.NewDBStatsHandler(db, s.Config.DBPath)
+	s.execLogsHandler = handler.NewExecLogsAdminHandler(db)
 	s.wsHub = handler.NewWSHub()
 	s.wsTickets = handler.NewWSTicketManager()
 	s.execHandler = handler.NewExecHandler(db, s.Tasks, s.wsHub)
@@ -319,7 +323,6 @@ func (s *Server) setupRoutes() {
 		reader.GET("/ai/sessions", s.aiHandler.ListAISessions)
 		reader.GET("/ai/approvals", s.aiApprovalHandler.List)
 		reader.POST("/ai/sessions/import", s.aiHandler.ImportAISession)
-		reader.POST("/ai/audit", s.aiHandler.Audit)
 		reader.POST("/ai/models", s.aiHandler.Models)
 		reader.POST("/ai/test", s.aiHandler.Test)
 		reader.GET("/history", s.historyHandler.List)
@@ -392,6 +395,12 @@ func (s *Server) setupRoutes() {
 			admin.GET("/settings", s.settingsHandler.List)
 			admin.GET("/settings/:key", s.settingsHandler.Get)
 			admin.PUT("/settings/:key", s.settingsHandler.Set)
+			// 数据库可观测性：各表行数/占用与手动空间回收（admin）
+			admin.GET("/db/stats", s.dbStatsHandler.Stats)
+			admin.POST("/db/vacuum", s.dbStatsHandler.Vacuum)
+			// 执行日志运维：批次占用查看与清理（admin）
+			admin.GET("/logs/executions", s.execLogsHandler.Summary)
+			admin.DELETE("/logs/executions", s.execLogsHandler.Cleanup)
 			admin.GET("/users", s.userHandler.List)
 			admin.GET("/users/:id", s.userHandler.Get)
 			admin.POST("/users", s.userHandler.Create)
@@ -595,6 +604,9 @@ func (s *Server) Serve(ctx context.Context) error {
 	if s.monitor != nil {
 		s.monitor.Start(ctx)
 	}
+
+	// 执行日志批次与 owl.db 历史表每日定期清理（保留期经 settings 运行期可调）
+	s.startJanitor(ctx)
 
 	// 回收过期的 AI 会话密钥：每次 /ai/session-key 都会生成一把 2048 位 RSA
 	// 私钥，不回收则常驻内存无界增长。

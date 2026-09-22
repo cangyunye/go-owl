@@ -23,13 +23,13 @@ var providerList = []string{"openai", "anthropic", "qwen", "dashscope", "deepsee
 func providerDefaults(provider string) (model, baseURL string) {
 	switch provider {
 	case "anthropic":
-		return "claude-sonnet-4-20250514", "https://api.anthropic.com/v1"
+		return "claude-sonnet-5", "https://api.anthropic.com/v1"
 	case "qwen", "dashscope":
 		return "qwen-max", "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	case "deepseek":
 		return "deepseek-flash", "https://api.deepseek.com"
 	default:
-		return "gpt-4o", "https://api.openai.com/v1"
+		return "gpt-5.6-terra", "https://api.openai.com/v1"
 	}
 }
 

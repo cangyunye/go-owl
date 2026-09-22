@@ -3,9 +3,9 @@ package handler
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	nodeselect "github.com/cangyunye/go-owl/internal/node/select"
 )
 
@@ -30,12 +30,9 @@ func (s *dbNodeSource) List(ctx context.Context) ([]nodeselect.NodeRow, error) {
 		if err := rows.Scan(&r.ID, &r.Name, &groupsJSON, &labelsJSON, &r.Status); err != nil {
 			return nil, fmt.Errorf("读取节点行失败: %w", err)
 		}
-		if err := json.Unmarshal([]byte(groupsJSON), &r.Groups); err != nil {
-			r.Groups = nil
-		}
-		if err := json.Unmarshal([]byte(labelsJSON), &r.Labels); err != nil {
-			r.Labels = nil
-		}
+		// groups/labels JSON 解析与非法归一收敛到 store 包
+		r.Groups = store.ParseNodeGroups(groupsJSON)
+		r.Labels = store.ParseNodeLabels(labelsJSON)
 		out = append(out, r)
 	}
 	return out, rows.Err()

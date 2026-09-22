@@ -206,10 +206,17 @@ CREATE TABLE notify_channels (        -- 通知渠道
 );
 ```
 
-### 5.3 每日清理任务
+### 5.3 定期清理与空间回收
 
-- serve 启动时立即执行一次，此后每 **24h** 执行一次（固定 02:00 附近）
-- 逻辑：`DELETE FROM metrics_<本月/上月> WHERE ts < now-30d`；**DROP 早于保留期的整张分区表**；同时清理 `alerts` 中 `resolved_at < now-30d` 的记录
+- serve 启动时立即执行一次，此后按清理计划排期（settings 表 `monitor.cleanup_schedule`，
+  `daily` = 每日 02:00 / `weekly` = 每周一 02:00 / `monthly` = 每月 1 日 02:00，本地时区）
+- 指标保留天数经 `monitor.retention_days` 运行期可调（默认 30，1..3650）；
+  采集间隔（写入频率）经 `monitor.interval_seconds` 运行期可调（默认 60s，10..86400）
+- 逻辑：`DELETE FROM metrics_<本月/上月> WHERE ts < now-Nd`；**DROP 早于保留期的整张分区表**；同时清理 `alerts` 中 `resolved_at < now-Nd` 的记录
+- DELETE/DROP 只把页移入 freelist，**owl.db 文件并不会缩小**；实际回收过数据时
+  追加 `VACUUM` + `PRAGMA wal_checkpoint(TRUNCATE)` 把空间归还操作系统；
+  管理员亦可在设置页「数据库」卡片查看各表行数/占用并手动回收
+  （`GET /api/v1/db/stats`、`POST /api/v1/db/vacuum`）
 - 与 `history.Cleanup` 互不干扰，各管各的表
 
 ### 5.4 为什么不引入独立时序库（决策记录）

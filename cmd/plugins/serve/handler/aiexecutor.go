@@ -303,7 +303,8 @@ func (e *WebExecutor) GeneratePlaybook(ctx context.Context, params ai2.GenerateP
 	if err := e.requireOperator(ctx); err != nil {
 		return nil, err
 	}
-	content := fmt.Sprintf(`name: ai-generated-playbook
+	content := fmt.Sprintf(`# 示例模板：由 AI 生成的起步骨架，执行前必须人工确认并替换占位任务
+name: ai-generated-playbook
 description: "%s"
 hosts: []
 tasks:
@@ -311,7 +312,7 @@ tasks:
     command: echo "Generated for: %s"
 `, params.Requirement, params.Requirement)
 
-	return &ai2.GeneratePlaybookResult{Text: fmt.Sprintf("Generated playbook:\n\n```yaml\n%s\n```", content)}, nil
+	return &ai2.GeneratePlaybookResult{Text: fmt.Sprintf("示例 playbook 模板（非最终产物，请人工确认后使用）：\n\n```yaml\n%s\n```", content)}, nil
 }
 
 func (e *WebExecutor) TransferFile(ctx context.Context, params ai2.TransferFileParams) (*ai2.TransferResult, error) {

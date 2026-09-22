@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	commonutil "github.com/cangyunye/go-owl/internal/common"
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/node"
 	"gopkg.in/yaml.v3"
@@ -995,10 +996,7 @@ func formatLabels(labels map[string]string) string {
 }
 
 func truncateStr(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
+	return commonutil.Truncate(s, maxLen)
 }
 
 func truncateByWidth(s string, maxWidth int) string {
@@ -1538,7 +1536,7 @@ func (t *GeneratePlaybookTool) Name() string {
 }
 
 func (t *GeneratePlaybookTool) Description() string {
-	return "Generate Ansible-like YAML playbook from natural language requirements. Requires user confirmation before execution."
+	return "Return a starter YAML playbook TEMPLATE for the requirement (a scaffold for reference, not a final product; review and edit before any execution). Requires user confirmation before execution."
 }
 
 func (t *GeneratePlaybookTool) Parameters() string {

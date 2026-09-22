@@ -55,14 +55,14 @@ func TestMiscWriteOpsRequireConfirmation(t *testing.T) {
 	sess := NewSession(newTestAgentForRoute(nil))
 	for _, name := range []string{"async_cancel", "settings_set", "history_clean"} {
 		call := ToolCall{Name: name, Arguments: map[string]interface{}{}}
-		d := sess.agent.confirmGate(call)
+		d := sess.confirmGateFn(call)
 		if !d.Confirm {
 			t.Errorf("write op %s should require confirmation", name)
 		}
 	}
 	for _, name := range []string{"async_list", "async_status", "settings_show", "history_list"} {
 		call := ToolCall{Name: name, Arguments: map[string]interface{}{}}
-		if d := sess.agent.confirmGate(call); d.Confirm {
+		if d := sess.confirmGateFn(call); d.Confirm {
 			t.Errorf("read op %s should not require confirmation", name)
 		}
 	}

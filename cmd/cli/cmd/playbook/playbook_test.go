@@ -136,9 +136,9 @@ func TestActionTemplatesCount(t *testing.T) {
 
 func TestPlaybookListInfoStruct(t *testing.T) {
 	pb := playbook.PlaybookInfo{
-		Name: "test.yml",
-		Path: "/tmp/test.yml",
-		Size: 100,
+		Name:        "test.yml",
+		Path:        "/tmp/test.yml",
+		Size:        100,
 		Description: "测试描述",
 		TasksCount:  5,
 	}
@@ -345,8 +345,8 @@ func TestPlaybookScaffoldOutput(t *testing.T) {
 	out := testutil.ExecuteCommand(t, cmd)
 
 	expected := []string{
-		`# description: "TODO: 描述此 Playbook 的用途"`,
-		"# parameters:",
+		`description: "TODO: 描述此 Playbook 的用途"`,
+		"parameters:",
 		"tasks:",
 		"action: command",
 		"# retries: 3",

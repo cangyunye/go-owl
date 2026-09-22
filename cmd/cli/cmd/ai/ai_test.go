@@ -30,7 +30,7 @@ func TestAIFlags(t *testing.T) {
 	cmd := ai.NewAICmd()
 
 	testutil.AssertFlagExists(t, cmd, "model")
-	testutil.AssertFlagDefault(t, cmd, "model", "gpt-4o")
+	testutil.AssertFlagDefault(t, cmd, "model", "gpt-5.6-terra")
 
 	testutil.AssertFlagExists(t, cmd, "provider")
 	testutil.AssertFlagDefault(t, cmd, "provider", "openai")

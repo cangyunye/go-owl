@@ -35,6 +35,26 @@ var FieldWidthMap = map[string]struct{ Width int; Label string }{
 	"metadata":   {30, "Metadata"},
 }
 
+// StripANSI 去除字符串中的 ANSI 转义序列（颜色/光标控制）。
+func StripANSI(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	inEscape := false
+	for _, r := range s {
+		switch {
+		case r == '\033':
+			inEscape = true
+		case inEscape:
+			if r == 'm' {
+				inEscape = false
+			}
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // DisplayWidth 计算字符串的显示宽度，忽略 ANSI 转义序列
 func DisplayWidth(s string) int {
 	w := 0

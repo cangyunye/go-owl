@@ -75,6 +75,9 @@ type ExecuteOptions struct {
 	RetryConfig   *RetryConfig
 	WorkingDir    string
 	Env           map[string]string
+	// MaxConcurrency 并行执行（Parallel=true）时的最大并发节点数。
+	// 0 或负数 = 使用默认值 10。防止大批量节点时无上限 goroutine/连接并发。
+	MaxConcurrency int
 }
 
 type CommandExecutor interface {

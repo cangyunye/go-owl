@@ -2,8 +2,9 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 )
 
 // nodeRow is the structured representation of a nodes-table row used by the AI
@@ -51,12 +52,9 @@ func (e *WebExecutor) queryNodeRows(ctx context.Context, group, status, search s
 		if err := rows.Scan(&r.ID, &r.Name, &r.Address, &r.Port, &r.User, &r.Status, &groupsJSON, &labelsJSON); err != nil {
 			continue
 		}
-		if err := json.Unmarshal([]byte(groupsJSON), &r.Groups); err != nil {
-			r.Groups = nil
-		}
-		if err := json.Unmarshal([]byte(labelsJSON), &r.Labels); err != nil {
-			r.Labels = nil
-		}
+		// groups/labels JSON 解析与非法归一收敛到 store 包
+		r.Groups = store.ParseNodeGroups(groupsJSON)
+		r.Labels = store.ParseNodeLabels(labelsJSON)
 		out = append(out, r)
 	}
 	// 节点范围授权：AI 查询同样只看得到授权内节点

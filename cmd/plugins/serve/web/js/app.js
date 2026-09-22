@@ -336,8 +336,8 @@ let settingsSections = readSettingsSections();
 function readSettingsSections() {
   try {
     const s = JSON.parse(localStorage.getItem('owl-settings-sections') || '{}');
-    return { ai: s.ai !== false, kv: s.kv !== false, monitor: s.monitor !== false };
-  } catch { return { ai: true, kv: true, monitor: true }; }
+    return { ai: s.ai !== false, kv: s.kv !== false, monitor: s.monitor !== false, db: s.db !== false };
+  } catch { return { ai: true, kv: true, monitor: true, db: true }; }
 }
 
 function dispatchSettingsSections() {
@@ -375,6 +375,13 @@ function updatePanelContent(viewId) {
           <input type="checkbox" class="group-check settings-sec-check" data-sec="monitor" ${settingsSections.monitor ? 'checked' : ''}>
           <span class="dot" style="background:${settingsSections.monitor ? 'var(--accent)' : 'var(--muted)'}"></span>
           <span class="group-text">监控告警</span>
+        </label>
+      </li>
+      <li class="panel-item">
+        <label>
+          <input type="checkbox" class="group-check settings-sec-check" data-sec="db" ${settingsSections.db ? 'checked' : ''}>
+          <span class="dot" style="background:${settingsSections.db ? 'var(--accent)' : 'var(--muted)'}"></span>
+          <span class="group-text">数据库统计</span>
         </label>
       </li>`;
     document.querySelectorAll('.settings-sec-check').forEach(cb => {

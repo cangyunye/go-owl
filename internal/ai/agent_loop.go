@@ -12,6 +12,12 @@ const defaultMaxTurns = 10
 // forceToolInstruction 原生模式下首轮模型只回文本不调工具时追加一次，强制其发起工具调用。
 const forceToolInstruction = "你必须通过工具调用完成用户请求：发起对工具的调用。不要只输出普通文本回答。"
 
+// toolCallGuidance 模型未能产出工具调用时的统一指引：
+// 绝不做本地字符串猜测后执行真实命令（曾发生静默落到第一个节点）。
+const toolCallGuidance = "我无法将您的请求可靠地映射到可执行的运维工具，为避免误执行已中止。" +
+	"请换一种更明确的说法（例如「在 node-1 上查看磁盘使用率」），" +
+	"或直接使用 owl exec / owl playbook 等命令完成操作。"
+
 // nativeProtocolOverride 在原生模式下插入，抵消系统提示词中的文本协议输出契约，
 // 避免模型在两种工具调用约定之间摇摆。
 const nativeProtocolOverride = "工具调用协议说明：本次会话已启用原生 function calling，请直接通过 API tools 机制发起工具调用；忽略系统提示词中「输出契约」关于 ```json tool_calls 输出格式的约定，其余规则不变。"
@@ -21,8 +27,6 @@ type toolLoopParams struct {
 	onProgress ProgressCallback
 	// userInput 原始用户输入（本地降级链参数提取需要）
 	userInput string
-	// localFallback 首轮无工具调用时是否尝试本地意图分类降级链（仅 Process）
-	localFallback bool
 	// useToolHints 多轮执行后是否注入工具提示（仅 Process）
 	useToolHints bool
 	// allowDirectAnswer 允许首轮无工具调用时把 LLM 文本直接作为回答
@@ -133,19 +137,8 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 				turn--
 				continue
 			}
-			if p.localFallback &&
-				((len(content) > 100 && !strings.Contains(content, "tool_calls")) ||
-					strings.Contains(content, "我不确定您要做什么")) {
-				debugPrint(a.debug, "LLM 无法生成有效工具调用，尝试本地参数提取链")
-				if reply, ok := a.localFallbackChain(ctx, p.userInput, p.onProgress, &msgs); ok {
-					if p.onProgress != nil {
-						p.onProgress("result", "完成")
-					}
-					return toolLoopResult{messages: msgs, reply: reply}, nil
-				}
-			}
-			debugPrint(a.debug, "无有效工具调用，返回不确定（LLM 自由文本不透出）")
-			return toolLoopResult{messages: msgs, reply: "我不确定您要做什么"}, nil
+			debugPrint(a.debug, "无有效工具调用，返回指引（不做本地猜测执行）")
+			return toolLoopResult{messages: msgs, reply: toolCallGuidance}, nil
 		}
 
 		if p.onProgress != nil {
@@ -171,7 +164,7 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 			if p.onProgress != nil {
 				p.onProgress("execute", call.Name)
 			}
-			if ok, question := a.confirmToolCall(call); !ok {
+			if ok, question := a.confirmToolCall(call, resolveGate(ctx, a)); !ok {
 				if p.onProgress != nil {
 					p.onProgress("result", "等待确认")
 				}
@@ -212,91 +205,6 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 		p.onProgress("result", "完成")
 	}
 	return toolLoopResult{messages: msgs, reply: lastToolResult}, nil
-}
-
-// localFallbackChain 本地意图分类 + 参数提取的降级链（无 LLM 工具调用能力时兜底）。
-// 返回 (回复, 是否已得出结论)。
-func (a *Agent) localFallbackChain(ctx context.Context, userInput string, onProgress ProgressCallback, msgs *[]Message) (string, bool) {
-	nodes := a.nodeMgr.List()
-	nodeNames := make([]string, 0, len(nodes))
-	for _, n := range nodes {
-		nodeNames = append(nodeNames, n.Name)
-	}
-
-	classifier := NewIntentClassifier()
-	intentResult := classifier.Classify(userInput)
-
-	// 置信度阈值 20: 两个及以上关键词命中(如"列出节点")即视为有效意图,
-	// 单关键词命中(置信度 10)仍拒绝,兼顾召回与误判。
-	if intentResult.Type == IntentUncertain || intentResult.Confidence < 20 {
-		debugPrint(a.debug, "本地分类器也无法确定")
-		return "", false
-	}
-
-	extractor := NewParamExtractor(nodeNames)
-	params := extractor.ExtractParams(intentResult.Type, userInput)
-
-	validator := NewValidator()
-	if err := validator.ValidateParams(intentResult.Type, params); err != nil {
-		debugPrint(a.debug, "参数验证失败: %v", err)
-		return "", false
-	}
-
-	debugPrint(a.debug, "使用本地参数提取成功: %v", params)
-
-	var toolCallJSON string
-	switch intentResult.Type {
-	case IntentQueryNodes:
-		toolCallJSON = a.buildToolCall("query_nodes", params)
-	case IntentExecuteCmd:
-		toolCallJSON = a.buildToolCall("execute_command", params)
-	case IntentExecuteScript:
-		toolCallJSON = a.buildToolCall("execute_script", params)
-	case IntentGeneratePlaybook:
-		toolCallJSON = a.buildToolCall("generate_playbook", params)
-	case IntentTransferFile:
-		toolCallJSON = a.buildToolCall("transfer_file", params)
-	case IntentFileDownload:
-		toolCallJSON = a.buildToolCall("file_download", params)
-	case IntentAlertList:
-		toolCallJSON = a.buildToolCall("alert_list", params)
-	case IntentAlertRemedy:
-		toolCallJSON = a.buildToolCall("alert_remedy", params)
-	default:
-		return "", false
-	}
-
-	if toolCallJSON == "" {
-		return "", false
-	}
-
-	debugPrint(a.debug, "使用本地提取的工具调用")
-	toolCalls := a.parseToolCalls(toolCallJSON)
-	if len(toolCalls) == 0 {
-		return "", false
-	}
-	if onProgress != nil {
-		onProgress("generate", toolCalls[0].Name)
-	}
-	*msgs = append(*msgs, Message{Role: "assistant", Content: toolCallJSON})
-
-	for _, call := range toolCalls {
-		if onProgress != nil {
-			onProgress("execute", call.Name)
-		}
-		if ok, question := a.confirmToolCall(call); !ok {
-			if onProgress != nil {
-				onProgress("result", "等待确认")
-			}
-			return question, true
-		}
-		result, err := a.executeToolCall(ctx, call)
-		if err != nil {
-			result = fmt.Sprintf("Tool execution failed: %v", err)
-		}
-		return result, true
-	}
-	return "", false
 }
 
 // generateToolsForLoop 原生 function calling 调用：优先流式实现，delta 经

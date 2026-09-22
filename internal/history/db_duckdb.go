@@ -5,8 +5,6 @@ package history
 
 import (
 	"database/sql"
-	"os"
-	"path/filepath"
 	"time"
 
 	_ "github.com/duckdb/duckdb-go/v2"
@@ -20,10 +18,16 @@ type DuckDB struct {
 	path string
 }
 
-// NewDB 创建 DuckDB 数据库连接（默认实现）
+// NewDB 创建 DuckDB 数据库连接（默认实现）。
+// 与 SQLite 后端一致：同一路径重复调用复用已打开的全局实例，
+// Close 解除全局绑定，之后同路径可重开新实例。
 func NewDB(config *Config) (DBInterface, error) {
 	if config == nil {
 		config = DefaultConfig()
+	}
+
+	if existing, ok := globalDB.(*DuckDB); ok && existing != nil && existing.path == config.DBPath {
+		return existing, nil
 	}
 
 	ensureDBDir(config.DBPath)
@@ -254,6 +258,7 @@ var operationColumnSpecsDuckDB = []struct {
 	{"current_task_index", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS current_task_index INTEGER DEFAULT 0`},
 	{"current_task_phase", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS current_task_phase VARCHAR DEFAULT ''`},
 	{"forced", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS forced INTEGER DEFAULT 0`},
+	{"origin", `ALTER TABLE operations ADD COLUMN IF NOT EXISTS origin VARCHAR DEFAULT ''`},
 }
 
 // EnsureOperationColumns 为存量库补齐 operations 缺失的列（幂等）。
@@ -266,8 +271,11 @@ func (d *DuckDB) EnsureOperationColumns() error {
 	return nil
 }
 
-// Close 关闭连接
+// Close 关闭连接并解除全局绑定（与 SQLite 后端一致）。
 func (d *DuckDB) Close() error {
+	if GetGlobalDB() == DBInterface(d) {
+		SetGlobalDB(nil)
+	}
 	return d.conn.Close()
 }
 
@@ -289,11 +297,4 @@ func (d *DuckDB) Cleanup(retentionDays int) error {
 	}
 
 	return nil
-}
-
-func (d *DuckDB) ensureDBDir() {
-	dir := filepath.Dir(d.path)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.MkdirAll(dir, 0755)
-	}
 }

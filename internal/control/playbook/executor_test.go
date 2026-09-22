@@ -795,3 +795,18 @@ func TestDefaultActionRunner_ResolveDownloadDest(t *testing.T) {
 
 
 
+
+// TestDefaultActionRunner_RunAction_RecordsCommand：TaskResult 必须携带
+// 插值后的真实命令串，执行日志（logfile/history）才能记录 command 列。
+func TestDefaultActionRunner_RunAction_RecordsCommand(t *testing.T) {
+	runner := NewDefaultActionRunnerWithOptions(nil, nil, nil)
+	res, err := runner.RunAction("command",
+		map[string]interface{}{"command": "systemctl restart {{svc}}"},
+		"node-1", map[string]interface{}{"svc": "nginx"}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Command != "systemctl restart nginx" {
+		t.Fatalf("expected rendered command in result, got %q", res.Command)
+	}
+}

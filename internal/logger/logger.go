@@ -3,6 +3,7 @@ package logger
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -26,7 +27,8 @@ type Config struct {
 	Compress     bool   // 是否压缩
 }
 
-// DefaultConfig 默认配置
+// DefaultConfig 默认配置：滚动日志 10MB × 10 份（约 100MB 封顶，
+// 压缩后更低），可用 OWL_LOG_MAX_SIZE_MB / OWL_LOG_MAX_BACKUPS 覆盖。
 func DefaultConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
 	logPath := filepath.Join(homeDir, ".owl", "logs", "owl.log")
@@ -37,11 +39,21 @@ func DefaultConfig() *Config {
 		ConsoleLevel: "info",
 		File:         true,
 		FilePath:     logPath,
-		MaxSize:      100,
-		MaxBackups:   10,
+		MaxSize:      envInt("OWL_LOG_MAX_SIZE_MB", 10),
+		MaxBackups:   envInt("OWL_LOG_MAX_BACKUPS", 10),
 		MaxAge:       30,
 		Compress:     true,
 	}
+}
+
+// envInt 读取整型环境变量，未设置或非法时回退默认值（须为正数）。
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
 }
 
 // Init 初始化日志系统

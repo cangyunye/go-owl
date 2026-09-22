@@ -255,7 +255,8 @@ func TestSessionDefaultConfirmGate(t *testing.T) {
 	session := NewSession(agent)
 
 	call := ToolCall{Name: "execute_command", Arguments: map[string]interface{}{"command": "uptime"}}
-	d := agent.confirmGate(call)
+	// 新契约：确认门是会话私有（随 ctx 传递），不再写入共享 Agent 单槽
+	d := session.confirmGateFn(call)
 	if !d.Confirm {
 		t.Fatal("expected write operation to require confirmation")
 	}
@@ -270,7 +271,7 @@ func TestSessionDefaultConfirmGate(t *testing.T) {
 	}
 
 	readCall := ToolCall{Name: "query_nodes", Arguments: map[string]interface{}{}}
-	if d := agent.confirmGate(readCall); d.Confirm {
+	if d := session.confirmGateFn(readCall); d.Confirm {
 		t.Error("expected read-only operation to pass through")
 	}
 }
@@ -844,19 +845,19 @@ func TestProcessRouteDirectToolCall_ExecutesImmediately(t *testing.T) {
 	}
 }
 
-func TestProcessLocalFallback_LowConfidenceIntent(t *testing.T) {
-	helpText := "抱歉，我无法确定您要执行的具体操作。\n\n我可以帮助您：\n 1. 查询节点信息 - 查看节点状态、分组、标签\n 2. 执行命令 - 在指定节点上运行 shell 命令"
-	agent := newTestAgentForRoute([]string{"node_list", helpText})
-	ctx := context.Background()
-	resp, err := agent.Process(ctx, "列出当前在线节点", nil)
+// TestProcess_NoGuessExecutionOnFailedToolCall 模型未能产出工具调用时，
+// 必须返回统一指引文案，而不是本地猜测后执行真实命令。
+func TestProcess_NoGuessExecutionOnFailedToolCall(t *testing.T) {
+	agent := newTestAgentForRoute([]string{"node_list", "这是一段无法解析为工具调用的自由文本。"})
+	resp, err := agent.Process(context.Background(), "列出当前在线节点", nil)
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
-	if resp == "我不确定您要做什么" {
-		t.Fatal("local fallback should accept two-keyword query intent, not reject")
+	if resp != toolCallGuidance {
+		t.Fatalf("expected toolCallGuidance, got: %q", resp)
 	}
-	if !strings.Contains(resp, "node1") {
-		t.Fatalf("expected node1 in fallback query result, got: %s", resp)
+	if !strings.Contains(resp, "owl exec") {
+		t.Fatalf("guidance should mention direct commands, got: %q", resp)
 	}
 }
 

@@ -2,9 +2,9 @@ package handler
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
 )
 
@@ -27,12 +27,9 @@ func scanNodeInfo(s rowScanner) (*ai2.NodeInfoAdapter, error) {
 	if err := s.Scan(&n.ID, &n.Name, &n.Address, &n.Port, &n.Status, &groupsJSON, &labelsJSON, &n.CreatedAt, &n.UpdatedAt); err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal([]byte(groupsJSON), &n.Groups); err != nil {
-		n.Groups = nil
-	}
-	if err := json.Unmarshal([]byte(labelsJSON), &n.Labels); err != nil {
-		n.Labels = nil
-	}
+	// groups/labels JSON 解析与非法归一收敛到 store 包
+	n.Groups = store.ParseNodeGroups(groupsJSON)
+	n.Labels = store.ParseNodeLabels(labelsJSON)
 	return &n, nil
 }
 

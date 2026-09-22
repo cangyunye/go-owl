@@ -263,3 +263,25 @@ func TestCleanExecutionLogs(t *testing.T) {
 		t.Error("op-new should be kept")
 	}
 }
+
+// TestHistoryList_LightModeNoDetails 列表接口为轻量模式：响应不含明细数组与
+// stdout 大字段；详情接口保持全量。
+func TestHistoryList_LightModeNoDetails(t *testing.T) {
+	hs, r := historyTestSetup(t)
+	ctx := context.Background()
+	hs.RecordOperation(ctx, &store.Operation{TaskID: "light-1", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed"})
+	hs.RecordCommandExecution(ctx, &store.CommandExecution{TaskID: "light-1", NodeID: "n1", Command: "uptime", ExitCode: 0, Stdout: "ok", Success: true})
+
+	w := historyGET(t, r, "/api/v1/history", adminToken())
+	require.Equal(t, 200, w.Code)
+	assert.NotContains(t, w.Body.String(), "command_executions", "列表响应不应包含明细子查询结果")
+	assert.NotContains(t, w.Body.String(), `"stdout"`, "列表响应不应回传 stdout 大字段")
+
+	w2 := historyGET(t, r, "/api/v1/history/detail/light-1", adminToken())
+	require.Equal(t, 200, w2.Code)
+	assert.Contains(t, w2.Body.String(), `"stdout"`, "详情接口应包含明细")
+
+	w3 := historyGET(t, r, "/api/v1/history/export", adminToken())
+	require.Equal(t, 200, w3.Code)
+	assert.Contains(t, w3.Body.String(), "command_executions", "导出应保持全量明细")
+}

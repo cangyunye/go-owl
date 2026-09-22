@@ -153,6 +153,37 @@ func (h *SettingsHandler) Set(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.verify_delay_seconds must be 0-600"})
 			return
 		}
+	case "monitor.retention_days":
+		n, err := strconv.Atoi(strings.TrimSpace(req.Value))
+		if err != nil || n < 1 || n > 3650 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.retention_days must be 1-3650"})
+			return
+		}
+	case "monitor.cleanup_schedule":
+		switch strings.ToLower(strings.TrimSpace(req.Value)) {
+		case "daily", "weekly", "monthly":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.cleanup_schedule must be daily, weekly or monthly"})
+			return
+		}
+	case "monitor.interval_seconds":
+		n, err := strconv.Atoi(strings.TrimSpace(req.Value))
+		if err != nil || n < 10 || n > 86400 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "monitor.interval_seconds must be 10-86400"})
+			return
+		}
+	case "logs.executions_retention_days":
+		n, err := strconv.Atoi(strings.TrimSpace(req.Value))
+		if err != nil || n < 0 || n > 3650 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "logs.executions_retention_days must be 0-3650 (0 = disable periodic cleanup)"})
+			return
+		}
+	case "history.retention_days":
+		n, err := strconv.Atoi(strings.TrimSpace(req.Value))
+		if err != nil || n < 0 || n > 3650 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "history.retention_days must be 0-3650 (0 = disable periodic cleanup)"})
+			return
+		}
 	}
 
 	_, err := h.db.Exec(

@@ -41,6 +41,11 @@ func NewPlaybookNewCmd() *cobra.Command {
 func runPlaybookNew(cmd *cobra.Command, args []string) {
 	entry, err := pb.GetTemplate(pbNewFrom, pb.DefaultUserTemplatePath())
 	if err != nil {
+		// 规范骨架模板走共享生成器，保证与 scaffold / template create / export 产出一致。
+		if pbNewFrom == CanonicalSkeletonName {
+			runPlaybookNewSkeleton()
+			return
+		}
 		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err", err))
 		os.Exit(1)
 	}
@@ -67,6 +72,30 @@ func runPlaybookNew(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err", err))
 		os.Exit(1)
 	}
+
+	outputPath := determineNewOutputPath(pbNewFrom, pbNewOutput)
+
+	if err := savePlaybookFile(outputPath, rendered); err != nil {
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err", err))
+		os.Exit(1)
+	}
+
+	fmt.Printf("%s", i18n.T("playbook.new.ok_created", outputPath))
+	fmt.Println(i18n.T("playbook.new.hint_command"))
+	fmt.Printf("%s", i18n.T("playbook.new.run_hint", outputPath))
+}
+
+// runPlaybookNewSkeleton 用共享生成器生成规范骨架并写文件。
+// --var 仅做 key=value 格式校验并尝试占位符替换（规范骨架无占位符，默认输出不变）。
+func runPlaybookNewSkeleton() {
+	provided := parseVarFlags(pbNewVars)
+
+	rendered, err := GeneratePlaybookSkeleton(SkeletonOptions{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s", i18n.T("playbook.new.err", err))
+		os.Exit(1)
+	}
+	rendered = SubstituteSkeletonVars(rendered, provided)
 
 	outputPath := determineNewOutputPath(pbNewFrom, pbNewOutput)
 

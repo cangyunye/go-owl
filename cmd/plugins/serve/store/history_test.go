@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,7 +123,7 @@ func TestHistoryStore_RecordDetailsAndQuery(t *testing.T) {
 	byType, total, err := s.Query(ctx, &QueryOptions{OpType: "command"})
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
-	require.Len(t, byType, 1)
+	assert.Len(t, byType, 1)
 	assert.Equal(t, "op-c", byType[0].Operation.TaskID)
 	require.Len(t, byType[0].CommandExecutions, 1)
 	assert.Equal(t, "ok", byType[0].CommandExecutions[0].Stdout)
@@ -485,4 +486,61 @@ func TestHistoryStore_OriginLegacyMigration(t *testing.T) {
 	rec, err := s.GetByTaskID(ctx, "legacy-origin")
 	require.NoError(t, err)
 	assert.Equal(t, "web", rec.Operation.Origin)
+}
+
+// TestHistoryStore_QuerySummaryOnlySkipsDetailQueries 轻量列表模式
+// （QueryOptions.SummaryOnly）不拉 executions/transfers 子查询：每条 operation
+// 追加子查询的列表页 50 条 = 151 查询（N+1）。列表 UI 只展示 operation 概要；
+// 默认（零值）Query 保持全量，详情/导出无需改动。
+func TestHistoryStore_QuerySummaryOnlySkipsDetailQueries(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "op-1", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed"}))
+	require.NoError(t, s.RecordCommandExecution(ctx, &CommandExecution{TaskID: "op-1", NodeID: "n1", Command: "uptime", ExitCode: 0, Stdout: strings.Repeat("o", 64*1024), Stderr: "e", DurationMs: 5, Success: true}))
+	require.NoError(t, s.RecordFileTransfer(ctx, &FileTransfer{TaskID: "op-1", NodeID: "n1", FileName: "a.bin", FileSize: 10, TransferType: "push", Status: "completed", Progress: 1}))
+
+	// 轻量列表模式：不追加明细子查询
+	recs, total, err := s.Query(ctx, &QueryOptions{Limit: 50, SummaryOnly: true})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, recs, 1)
+	assert.Empty(t, recs[0].CommandExecutions, "SummaryOnly 不应拉 command_executions")
+	assert.Empty(t, recs[0].Transfers, "SummaryOnly 不应拉 file_transfers")
+
+	// 默认全量模式保持不变
+	full, _, err := s.Query(ctx, &QueryOptions{})
+	require.NoError(t, err)
+	require.Len(t, full, 1)
+	require.Len(t, full[0].CommandExecutions, 1)
+	assert.Equal(t, strings.Repeat("o", 64*1024), full[0].CommandExecutions[0].Stdout)
+	require.Len(t, full[0].Transfers, 1)
+
+	// 详情路径始终全量
+	rec, err := s.GetByTaskID(ctx, "op-1")
+	require.NoError(t, err)
+	require.Len(t, rec.CommandExecutions, 1)
+	require.Len(t, rec.Transfers, 1)
+}
+
+// TestHistoryStore_InitSkipsNodeCommunications node_communications 是死特性链：
+// RecordNodeCommunication 全仓 0 调用，Query 拉到的永远为空集。serve 侧不再
+// 建表/建索引/查询；已有库中的同名表保留不动（CLI 侧 Cleanup 仍会遍历它）。
+func TestHistoryStore_InitSkipsNodeCommunications(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	var name string
+	err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'node_communications'`).Scan(&name)
+	assert.Error(t, err, "node_communications 死特性链应已删除，serve 不再建表")
+
+	// operations/executions/transfers 主链路不受影响
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "alive-1", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed"}))
+	rec, err := s.GetByTaskID(ctx, "alive-1")
+	require.NoError(t, err)
+	assert.Equal(t, "completed", rec.Operation.Status)
 }

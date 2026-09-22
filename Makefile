@@ -4,16 +4,18 @@
 # 不需要网络），离线仓库可直接编译。全部目标均为纯 Go（CGO_ENABLED=0），
 # 任意平台可交叉编译。
 #
-# serve / metrics / tui / gscp 均为可选组件，仅通过 WITH= 或专用目标显式编译：
+# serve / metrics / tui / gscp / duckdb 均为可选组件，仅通过 WITH= 或专用目标显式编译：
 #   serve   无附加要求（仓库内 cmd/owl-serve）
 #   metrics 需兄弟目录 ../go-owl-metrics（经 metrics.work 引入，不写入 go.mod）
 #   tui     原生子命令，经构建标签门控：make build 纯净模式不含 owl tui；
 #           make build WITH=tui 或 make build-tui 以 -tags tui 编入
 #   gscp    克隆 GSCP_REPO（或 build/local-gscp GSCP_LOCAL= 指定本地源码）
+#   duckdb  以 -tags duckdb + CGO 编译历史后端变体（owl-duckdb，未来监控数据
+#           分析用；仅本机平台，默认 sqlite 构建不含 duckdb）
 #
 # 常用:
 #   make build                                   # 当前平台 owl CLI（纯净，不含 tui）
-#   make build WITH=serve,metrics,tui,gscp       # 追加组件
+#   make build WITH=serve,metrics,tui,gscp,duckdb # 追加组件
 #   make build PLATFORMS="linux/amd64 windows/amd64"
 #   make build/all                               # 全平台 × 全组件
 #   make install                                 # 安装到 ~/.local/bin（make install WITH=tui 装带 tui 版）
@@ -60,7 +62,7 @@ METRICS_SRC  ?= ../go-owl-metrics
 METRICS_WORK := $(CURDIR)/metrics.work
 metrics_check = @if [ ! -d '$(METRICS_SRC)' ]; then echo 'metrics 需要兄弟目录 $(METRICS_SRC)（可选插件，默认不编译）'; exit 1; fi
 
-.PHONY: build build/all build-serve build-metrics build-tui build-gscp build/local-gscp \
+.PHONY: build build/all build-serve build-metrics build-tui build-duckdb build-gscp build/local-gscp \
 	install install-gscp clean test test-unit test-integration test-quick test-coverage \
 	fmt lint vet help
 
@@ -75,7 +77,7 @@ define cross_build
 	done
 endef
 
-build: ## 编译 owl CLI（纯核心，不含 tui）；WITH=serve,metrics,tui,gscp 追加组件
+build: ## 编译 owl CLI（纯核心，不含 tui）；WITH=serve,metrics,tui,gscp,duckdb 追加组件
 ifeq ($(filter metrics,$(COMPS)),metrics)
 	$(metrics_check)
 	$(call cross_build,$(if $(filter tui,$(COMPS)),-tags "metrics tui",-tags metrics) $(LDFLAGS),$(CLI_MAIN),owl,GOWORK=$(METRICS_WORK))
@@ -86,6 +88,9 @@ else
 endif
 ifneq (,$(filter serve,$(COMPS)))
 	$(call cross_build,$(SERVE_LDFLAGS),$(SERVE_MAIN),owl-serve)
+endif
+ifneq (,$(filter duckdb,$(COMPS)))
+	@$(MAKE) --no-print-directory build-duckdb
 endif
 ifneq (,$(filter gscp,$(COMPS)))
 	@$(MAKE) --no-print-directory build-gscp PLATFORMS='$(PLATFORMS)'
@@ -103,6 +108,15 @@ build-metrics: ## 编译带 metrics 功能的 owl CLI（可选插件，需兄弟
 
 build-tui: ## 编译带 owl tui 子命令的 owl CLI（原生 TUI，-tags tui）
 	$(call cross_build,-tags tui $(LDFLAGS),$(CLI_MAIN),owl)
+
+# duckdb 是内嵌 C++ 引擎（go-bindings 需 CGO），不做 CGO_ENABLED=0 交叉：
+# 仅本机编译；如需跨平台需自备目标平台 C++ 工具链并显式传 PLATFORMS 逐个构建
+build-duckdb: ## 编译 duckdb 历史后端变体 owl-duckdb（-tags duckdb + CGO，本机平台；默认构建不含 duckdb）
+	@set -e; os=$$($(GO) env GOOS); arch=$$($(GO) env GOARCH); ext=; \
+		if [ "$$os" = windows ]; then ext=.exe; fi; \
+		mkdir -p $(BUILD_DIR)/$$os-$$arch; \
+		printf '==> %-10s %s (CGO)\n' 'owl-duckdb' "$$os/$$arch"; \
+		$(GO) build -tags duckdb $(LDFLAGS) -o $(BUILD_DIR)/$$os-$$arch/owl-duckdb$$ext $(CLI_MAIN)
 
 build-gscp: ## 克隆并跨平台编译 gscp
 	@if [ ! -d '$(GSCP_SRC)/.git' ]; then git clone --depth 1 '$(GSCP_REPO)' '$(GSCP_SRC)'; fi

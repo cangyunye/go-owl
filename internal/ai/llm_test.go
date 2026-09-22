@@ -272,8 +272,8 @@ func TestCreateLLMClient_Anthropic_DefaultModel(t *testing.T) {
 	if !ok {
 		t.Fatal("expected HTTPModel type")
 	}
-	if httpModel.model != "claude-sonnet-4-20250514" {
-		t.Errorf("expected default model 'claude-sonnet-4-20250514', got '%s'", httpModel.model)
+	if httpModel.model != "claude-sonnet-5" {
+		t.Errorf("expected default model 'claude-sonnet-5', got '%s'", httpModel.model)
 	}
 }
 

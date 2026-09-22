@@ -68,6 +68,9 @@ func (s *Session) Snapshot() *SessionState {
 // pendingContext 不持久化：重启后确认态视为取消（安全侧默认）。
 func restoreSession(agent *Agent, rec *SessionRecord) *Session {
 	s := NewSession(agent)
+	if !rec.CreatedAt.IsZero() {
+		s.createdAt = rec.CreatedAt
+	}
 	if rec.State == nil {
 		return s
 	}
@@ -86,9 +89,6 @@ func restoreSession(agent *Agent, rec *SessionRecord) *Session {
 	if rec.State.NodeContext != nil {
 		nc := *rec.State.NodeContext
 		s.nodeContext = &nc
-	}
-	if rec.CreatedAt.IsZero() {
-		s.createdAt = rec.CreatedAt
 	}
 	return s
 }

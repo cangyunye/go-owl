@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/cangyunye/go-owl/internal/common/model"
@@ -481,5 +482,41 @@ func TestDiffusionTree_DefaultValues(t *testing.T) {
 	}
 	if tree.Threshold != DefaultThreshold {
 		t.Errorf("expected default Threshold %d, got %d", DefaultThreshold, tree.Threshold)
+	}
+}
+
+// TestDiffusionTree_Build_WithSourceCount：--source-count 决定第一层
+// （直连控制端拉取的）源节点数，更深层每节点分支数仍由 fanOut 决定。
+func TestDiffusionTree_Build_WithSourceCount(t *testing.T) {
+	builder := NewTreeBuilderWithSources(3, 2, 10, 5) // fanOut=3, sources=2
+	nodes := make([]*model.Node, 11)
+	for i := range nodes {
+		nodes[i] = &model.Node{ID: fmt.Sprintf("node-%02d", i+1)}
+	}
+
+	tree := builder.Build(nodes)
+	if tree == nil {
+		t.Fatal("expected tree, got nil")
+	}
+
+	// 第一层：恰好 2 个源节点直连控制端
+	if got := len(tree.GetChildren("control")); got != 2 {
+		t.Fatalf("expected 2 first-level sources, got %d", got)
+	}
+	// 第二层：每个源节点最多 fanOut=3 个子节点
+	for _, src := range tree.GetChildren("control") {
+		if n := len(tree.GetChildren(src)); n > 3 {
+			t.Fatalf("source %s has %d children, want <= 3", src, n)
+		}
+	}
+	// 总节点数 = 控制端 + 全部目标
+	if tree.NodeCount() != 12 {
+		t.Fatalf("expected 12 nodes (control+11), got %d", tree.NodeCount())
+	}
+
+	// sourceCount 大于目标数时收敛为 1 层
+	tree2 := NewTreeBuilderWithSources(3, 5, 10, 5).Build(nodes[:3])
+	if len(tree2.GetChildren("control")) != 3 {
+		t.Fatalf("expected 3 first-level sources when sources > targets, got %d", len(tree2.GetChildren("control")))
 	}
 }

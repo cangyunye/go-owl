@@ -16,7 +16,7 @@ type Config struct {
 
 type AIConfig struct {
 	Provider string `yaml:"provider"` // openai, anthropic, dashscope
-	Model    string `yaml:"model"`    // gpt-4o, claude-3, qwen-turbo
+	Model    string `yaml:"model"`    // gpt-5.6-terra, claude-sonnet-5, deepseek-flash, qwen-max
 	APIKey   string `yaml:"api_key"`
 	BaseURL  string `yaml:"base_url"`
 	Timeout  int    `yaml:"timeout"` // seconds
@@ -55,7 +55,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		AI: AIConfig{
 			Provider: "openai",
-			Model:    "gpt-4o",
+			Model:    "gpt-5.6-terra",
 			APIKey:   apiKey,
 			BaseURL:  baseURL,
 			Timeout:  120,

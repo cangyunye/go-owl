@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -185,27 +184,7 @@ func runHistory(cmd *cobra.Command, args []string) error {
 }
 
 func parseDuration(s string) (time.Duration, error) {
-	if s == "" {
-		return 0, nil
-	}
-	var dur time.Duration
-	var err error
-	suffix := s[len(s)-1]
-	switch suffix {
-	case 'h', 'H':
-		hours, err := strconv.ParseFloat(s[:len(s)-1], 64)
-		if err == nil {
-			dur = time.Duration(hours) * time.Hour
-		}
-	case 'd', 'D':
-		days, err := strconv.ParseFloat(s[:len(s)-1], 64)
-		if err == nil {
-			dur = time.Duration(days) * 24 * time.Hour
-		}
-	default:
-		dur, err = time.ParseDuration(s)
-	}
-	return dur, err
+	return history.ParseDuration(s)
 }
 
 func printTable(w io.Writer, records []*history.Record) {

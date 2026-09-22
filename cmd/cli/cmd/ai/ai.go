@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	commonutil "github.com/cangyunye/go-owl/internal/common"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +38,7 @@ func NewAICmd() *cobra.Command {
 		Run:   runAI,
 	}
 
-	aiCmd.Flags().StringVar(&aiModel, "model", "gpt-4o",
+	aiCmd.Flags().StringVar(&aiModel, "model", "gpt-5.6-terra",
 		i18n.T("ai.flag.model"))
 	aiCmd.Flags().StringVar(&aiProvider, "provider", "openai",
 		i18n.T("ai.flag.provider"))
@@ -78,7 +79,7 @@ func NewModelsCmd() *cobra.Command {
 			}
 
 			provider := aiProvider
-			model := "gpt-4o"
+			model := "gpt-5.6-terra"
 			apiKey := getAPIKey()
 			baseURL := getBaseURL()
 			timeout := aiTimeout
@@ -231,10 +232,7 @@ func debugLog(debug bool, format string, args ...interface{}) {
 }
 
 func truncateForDB(s string, maxLen int) string {
-	if len(s) > maxLen {
-		return s[:maxLen]
-	}
-	return s
+	return commonutil.Truncate(s, maxLen)
 }
 
 func runAI(cmd *cobra.Command, args []string) {

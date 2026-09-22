@@ -22,6 +22,10 @@ type SQLite3 struct {
 }
 
 // NewDB 创建 SQLite3 数据库连接
+// NewDB 打开（或复用）SQLite 历史库。
+// 同一路径重复调用会复用已打开的全局实例——此前每条 owl 命令会重复
+// Open+InitSchema 2-3 次并泄漏旧连接，加剧与 owl-serve 并发时的
+// WAL 锁竞争。Close 会解除全局绑定，之后同路径可重开新实例。
 func NewDB(config *Config) (DBInterface, error) {
 	if config == nil {
 		config = DefaultConfig()
@@ -31,6 +35,10 @@ func NewDB(config *Config) (DBInterface, error) {
 	dbPath := config.DBPath
 	if filepath.Ext(dbPath) != ".db" {
 		dbPath = dbPath + ".db"
+	}
+
+	if existing, ok := globalDB.(*SQLite3); ok && existing != nil && existing.path == dbPath {
+		return existing, nil
 	}
 
 	ensureDBDir(dbPath)
@@ -305,8 +313,11 @@ func (s *SQLite3) EnsureOperationColumns() error {
 	return nil
 }
 
-// Close 关闭连接
+// Close 关闭连接；若它是全局实例则一并解除绑定
 func (s *SQLite3) Close() error {
+	if GetGlobalDB() == DBInterface(s) {
+		SetGlobalDB(nil)
+	}
 	return s.conn.Close()
 }
 

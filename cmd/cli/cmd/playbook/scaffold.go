@@ -1,38 +1,16 @@
 package playbook
 
 import (
-	"errors"
 	"fmt"
-	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	pb "github.com/cangyunye/go-owl/pkg/playbook"
 	"github.com/cangyunye/go-owl/internal/i18n"
+	pb "github.com/cangyunye/go-owl/pkg/playbook"
 )
 
 var pbScaffoldType string
-
-const scaffoldHeader = `# description: "TODO: 描述此 Playbook 的用途"
-# tags: []
-#
-# parameters:
-#   - name: app_version
-#     description: "应用版本号"
-#     default: "latest"
-`
-
-const scaffoldBasic = scaffoldHeader + `
-tasks:
-  - name: "TODO: 步骤名称"
-    action: command
-    args:
-      cmd: echo "hello"
-    # timeout: 300
-    # retries: 3
-`
 
 func NewPlaybookScaffoldCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -55,81 +33,15 @@ func scaffoldTypeHelp() string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
+// runPlaybookScaffold 将共享生成器的骨架写到标准输出，
+// 与 new / template create / template export 产出同一份规范内容。
 func runPlaybookScaffold(cmd *cobra.Command, args []string) {
-	content, err := renderScaffold(pbScaffoldType)
+	content, err := GeneratePlaybookSkeleton(SkeletonOptions{ActionType: pbScaffoldType})
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.scaffold.err", err))
 		return
 	}
-	fmt.Fprint(cmd.OutOrStdout(), content)
-}
-
-func renderScaffold(typ string) (string, error) {
-	if typ == "basic" || typ == "" {
-		return scaffoldBasic, nil
-	}
-
-	for _, t := range pb.GetActionTemplates() {
-		if t.Name == typ {
-			return renderActionScaffold(&t)
-		}
-	}
-
-	return "", errors.New(i18n.T("playbook.scaffold.err_unknown_type",
-		typ, strings.Join(actionTypeNames(), ", ")))
-}
-
-func actionTypeNames() []string {
-	templates := pb.GetActionTemplates()
-	names := make([]string, len(templates))
-	for i, t := range templates {
-		names[i] = t.Name
-	}
-	return names
-}
-
-func renderActionScaffold(t *pb.ActionTemplate) (string, error) {
-	argsYAML, err := renderArgsYAML(t.Template)
-	if err != nil {
-		return "", err
-	}
-
-	return scaffoldHeader + `
-tasks:
-  - name: "任务 1"
-    action: ` + t.Name + `
-    args:
-` + argsYAML + `
-    # timeout: 300
-    # retries: 3
-`, nil
-}
-
-func renderArgsYAML(args map[string]interface{}) (string, error) {
-	if len(args) == 0 {
-		return "      {}\n", nil
-	}
-
-	var b strings.Builder
-	keys := make([]string, 0, len(args))
-	for k := range args {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		line := fmt.Sprintf("      %s: %s\n", k, formatArgValue(args[k]))
-		b.WriteString(line)
-	}
-	return b.String(), nil
-}
-
-func formatArgValue(v interface{}) string {
-	switch val := v.(type) {
-	case bool:
-		return strconv.FormatBool(val)
-	case string:
-		return strconv.Quote(val)
-	default:
-		return fmt.Sprintf("%v", val)
+	if _, err := cmd.OutOrStdout().Write(content); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s", i18n.T("playbook.scaffold.err", err))
 	}
 }

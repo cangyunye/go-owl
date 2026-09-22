@@ -36,9 +36,17 @@ type diffusionTreeBuilder struct {
 	fanOutK   int
 	maxDepth  int
 	threshold int
+	// sourceCount 决定第一层直连控制端的源节点数；<=0 时与 fanOutK 一致（默认行为）
+	sourceCount int
 }
 
 func NewTreeBuilder(fanOutK, maxDepth, threshold int) TreeBuilder {
+	return NewTreeBuilderWithSources(fanOutK, 0, maxDepth, threshold)
+}
+
+// NewTreeBuilderWithSources 构建扩散树时显式指定第一层源节点数。
+// sourceCount <= 0 或超过目标数时按实际目标数收敛。
+func NewTreeBuilderWithSources(fanOutK, sourceCount, maxDepth, threshold int) TreeBuilder {
 	if fanOutK <= 0 {
 		fanOutK = DefaultFanOutK
 	}
@@ -49,9 +57,10 @@ func NewTreeBuilder(fanOutK, maxDepth, threshold int) TreeBuilder {
 		threshold = DefaultThreshold
 	}
 	return &diffusionTreeBuilder{
-		fanOutK:   fanOutK,
-		maxDepth:  maxDepth,
-		threshold: threshold,
+		fanOutK:     fanOutK,
+		maxDepth:    maxDepth,
+		threshold:   threshold,
+		sourceCount: sourceCount,
 	}
 }
 
@@ -102,7 +111,12 @@ func (b *diffusionTreeBuilder) Build(targets []*model.Node) *DiffusionTree {
 				break
 			}
 
-			childrenCount := min(b.fanOutK, len(remainingNodes))
+			// 第一层按 sourceCount 展开源节点，更深层每节点分支数为 fanOutK
+			branch := b.fanOutK
+			if sourceID == "control" && b.sourceCount > 0 {
+				branch = b.sourceCount
+			}
+			childrenCount := min(branch, len(remainingNodes))
 			children := remainingNodes[:childrenCount]
 			remainingNodes = remainingNodes[childrenCount:]
 

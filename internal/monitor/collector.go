@@ -127,39 +127,45 @@ func svcShowStep(extra []string) (collectStep, bool) {
 }
 
 // Collect 对目标节点执行一轮采集，返回全部成功解析的指标。
-// 单条非必选命令失败被记录在返回错误中但不中断其余采集（optional 步骤除外）。
+// 固定命令表合并为一条复合命令（见 composite.go）执行：每节点每轮由
+// 9-10 次 SSH 握手降为 1 次（svc 为 opt-in 仍单独执行）。
+// 段级失败语义与旧的逐条执行一致：必选段失败整体失败；非必选段失败
+// 记入返回错误但不中断其余采集（optional 段失败静默跳过）。
 func (c *Collector) Collect(ctx context.Context, t *Target) ([]Sample, error) {
 	exec, err := c.factory.NewExecer(t)
 	if err != nil {
 		return nil, fmt.Errorf("monitor: 创建执行器失败: %w", err)
 	}
 	ts := c.now()
-
-	// 显式拷贝后再追加 svc 步骤：collectSteps 是包级共享切片，
-	// 直接 append 可能写入其底层数组，并发采集下产生数据竞争
-	steps := make([]collectStep, 0, len(collectSteps)+1)
-	steps = append(steps, collectSteps...)
-	if svcStep, ok := svcShowStep(t.Services); ok {
-		steps = append(steps, svcStep)
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	var samples []Sample
 	var errs []error
-	for _, step := range steps {
-		if err := ctx.Err(); err != nil {
-			return samples, err
-		}
-		code, out, execErr := exec.Execute(step.command, c.timeout)
-		if execErr != nil || code != 0 {
+
+	// 复合命令执行固定采集步骤。超时预算 = 单命令超时 × 命令数，
+	// 与旧的逐条执行（每条各 c.timeout）最坏总耗时一致。
+	composite := buildCompositeCommand(collectSteps)
+	_, out, execErr := exec.Execute(composite, c.timeout*time.Duration(len(collectSteps)))
+	if execErr != nil {
+		return nil, fmt.Errorf("monitor: 必选命令 %q 执行失败: %w", collectSteps[0].command, execErr)
+	}
+	// 段级退出码经 rc 标记上报，复合整体退出码无段级语义
+
+	sections := splitCompositeOutput(out, collectSteps)
+	for _, step := range collectSteps {
+		sec, ok := sections[step.name]
+		if !ok || !sec.rcPresent || sec.rc != 0 {
 			if step.required {
-				return nil, fmt.Errorf("monitor: 必选命令 %q 执行失败: %w", step.command, execErr)
+				return nil, fmt.Errorf("monitor: 必选命令 %q 执行失败", step.command)
 			}
 			if !step.optional {
-				errs = append(errs, fmt.Errorf("monitor: 命令 %q 执行失败: %w", step.command, execErr))
+				errs = append(errs, fmt.Errorf("monitor: 命令 %q 执行失败", step.command))
 			}
 			continue
 		}
-		parsed, parseErr := step.parse(out, t.ID, ts)
+		parsed, parseErr := step.parse(sec.output, t.ID, ts)
 		if parseErr != nil {
 			if !step.optional {
 				errs = append(errs, fmt.Errorf("monitor: 命令 %q 输出解析失败: %w", step.command, parseErr))
@@ -167,6 +173,22 @@ func (c *Collector) Collect(ctx context.Context, t *Target) ([]Sample, error) {
 			continue
 		}
 		samples = append(samples, parsed...)
+	}
+
+	// svc 步骤：unit 列表来自节点 label，纯 opt-in，保持单独执行
+	if svcStep, ok := svcShowStep(t.Services); ok {
+		if err := ctx.Err(); err != nil {
+			return samples, err
+		}
+		code, out, execErr := exec.Execute(svcStep.command, c.timeout)
+		if execErr != nil || code != 0 {
+			// optional：执行失败静默跳过（如节点无 systemd）
+			return samples, errors.Join(errs...)
+		}
+		parsed, parseErr := svcStep.parse(out, t.ID, ts)
+		if parseErr == nil {
+			samples = append(samples, parsed...)
+		}
 	}
 	return samples, errors.Join(errs...)
 }

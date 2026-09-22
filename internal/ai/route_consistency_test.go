@@ -144,8 +144,8 @@ func TestNoFreeTextOnTurnZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Process failed: %v", err)
 	}
-	if resp != "我不确定您要做什么" {
-		t.Errorf("expected rejection for free text, got %q", resp)
+	if resp != toolCallGuidance {
+		t.Errorf("expected guidance for free text, got %q", resp)
 	}
 }
 
@@ -168,8 +168,8 @@ func TestDirectAnswerInProcessWithContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProcessWithContext failed: %v", err)
 	}
-	if resp2 != "我不确定您要做什么" {
-		t.Errorf("expected rejection for empty text, got %q", resp2)
+	if resp2 != toolCallGuidance {
+		t.Errorf("expected guidance for empty text, got %q", resp2)
 	}
 }
 

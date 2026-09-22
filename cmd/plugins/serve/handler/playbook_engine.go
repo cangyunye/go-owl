@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -92,17 +91,13 @@ func newWebNodeManager(db *sql.DB, nodeIDs []string) *webNodeManager {
 		nodes: make(map[string]*commonmodel.Node),
 	}
 	for _, id := range nodeIDs {
-		var n commonmodel.Node
-		var groupsJSON, labelsJSON string
-		err := db.QueryRow(
-			`SELECT id, name, address, port, user, status, COALESCE(groups,'[]'), COALESCE(labels,'{}') FROM nodes WHERE id = ?`, id,
-		).Scan(&n.ID, &n.Name, &n.Address, &n.Port, &n.User, &n.Status, &groupsJSON, &labelsJSON)
+		n, err := store.ScanNodeRow(db.QueryRow(
+			`SELECT `+store.NodeRowColumns+` FROM nodes WHERE id = ?`, id,
+		))
 		if err != nil {
 			continue
 		}
-		json.Unmarshal([]byte(groupsJSON), &n.Groups)
-		json.Unmarshal([]byte(labelsJSON), &n.Labels)
-		m.nodes[n.ID] = &n
+		m.nodes[n.ID] = n
 	}
 	return m
 }

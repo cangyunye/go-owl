@@ -89,9 +89,9 @@ func TestIsRetryable(t *testing.T) {
 
 func TestCalculateInterval(t *testing.T) {
 	config := &RetryConfig{
-		InitialInterval:         1 * time.Second,
-		MaxInterval:             30 * time.Second,
-		BackoffMultiplier:       2.0,
+		InitialInterval:          1 * time.Second,
+		MaxInterval:              30 * time.Second,
+		BackoffMultiplier:        2.0,
 		EnableExponentialBackoff: true,
 	}
 
@@ -114,8 +114,8 @@ func TestCalculateInterval(t *testing.T) {
 
 func TestCalculateInterval_Linear(t *testing.T) {
 	config := &RetryConfig{
-		InitialInterval:         1 * time.Second,
-		MaxInterval:             30 * time.Second,
+		InitialInterval:          1 * time.Second,
+		MaxInterval:              30 * time.Second,
 		EnableExponentialBackoff: false,
 	}
 
@@ -163,4 +163,3 @@ func TestRetryResult_Failure(t *testing.T) {
 		t.Error("expected final error")
 	}
 }
-

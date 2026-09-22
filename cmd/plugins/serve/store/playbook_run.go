@@ -42,7 +42,9 @@ func (s *PlaybookRunStore) Init(ctx context.Context) error {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `ALTER TABLE playbook_runs ADD COLUMN danger_confirmed INTEGER DEFAULT 0`)
-	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+	// 列已存在属正常迁移幂等：SQLite 报 duplicate column name，DuckDB 报 already exists
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") &&
+		!strings.Contains(err.Error(), "already exists") {
 		return err
 	}
 	return nil

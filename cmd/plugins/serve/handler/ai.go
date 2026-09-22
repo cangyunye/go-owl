@@ -312,10 +312,6 @@ func (h *AIHandler) GetContext(c *gin.Context) {
 	})
 }
 
-func (h *AIHandler) Audit(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "server-side audit is the primary path"})
-}
-
 func (h *AIHandler) logAudit(userID, intent, result, prompt, reply string, durationMs int64, debug bool) {
 	promptText := ""
 	if debug {
@@ -368,12 +364,11 @@ func (h *AIHandler) Models(c *gin.Context) {
 	switch apiType {
 	case "anthropic":
 		models := []gin.H{
-			{"id": "claude-sonnet-4-20250514", "owned_by": "anthropic"},
-			{"id": "claude-sonnet-4-20250514-thinking", "owned_by": "anthropic"},
-			{"id": "claude-3-5-sonnet-20241022", "owned_by": "anthropic"},
-			{"id": "claude-3-5-haiku-20241022", "owned_by": "anthropic"},
-			{"id": "claude-3-opus-20240229", "owned_by": "anthropic"},
-			{"id": "claude-3-haiku-20240307", "owned_by": "anthropic"},
+			{"id": "claude-sonnet-5", "owned_by": "anthropic"},
+			{"id": "claude-sonnet-5-thinking", "owned_by": "anthropic"},
+			{"id": "claude-opus-4-8", "owned_by": "anthropic"},
+			{"id": "claude-sonnet-4-6", "owned_by": "anthropic"},
+			{"id": "claude-haiku-4-5", "owned_by": "anthropic"},
 		}
 		c.JSON(http.StatusOK, gin.H{"models": models})
 		return

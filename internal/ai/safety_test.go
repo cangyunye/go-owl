@@ -63,7 +63,7 @@ func TestSafetyLowRiskSkipConfirm(t *testing.T) {
 	ok, question := agent.confirmToolCall(ToolCall{
 		Name:      "execute_command",
 		Arguments: map[string]interface{}{"command": "df -h", "nodes": []interface{}{"node1"}},
-	})
+	}, gate)
 	if *count != 0 {
 		t.Fatalf("low-risk command must skip confirm gate, gate called %d times", *count)
 	}
@@ -83,7 +83,7 @@ func TestSafetyLowRiskConfirmByDefault(t *testing.T) {
 	ok, question := agent.confirmToolCall(ToolCall{
 		Name:      "execute_command",
 		Arguments: map[string]interface{}{"command": "df -h", "nodes": []interface{}{"node1"}},
-	})
+	}, gate)
 	if *count != 1 {
 		t.Fatalf("default policy must confirm low-risk command, gate called %d times", *count)
 	}
@@ -107,7 +107,7 @@ func TestSafetyWhitelistPrefixMatch(t *testing.T) {
 	ok, question := agent.confirmToolCall(ToolCall{
 		Name:      "execute_command",
 		Arguments: map[string]interface{}{"command": "reboot", "nodes": []interface{}{"node1"}},
-	})
+	}, gate)
 	if *count != 1 {
 		t.Fatalf("non-whitelisted command must go through gate, called %d times", *count)
 	}
