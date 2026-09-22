@@ -14,6 +14,9 @@ export function renderLogin(render, navigate) {
         <button id="login-btn">Sign In</button>
         <p class="error-msg" id="login-error"></p>
       </div>
+      <a class="login-signature" href="https://github.com/cangyunye/go-owl" target="_blank" rel="noopener">
+        github.com/cangyunye/go-owl · cangyunye
+      </a>
     </div>
   `, () => {
     const btn = document.getElementById('login-btn');

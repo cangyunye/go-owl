@@ -117,6 +117,10 @@ function renderShell() {
       </button>
     `).join('')}
     <div class="nav-avatar" title="个人设置">${esc(initials)}</div>
+    <a class="nav-signature" href="https://github.com/cangyunye/go-owl" target="_blank" rel="noopener" title="github.com/cangyunye/go-owl · cangyunye">
+      <svg aria-hidden="true"><use href="#icon-git"/></svg>
+      <span class="nav-signature-text">cangyunye/go-owl</span>
+    </a>
   </nav>
   <aside class="panel" id="sidePanel">
     <div class="panel-header" id="panelTitle">
