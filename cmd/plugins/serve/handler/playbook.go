@@ -384,6 +384,27 @@ func (h *PlaybookHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, pb)
 }
 
+// Delete 删除本地剧本文件并从剧本库移除记录（operator+）
+func (h *PlaybookHandler) Delete(c *gin.Context) {
+	id := c.Param("id")
+	pb, err := h.playbooks.Get(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "playbook not found"})
+		return
+	}
+	if pb.FileExists {
+		if err := os.Remove(pb.FilePath); err != nil && !os.IsNotExist(err) {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("delete playbook file failed", err)})
+			return
+		}
+	}
+	if err := h.playbooks.Delete(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": internalErr("delete playbook record failed", err)})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "deleted", "id": id})
+}
+
 func (h *PlaybookHandler) GetFile(c *gin.Context) {
 	id := c.Param("id")
 	pb, err := h.playbooks.Get(c.Request.Context(), id)

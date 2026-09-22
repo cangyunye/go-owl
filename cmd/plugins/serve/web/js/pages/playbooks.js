@@ -24,6 +24,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   let ws = null;
   let searchDebounceTimer = null;
   let cancelConfirmTimer = null;
+  let delConfirmTimer = null;
 
   // 创建/编辑向导状态（cp = create playbook）
   let cpState = { step: 1, totalSteps: 3, vars: [], tasks: [] };
@@ -301,6 +302,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
           <button class="btn btn-primary btn-sm" id="detail-run-btn" ${missing ? 'disabled' : ''}><svg width="12" height="12" aria-hidden="true"><use href="#icon-play"/></svg> 运行</button>
           <button class="btn btn-secondary btn-sm" id="detail-edit-btn" ${missing ? 'disabled' : ''} title="二次编辑剧本">编辑</button>
           <button class="btn btn-ghost btn-sm" id="detail-download-btn" ${missing ? 'disabled' : ''} title="下载 playbook 文件">下载</button>
+          <button class="btn btn-ghost btn-sm" id="detail-delete-btn" title="删除本地剧本文件" style="color:var(--danger)">删除</button>
         </div>
       </div>
       <div class="panel-body" style="padding:14px 20px">
@@ -330,6 +332,34 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     if (dlBtn) dlBtn.addEventListener('click', async () => {
       try { await api.playbookDownload(pb.id); }
       catch (err) { showToast('下载失败: ' + err.message, 'error'); }
+    });
+    const delBtn = document.getElementById('detail-delete-btn');
+    if (delBtn) delBtn.addEventListener('click', async () => {
+      if (delBtn.dataset.confirm !== '1') {
+        delBtn.dataset.confirm = '1';
+        delBtn.textContent = '确认删除';
+        clearTimeout(delConfirmTimer);
+        delConfirmTimer = setTimeout(() => {
+          delBtn.dataset.confirm = '';
+          delBtn.textContent = '删除';
+        }, 3000);
+        return;
+      }
+      clearTimeout(delConfirmTimer);
+      delBtn.disabled = true;
+      try {
+        await api.deletePlaybook(pb.id);
+        showToast('剧本已删除', 'success');
+        state.selectedId = null;
+        await loadAll();
+        renderDetailEmpty();
+        loadRuns();
+      } catch (err) {
+        showToast('删除失败: ' + err.message, 'error');
+        delBtn.disabled = false;
+        delBtn.dataset.confirm = '';
+        delBtn.textContent = '删除';
+      }
     });
 
     const yamlEl = document.getElementById('detail-yaml');
@@ -1563,6 +1593,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
       if (ws) ws.close();
       clearTimeout(searchDebounceTimer);
       clearTimeout(cancelConfirmTimer);
+      clearTimeout(delConfirmTimer);
     };
   });
 }

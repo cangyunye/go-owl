@@ -210,6 +210,8 @@ GET /api/v1/tasks?page=1&page_size=50
 | GET  | `/playbook/runs` | 运行历史 | operator+ |
 | GET  | `/playbook/runs/:id` | 运行详情 | operator+ |
 | GET  | `/playbook/settings/path` | 获取剧本目录路径 | operator+ |
+| POST | `/playbook/template` | 保存/新建本地剧本 | operator+ |
+| DELETE | `/playbooks/:id` | 删除本地剧本文件 | operator+ |
 | POST | `/playbook/refresh` | 刷新剧本目录 | admin |
 | DELETE | `/playbook/runs/:id` | 取消运行 | admin |
 

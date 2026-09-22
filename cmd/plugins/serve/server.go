@@ -368,6 +368,9 @@ func (s *Server) setupRoutes() {
 			operator.GET("/playbooks/:id/file", s.playbookHandler.GetFile)
 			operator.GET("/playbooks/:id/download", s.playbookHandler.Download)
 			operator.GET("/playbooks/:id/edit", s.playbookHandler.Edit)
+			operator.DELETE("/playbooks/:id", s.playbookHandler.Delete)
+			// 保存/新建本地剧本文件（operator+，与 RBAC「剧本管理」一致）
+			operator.POST("/playbook/template", s.playbookHandler.Create)
 			operator.POST("/playbooks/:id/run", s.playbookHandler.Run)
 			operator.GET("/playbook/runs", s.playbookHandler.RunList)
 			operator.GET("/playbook/runs/:id", s.playbookHandler.RunGet)
@@ -406,7 +409,6 @@ func (s *Server) setupRoutes() {
 			admin.POST("/users", s.userHandler.Create)
 			admin.PUT("/users/:id", s.userHandler.Update)
 			admin.DELETE("/users/:id", s.userHandler.Delete)
-			admin.POST("/playbook/template", s.playbookHandler.Create)
 			admin.POST("/playbook/refresh", s.playbookHandler.Refresh)
 			admin.DELETE("/playbook/runs/:id", s.playbookHandler.RunCancel)
 			admin.DELETE("/history", s.historyHandler.Clean)
