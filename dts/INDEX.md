@@ -1,6 +1,12 @@
 # dts 问题档案索引
 
-共 27 条 · 未解决 1 · 已解决 26 · 更新于 2026-08-17T22:40:21+08:00
+共 28 条 · 未解决 1 · 已解决 27 · 更新于 2026-09-22T23:29:45+08:00
+
+## fix-ui-ops
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-ui-ops_script-tab-relay-display-and-ops-script-perms](fix-ui-ops_script-tab-relay-display-and-ops-script-perms/dts.md) | 2026-09-22 | 1. 命令执行脚本标签里的中转站显示叠层三角形异常；2. 运维角色缺少剧本写权限（需能删除/保存本地脚本）；3. 批量执行需增加"不输出节点响应"选择按钮（右侧 | resolved |
 
 ## feat-tui
 
