@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
 	_ "modernc.org/sqlite"
 )
 
