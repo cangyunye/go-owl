@@ -147,7 +147,7 @@ export function renderSftp(render, navigate, user, api, nodeId) {
           </div>
           ${tasks.map(t => `
             <div class="sftp-qrow" data-qid="${t.id}" style="display:flex;align-items:center;gap:10px;padding:4px 0">
-              <span style="width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sm)" title="${esc(t.name)}">${esc(t.name)}</span>
+              <span style="width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sm)" title="${esc(t.rel || t.name)}">${esc(t.rel || t.name)}</span>
               <div style="flex:1;height:6px;border-radius:3px;background:var(--border);overflow:hidden">
                 <div class="sftp-qbar" style="height:100%;width:${t.status === 'uploading' ? Math.round((t.loaded / Math.max(t.total, 1)) * 100) : (t.status === 'done' ? 100 : 0)}%;background:var(--accent);transition:width .2s"></div>
               </div>
@@ -236,11 +236,59 @@ export function renderSftp(render, navigate, user, api, nodeId) {
     root.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; hint.style.display = 'flex'; });
     root.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
     root.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; hint.style.display = 'none'; } });
+    // —— M6: 文件夹拖入 = 递归内容同步（同名目录默认覆盖，不删除远端多余文件；重名文件走冲突弹窗） ——
+    function readAllEntries(dirEntry) {
+      const reader = dirEntry.createReader();
+      const all = [];
+      return new Promise((res, rej) => {
+        const batch = () => reader.readEntries(ents => {
+          if (!ents.length) { res(all); return; }
+          all.push(...ents);
+          batch();
+        }, rej);
+        batch();
+      });
+    }
+
+    async function walkDrop(entry, parentRemoteDir, relBase) {
+      relBase = relBase || '';
+      if (entry.isFile) {
+        const file = await new Promise((res, rej) => entry.file(res, rej));
+        tasks.push({ id: ++taskSeq, file, name: entry.name, rel: relBase + entry.name, dir: parentRemoteDir, loaded: 0, total: file.size, status: 'queued', err: '', xhr: null });
+        renderQueue();
+        runQueue();
+        return;
+      }
+      if (entry.isDirectory) {
+        const dirPath = joinRemote(parentRemoteDir, entry.name);
+        try {
+          await api.sftpMkdir(nodeId, dirPath);
+        } catch (e) {
+          if (e.status !== 409) { alert(`创建目录失败 ${dirPath}: ${e.message || e}`); return; }
+        }
+        const ents = await readAllEntries(entry);
+        for (const child of ents) await walkDrop(child, dirPath, relBase + entry.name + '/');
+      }
+    }
+
     root.addEventListener('drop', (e) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
       dragDepth = 0; hint.style.display = 'none';
-      enqueueFiles(Array.from(e.dataTransfer.files), cwd);
+      const dir = cwd;
+      const items = e.dataTransfer.items ? Array.from(e.dataTransfer.items) : [];
+      const entries = items.map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+      if (entries.length > 0) {
+        (async () => {
+          for (const en of entries) {
+            try { await walkDrop(en, dir); }
+            catch (err) { alert('遍历拖入内容失败: ' + (err.message || err)); }
+          }
+          load(cwd);
+        })();
+      } else {
+        enqueueFiles(Array.from(e.dataTransfer.files), dir);
+      }
     });
 
     async function load(path) {
