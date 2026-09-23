@@ -480,6 +480,34 @@ export const api = {
   sftpDelete: (nodeId, path, recursive) =>
     request('POST', '/sftp/delete', { node_id: nodeId, path, recursive: !!recursive }),
 
+  // XHR 上传：fetch 无 upload progress；409 冲突经 error.status 传给调用方决策
+  sftpUpload: (nodeId, remotePath, file, { mode, newName, onProgress, onXhr } = {}) => new Promise((resolve, reject) => {
+    const q = new URLSearchParams({ node_id: nodeId, path: remotePath });
+    if (mode) q.set('mode', mode);
+    if (newName) q.set('new_name', newName);
+    const xhr = new XMLHttpRequest();
+    if (onXhr) onXhr(xhr);
+    xhr.open('PUT', `${API_BASE}/sftp/file?${q.toString()}`);
+    xhr.setRequestHeader('Authorization', `Bearer ${token()}`);
+    if (onProgress) xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) onProgress(ev.loaded, ev.total); };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText); } catch {}
+        resolve(data);
+        return;
+      }
+      let msg = 'HTTP ' + xhr.status;
+      try { msg = JSON.parse(xhr.responseText).message || msg; } catch {}
+      const e = new Error(msg);
+      e.status = xhr.status;
+      reject(e);
+    };
+    xhr.onerror = () => reject(new Error('网络错误'));
+    xhr.onabort = () => { const e = new Error('已取消'); e.aborted = true; reject(e); };
+    xhr.send(file);
+  }),
+
   downloadSftpFile: (nodeId, path) =>
     downloadFile(`/sftp/file?node_id=${encodeURIComponent(nodeId)}&path=${encodeURIComponent(path)}`, path.split('/').pop()),
 

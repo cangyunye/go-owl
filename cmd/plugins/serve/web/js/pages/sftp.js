@@ -23,7 +23,7 @@ export function renderSftp(render, navigate, user, api, nodeId) {
   let cwd = '';
 
   render(`
-    <div class="sftp-page" style="display:flex;flex-direction:column;gap:12px">
+    <div class="sftp-page" id="sftp-root" style="display:flex;flex-direction:column;gap:12px;position:relative">
       <div class="sftp-header" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" id="sftp-back">← 返回节点</button>
         <svg width="18" height="18" style="color:var(--accent)"><use href="#icon-hard-drive"/></svg>
@@ -34,11 +34,15 @@ export function renderSftp(render, navigate, user, api, nodeId) {
         <button class="btn btn-ghost btn-sm" id="sftp-home" data-tip="主目录"><svg width="14" height="14"><use href="#icon-home"/></svg></button>
         <button class="btn btn-ghost btn-sm" id="sftp-refresh" data-tip="刷新"><svg width="14" height="14"><use href="#icon-refresh"/></svg></button>
         <button class="btn btn-secondary btn-sm" id="sftp-mkdir">新建文件夹</button>
+        <button class="btn btn-primary btn-sm" id="sftp-upload"><svg width="14" height="14"><use href="#icon-arrow-up"/></svg> 上传文件</button>
+        <input type="file" id="sftp-file-input" multiple style="display:none"/>
       </div>
       <div id="sftp-breadcrumb" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;font-size:var(--fs-sm)"></div>
       <div id="sftp-body" class="card" style="padding:0;overflow:auto;min-height:200px">
         <div id="sftp-loading" style="padding:40px;text-align:center;color:var(--muted)">加载中…</div>
       </div>
+      <div id="sftp-queue"></div>
+      <div id="sftp-drop-hint" style="display:none;position:absolute;inset:0;z-index:30;border:2px dashed var(--accent);border-radius:var(--radius);background:color-mix(in srgb, var(--accent) 8%, transparent);align-items:center;justify-content:center;pointer-events:none;font-weight:600;color:var(--accent)">松开以上传到当前目录</div>
     </div>
   `, () => {
     document.getElementById('sftp-back').addEventListener('click', () => navigate('/nodes'));
@@ -46,6 +50,198 @@ export function renderSftp(render, navigate, user, api, nodeId) {
     document.getElementById('sftp-home').addEventListener('click', () => load(''));
     document.getElementById('sftp-refresh').addEventListener('click', () => load(cwd));
     document.getElementById('sftp-mkdir').addEventListener('click', createFolder);
+
+    // —— M5: 拖拽/按钮上传 + 传输队列 + 冲突弹窗（批量决策） ——
+    const CONCURRENCY = 3;
+    let tasks = [];
+    let taskSeq = 0;
+    let activeUploads = 0;
+    let batchDecision = null; // {mode, newName}：勾选"批量"后应用到后续冲突
+
+    function joinRemote(dir, name) { return (dir === '/' ? '' : dir) + '/' + name; }
+
+    function enqueueFiles(fileList, dir) {
+      for (const f of fileList) {
+        tasks.push({ id: ++taskSeq, file: f, name: f.name, dir, loaded: 0, total: f.size, status: 'queued', err: '', xhr: null });
+      }
+      renderQueue();
+      runQueue();
+    }
+
+    function runQueue() {
+      while (activeUploads < CONCURRENCY) {
+        const t = tasks.find(x => x.status === 'queued');
+        if (!t) break;
+        activeUploads++;
+        startTask(t);
+      }
+      renderQueue();
+    }
+
+    function doUpload(t, mode, newName) {
+      return api.sftpUpload(nodeId, joinRemote(t.dir, t.name), t.file, {
+        mode, newName,
+        onXhr: x => { t.xhr = x; },
+        onProgress: loaded => { t.loaded = loaded; updateQueueRow(t); },
+      }).finally(() => { t.xhr = null; });
+    }
+
+    async function startTask(t) {
+      t.status = 'uploading';
+      updateQueueRow(t);
+      try {
+        if (batchDecision && batchDecision.mode !== 'skip') {
+          await doUpload(t, batchDecision.mode, batchDecision.newName);
+        } else if (batchDecision && batchDecision.mode === 'skip') {
+          t.status = 'skipped';
+        } else {
+          await doUpload(t);
+        }
+        t.status = 'done';
+      } catch (e) {
+        if (e.status === 409) {
+          const dec = await conflictModal(t);
+          if (!dec) t.status = 'canceled';
+          else {
+            if (dec.batch) batchDecision = { mode: dec.mode, newName: dec.newName };
+            if (dec.mode === 'skip') t.status = 'skipped';
+            else {
+              try { await doUpload(t, dec.mode, dec.newName); t.status = 'done'; }
+              catch (e2) { t.status = 'error'; t.err = e2.aborted ? '已取消' : (e2.message || String(e2)); }
+            }
+          }
+        } else if (e.aborted) {
+          t.status = 'canceled';
+        } else {
+          t.status = 'error';
+          t.err = e.message || String(e);
+        }
+      } finally {
+        activeUploads--;
+        runQueue();
+        if (!tasks.some(x => x.status === 'queued' || x.status === 'uploading')) load(cwd);
+      }
+    }
+
+    function queueStatusText(t) {
+      switch (t.status) {
+        case 'queued': return '等待中';
+        case 'uploading': return Math.round((t.loaded / Math.max(t.total, 1)) * 100) + '%';
+        case 'done': return '完成';
+        case 'skipped': return '已跳过';
+        case 'canceled': return '已取消';
+        case 'error': return '失败: ' + t.err;
+        default: return t.status;
+      }
+    }
+
+    function renderQueue() {
+      const el = document.getElementById('sftp-queue');
+      if (tasks.length === 0) { el.innerHTML = ''; return; }
+      el.innerHTML = `
+        <div class="card" style="padding:10px 14px">
+          <div style="display:flex;align-items:center;margin-bottom:6px">
+            <strong style="font-size:var(--fs-sm)">传输队列</strong>
+            <span style="flex:1"></span>
+            <button class="btn btn-ghost btn-sm" id="sftp-queue-clear">清除已结束</button>
+          </div>
+          ${tasks.map(t => `
+            <div class="sftp-qrow" data-qid="${t.id}" style="display:flex;align-items:center;gap:10px;padding:4px 0">
+              <span style="width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sm)" title="${esc(t.name)}">${esc(t.name)}</span>
+              <div style="flex:1;height:6px;border-radius:3px;background:var(--border);overflow:hidden">
+                <div class="sftp-qbar" style="height:100%;width:${t.status === 'uploading' ? Math.round((t.loaded / Math.max(t.total, 1)) * 100) : (t.status === 'done' ? 100 : 0)}%;background:var(--accent);transition:width .2s"></div>
+              </div>
+              <span class="sftp-qstatus" style="width:160px;font-size:var(--fs-xs);color:var(--muted);text-align:right">${esc(queueStatusText(t))}</span>
+              ${t.status === 'uploading' || t.status === 'queued'
+                ? `<button class="btn btn-ghost btn-sm sftp-qcancel" data-qid="${t.id}">×</button>`
+                : (t.status === 'error' ? `<button class="btn btn-ghost btn-sm sftp-qretry" data-qid="${t.id}">重试</button>` : '')}
+            </div>`).join('')}
+        </div>`;
+      el.querySelectorAll('.sftp-qcancel').forEach(b => b.addEventListener('click', () => {
+        const t = tasks.find(x => x.id === Number(b.dataset.qid));
+        if (!t) return;
+        if (t.xhr) t.xhr.abort();
+        else { t.status = 'canceled'; runQueue(); }
+      }));
+      el.querySelectorAll('.sftp-qretry').forEach(b => b.addEventListener('click', () => {
+        const t = tasks.find(x => x.id === Number(b.dataset.qid));
+        if (!t) return;
+        t.status = 'queued'; t.err = ''; t.loaded = 0;
+        runQueue();
+      }));
+      el.querySelector('#sftp-queue-clear').addEventListener('click', () => {
+        tasks = tasks.filter(t => t.status === 'queued' || t.status === 'uploading');
+        renderQueue();
+      });
+    }
+
+    function updateQueueRow(t) {
+      const row = document.querySelector(`.sftp-qrow[data-qid="${t.id}"]`);
+      if (!row) return;
+      const pct = t.status === 'uploading' ? Math.round((t.loaded / Math.max(t.total, 1)) * 100) : (t.status === 'done' ? 100 : 0);
+      row.querySelector('.sftp-qbar').style.width = pct + '%';
+      row.querySelector('.sftp-qstatus').textContent = queueStatusText(t);
+    }
+
+    function conflictModal(t) {
+      return new Promise(resolve => {
+        const old = document.getElementById('sftp-conflict-overlay');
+        if (old) old.remove();
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay open';
+        overlay.id = 'sftp-conflict-overlay';
+        overlay.innerHTML = `
+          <div class="modal" style="max-width:440px">
+            <h3>同名文件已存在</h3>
+            <p style="font-size:var(--fs-sm);color:var(--muted);margin:6px 0 12px;font-family:monospace">${esc(joinRemote(t.dir, t.name))}</p>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button class="btn btn-primary" data-c="overwrite">覆盖</button>
+              <button class="btn btn-secondary" data-c="auto_rename">自动重命名（加 _序号）</button>
+              <button class="btn btn-secondary" data-c="rename">换名上传…</button>
+              <button class="btn btn-secondary" data-c="skip">跳过此文件</button>
+            </div>
+            <label style="display:flex;gap:6px;align-items:center;margin-top:12px;font-size:var(--fs-sm)">
+              <input type="checkbox" id="sftp-conflict-batch"/> 对后续冲突批量应用相同选择
+            </label>
+            <div class="modal-actions"><button class="btn btn-ghost" id="sftp-conflict-cancel">取消该任务</button></div>
+          </div>`;
+        document.body.appendChild(overlay);
+        const done = (v) => { overlay.remove(); resolve(v); };
+        const batch = () => overlay.querySelector('#sftp-conflict-batch').checked;
+        overlay.querySelector('#sftp-conflict-cancel').addEventListener('click', () => done(null));
+        overlay.querySelectorAll('[data-c]').forEach(b => b.addEventListener('click', async () => {
+          const mode = b.dataset.c;
+          if (mode === 'rename') {
+            const newName = await promptModal('换名上传', '新文件名（不含路径）', t.name);
+            if (newName) done({ mode: 'rename', newName, batch: batch() });
+          } else {
+            done({ mode, batch: batch() });
+          }
+        }));
+      });
+    }
+
+    // 上传按钮 + 文件选择
+    document.getElementById('sftp-upload').addEventListener('click', () => document.getElementById('sftp-file-input').click());
+    document.getElementById('sftp-file-input').addEventListener('change', (e) => {
+      enqueueFiles(Array.from(e.target.files), cwd);
+      e.target.value = '';
+    });
+
+    // 拖放（本地文件 → 上传）
+    const root = document.getElementById('sftp-root');
+    const hint = document.getElementById('sftp-drop-hint');
+    let dragDepth = 0;
+    const hasFiles = e => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+    root.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; hint.style.display = 'flex'; });
+    root.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    root.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; hint.style.display = 'none'; } });
+    root.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth = 0; hint.style.display = 'none';
+      enqueueFiles(Array.from(e.dataTransfer.files), cwd);
+    });
 
     async function load(path) {
       const body = document.getElementById('sftp-body');
@@ -191,5 +387,7 @@ export function renderSftp(render, navigate, user, api, nodeId) {
         });
       });
     }
+
+    return () => { tasks.forEach(t => { if (t.xhr) t.xhr.abort(); }); };
   });
 }
