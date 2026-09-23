@@ -140,19 +140,26 @@ func entryFromInfo(p string, fi os.FileInfo) sftpEntry {
 }
 
 // browserSession 完成请求级前置：参数校验 → 范围授权 → 凭证 → 拨号。
+// allowEmpty=true 时容忍空 path（仅 ls 用于定位 home），其余端点必须给绝对路径。
 // 返回 cleanup 释放会话；ok=false 时响应已写出，调用方直接 return。
-func (h *SFTPBrowserHandler) browserSession(c *gin.Context, nodeID, rawPath string) (*sftp.Client, *nodeSSHInfo, func(), bool) {
+func (h *SFTPBrowserHandler) browserSession(c *gin.Context, nodeID, rawPath string, allowEmpty bool) (*sftp.Client, *nodeSSHInfo, func(), bool) {
 	noop := func() {}
 	if nodeID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "node_id is required"})
 		return nil, nil, noop, false
 	}
-	cleaned, err := sanitizeRemotePath(rawPath)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+	if rawPath == "" && !allowEmpty {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "path is required"})
 		return nil, nil, noop, false
 	}
-	c.Set("sftp_path", cleaned)
+	if rawPath != "" {
+		cleaned, err := sanitizeRemotePath(rawPath)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+			return nil, nil, noop, false
+		}
+		c.Set("sftp_path", cleaned)
+	}
 	if filtered := NewScopeChecker(h.db).FilterNodeIDs(c.Request.Context(), c.GetString("username"), []string{nodeID}); len(filtered) == 0 {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "node out of your scope"})
 		return nil, nil, noop, false
@@ -191,12 +198,19 @@ func respondPathError(c *gin.Context, p string, err error) {
 }
 
 func (h *SFTPBrowserHandler) List(c *gin.Context) {
-	client, _, cleanup, ok := h.browserSession(c, c.Query("node_id"), c.Query("path"))
+	client, _, cleanup, ok := h.browserSession(c, c.Query("node_id"), c.Query("path"), true)
 	if !ok {
 		return
 	}
 	defer cleanup()
 	dir := c.GetString("sftp_path")
+	if dir == "" {
+		home, herr := client.Getwd()
+		if herr != nil {
+			home = "/"
+		}
+		dir = home
+	}
 
 	fis, err := client.ReadDir(dir)
 	if err != nil {
@@ -211,7 +225,7 @@ func (h *SFTPBrowserHandler) List(c *gin.Context) {
 }
 
 func (h *SFTPBrowserHandler) Stat(c *gin.Context) {
-	client, _, cleanup, ok := h.browserSession(c, c.Query("node_id"), c.Query("path"))
+	client, _, cleanup, ok := h.browserSession(c, c.Query("node_id"), c.Query("path"), false)
 	if !ok {
 		return
 	}
@@ -235,7 +249,7 @@ func (h *SFTPBrowserHandler) Mkdir(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request body"})
 		return
 	}
-	client, _, cleanup, ok := h.browserSession(c, req.NodeID, req.Path)
+	client, _, cleanup, ok := h.browserSession(c, req.NodeID, req.Path, false)
 	if !ok {
 		return
 	}
@@ -268,7 +282,7 @@ func (h *SFTPBrowserHandler) Rename(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-	client, _, cleanup, ok := h.browserSession(c, req.NodeID, req.To)
+	client, _, cleanup, ok := h.browserSession(c, req.NodeID, req.To, false)
 	if !ok {
 		return
 	}
@@ -328,7 +342,7 @@ func (h *SFTPBrowserHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request body"})
 		return
 	}
-	client, _, cleanup, ok := h.browserSession(c, req.NodeID, req.Path)
+	client, _, cleanup, ok := h.browserSession(c, req.NodeID, req.Path, false)
 	if !ok {
 		return
 	}
@@ -347,7 +361,7 @@ func (h *SFTPBrowserHandler) Delete(c *gin.Context) {
 }
 
 func (h *SFTPBrowserHandler) Download(c *gin.Context) {
-	client, _, cleanup, ok := h.browserSession(c, c.Query("node_id"), c.Query("path"))
+	client, _, cleanup, ok := h.browserSession(c, c.Query("node_id"), c.Query("path"), false)
 	if !ok {
 		return
 	}
@@ -380,7 +394,7 @@ func (h *SFTPBrowserHandler) Download(c *gin.Context) {
 }
 
 func (h *SFTPBrowserHandler) Archive(c *gin.Context) {
-	client, info, cleanup, ok := h.browserSession(c, c.Query("node_id"), c.Query("path"))
+	client, info, cleanup, ok := h.browserSession(c, c.Query("node_id"), c.Query("path"), false)
 	if !ok {
 		return
 	}
@@ -439,7 +453,7 @@ const defaultSFTPMaxUploadBytes = 2048 << 20 // 2GiB
 
 func (h *SFTPBrowserHandler) Upload(c *gin.Context) {
 	mode := c.Query("mode")
-	client, _, cleanup, ok := h.browserSession(c, c.Query("node_id"), c.Query("path"))
+	client, _, cleanup, ok := h.browserSession(c, c.Query("node_id"), c.Query("path"), false)
 	if !ok {
 		return
 	}

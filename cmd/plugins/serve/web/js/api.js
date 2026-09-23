@@ -21,7 +21,9 @@ async function request(method, path, body) {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || 'Request failed');
+    const e = new Error(err.message || 'Request failed');
+    e.status = res.status;
+    throw e;
   }
   return res.json();
 }
@@ -464,6 +466,25 @@ export const api = {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   },
+
+  // —— SFTP 文件浏览器 (v1.8.0) ——
+  sftpLs: (nodeId, path) =>
+    request('GET', `/sftp/ls?node_id=${encodeURIComponent(nodeId)}&path=${encodeURIComponent(path)}`),
+
+  sftpMkdir: (nodeId, path) =>
+    request('POST', '/sftp/mkdir', { node_id: nodeId, path }),
+
+  sftpRename: (nodeId, from, to) =>
+    request('POST', '/sftp/rename', { node_id: nodeId, from, to }),
+
+  sftpDelete: (nodeId, path, recursive) =>
+    request('POST', '/sftp/delete', { node_id: nodeId, path, recursive: !!recursive }),
+
+  downloadSftpFile: (nodeId, path) =>
+    downloadFile(`/sftp/file?node_id=${encodeURIComponent(nodeId)}&path=${encodeURIComponent(path)}`, path.split('/').pop()),
+
+  downloadSftpArchive: (nodeId, path) =>
+    downloadFile(`/sftp/archive?node_id=${encodeURIComponent(nodeId)}&path=${encodeURIComponent(path)}`, path.split('/').pop() + '.tar.gz'),
 
   // 取 WebSocket 建连票据（一次性，60 秒有效）
   wsTicket: () => request('POST', '/ws/ticket'),

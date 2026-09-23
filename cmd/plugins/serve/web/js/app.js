@@ -474,6 +474,7 @@ function router() {
   const nodeMatch = path.match(/^\/nodes\/(.+)/);
   const taskMatch = path.match(/^\/tasks\/(.+)/);
   const termMatch = path.match(/^\/terminal\/(.+)/);
+  const sftpMatch = path.match(/^\/sftp\/(.+)/);
 
   if (path === '/') {
     switchView('dashboard', false);
@@ -486,6 +487,12 @@ function router() {
     setViewMetadata('终端', '节点管理');
     import('./pages/terminal.js').then(m => {
       m.renderTerminal(render, navigate, u, api, termNodeId);
+    });
+  } else if (sftpMatch) {
+    const sftpNodeId = decodeURIComponent(sftpMatch[1]);
+    setViewMetadata('文件管理', '节点管理');
+    import('./pages/sftp.js').then(m => {
+      m.renderSftp(render, navigate, u, api, sftpNodeId);
     });
   } else if (nodeMatch) {
     setViewMetadata('节点详情', '节点管理');

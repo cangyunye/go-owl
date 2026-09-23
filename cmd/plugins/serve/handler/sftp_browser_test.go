@@ -153,6 +153,22 @@ func TestSFTPBrowserList_RejectsRelativePath(t *testing.T) {
 	assert.Equal(t, 400, w.Code, w.Body.String())
 }
 
+// ls 不带 path → 定位到 SFTP 用户主目录（浏览器初始位置）。
+func TestSFTPBrowserList_EmptyPathMeansHome(t *testing.T) {
+	h, router, token, _, _ := sftpBrowserTestSetup(t)
+	injectInProcSFTP(t, h)
+
+	w := doJSON(t, router, "GET", "/api/v1/sftp/ls?node_id=node-1", token, nil)
+	require.Equal(t, 200, w.Code, w.Body.String())
+	var resp struct {
+		Path string `json:"path"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NotEmpty(t, resp.Path, "应返回解析出的 home 目录")
+	wd, _ := os.Getwd()
+	assert.Equal(t, wd, resp.Path, "进程内 server 的 home 即当前工作目录")
+}
+
 // stat 已存在的文件 → 200 与元信息。
 func TestSFTPBrowserStat_FileMeta(t *testing.T) {
 	h, router, token, _, _ := sftpBrowserTestSetup(t)
