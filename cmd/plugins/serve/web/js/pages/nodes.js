@@ -10,6 +10,7 @@ export function renderNodes(render, navigate, user, api, shell) {
     ping: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-activity"/></svg>',
     check: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-check"/></svg>',
     term: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-terminal"/></svg>',
+    folder: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-folder"/></svg>',
     edit: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-edit"/></svg>',
     del: '<svg width="15" height="15" aria-hidden="true"><use href="#icon-x"/></svg>'
   };
@@ -129,6 +130,9 @@ export function renderNodes(render, navigate, user, api, shell) {
         }
         if (canExec) {
           actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-term="${esc(n.id)}" data-tip="打开终端" aria-label="打开终端">${IC.term}</button>`;
+        }
+        if (canWrite) {
+          actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-sftp="${esc(n.id)}" data-tip="文件管理 (SFTP)" aria-label="文件管理 (SFTP)">${IC.folder}</button>`;
         }
         if (canWrite) {
           actions += `<button class="btn btn-ghost btn-icon btn-sm row-action" data-edit="${esc(n.id)}" data-tip="编辑节点" aria-label="编辑节点">${IC.edit}</button>`;
@@ -918,6 +922,8 @@ export function renderNodes(render, navigate, user, api, shell) {
       if (checkBtn) { handleRowCheck(checkBtn.dataset.check); return; }
       const termBtn = e.target.closest('[data-term]');
       if (termBtn) { navigate('/terminal/' + encodeURIComponent(termBtn.dataset.term)); return; }
+      const sftpBtn = e.target.closest('[data-sftp]');
+      if (sftpBtn) { navigate('/sftp/' + encodeURIComponent(sftpBtn.dataset.sftp)); return; }
       const editBtn = e.target.closest('[data-edit]');
       if (editBtn) { showEditModal(editBtn.dataset.edit); return; }
       const delBtn = e.target.closest('[data-del]');
