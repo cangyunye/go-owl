@@ -44,6 +44,8 @@
 | [dev/SSH_CONFIG.md](dev/SSH_CONFIG.md) | SSH 配置解析设计 |
 | [dev/AI_CONFIG_DESIGN.md](dev/AI_CONFIG_DESIGN.md) | AI 配置方案 |
 | [dev/TEST_IMPLEMENTATION_REPORT.md](dev/TEST_IMPLEMENTATION_REPORT.md) | 测试用例报告 |
+| [dev/RELEASING.md](dev/RELEASING.md) | 发布流程（版本/分支约定、`task tag`、发布清单） |
+| [releases/](releases/README.md) | 各版本变更记录（v1.4.1 起，也是 Release 正文来源） |
 | [serve-dev.md](serve-dev.md) | owl-serve 开发文档（架构/API/测试） |
 
 ### 已完成的修复记录

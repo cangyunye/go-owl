@@ -24,6 +24,10 @@ go-owl 的版本号不写在代码里：构建时 `VERSION` 由 Taskfile 自动�
 # 0) 功能分支开发完成 → 合并回 main（merge commit 里写清版本要点），推 main
 git switch main && git pull --ff-only
 git merge --no-ff feat/v1.9.0-app-tabs -m "merge: feat/v1.9.0-app-tabs 内建标签页（v1.9.0）"
+
+# 0.5) 写本版变更记录 docs/releases/vX.Y.Z.md（发布前必须提交，CI 用它当 Release 正文）
+git log --no-merges --reverse v1.8.1..HEAD --format='%h %s'   # 素材：真实提交，别凭印象写
+git add docs/releases/v1.9.0.md && git commit -m "docs(release): v1.9.0 变更记录"
 git push origin main
 
 # 1) 打标签（唯一入口；会校验：工作区干净 / 在 main / 与 origin/main 一致 / 版本号递增）
@@ -53,7 +57,10 @@ git worktree remove build/_rel_vX.Y.Z --force
 ## 3. 发布清单
 
 - [ ] 功能分支已合并进 main，`git push origin main` 完成
+- [ ] `docs/releases/vX.Y.Z.md` 变更记录已写好并提交（`release.yml` 优先用它当 Release 正文；
+      缺失时只会有自动生成的一行比较链接）
 - [ ] `task tag ... -- x.y.z` 成功（自动校验工作区/分支/远端一致性/版本递增）
+- [ ] CI 的 release 工作流跑完：Release 正文正确 + 15 个跨平台资产上传
 - [ ] 产物已构建，`--version` 显示新版本号
 - [ ] 设计/开发文档与本版一致（`docs/design/README.md` 索引、必要时 dts 档案）
 - [ ] 前端有 UI 变更时，`docs/serve-web-ui.md` 截图已按 `.agent/skills/serve-screenshots` 重拍
@@ -71,6 +78,10 @@ git worktree remove build/_rel_vX.Y.Z --force
 
 ## 5. 注意点
 
+- **Release 正文来源**：`release.yml` 按 `docs/releases/<tag>.md` 取正文（约定见
+  [docs/releases/README.md](../releases/README.md)）。本仓库不走 PR 流程，若缺该文件，
+  `--generate-notes` 只会生成一行 `Full Changelog` 链接——v1.5.0–v1.8.1 就是这样发出去的，
+  后来才按提交历史补齐；补正文用 `gh release edit vX.Y.Z --notes-file docs/releases/vX.Y.Z.md`。
 - `task tag` 的版本号走**位置参数**（`-- 1.9.0`），不用 `VERSION=`：Taskfile 顶层已有自动
   推导的 `VERSION`，任务内引用同名变量会解析到它，导致「没传也非空」而漏掉校验。
 - 校验用 git 原生能力（`for-each-ref --sort=-v:refname`）做版本序比较，不依赖 `sort -V` 等外部命令，
