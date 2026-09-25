@@ -178,6 +178,84 @@ tasks:
           fi
         done
 
+  # ---------------------------------------------------------------- 发布
+
+  # 打发布标签的唯一入口：校验「工作区干净 / 在 main / 已推送 / 版本号递增」后，
+  # 给 HEAD 打注释标签并推送。版本号不是手写进代码的：构建时 VERSION 自动取
+  # 最近 tag（见顶部 vars），所以打完标签下一次构建自动带新版本号。
+  # 背景见 docs/dev/RELEASING.md（v1.7.0/v1.8.0 曾合并后漏打标签）。
+  #
+  # 版本号走位置参数而非 VERSION=xxx：顶层 vars 已有自动推导的 VERSION
+  # （最近 tag），任务内 `{{default "" .VERSION}}` 会解析到它，导致「没传也非空」。
+  tag:
+    desc: 打发布标签并推送：task tag 1.8.2 [MESSAGE="本版要点"]（DRY=1 只预览）
+    vars:
+      MESSAGE: '{{default "" .MESSAGE}}'
+      BRANCH_ANY: '{{default "" .BRANCH_ANY}}'
+      DRY: '{{default "" .DRY}}'
+    cmds:
+      - |
+        set -e
+        # 版本号：优先位置参数（task tag 1.9.0），其次环境变量（VERSION=1.9.0 task tag）
+        V='{{.CLI_ARGS}}'
+        if [ -z "$V" ]; then V="${VERSION:-}"; fi
+        V=${V#v}
+        MSG='{{.MESSAGE}}'
+        if [ -z "$V" ]; then
+          echo '用法: task tag <x.y.z> [MESSAGE="本版要点"] [BRANCH_ANY=1] [DRY=1]'
+          echo '  <x.y.z>    必填（位置参数），如 task tag 1.8.2；也可 VERSION=1.8.2 task tag'
+          echo '  MESSAGE    选填，标签注释；缺省取 HEAD 提交标题'
+          echo '  BRANCH_ANY 选填，=1 时允许在非 main 分支打标签'
+          echo '  DRY        选填，=1 只做校验并预览，不创建/推送标签'
+          exit 1
+        fi
+        # x.y.z：恰好两个点且只含数字
+        rest=$V; dots=0
+        while [ "$rest" != "${rest#*.}" ]; do rest=${rest#*.}; dots=$((dots+1)); done
+        case "$V" in *[!0-9.]*) bad=1 ;; *) bad= ;; esac
+        if [ -n "$bad" ] || [ "$dots" != 2 ]; then
+          echo "版本号必须是 x.y.z 形式: $V"; exit 1
+        fi
+        if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+          echo "标签 v$V 已存在: $(git log -1 --format='%h %s' "v$V")"; exit 1
+        fi
+        if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+          echo '工作区有未提交改动，先提交再打标签:'
+          git status --short --untracked-files=no
+          exit 1
+        fi
+        if [ '{{.BRANCH_ANY}}' != '1' ]; then
+          br=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$br" != 'main' ]; then
+            echo "当前分支 $br 不是 main（确要在该分支发布请加 BRANCH_ANY=1）"; exit 1
+          fi
+          git fetch -q origin main 2>/dev/null || echo '提示: git fetch 失败（离线？），远端一致性校验可能基于旧数据'
+          if git rev-parse -q --verify origin/main >/dev/null; then
+            if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+              echo 'HEAD 与 origin/main 不一致：先 git push origin main 再打标签'; exit 1
+            fi
+          fi
+        fi
+        # 版本递增校验：借用 git 原生版本序（-v:refname），不依赖外部 sort
+        git tag "v$V" >/dev/null
+        top=$(git for-each-ref --sort=-v:refname --count=1 --format='%(refname:short)' 'refs/tags/v[0-9]*')
+        git tag -d "v$V" >/dev/null
+        if [ "$top" != "v$V" ]; then
+          echo "版本 $V 不大于现有最高标签 $top（发布号必须递增）"; exit 1
+        fi
+        if [ -z "$MSG" ]; then MSG="v$V: $(git log -1 --format=%s)"; fi
+        if [ '{{.DRY}}' = '1' ]; then
+          echo "DRY 预览: 将创建注释标签 v$V -> $(git rev-parse --short HEAD)"
+          echo "          注释: $MSG"
+          echo '          并执行: git push origin v'"$V"
+          exit 0
+        fi
+        git tag -a "v$V" -m "$MSG"
+        git push origin "v$V"
+        echo "✅ 已打标签并推送 v$V -> $(git rev-parse --short HEAD)"
+        echo "   构建产物: task build-all WITH=serve   或   task build-serve PLATFORMS=\"windows/amd64 linux/amd64 darwin/arm64\""
+        echo "   收尾: 删除已合并的功能分支 git push origin --delete <branch>；核对 docs/dev/RELEASING.md 清单"
+
   # ---------------------------------------------------------------- 清理
 
   clean:

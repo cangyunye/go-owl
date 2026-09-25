@@ -36,6 +36,12 @@
 | [../design/03_ASYNC_EXECUTION.md](../design/03_ASYNC_EXECUTION.md) | 异步执行模式 |
 | [../design/PLAYBOOK_ACTION_OPTIONS.md](../design/PLAYBOOK_ACTION_OPTIONS.md) | Playbook Action 超时重试配置 |
 
+## 🚀 发布流程
+
+| 文档 | 说明 |
+|------|------|
+| [RELEASING.md](RELEASING.md) | 版本与分支约定、`task tag` 发布流程、发布清单与纠错补打 |
+
 ## 📚 相关文档
 
 - [../reference/]((../reference/) - SSH 配置、数据库等参考文档
