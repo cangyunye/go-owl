@@ -1,6 +1,12 @@
 # dts 问题档案索引
 
-共 30 条 · 未解决 29 · 已解决 1 · 更新于 2026-09-25T18:37:41+08:00
+共 31 条 · 未解决 29 · 已解决 2 · 更新于 2026-09-25T20:04:13+08:00
+
+## fix-ssh
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-ssh_raspberrypi4-password-auth-failed](fix-ssh_raspberrypi4-password-auth-failed/dts.md) | 2026-09-25 | raspberrypi4 节点无法连接（192.168.31.100，kali 账号密码认证）：终端页报 connect failed: SSH 连接失败 .. | resolved |
 
 ## feat-playbook
 

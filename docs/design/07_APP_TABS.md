@@ -158,13 +158,20 @@ renderPlaybooks(render, navigate, user, api, shell, scope)
 | 里程碑 | 内容 | 交付物 | 预估 | 状态 |
 |--------|------|--------|------|------|
 | **M0 资源纪律** | `scope.resources` 注册器；修掉 files 5s 轮询泄漏、nodes/settings keydown 泄漏、alerts 轮询取消、ai SSE abort、body 浮层挂载即登记（切页摘除，M3 走 iframe 后天然帧内隔离） | [`web/js/pagescope.js`](../../cmd/plugins/serve/web/js/pagescope.js) + app.js `beginPage()` + 8 处页面迁移 + `pagescope_test.go` + `test/e2e_tabs_m0_resources.py` 泄漏哨兵 | 2~3 人日 | **已完成**（commit 4ee636e） |
-| **M1 标签模型 + 标签栏** | Tab 集合、`.tabbar` UI 与交互、URL/pushState 同步、localStorage 恢复、`snapshot/restore` 契约（列表类 8 页接入） | `web/js/tabs.js` + `app.js` 改造 + `app.css` 标签栏 + E2E | 4~6 人日 | 未开始 |
+| **M1 标签模型 + 标签栏** | Tab 集合、`.tabbar` UI 与交互、URL/pushState 同步、localStorage 恢复、`snapshot/restore` 契约（列表类 8 页接入） | `web/js/tabs.js` + `app.js` 改造 + `app.css` 标签栏 + E2E | 4~6 人日 | **已完成**（commit 95e800a） |
 | **M2 面板随标签 + 嵌套上下文** | 每标签面板容器、`shell.* → scope.panel.*` 迁移、嵌套标题/图标、详情类路由开新标签、`?group=`/`?cat=` 等上下文入 route | 面板容器化 + 8 页面板迁移 + E2E | 3~4 人日 | 未开始 |
 | **M3 会话类保活** | `embed=1` 精简模式（iframe 内只渲染视图）、`keepAlive` 标签的 iframe 挂载与生命周期、主题同步、`/terminal/:id`、`/sftp/:id`、AI 会话、剧本运行详情接入 | `app.js` embed 分支 + 4 页接入 + E2E（切走任务继续跑） | 4~6 人日 | 未开始 |
 | **M4 共享 WS + 节流治理** | 壳层共享 WS 总线、4 处页面迁移、非激活标签轮询挂起/恢复、标签上限与内存提示、（可选）后端 WS 过滤 | `api.js onWS` + 4 页迁移 + E2E | 3~4 人日 | 未开始 |
 
 合计 16~23 人日（含测试）。M0→M1 即可交付「可用标签页」，M2 补齐子菜单并行，M3/M4 解决长任务与资源。
 
+> M1 实施记录（2026-09-25）：标签语义定为「导航复用已打开的同视图标签（保住上下文），
+> Ctrl/中键才新开」；快照只留内存、标签集合持久化，因此刷新恢复的是标签与路由，
+> 页面内筛选靠同会话内的快照恢复。实施中两个坑：一是 8 个页面里 users/exec/playbooks
+> 只改了函数体没加 `scope` 参数（运行期 "scope is not defined"，已由「签名必须接住 scope」
+> 断言钉住）；二是资源哨兵的基准必须取在「无监听页面」激活时，否则会把当前页应有的监听
+> 误判成泄漏。
+>
 > M0 实施记录（2026-09-25）：泄漏哨兵在修复前实测到定时器 0→2、document 监听 1→5
 > （10 个一级页走两轮），修复后三项计数全部回到基线；迁移中踩到一次「只登记不挂载」——
 > `resources.overlay()` 初版只登记移除、不 append，导致弹窗全部不出现，被 issue11 回归 E2E 抓到，
