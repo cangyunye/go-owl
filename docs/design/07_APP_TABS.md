@@ -180,7 +180,7 @@ renderPlaybooks(render, navigate, user, api, shell, scope)
 | **M1 标签模型 + 标签栏** | Tab 集合、`.tabbar` UI 与交互、URL/pushState 同步、localStorage 恢复、`snapshot/restore` 契约（列表类 8 页接入） | `web/js/tabs.js` + `app.js` 改造 + `app.css` 标签栏 + E2E | 4~6 人日 | **已完成**（commit 95e800a） |
 | **M2 面板随标签 + 嵌套上下文** | 面板归属页面（`scope.panel`）、`shell.* → scope.panel.*` 迁移、嵌套标题/图标、详情类路由开新标签、`?group=`/`?cat=` 等上下文入 route | `makePanel()` + `routeContext` + `openPathInNewTab()` + 8 页面板迁移 + E2E | 3~4 人日 | **已完成**（commit 013d0d3） |
 | **M3 会话类保活（方案 A：同文档保活）** | 每标签容器（视图 + 面板 DOM）随激活 attach/detach；非激活标签**失活即暂停**（scope.resources 加 pause/resume）；浮层挂到标签容器而非 body；`/terminal/:id`、`/sftp/:id`、AI 会话、剧本运行详情接入 | `tabs.js` 容器化 + `app.js` attach 生命周期 + 4 页后台行为审计 + E2E | 3~4 人日 | **已完成**（M3a 24d710e 终端；M3b cd9d6d5 sftp/ai/playbooks） |
-| **M5 会话服务端化（方案 C，备选·非本期需求）** | 终端 PTY 会话服务端持久化 + attach/detach（tmux 式）；AI 生成与客户端解耦（断开继续跑、回来续看）；SFTP 上传改服务端执行。收益：**刷新/断网/关标签都不丢**，且天然支持多端同看 | 服务端会话注册表 + `terminal.go` 改造 + AI 运行托管 + `sftp` 上传服务端化 | 终端 3~5 人日，AI/SFTP 各 2~4 人日 | 未开始 |
+| **M5-① 会话重连与回放（本期实现目标）** | 单进程内的终端会话注册表：不可猜 session_id、输出环形缓冲（1MiB）、WS 断开只 detach 不杀会话、空闲 10 分钟回收、每用户会话上限、复用节点范围授权；前端 sessionStorage 记 session_id + WS 自动重连（1/2/4…10s 退避）+ 回放提示 | `handler/terminal.go` + 会话注册表 + `terminal.js` | 1.5~2 人日 | 未开始 |
 | **M4 共享 WS + 节流治理** | 壳层共享 WS 总线、4 处页面迁移、非激活标签轮询挂起/恢复、增量取输出（轻量列表 + 字节游标）、标签上限与内存提示 | `api.js onWS` + 4 页迁移 + `/tasks/:id/output` + E2E | 3~4 人日 | **已完成**（M4a bff470e 总线；M4b a2f3460+8ad98f7 增量输出） |
 
 合计 16~23 人日（含测试）。M0→M1 即可交付「可用标签页」，M2 补齐子菜单并行，M3/M4 解决长任务与资源。
@@ -273,6 +273,33 @@ renderPlaybooks(render, navigate, user, api, shell, scope)
 - M5（会话服务端化）让浏览器进一步回归薄客户端：会话生命周期在服务端，
   客户端只做渲染与缓存，并顺带解决多端同看同一会话。
 
+### 4.6 M5-① 终端会话重连与回放（实现规格）
+
+**买什么**：刷新页面、网络抖动后接回**同一个 shell**（cwd/env/前台进程都在），并回放最近输出。
+
+**边界（约束决定，不实现）**：owl-serve 重启后会话仍失效 —— PTY 是它的子进程，节点侧不许放任何常驻物。
+
+**服务端**
+- 会话注册表：`map[sessionID]*termSession{ client, session, ringBuf(1MiB), cols, rows, owner, createdAt, lastActive }`
+- `sessionID` 用 `crypto/rand` 32 字节、base64url（**不可猜**，否则拿到 id 就能接管别人的 shell）
+- `GET /api/v1/session/terminal?ticket=…&node_id=…[&session_id=…][&cols=&rows=]`：
+  带 `session_id` → 校验归属（同一用户 + 该节点在其授权范围内，复用 `ScopeChecker`）→ attach（先回放 ringBuf，再进实时流）；
+  不带 → 新建会话并把 `session_id` 通过 WS 首帧下发给前端
+- WS 断开 → **detach**（保留 PTY 与 SSH 连接，记 `lastActive`），不起新进程
+- 回收：空闲 10 分钟无 attach → 关闭 PTY/SSH；每用户会话上限 5、进程总上限 64（超限拒绝并提示）
+- 输出写入 ringBuf（按字节截断头部）并照常推流，不改变现有广播路径
+
+**前端（terminal.js）**
+- `sessionStorage['owl-term-<nodeId>']` 记住 session_id；挂载时若存在则带上去请求 attach
+- `ws.onclose` → 自动重连（1s/2s/4s/8s/10s 退避，最多 6 次），重连时带同一个 session_id
+- 回放完成后在终端里打一行提示（如「已接回会话 #ab12，回放 320 行」）；「重连」按钮改为「重开会话」（清 session_id 重新起）
+
+**测试**
+- Go：注册表 create/attach/replay/detach/reap/上限/越权 attach 拒绝（纯内存，快）
+- E2E：① `export PROBE=xyz` → 刷新页面 → `echo $PROBE` 得 `xyz`（同一 shell 的铁证，也可用 `ps` 看刷新前的 `sleep` 进程仍在）；② 模拟网络抖动（页面内断开 WS）→ 自动重连且回放补齐；③ 把空闲超时改小 → 会话被回收（进程消失）
+
+---
+
 ## 5. 测试策略
 
 沿用现有两层：Go 静态断言（`webui_static_test.go`/`playbooksui_test.go` 风格）+ Playwright E2E（`test/e2e_*.py`）。
@@ -297,6 +324,20 @@ renderPlaybooks(render, navigate, user, api, shell, scope)
 `.agent/skills/serve-screenshots` 流程一次性更新。
 
 ## 6. 已知限制与后续方向
+
+**未来计划：多端同看同一会话（M5-②，本期不做）**
+
+触发条件：出现「手机/另一台电脑同时看同一个 shell」或「会话列表 / 会话审计」的真实需求。
+
+在 M5-① 之上要补的东西（合计约 +1.5 人日）：
+- 多路 attach：一个会话挂多个 WS，输出扇出；写冲突按「最后写赢」并给其他端提示
+- 尺寸仲裁：以最近一次 attach 的 cols/rows 为准（或投票/只读端不参与）
+- 只读模式：旁观端只收不写（用于教学/排障）
+- 会话列表与运维：`GET /sessions`（自己创建的会话 + 节点 + 空闲时间）、强制踢出、空闲策略可视化
+- 审计：会话打开/attach/detach/回收写审计记录（谁在什么时候接了哪个节点的会话）
+- 权限：attach 复用节点范围授权（已有 `ScopeChecker`），并明确「同一用户才能接自己的会话」还是「同角色可接」
+
+
 
 - `Ctrl+W`/`Ctrl+T`/`Ctrl+Tab` 在浏览器里无法拦截，故用 `Alt` 系快捷键；用户若装了浏览器扩展冲突需自改键位。
 - 保活标签上限 8 + 内存提示；iframe 模式下字体/主题同步需逐项验证（现三套主题 + `deviceScaleFactor` 截图口径）。
