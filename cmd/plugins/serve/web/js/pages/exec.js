@@ -9,6 +9,7 @@ export function renderExec(render, navigate, user, api, shell, scope) {
   // 实时输出对账：WS 可能因断线或服务端断开慢客户端而缺行，终态广播带全量 output
   let receivedLines = {};   // task_id -> 已收到的实时行数
   let receivedBytes = {};   // task_id -> 已收到的实时输出字节游标（来自广播的 offset）
+  let detachedTaskId = null;   // 最近一次分离运行的任务 id
   let taskUpdates = {};     // task_id -> 最近一次终态广播(含完整 output)
   let activeGroups = [];
   let allGroups = [];
@@ -675,6 +676,7 @@ export function renderExec(render, navigate, user, api, shell, scope) {
       });
     }
 
+    if (document.getElementById("detached-run")?.checked) payload.detached = true;
     return payload;
   }
 
@@ -713,6 +715,11 @@ export function renderExec(render, navigate, user, api, shell, scope) {
       const res = await api.execAdvanced(payload);
 
       const tasks = res.tasks || [];
+      if (payload.detached && tasks.length) {
+        detachedTaskId = tasks[0].id;
+        const dbtn = document.getElementById("detached-log-btn");
+        if (dbtn) dbtn.style.display = "";
+      }
       currentTaskIDs = tasks.map(t => t.id);
       currentTasks = tasks;
       currentOpID = (tasks[0] && tasks[0].record_id) || '';
@@ -887,6 +894,11 @@ free -m</textarea>
           </div>
         </div>
 
+        <label class="toggle-row" style="margin:8px 0 0 2px">
+          <input type="checkbox" id="detached-run">
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span style="font-size:12px;color:var(--muted)" title="命令在节点侧 setsid+nohup 后台执行，输出写日志文件；关页面/刷新/owl-serve 重启都不影响它跑完。不依赖节点安装任何代理">分离方式运行</span>
+        </label>
         <div class="output-terminal">
           <div class="term-header">
             <div class="dot-group">
@@ -898,6 +910,7 @@ free -m</textarea>
             <span style="flex:1"></span>
             <button class="btn btn-ghost btn-sm" onclick="window.location='/history'">历史记录</button>
             <button class="btn btn-ghost btn-sm" id="clear-term-btn">清屏</button>
+            <button class="btn btn-ghost btn-sm" id="detached-log-btn" style="display:none">查看分离输出</button>
           </div>
           <div class="term-body" id="term-body">
             <div class="line" style="color:var(--muted)">选择节点并点击「执行」查看输出</div>
@@ -1034,6 +1047,14 @@ free -m</textarea>
       updateExecButton();
     });
     document.getElementById('clear-term-btn').addEventListener('click', clearTerminal);
+    document.getElementById('detached-log-btn').addEventListener('click', async () => {
+      if (!detachedTaskId) return;
+      try {
+        const res = await api.taskDetached(detachedTaskId, 200);
+        appendTerminal("— 分离进程 " + (res.running ? "运行中" : "已结束") + "（pid=" + res.pid + "，日志 " + res.log_path + "）—", "ts");
+        (res.data || "").split("\n").forEach(x => { if (x.trim()) appendTerminal(esc(x), "out"); });
+      } catch (e) { appendTerminal("读取分离输出失败: " + esc(e.message || e), "err"); }
+    });
 
     document.querySelectorAll('.status-btn').forEach(btn => {
       btn.addEventListener('click', function() {

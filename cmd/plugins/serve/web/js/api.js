@@ -237,6 +237,10 @@ export const api = {
     return request('GET', `/tasks/${encodeURIComponent(id)}/output?${q}`);
   },
 
+  // 分离运行进程的状态与日志尾部（节点侧 nohup 起的后台任务）
+  taskDetached: (id, tail = 200) =>
+    request('GET', `/tasks/${encodeURIComponent(id)}/detached?tail=${tail}`),
+
   task: (id) =>
     request('GET', `/tasks/${encodeURIComponent(id)}`),
 
