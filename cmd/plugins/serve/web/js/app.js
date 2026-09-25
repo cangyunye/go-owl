@@ -56,9 +56,13 @@ const VIEW_ICONS = {};
 const tabs = createTabStore();
 // 保活页面的作用域名（M3：切标签不销毁页面，DOM 与 scope 留着，仅摘除 + 暂停）。
 // 白名单先放「后台工作自成一体、写的是自己缓存的引用」的会话类页面。
-// M3a 先只开终端：它的后台工作（写 xterm 实例）与 DOM 查询无关，最安全；
-// sftp / ai / playbooks 的失活行为需要逐页审计，放到 M3b。
-const KEEP_ALIVE_SCOPES = new Set(['terminal']);
+// 保活白名单：切标签不销毁页面，只摘 DOM + 暂停作用域。
+// 纳入的页面已逐页审计过失活行为（门控广播、渲染函数防空引用、onResume 补数据）：
+//   terminal —— 后台写 xterm 实例，与 DOM 查询无关
+//   sftp     —— 上传/下载的 XHR 继续跑，只暂停界面更新，切回重绘队列与目录
+//   ai       —— 流式文本继续累积，失活期间产生的消息挂起，切回补渲染
+//   playbooks —— 运行在服务端继续，广播在失活期被门控，切回补拉列表与详情
+const KEEP_ALIVE_SCOPES = new Set(['terminal', 'sftp', 'ai', 'playbooks']);
 // 每个标签自己的视图容器与面板元素：保活标签在失活时只是从文档里摘下来
 const tabEls = new Map();   // tabId -> { view, panel, scope }
 let currentPageTabId = null;   // 当前挂载页面对应的标签（页面快照写回它）
@@ -474,6 +478,9 @@ function releaseOutgoingPage() {
       els.cleanup = currentCleanup;  // 页面自己的清理也留到关闭标签时再跑
     }
     currentCleanup = null;
+    // 必须暂停：DOM 马上要被摘除，此后在途请求/广播的继续执行会查到 null 元素
+    // （漏了这一步时，sftp 的 load() 在 await 回来写 #sftp-cwd 直接抛错）
+    outgoing.pause();
     return;                          // scope 不 dispose，交给 dropTabEls
   }
 

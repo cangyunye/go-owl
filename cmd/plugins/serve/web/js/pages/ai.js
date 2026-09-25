@@ -98,9 +98,11 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
   scope.panel.setContent('');
 
   // ---- Message DOM ----
+  const pendingMsgs = [];   // 失活期间产生的消息：切回时补渲染，避免回答“消失”
+
   function addMsg(cls, html) {
     const m = document.getElementById('ai-chat-messages');
-    if (!m) return;
+    if (!m) { pendingMsgs.push({ cls, html }); return; }
     // Ensure chat area is visible when adding messages
     m.style.display = 'block';
     const emptyState = document.getElementById('ai-empty-state');
@@ -144,6 +146,8 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
 
   function ensureStreamBubble() {
     if (streamBubble) return streamBubble;
+    const host = document.getElementById('ai-chat-messages');
+    if (!host) return null;   // 失活：容器已摘除，切回时 onResume 补渲染
     hideThinking();
     addMsg('assistant', '<span class="ai-stream-cursor">▍</span>');
     const m = document.getElementById('ai-chat-messages');
@@ -154,7 +158,7 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
   }
 
   function renderStreamBubble() {
-    if (!streamBubble) return;
+    if (!streamBubble || !streamBubble.bubble) return;
     const toolTag = streamToolName ? '<div class="ai-tool-tag">🔧 ' + esc(streamToolName) + '</div>' : '';
     streamBubble.bubble.innerHTML = toolTag + md(streamText) + '<span class="ai-stream-cursor">▍</span>';
     const m = document.getElementById('ai-chat-messages');
@@ -211,7 +215,8 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
       try {
         done = await api.aiChatStream(payload, {
           signal: ac.signal,
-          onDelta: (t) => { ensureStreamBubble(); streamText += t; scheduleStreamFlush(); },
+          // 流式文本始终累积（回答不丢），但失活期间不做 DOM 更新——切回时补渲染
+          onDelta: (t) => { streamText += t; if (!scope.paused) { ensureStreamBubble(); scheduleStreamFlush(); } },
           onTool: (obj) => { if (obj && obj.name) { streamToolName = obj.name; if (streamBubble) renderStreamBubble(); } },
         });
       } catch (streamErr) {
@@ -832,6 +837,12 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     });
 
     updateSendBtn();
+
+    // 切回本标签：补渲染失活期间产生的消息，以及仍在流式中的回答文本
+    scope.onResume(() => {
+      pendingMsgs.splice(0).forEach(x => addMsg(x.cls, x.html));
+      if (streamText) { ensureStreamBubble(); renderStreamBubble(); }
+    });
 
     return () => slash.destroy();
   });

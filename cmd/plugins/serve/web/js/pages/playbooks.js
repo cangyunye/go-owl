@@ -155,6 +155,8 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   // ==================== 左侧分类面板 ====================
 
   function renderPanel() {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     const counts = {};
     for (const pb of state.playbooks) {
       const c = pb.category || '';
@@ -188,6 +190,8 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   // ==================== 主栏：剧本列表 ====================
 
   function renderList() {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     const body = document.getElementById('pb-list-body');
     if (!body) return;
     const countEl = document.getElementById('pb-count');
@@ -228,6 +232,8 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   }
 
   function renderGrid() {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     const cards = state.filteredPlaybooks.map(pb => `
       <div class="playbook-card ${state.selectedId === pb.id ? 'selected' : ''}" data-pb-id="${esc(pb.id)}">
         <div class="pb-header">
@@ -448,6 +454,8 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   }
 
   function renderRuns(runs) {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     state.runs = runs || [];
     const list = document.getElementById('playbook-runs-list');
     if (!list) return;
@@ -484,6 +492,8 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   }
 
   function showRunDetail(run) {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     state.currentRun = run;
     const detail = document.getElementById('run-detail');
     if (!detail) return;
@@ -530,6 +540,7 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   async function loadRuns() {
     try {
       const res = await api.playbookRuns({ page: state.runsPage, page_size: state.runsPageSize });
+    if (scope.paused) return;   // await 之后：标签可能已被摘除
       state.runsTotal = res.meta?.total || 0;
       renderRuns(res.data || []);
     } catch { state.runsTotal = 0; renderRuns([]); }
@@ -541,6 +552,8 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   }
 
   function renderRunsPagination() {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     const info = document.getElementById('runs-page-info');
     if (!info) return;
     if (state.runsPage > runsTotalPages()) state.runsPage = runsTotalPages();
@@ -1107,7 +1120,16 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   // ==================== 页面骨架 ====================
 
   function setupWebSocket() {
-    ws = api.connectWebSocket(msg => {
+    // 失活期间不处理广播（页面 DOM 已摘除，渲染函数里的 getElementById 会取到 null）。
+    // 运行本身在服务端继续，切回时用 onResume 补一次拉取即可。
+
+    // 切回本标签：补拉运行列表与当前打开的运行详情（失活期间的更新被门控丢掉了）
+    scope.onResume(() => {
+      loadRuns();
+      const cur = state.currentRun;
+      if (cur && cur.id) api.playbookRun(cur.id).then(run => showRunDetail(run)).catch(() => {});
+    });
+    ws = api.connectWebSocket(scope.gate(msg => {
       if (msg.type === 'playbook_run_update') {
         loadRuns();
         const detail = document.getElementById('run-detail');
@@ -1115,7 +1137,7 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
           showRunDetail(msg.data);
         }
       }
-    });
+    }));
   }
 
   render(`

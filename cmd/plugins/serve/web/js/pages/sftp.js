@@ -137,6 +137,7 @@ export function renderSftp(render, navigate, user, api, nodeId, scope) {
 
     function renderQueue() {
       const el = document.getElementById('sftp-queue');
+      if (!el) return;   // 失活标签的容器已摘除：上传继续跑，界面切回时补一次
       if (tasks.length === 0) { el.innerHTML = ''; return; }
       el.innerHTML = `
         <div class="card" style="padding:10px 14px">
@@ -292,6 +293,8 @@ export function renderSftp(render, navigate, user, api, nodeId, scope) {
     });
 
     async function load(path) {
+      if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
       const body = document.getElementById('sftp-body');
       body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">加载中…</div>';
       let res;
@@ -301,6 +304,8 @@ export function renderSftp(render, navigate, user, api, nodeId, scope) {
         body.innerHTML = `<div style="padding:40px;text-align:center;color:var(--danger)">读取失败: ${esc(e.message || e)}</div>`;
         return;
       }
+      // await 之后必须再查一次：load() 可能在挂载时发起、返回时标签已被摘除
+      if (scope.paused) return;
       cwd = res.path || '/';
       document.getElementById('sftp-cwd').textContent = cwd;
       renderBreadcrumb();
@@ -435,6 +440,9 @@ export function renderSftp(render, navigate, user, api, nodeId, scope) {
         });
       });
     }
+
+    // 切回本标签：队列与目录补一次渲染（失活期间 XHR 仍在跑，只是没更新界面）
+    scope.onResume(() => { renderQueue(); load(cwd); });
 
     // 上传队列里的在途 XHR：切页即中止
     scope.resources.onDispose(() => tasks.forEach(t => { if (t.xhr) t.xhr.abort(); }));
