@@ -37,7 +37,7 @@ Web 控制台需要内建标签页，让多层子菜单可以同时处理。当�
    `exec.js` 51 个。同页两个实例同时挂载，`document.getElementById` 必然串台。
 2. **侧栏面板是全局单例**：`shell.setPanelContent/setPanelTitle` 只认唯一 `#panelList`（`app.js:52-70`、`125-130`）。
    两个标签各自的分组/分类子菜单无法共存。
-3. **资源纪律不齐**（保活会把泄漏放大 N 倍）：
+3. **资源纪律不齐**（保活会把泄漏放大 N 倍）—— **M0 已修，见 §4 里程碑表**：
    - `files.js:898` 挂载即 `startAutoRefresh()`，`stopAutoRefresh()`（`files.js:789`）**全仓无调用点** → 每进一次文件页多一个 5s 轮询；
    - `nodes.js:848`、`settings.js:605` 的 `document.addEventListener('keydown', …)` 每次挂载加一条、从不移除；
    - `alerts.js:329/355/585` 递归 `setTimeout` 轮询无取消句柄；
@@ -155,15 +155,20 @@ renderPlaybooks(render, navigate, user, api, shell, scope)
 
 ## 4. 里程碑拆分（提交原子性对齐）
 
-| 里程碑 | 内容 | 交付物 | 预估 |
-|--------|------|--------|------|
-| **M0 资源纪律** | `scope.resources` 注册器；修掉 files 5s 轮询泄漏、nodes/settings keydown 泄漏、alerts 轮询取消、ai SSE abort、body 浮层改为视图内浮层 | `web/js/pagescope.js` + 8 处页面修补 + Go 断言测试 + Playwright 泄漏哨兵 | 2~3 人日 |
-| **M1 标签模型 + 标签栏** | Tab 集合、`.tabbar` UI 与交互、URL/pushState 同步、localStorage 恢复、`snapshot/restore` 契约（列表类 8 页接入） | `web/js/tabs.js` + `app.js` 改造 + `app.css` 标签栏 + E2E | 4~6 人日 |
-| **M2 面板随标签 + 嵌套上下文** | 每标签面板容器、`shell.* → scope.panel.*` 迁移、嵌套标题/图标、详情类路由开新标签、`?group=`/`?cat=` 等上下文入 route | 面板容器化 + 8 页面板迁移 + E2E | 3~4 人日 |
-| **M3 会话类保活** | `embed=1` 精简模式（iframe 内只渲染视图）、`keepAlive` 标签的 iframe 挂载与生命周期、主题同步、`/terminal/:id`、`/sftp/:id`、AI 会话、剧本运行详情接入 | `app.js` embed 分支 + 4 页接入 + E2E（切走任务继续跑） | 4~6 人日 |
-| **M4 共享 WS + 节流治理** | 壳层共享 WS 总线、4 处页面迁移、非激活标签轮询挂起/恢复、标签上限与内存提示、（可选）后端 WS 过滤 | `api.js onWS` + 4 页迁移 + E2E | 3~4 人日 |
+| 里程碑 | 内容 | 交付物 | 预估 | 状态 |
+|--------|------|--------|------|------|
+| **M0 资源纪律** | `scope.resources` 注册器；修掉 files 5s 轮询泄漏、nodes/settings keydown 泄漏、alerts 轮询取消、ai SSE abort、body 浮层挂载即登记（切页摘除，M3 走 iframe 后天然帧内隔离） | [`web/js/pagescope.js`](../../cmd/plugins/serve/web/js/pagescope.js) + app.js `beginPage()` + 8 处页面迁移 + `pagescope_test.go` + `test/e2e_tabs_m0_resources.py` 泄漏哨兵 | 2~3 人日 | **已完成**（commit 4ee636e） |
+| **M1 标签模型 + 标签栏** | Tab 集合、`.tabbar` UI 与交互、URL/pushState 同步、localStorage 恢复、`snapshot/restore` 契约（列表类 8 页接入） | `web/js/tabs.js` + `app.js` 改造 + `app.css` 标签栏 + E2E | 4~6 人日 | 未开始 |
+| **M2 面板随标签 + 嵌套上下文** | 每标签面板容器、`shell.* → scope.panel.*` 迁移、嵌套标题/图标、详情类路由开新标签、`?group=`/`?cat=` 等上下文入 route | 面板容器化 + 8 页面板迁移 + E2E | 3~4 人日 | 未开始 |
+| **M3 会话类保活** | `embed=1` 精简模式（iframe 内只渲染视图）、`keepAlive` 标签的 iframe 挂载与生命周期、主题同步、`/terminal/:id`、`/sftp/:id`、AI 会话、剧本运行详情接入 | `app.js` embed 分支 + 4 页接入 + E2E（切走任务继续跑） | 4~6 人日 | 未开始 |
+| **M4 共享 WS + 节流治理** | 壳层共享 WS 总线、4 处页面迁移、非激活标签轮询挂起/恢复、标签上限与内存提示、（可选）后端 WS 过滤 | `api.js onWS` + 4 页迁移 + E2E | 3~4 人日 | 未开始 |
 
 合计 16~23 人日（含测试）。M0→M1 即可交付「可用标签页」，M2 补齐子菜单并行，M3/M4 解决长任务与资源。
+
+> M0 实施记录（2026-09-25）：泄漏哨兵在修复前实测到定时器 0→2、document 监听 1→5
+> （10 个一级页走两轮），修复后三项计数全部回到基线；迁移中踩到一次「只登记不挂载」——
+> `resources.overlay()` 初版只登记移除、不 append，导致弹窗全部不出现，被 issue11 回归 E2E 抓到，
+> 现该方法一次完成「挂载 + 登记」，并由 Go 断言钉住。
 
 ## 5. 测试策略
 
