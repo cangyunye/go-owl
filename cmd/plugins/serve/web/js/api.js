@@ -69,6 +69,24 @@ export const api = {
     return request('GET', `/nodes?${q}`);
   },
 
+  // 节点选择器需要全量节点：GET /nodes 默认 page_size=20、服务端封顶 100，
+  // 只取一页会让目标节点不全、分组计数与总数偏小。按 meta.total 翻页取完，
+  // 返回节点数组（而非 {data,meta}），调用方直接当全量列表用。
+  nodesAll: async () => {
+    const nodes = [];
+    for (let page = 1; page <= 100; page++) {
+      const res = await api.nodes({ page, page_size: 100 });
+      const data = res.data || [];
+      const meta = res.meta || {};
+      nodes.push(...data);
+      const total = meta.total || 0;
+      const reachedTotal = total > 0 && nodes.length >= total;
+      const lastPage = data.length < (meta.page_size || 100);
+      if (data.length === 0 || reachedTotal || lastPage) break;
+    }
+    return nodes;
+  },
+
   nodeStats: () =>
     request('GET', '/nodes/stats'),
 

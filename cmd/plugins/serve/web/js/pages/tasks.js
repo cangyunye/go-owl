@@ -109,8 +109,9 @@ export function renderTasks(render, navigate, user, api) {
 
   async function loadAllNodes() {
     try {
-      const res = await api.nodes({ page_size: 500 });
-      allNodes = res.data || [];
+      // 节点选择器要的是全量：单次请求会被服务端钳到 100 条，
+      // 节点数超过 100 时列表不全、「节点总数」也会少显示。
+      allNodes = await api.nodesAll();
     } catch { allNodes = []; }
   }
 

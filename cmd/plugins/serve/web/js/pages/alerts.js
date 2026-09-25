@@ -919,7 +919,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
 
   async function openAlertDebugModal(at) {
     let nodes = [];
-    try { nodes = (await api.nodes({ page: 1, page_size: 100 })).data || []; } catch { /* 节点列表不可用不阻塞 */ }
+    try { nodes = await api.nodesAll(); } catch { /* 节点列表不可用不阻塞 */ }
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay open';

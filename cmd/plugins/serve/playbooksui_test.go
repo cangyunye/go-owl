@@ -154,3 +154,36 @@ func TestPlaybooksUI_RunDetailProgress(t *testing.T) {
 	assert.True(t, strings.Contains(src, "仅看失败"), "run detail must offer a failed-only filter")
 	assert.True(t, strings.Contains(css, ".run-progress"), "app.css must style the progress bar")
 }
+
+// 运行弹窗的「目标节点」必须拿到全量节点：GET /nodes 默认 page_size=20、
+// 服务端封顶 100，裸调 api.nodes() 只拿到第一页 —— 节点多时目标节点只列前 20 个、
+// 「全选」也只选中这 20 个、分组徽标计数按第一页统计偏小。
+// 与节点页 loadGroupCounts 同款问题，改走 api.nodesAll() 按 meta.total 翻页取全量。
+func TestPlaybooksUI_RunTargetNodesLoadAll(t *testing.T) {
+	apiSrc := readWebFile(t, "web/js/api.js")
+	src := readWebFile(t, "web/js/pages/playbooks.js")
+
+	assert.Contains(t, apiSrc, "nodesAll",
+		"api.js must expose nodesAll() that pages /nodes until meta.total is reached")
+	assert.Contains(t, apiSrc, "page_size: 100",
+		"nodesAll() must page with the server-side max page_size (100)")
+
+	assert.NotContains(t, src, "api.nodes()",
+		"run dialog must not call api.nodes() bare (returns only the first page of 20)")
+	assert.Contains(t, src, "api.nodesAll()",
+		"run dialog target-node picker must load all nodes via api.nodesAll()")
+}
+
+// 同类缺陷：其余「节点选择器」调用点也必须走全量拉取，
+// 否则节点数超过 100（服务端 page_size 上限）时同样只列部分节点、总数偏小。
+func TestNodePickers_LoadAllNodes(t *testing.T) {
+	tasks := readWebFile(t, "web/js/pages/tasks.js")
+	alerts := readWebFile(t, "web/js/pages/alerts.js")
+
+	assert.Contains(t, tasks, "api.nodesAll()",
+		"任务中心的节点选择器必须拉全量节点（#exec-total-count 直接展示该列表长度）")
+	assert.NotContains(t, tasks, "page_size: 500",
+		"page_size 超上限会被服务端钳到 100，等于只取第一页")
+	assert.Contains(t, alerts, "api.nodesAll()",
+		"告警调试弹窗的节点下拉必须拉全量节点")
+}

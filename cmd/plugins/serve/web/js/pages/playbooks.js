@@ -557,8 +557,10 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
   async function loadRunTargetData(pbId) {
     try {
-      const [nodesRes, filtersRes] = await Promise.all([api.nodes(), api.filters()]);
-      runNodes = nodesRes.data || [];
+      // 目标节点选择器与分组计数都要全量节点：不带参数的节点列表接口只返回
+      // 第一页（服务端默认 20 条），节点多时列表不全、「全选」选不满、分组计数偏小。
+      const [nodes, filtersRes] = await Promise.all([api.nodesAll(), api.filters()]);
+      runNodes = nodes;
       const counts = {};
       for (const n of runNodes) {
         for (const g of (n.groups || [])) counts[g] = (counts[g] || 0) + 1;
