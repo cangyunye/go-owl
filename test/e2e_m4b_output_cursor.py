@@ -97,7 +97,14 @@ def main():
         lines = api('GET', '/tasks/' + task_id).get('output') or ''
         assert lines.rstrip().endswith('20000'),             'B: 任务记录的输出应以 20000 结尾（实际 %d 字节，尾部 %r）' % (len(lines), lines[-40:])
         assert len(lines) > 100000, 'B: seq 1 20000 应产生 >100KB 输出，实际 %d' % len(lines)
-        print('B PASS 长输出完整（记录 %d 字节）' % len(lines))
+        # 终端容器是 #term-body（执行页的 .output-terminal 内），断言末行真的渲染出来了
+        if page.locator('#term-body').count() == 0:
+            where = page.evaluate("({url: location.pathname + location.search, view: (document.getElementById('viewTitle')||{}).textContent, tabs: Array.from(document.querySelectorAll('#tabbar .tab .tab-title')).map(e=>e.textContent.trim()), termish: Array.from(document.querySelectorAll('[id*=term],[class*=term]')).map(e => (e.id?'#'+e.id:'')+'.'+(e.className||'').toString().split(' ')[0]).slice(0,8)})")
+            raise AssertionError('B: 找不到终端容器 #term-body，当前页面状态=%r' % where)
+        term_text = page.inner_text('#term-body')
+        assert '20000' in term_text, 'B: 终端应渲染出长输出的末行，实际末段 %r' % term_text[-80:]
+        print('B PASS 长输出完整（记录 %d 字节；终端已渲染末行 20000，终端 %d 行）'
+              % (len(lines), term_text.count(chr(10))))
 
         # C. 增量端点逐段一致
         full = api('GET', '/tasks/' + task_id).get('output') or ''
