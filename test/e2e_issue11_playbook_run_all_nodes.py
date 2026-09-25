@@ -73,6 +73,22 @@ def launch(p):
     raise RuntimeError('no chromium/msedge/chrome available: run `playwright install chromium`')
 
 
+def cleanup():
+    """剧本库路径是全局共享的（不在 e2e 独立 db 里），用完把种子剧本删掉。"""
+    try:
+        pbs = api('GET', '/playbooks').get('data') or []
+        for pb in pbs:
+            if pb.get('name') == PB_NAME:
+                api('DELETE', '/playbooks/' + pb['id'])
+                print('清理种子剧本:', PB_NAME)
+    except Exception as e:
+        print('清理种子剧本失败（可手动删除）:', e)
+    try:
+        api('DELETE', '/alert-types/OWL-CUS-E2ENODE')
+    except Exception:
+        pass
+
+
 def main():
     seed()
     total, counts = truth()
@@ -176,6 +192,7 @@ def main():
 
         assert not errors, '页面 JS 报错: %r' % errors[:3]
         browser.close()
+        cleanup()
         print('ALL PASS')
 
 
@@ -183,5 +200,6 @@ if __name__ == '__main__':
     try:
         main()
     except AssertionError as e:
+        cleanup()
         print('FAIL:', e)
         sys.exit(1)
