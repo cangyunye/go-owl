@@ -101,9 +101,9 @@ func Dial(ctx context.Context, addr string, opts DialOptions) (*Client, error) {
 		forwarded, err := jump.Dial("tcp", addr)
 		if err != nil {
 			jump.Close()
-			return nil, connErr(addr, fmt.Errorf("经跳板转发到 %s 失败: %w", addr, err))
+			return nil, connErr(addr, firstNonEmpty(jumpUser, opts.User), fmt.Errorf("经跳板转发到 %s 失败: %w", addr, err))
 		}
-		target, err := newSSHClient(ctx, forwarded, addr, config, timeout)
+		target, err := newSSHClient(ctx, forwarded, addr, firstNonEmpty(jumpUser, opts.User), config, timeout)
 		if err != nil {
 			forwarded.Close()
 			jump.Close()
@@ -114,9 +114,9 @@ func Dial(ctx context.Context, addr string, opts DialOptions) (*Client, error) {
 
 	netConn, err := dialTCP(ctx, addr, timeout)
 	if err != nil {
-		return nil, connErr(addr, err)
+		return nil, connErr(addr, opts.User, err)
 	}
-	client, err := newSSHClient(ctx, netConn, addr, config, timeout)
+	client, err := newSSHClient(ctx, netConn, addr, opts.User, config, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -128,9 +128,9 @@ func Dial(ctx context.Context, addr string, opts DialOptions) (*Client, error) {
 // gossh.Dial 的 TCP 拨号），因此在握手前对底层连接设置 deadline，将握手
 // 限制在 timeout 与 ctx deadline 的更早者之内；握手结束后清除 deadline，
 // 避免后续命令执行被误杀。
-func newSSHClient(ctx context.Context, netConn net.Conn, addr string, config *gossh.ClientConfig, timeout time.Duration) (*gossh.Client, error) {
+func newSSHClient(ctx context.Context, netConn net.Conn, addr, user string, config *gossh.ClientConfig, timeout time.Duration) (*gossh.Client, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, connErr(addr, err)
+		return nil, connErr(addr, user, err)
 	}
 
 	deadline := time.Now().Add(timeout)
@@ -184,7 +184,7 @@ func newSSHClient(ctx context.Context, netConn net.Conn, addr string, config *go
 	close(watchDone)
 
 	if err != nil {
-		return nil, connErr(addr, err)
+		return nil, connErr(addr, user, err)
 	}
 	return gossh.NewClient(conn, chans, reqs), nil
 }
@@ -194,8 +194,8 @@ func dialTCP(ctx context.Context, addr string, timeout time.Duration) (net.Conn,
 	return d.DialContext(ctx, "tcp", addr)
 }
 
-// connErr 将底层错误分类为 *ConnectionError（认证类 / 连接类）
-func connErr(addr string, cause error) *ConnectionError {
+// connErr 将底层错误分类为 *ConnectionError（认证类 / 连接类）；user 用于报错里标明账号
+func connErr(addr, user string, cause error) *ConnectionError {
 	errType := ErrorTypeConnection
 	msg := cause.Error()
 	if containsAnySSH(msg, "auth", "password", "key", "permission", "authentication",
@@ -205,7 +205,7 @@ func connErr(addr string, cause error) *ConnectionError {
 	if containsAnySSH(msg, "timeout", "timed out", "refused") {
 		errType = ErrorTypeConnection
 	}
-	return &ConnectionError{NodeID: addr, ErrorType: errType, Stderr: msg, Cause: cause}
+	return &ConnectionError{NodeID: addr, User: user, ErrorType: errType, Stderr: msg, Cause: cause}
 }
 
 // splitJumpSpec 解析跳板机描述 "[user@]host[:port]"，返回独立用户名
