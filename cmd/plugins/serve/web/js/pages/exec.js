@@ -8,6 +8,7 @@ export function renderExec(render, navigate, user, api, shell, scope) {
   let currentOpID = '';
   // 实时输出对账：WS 可能因断线或服务端断开慢客户端而缺行，终态广播带全量 output
   let receivedLines = {};   // task_id -> 已收到的实时行数
+  let receivedBytes = {};   // task_id -> 已收到的实时输出字节游标（来自广播的 offset）
   let taskUpdates = {};     // task_id -> 最近一次终态广播(含完整 output)
   let activeGroups = [];
   let allGroups = [];
@@ -448,6 +449,29 @@ export function renderExec(render, navigate, user, api, shell, scope) {
   // rebuildTerminalFromRecords 用任务记录里的全量 output 重建终端视图：
   // 实时流缺行时(WS 断线 / 慢客户端被断开 / 采集中断)由终态广播兜底，
   // 保证终端最终与任务历史一致。
+  // backfillMissingTail 按游标补输出：对每个任务取 [receivedBytes, total) 的片段追加。
+  // 返回 false 表示有任务补不齐（调用方退回整段重建兜底）。
+  async function backfillMissingTail() {
+    let allOk = true;
+    for (const id of currentTaskIDs) {
+      const rec = taskUpdates[id] || {};
+      const total = Number(rec.output_len || 0) || outputLineCount(rec.output || '');
+      const from = receivedBytes[id] || 0;
+      if (!total || total <= from) continue;
+      try {
+        const res = await api.taskOutput(id, from);
+        const chunk = res.data || '';
+        if (!chunk) continue;
+        if (currentTaskIDs.length > 1) appendTerminal(`[${esc(rec.node_id || '')}] —— 补全缺失输出 ——`, 'ts');
+        chunk.replace(/\n+$/, '').split('\n').forEach(x => appendTerminal(esc(x), 'out'));
+        receivedBytes[id] = res.next_offset || total;
+      } catch {
+        allOk = false;
+      }
+    }
+    return allOk;
+  }
+
   function rebuildTerminalFromRecords(tasks) {
     clearTerminal();
     appendTerminal('⚠ 检测到实时输出有缺失，已用任务记录补全（完整输出以任务详情为准）：', 'ts');
@@ -729,9 +753,18 @@ export function renderExec(render, navigate, user, api, shell, scope) {
           return;
         }
         const updates = currentTaskIDs.map(id => taskUpdates[id]).filter(Boolean);
-        const incomplete = updates.some(u => outputLineCount(u.output) > (receivedLines[u.id] || 0));
+        // 轻量记录只有 output_len：按字节游标判断是否缺输出；完整记录退回行数判断
+        const incomplete = currentTaskIDs.some(id => {
+          const u = taskUpdates[id] || {};
+          const total = Number(u.output_len || 0);
+          if (total > 0) return total > (receivedBytes[id] || 0);
+          return outputLineCount(u.output || '') > (receivedLines[id] || 0);
+        });
         if (incomplete) {
-          rebuildTerminalFromRecords(updates);
+          // 优先按游标补缺失的尾部（只传差额）；拉不到再退回整段重建
+          backfillMissingTail().then(ok => {
+            if (!ok) rebuildTerminalFromRecords(currentTaskIDs.map(id => taskUpdates[id]).filter(Boolean));
+          });
         } else {
           appendTerminal('— 全部任务已结束，可在任务历史中查看输出 —', 'ts');
         }
@@ -755,6 +788,8 @@ export function renderExec(render, navigate, user, api, shell, scope) {
           const t = msg.data;
           if (!t || !currentTaskIDs.includes(t.task_id)) return;
           receivedLines[t.task_id] = (receivedLines[t.task_id] || 0) + 1;
+          // 广播带 offset（本行起始字节）：据此得到精确游标，重连后只补缺失尾部
+          receivedBytes[t.task_id] = (parseInt(t.offset, 10) || 0) + (t.line || '').length + 1;
           if (suppressOutput) return;
           const prefix = isSingle ? '' : `[${esc(t.node_id)}] `;
           appendTerminal(prefix + esc(t.line), t.type === 'stderr' ? 'err' : 'out');
@@ -770,7 +805,8 @@ export function renderExec(render, navigate, user, api, shell, scope) {
       const reconcile = async () => {
         if (!currentOpID || finished.size >= currentTaskIDs.length) { stopReconcile(); return; }
         try {
-          const res = await api.tasks({ record_id: currentOpID, page_size: 100 });
+          // 轻量：只要状态与输出长度，不重传 output（长输出任务的轮询代价归零）
+          const res = await api.tasks({ record_id: currentOpID, page_size: 100, light: 1 });
           (res.data || []).forEach(t => {
             if (currentTaskIDs.includes(t.id) && isTerminal(t.status)) markFinished(t);
           });

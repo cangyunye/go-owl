@@ -75,7 +75,7 @@ func TestWSHub_SlowClientDisconnectedOnOverflow(t *testing.T) {
 	}
 
 	// 缓冲已满的下一次广播应触发慢客户端断开（而非静默丢弃本条消息）
-	hub.BroadcastTaskOutput("task-1", "node-1", "trigger", "stdout")
+	hub.BroadcastTaskOutput("task-1", "node-1", "trigger", "stdout", 0)
 
 	// 慢客户端被移出 hub（Broadcast 内同步执行 Close + Unsubscribe）
 	hub.mu.RLock()

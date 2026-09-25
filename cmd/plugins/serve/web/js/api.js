@@ -230,6 +230,13 @@ export const api = {
     return request('GET', `/tasks?${q}`);
   },
 
+  // 按字节游标取任务输出增量（配合 WS 广播里的 offset 使用）
+  taskOutput: (id, offset = 0, limit = 0) => {
+    const q = new URLSearchParams({ offset: String(offset) });
+    if (limit > 0) q.set('limit', String(limit));
+    return request('GET', `/tasks/${encodeURIComponent(id)}/output?${q}`);
+  },
+
   task: (id) =>
     request('GET', `/tasks/${encodeURIComponent(id)}`),
 

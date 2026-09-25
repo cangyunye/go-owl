@@ -608,6 +608,20 @@ func (h *ExecHandler) createSingleTask(c *gin.Context, nid, command string, forc
 	return &taskResult{task: task}, nil
 }
 
+// stripOutputsForLight 为「轻量列表」用：把 output 换成 output_len 后清空 output。
+// 客户端对账只需要状态与长度（输出走 /tasks/:id/output 游标增量），
+// 长输出任务因此不再每次整轮询都整段重传。
+func stripOutputsForLight(tasks []*store.Task) []*store.Task {
+	for _, t := range tasks {
+		if t == nil {
+			continue
+		}
+		t.OutputLen = len(t.Output)
+		t.Output = ""
+	}
+	return tasks
+}
+
 func (h *ExecHandler) Get(c *gin.Context) {
 	id := c.Param("id")
 	task, err := h.task.Get(c.Request.Context(), id)
@@ -677,6 +691,9 @@ func (h *ExecHandler) List(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "list failed"})
 			return
 		}
+		if c.Query("light") != "" {
+			tasks = stripOutputsForLight(tasks)
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"data": tasks,
 			"meta": gin.H{"total": len(tasks)},
@@ -697,6 +714,9 @@ func (h *ExecHandler) List(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "list failed"})
 		return
+	}
+	if c.Query("light") != "" {
+		tasks = stripOutputsForLight(tasks)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"data": tasks,
@@ -807,7 +827,7 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 		}
 		notice := retryNotice(attempt+1, retryCount+1, wait, lastError)
 		if h.hub != nil {
-			h.hub.BroadcastTaskOutput(taskID, task.NodeID, notice, "stderr")
+			h.hub.BroadcastTaskOutput(taskID, task.NodeID, notice, "stderr", 0)
 		}
 		debug("尝试 %d/%d 失败: %s", attempt+1, retryCount+1, lastError.Error())
 	}
@@ -927,11 +947,14 @@ func (h *ExecHandler) streamExecute(ctx context.Context, taskID, nodeID, command
 		h.writeRunning(ctx, taskID, buf.String())
 	}
 	defer flush()
+	// streamOffset 记录已广播字节数：每行广播时带上它的起始偏移，供客户端维护精确游标
+	var streamOffset int64
 	appendLine := func(line OutputLine) {
 		buf.WriteString(line.Line)
 		buf.WriteString("\n")
 		if h.hub != nil {
-			h.hub.BroadcastTaskOutput(taskID, line.NodeID, line.Line, line.Type)
+			h.hub.BroadcastTaskOutput(taskID, line.NodeID, line.Line, line.Type, streamOffset)
+			streamOffset += int64(len(line.Line)) + 1
 		}
 		// 限频落库:逐行写库在并发执行时会放大 sqlite 锁竞争,实时性以 WS 广播承担
 		if time.Since(lastFlush) >= 150*time.Millisecond {
