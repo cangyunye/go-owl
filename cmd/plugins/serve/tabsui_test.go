@@ -118,3 +118,29 @@ func TestTabs_PanelAndRouteContext(t *testing.T) {
 	hist := readWebFile(t, "web/js/pages/history.js")
 	assert.Contains(t, hist, "scope.openInNewTab(", "任务历史要支持中键在新标签打开详情")
 }
+
+// M3（方案 A）：保活机制——每标签容器、失活暂停、同标签换页必须释放旧页
+func TestTabs_KeepAliveMechanism(t *testing.T) {
+	app := readWebFile(t, "web/js/app.js")
+	scope := readWebFile(t, "web/js/pagescope.js")
+	term := readWebFile(t, "web/js/pages/terminal.js")
+
+	assert.Contains(t, app, "KEEP_ALIVE_SCOPES", "必须有保活白名单（哪些页面切走不销毁）")
+	assert.Contains(t, app, "tabEls", "每个标签要有自己的 DOM 容器表")
+	assert.Contains(t, app, "mountActiveTab(", "切回保活标签要走统一挂载入口（复用 DOM）")
+	assert.Contains(t, app, "releaseOutgoingPage(", "离开页面的释放/暂停逻辑要集中一处")
+	assert.Contains(t, app, "dropTabEls(", "标签关闭/换页必须真正释放 DOM 与作用域")
+	// 同标签内换页：旧页容器必须在这里释放，否则新页面写进旧容器、旧页 WS 成孤儿
+	assert.Contains(t, app, "if (tabEls.get(tab.id)) dropTabEls(tab.id);",
+		"同标签换页必须先释放上一页容器")
+
+	assert.Contains(t, scope, "pause()", "作用域要能暂停（失活标签不跑轮询/监听）")
+	assert.Contains(t, scope, "resume()", "作用域要能恢复")
+	assert.Contains(t, scope, "onResume(", "恢复钩子供页面补数据")
+	assert.Contains(t, scope, "gate(", "自持的异步回调（裸 WS）要有门控包装")
+
+	// 终端：resize 注册到作用域（失活时门控跳过），清理交给作用域
+	assert.Contains(t, term, "scope.resources.on(window, 'resize'", "终端 resize 监听要走作用域")
+	assert.NotContains(t, term, "window.addEventListener('resize'", "终端不应再用裸 window 监听")
+	assert.Contains(t, term, "scope.onResume(", "终端切回要补一次 fit")
+}

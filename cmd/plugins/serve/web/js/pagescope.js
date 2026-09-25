@@ -19,6 +19,8 @@ export function createPageScope(name = 'page', options = {}) {
   let disposed = false;
   let snapshot = options.snapshot && typeof options.snapshot === 'object' ? options.snapshot : null;
   let stateGetter = null;
+  let paused = false;
+  const resumeHooks = [];
   const tabId = options.tabId || null;
 
   // 注册一个释放动作；返回「撤销注册」的函数（资源自行结束时可提前摘掉）。
@@ -39,9 +41,10 @@ export function createPageScope(name = 'page', options = {}) {
   const resources = {
     onDispose,
 
+    // 轮询类定时器：失活时跳过回调（避免后台标签继续打服务端），恢复后下一拍自然继续
     setInterval(fn, ms) {
       if (disposed) return null;
-      const id = setInterval(fn, ms);
+      const id = setInterval(() => { if (paused) return; fn(); }, ms);
       onDispose(() => clearInterval(id));
       return id;
     },
@@ -54,11 +57,14 @@ export function createPageScope(name = 'page', options = {}) {
       return id;
     },
 
+    // 门控：失活标签里注册到作用域的监听不执行（保活时页面还在内存里，
+    // 但它的 document/window 监听不该在别的标签上生效）
     on(target, type, handler, options) {
       if (disposed || !target) return handler;
-      target.addEventListener(type, handler, options);
-      onDispose(() => target.removeEventListener(type, handler, options));
-      return handler;
+      const gated = (ev) => { if (paused) return; return handler(ev); };
+      target.addEventListener(type, gated, options);
+      onDispose(() => target.removeEventListener(type, gated, options));
+      return gated;
     },
 
     // WebSocket 句柄：形如 api.connectWebSocket() 返回值（{ close() }）
@@ -120,11 +126,30 @@ export function createPageScope(name = 'page', options = {}) {
       }
     },
 
+    // 页面自持的异步回调（如裸 WebSocket 的 onmessage）用 gate() 包一层，
+    // 失活时不执行；不需要暂停的（如终端的输出写入 xterm）就不要包。
+    gate(fn) {
+      if (typeof fn !== 'function') return fn;
+      return (arg) => { if (paused || disposed) return; return fn(arg); };
+    },
+
+    // 恢复时的刷新钩子（失活期间没跑轮询/未处理消息的页面在这里补一次）
+    onResume(fn) { if (typeof fn === 'function') resumeHooks.push(fn); },
+
+    pause() { paused = true; },
+    resume() {
+      if (!paused) return;
+      paused = false;
+      resumeHooks.forEach(fn => { try { fn(); } catch (e) { console.warn('[scope:' + name + '] resume failed:', e); } });
+    },
+    get paused() { return paused; },
+
     get disposed() { return disposed; },
     dispose() {
       if (disposed) return;
       disposed = true;
       stateGetter = null;
+      resumeHooks.length = 0;
       // 逆序释放：后注册的多依赖先生成的资源（如先建 WS 再注册其重连定时器）
       const queue = disposalQueue;
       disposalQueue = [];

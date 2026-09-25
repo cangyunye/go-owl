@@ -54,9 +54,63 @@ const VIEW_ICONS = {};
 // ---- 标签（M1：单挂载重建式）----
 // 一次只挂载一个标签的页面；切标签 = 当前页状态写入标签快照 → 释放 → 按目标标签路由重挂载。
 const tabs = createTabStore();
+// 保活页面的作用域名（M3：切标签不销毁页面，DOM 与 scope 留着，仅摘除 + 暂停）。
+// 白名单先放「后台工作自成一体、写的是自己缓存的引用」的会话类页面。
+// M3a 先只开终端：它的后台工作（写 xterm 实例）与 DOM 查询无关，最安全；
+// sftp / ai / playbooks 的失活行为需要逐页审计，放到 M3b。
+const KEEP_ALIVE_SCOPES = new Set(['terminal']);
+// 每个标签自己的视图容器与面板元素：保活标签在失活时只是从文档里摘下来
+const tabEls = new Map();   // tabId -> { view, panel, scope }
 let currentPageTabId = null;   // 当前挂载页面对应的标签（页面快照写回它）
 let tabMenuEl = null;
 let dragTabId = null;
+
+function activeViewEl() {
+  const els = currentPageTabId ? tabEls.get(currentPageTabId) : null;
+  return els ? els.view : null;
+}
+
+function createTabEls(tabId) {
+  const view = document.createElement('div');
+  view.className = 'view-container';
+  view.id = 'viewContainer';
+  const panel = document.createElement('div');
+  panel.className = 'panel-list';
+  tabEls.set(tabId, { view, panel, scope: null });
+  return tabEls.get(tabId);
+}
+
+// 把某标签的视图容器与面板换进壳层（同一个 aside 里换 panel-list 子节点）
+function attachTabEls(tabId) {
+  const els = tabEls.get(tabId);
+  if (!els) return false;
+  const main = document.querySelector('.main-area');
+  const bar = document.getElementById('tabbar');
+  if (main && els.view.parentNode !== main) {
+    if (bar && bar.nextSibling) main.insertBefore(els.view, bar.nextSibling);
+    else main.appendChild(els.view);
+  }
+  const host = document.getElementById('panelList');
+  if (host && els.panel.parentNode !== host) host.replaceChildren(els.panel);
+  return true;
+}
+
+function detachActiveEls() {
+  const els = currentPageTabId ? tabEls.get(currentPageTabId) : null;
+  if (els && els.view.parentNode) els.view.remove();
+  const host = document.getElementById('panelList');
+  if (host && els && els.panel.parentNode === host) host.replaceChildren();
+}
+
+function dropTabEls(tabId) {
+  const els = tabEls.get(tabId);
+  if (!els) return;
+  if (els.cleanup) { try { els.cleanup(); } catch (e) { console.warn('page cleanup failed:', e); } }
+  if (els.scope) { try { els.scope.dispose(); } catch (e) { console.warn('scope dispose failed:', e); } }
+  els.view.remove();
+  els.panel.remove();
+  tabEls.delete(tabId);
+}
 
 function routeForView(viewId) {
   return viewId === 'dashboard' ? '/' : '/' + viewId;
@@ -121,17 +175,15 @@ function openPathInNewTab(path) {
 
 // 面板归属当前页面：切标签/切页时先清空，页面需要时用 scope.panel 自己填，
 // 避免详情页还留着上一页的分组面板（多标签下尤其误导）。
-function makePanel() {
+function makePanel(tabId) {
+  const target = () => {
+    const els = tabId ? tabEls.get(tabId) : null;
+    return els ? els.panel : document.getElementById('panelList');
+  };
   return {
-    setContent(html) {
-      const list = document.getElementById('panelList');
-      if (list) list.innerHTML = html;
-    },
+    setContent(html) { const el = target(); if (el) el.innerHTML = html; },
     setTitle(title) { shell.setPanelTitle(title); },
-    reset() {
-      const list = document.getElementById('panelList');
-      if (list) list.innerHTML = '';
-    },
+    reset() { const el = target(); if (el) el.innerHTML = ''; },
   };
 }
 
@@ -159,23 +211,57 @@ function syncActiveTabRoute() {
   tabs.update(tab.id, { route: path, view: info.view, icon: info.icon });
 }
 
+// 把激活标签的页面挂上：保活标签已有 DOM 与 scope → 只换回来并恢复；
+// 其余情况交给 router() 重新挂载（releaseOutgoingPage 在其中统一处理释放）。
+function mountActiveTab() {
+  const tab = tabs.active();
+  if (!tab) return;
+  const path = tab.route || routeForView(tab.view);
+  const kept = tabEls.get(tab.id);
+  const resumable = kept && kept.scope && !kept.scope.disposed && KEEP_ALIVE_SCOPES.has(kept.scope.name);
+
+  history.pushState(null, '', path);
+  if (!resumable) { router(); return; }
+
+  releaseOutgoingPage();
+  currentPageTabId = tab.id;
+  currentScope = kept.scope;
+  attachTabEls(tab.id);
+  detachOtherViews(tab.id);
+  syncNavActive(tab.view);
+  shell.setViewTitle(tab.title || VIEW_TITLES[tab.view] || tab.view);
+  shell.setPanelTitle(PANEL_TITLES[tab.view] || '导航');
+  kept.scope.resume();
+}
+
 function activateTab(id) {
   const tab = tabs.get(id);
   if (!tab) return;
   if (id === tabs.activeId) { renderTabbar(); return; }
   tabs.activate(id);
-  history.pushState(null, '', tab.route || routeForView(tab.view));
-  router();
+  mountActiveTab();
+}
+
+// 导航高亮（switchView 与保活标签换回时共用）
+function syncNavActive(viewId) {
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.remove('active');
+    n.removeAttribute('aria-current');
+  });
+  const navBtn = document.querySelector(`.nav-item[data-view="${viewId}"]`);
+  if (navBtn) {
+    navBtn.classList.add('active');
+    navBtn.setAttribute('aria-current', 'page');
+  }
 }
 
 function closeTab(id) {
   if (!tabs.get(id)) return;
   const { wasActive } = tabs.close(id);
+  dropTabEls(id);                       // 被关标签的 DOM 与作用域在这里才真正释放
   tabs.ensureOne('dashboard', '/');
   if (!wasActive) return;
-  const next = tabs.active();
-  history.pushState(null, '', (next && next.route) || '/');
-  router();
+  mountActiveTab();
 }
 
 function closeTabMenu() {
@@ -253,29 +339,34 @@ function openView(viewId, opts = {}) {
   const target = routeForView(viewId);
   const info = { title: VIEW_TITLES[viewId] || viewId, icon: VIEW_ICONS[viewId] || '' };
   if (opts.newTab) {
-    if (tabs.tabs.length >= tabs.limit) {
-      showTabHint(`标签上限 ${tabs.limit} 个，先关掉一个再新开`);
-      navigate(target);
-      return;
-    }
-    const t = tabs.create(viewId, target, info);
-    activateTab(t.id);
+    if (newTabFor(viewId, target, info)) return;
+    showTabHint(`标签上限 ${tabs.limit} 个，先关掉一个再新开`);
+    navigate(target);
     return;
   }
   const active = tabs.active();
   if (active && active.view === viewId) {
-    if (location.pathname !== target) navigate(target);   // 详情页 → 回该视图列表
+    if (location.pathname === target) return;             // 已在该视图根路由，什么都不用做
+    // 当前标签停在该视图的深层路由（终端/SFTP/节点详情）：新开标签打开列表，
+    // 不要把会话页挤掉（终端保活的意义就在于此）
+    if (newTabFor(viewId, target)) return;
+    navigate(target);
     return;
   }
   const existing = tabs.byView(viewId)[0];
   if (existing) { activateTab(existing.id); return; }
-  if (tabs.tabs.length >= tabs.limit) {
-    showTabHint(`标签上限 ${tabs.limit} 个，已在当前标签打开`);
-    navigate(target);
-    return;
-  }
-  const t = tabs.create(viewId, target, info);
+  if (newTabFor(viewId, target, info)) return;
+  showTabHint(`标签上限 ${tabs.limit} 个，已在当前标签打开`);
+  navigate(target);
+}
+
+// 新开一个该视图的标签；到达上限返回 null（调用方回退到当前标签）
+function newTabFor(viewId, target, info) {
+  if (tabs.tabs.length >= tabs.limit) return null;
+  const meta = info || { title: VIEW_TITLES[viewId] || viewId, icon: VIEW_ICONS[viewId] || '' };
+  const t = tabs.create(viewId, target, meta);
   activateTab(t.id);
+  return t;
 }
 
 function renderTabbar() {
@@ -370,15 +461,27 @@ const shell = {
   }
 };
 
-// 每次导航开始时调用：把上一页的状态快照/滚动位置写回它所属的标签，释放上一页的
-// cleanup 与资源作用域，再为即将挂载的页面建作用域（带上该标签上次的快照）。
-function beginPage(name) {
+// 离开当前页面：保活页面（见 KEEP_ALIVE_SCOPES）只摘 DOM + 暂停，别的照旧释放。
+// 抽出来是为了让「导航挂载」与「切回保活标签」共用同一段语义。
+function releaseOutgoingPage() {
   const outgoing = currentScope;
   const host = currentPageTabId ? tabs.get(currentPageTabId) : null;
+
+  if (outgoing && KEEP_ALIVE_SCOPES.has(outgoing.name)) {
+    const els = host ? tabEls.get(host.id) : null;
+    if (els) {
+      els.scope = outgoing;          // 留着：切回时 attach + resume
+      els.cleanup = currentCleanup;  // 页面自己的清理也留到关闭标签时再跑
+    }
+    currentCleanup = null;
+    return;                          // scope 不 dispose，交给 dropTabEls
+  }
+
   if (host && outgoing) {
     const snap = outgoing.takeSnapshot();
     if (snap) tabs.setSnapshot(host.id, outgoing.name, snap);
-    const vc = document.querySelector('.view-container');
+    const els = tabEls.get(host.id);
+    const vc = (els && els.view) || document.querySelector('.view-container');
     if (vc) tabs.setScroll(host.id, outgoing.name, vc.scrollTop);
   }
   if (currentCleanup) {
@@ -386,23 +489,49 @@ function beginPage(name) {
     currentCleanup = null;
   }
   if (outgoing) outgoing.dispose();
+  if (host) dropTabEls(host.id);
+}
 
+// 每次导航开始时调用：释放/暂停上一页，再为即将挂载的页面建作用域（带上该标签的快照）。
+function beginPage(name) {
+  releaseOutgoingPage();
   const tab = tabs.active();
   currentPageTabId = tab ? tab.id : null;
-  const panel = makePanel();
+  if (!tab) {
+    // 登录页等无标签场景：给个无容器的空作用域，页面各自忽略
+    currentScope = createPageScope(name, { context: routeContext, openInNewTab: openPathInNewTab });
+    return currentScope;
+  }
+  // 同标签内换页：上一页（保活的会话页也是）在这个标签里已经离开，
+  // 它的 DOM 与作用域必须在这里释放——否则新页面会写进它的容器、而它的 WS 变成孤儿。
+  if (tabEls.get(tab.id)) dropTabEls(tab.id);
+  createTabEls(tab.id);
+  attachTabEls(tab.id);
+  detachOtherViews(tab.id);
+  const panel = makePanel(tab.id);
   panel.reset();   // 面板随页面：先清空，页面需要时自己填
   currentScope = createPageScope(name, {
-    snapshot: tab ? tab.snapshots[name] : null,
-    tabId: currentPageTabId,     // 页面用它拼按标签命名的存储键
+    snapshot: tab.snapshots[name],
+    tabId: tab.id,               // 页面用它拼按标签命名的存储键
     panel,
     context: routeContext,
     openInNewTab: openPathInNewTab,
   });
+  tabEls.get(tab.id).scope = currentScope;
   return currentScope;
 }
 
+// 只保留激活标签的视图容器挂在文档里（保活标签的容器留在内存）
+function detachOtherViews(activeId) {
+  const main = document.querySelector('.main-area');
+  if (!main) return;
+  tabEls.forEach((els, id) => {
+    if (id !== activeId && els.view.parentNode === main) els.view.remove();
+  });
+}
+
 function render(html, afterRender) {
-  const container = document.querySelector('.view-container');
+  const container = activeViewEl() || document.querySelector('.view-container');
   const app = document.getElementById('app');
   if (container && shellRendered) {
     container.innerHTML = html;
@@ -606,15 +735,7 @@ function switchView(viewId, pushState) {
   const scope = beginPage(viewId);
   tabs.updateActive({ view: viewId, title: VIEW_TITLES[viewId] || viewId, icon: VIEW_ICONS[viewId] || '' });
 
-  document.querySelectorAll('.nav-item').forEach(n => {
-    n.classList.remove('active');
-    n.removeAttribute('aria-current');
-  });
-  const navBtn = document.querySelector(`.nav-item[data-view="${viewId}"]`);
-  if (navBtn) {
-    navBtn.classList.add('active');
-    navBtn.setAttribute('aria-current', 'page');
-  }
+  syncNavActive(viewId);
 
   shell.setViewTitle(VIEW_TITLES[viewId] || viewId);
   shell.setPanelTitle(PANEL_TITLES[viewId] || '导航');

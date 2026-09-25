@@ -1,4 +1,4 @@
-export function renderTerminal(render, navigate, user, api, nodeId) {
+export function renderTerminal(render, navigate, user, api, nodeId, scope) {
   let ws = null;
   let term = null;
   let fitAddon = null;
@@ -78,13 +78,16 @@ export function renderTerminal(render, navigate, user, api, nodeId) {
       }
     });
 
+    // 失活标签的终端容器已从文档摘除：fit() 会量到 0 尺寸并误发 resize 帧，
+    // 所以这条监听注册到作用域（自动随标签关闭回收，且失活期间被门控跳过）。
     const doResize = () => {
+      if (!term || !term.element || !term.element.isConnected) return;
       if (fitAddon) fitAddon.fit();
-      if (ws && ws.readyState === WebSocket.OPEN && term) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
       }
     };
-    window.addEventListener('resize', doResize);
+    scope.resources.on(window, 'resize', doResize);
 
     connect();
 
@@ -95,10 +98,13 @@ export function renderTerminal(render, navigate, user, api, nodeId) {
       connect();
     });
 
-    return () => {
-      window.removeEventListener('resize', doResize);
+    // 切回本标签时补一次 fit：失活期间窗口可能已经变过尺寸
+    scope.onResume(() => { if (term && term.element && term.element.isConnected) doResize(); });
+
+    // 清理留给作用域：保活标签只在关闭/被替换时真正关闭 WS 与释放终端实例
+    scope.resources.onDispose(() => {
       if (ws) ws.close();
       if (term) term.dispose();
-    };
+    });
   });
 }
