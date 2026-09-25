@@ -37,8 +37,21 @@ def close_overlays(page):
     page.wait_for_timeout(200)
 
 
+def reset_tabs(page):
+    """把标签集合重置为「当前路由一个」。
+
+    内建标签页（v1.9.0）之后，点导航会复用/新建标签，连续采集会让标签栏越积越多、
+    截图不可读；采集每个小节前清一次，保证每张图都是干净的单个标签。
+    """
+    page.evaluate("localStorage.removeItem('owl-tabs')")
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(1200)
+
+
 def nav(page, view):
     close_overlays(page)
+    reset_tabs(page)
     page.click(f'.nav-item[data-view="{view}"]')
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(800)
