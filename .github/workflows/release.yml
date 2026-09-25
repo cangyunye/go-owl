@@ -48,4 +48,12 @@ jobs:
           cp build/darwin-amd64/gscp dist/gscp-darwin-amd64
           cp build/darwin-arm64/gscp dist/gscp-darwin-arm64
           cp build/windows-amd64/gscp.exe dist/gscp-windows-amd64.exe
-          gh release create "$TAG" dist/* --title "$TAG" --generate-notes
+          # Release 正文优先取仓库内的变更记录（docs/releases/<tag>.md，发布前随版本提交）；
+          # 本仓库不走 PR 流程，--generate-notes 只会生成一行 Full Changelog 链接，
+          # 因此没有该文件时才退化为自动生成（见 docs/dev/RELEASING.md）。
+          if [ -f "docs/releases/$TAG.md" ]; then
+            gh release create "$TAG" dist/* --title "$TAG" --notes-file "docs/releases/$TAG.md"
+          else
+            echo "::warning::docs/releases/$TAG.md 不存在，Release 正文退化为自动生成链接"
+            gh release create "$TAG" dist/* --title "$TAG" --generate-notes
+          fi
