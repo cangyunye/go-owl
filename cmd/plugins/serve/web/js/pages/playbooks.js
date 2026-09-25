@@ -1129,7 +1129,7 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
       const cur = state.currentRun;
       if (cur && cur.id) api.playbookRun(cur.id).then(run => showRunDetail(run)).catch(() => {});
     });
-    ws = api.connectWebSocket(scope.gate(msg => {
+    ws = api.onWS(scope.gate(msg => {
       if (msg.type === 'playbook_run_update') {
         loadRuns();
         const detail = document.getElementById('run-detail');

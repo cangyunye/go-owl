@@ -4,6 +4,15 @@ const API_BASE = '/api/v1';
 const NODES_ALL_TTL = 30000;
 let nodesAllCache = { at: 0, nodes: null, inflight: null };
 
+// 共享 WS 总线（见 api.onWS）：一条连接 + 一组订阅者
+const wsBusHandlers = new Set();
+let wsBusConn = null;
+function busDispatch(msg) {
+  wsBusHandlers.forEach(fn => {
+    try { fn(msg); } catch (e) { console.warn('ws handler failed:', e); }
+  });
+}
+
 function token() {
   return localStorage.getItem('token');
 }
@@ -566,6 +575,28 @@ export const api = {
 
   // 建连改用一次性票据：长期 JWT 不再出现在 URL 中（避免进反代日志/浏览器历史）。
   // 保持同步签名返回句柄，票据异步获取，未取到则保持断开。
+  // 共享 WS 总线：全应用一条连接，所有订阅者共用（代替「每个页面各建一条 + 各自 3s 重连」）。
+  // 广播是全量的（服务端 WSHub 不做订阅过滤），所以多一条连接只是多一份解码与缓冲，
+  // 收敛成一条纯赚；页面的失活门控仍由各自的 scope 负责。
+  // 返回 { close() } 与 connectWebSocket 同形状，调用点无需改写法。
+  onWS(onMessage) {
+    const handler = onMessage;
+    wsBusHandlers.add(handler);
+    if (!wsBusConn) wsBusConn = api.connectWebSocket(busDispatch);
+    let closed = false;
+    return {
+      close() {
+        if (closed) return;
+        closed = true;
+        wsBusHandlers.delete(handler);
+        if (wsBusHandlers.size === 0 && wsBusConn) { wsBusConn.close(); wsBusConn = null; }
+      },
+    };
+  },
+
+  // 当前共享连接上的订阅者数量（诊断/测试用）
+  wsSubscribers: () => wsBusHandlers.size,
+
   connectWebSocket(onMessage) {
     let ws = null;
     let closed = false;

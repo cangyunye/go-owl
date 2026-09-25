@@ -250,7 +250,7 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
     }
 
     // WS 与 cleanup 都交给页面作用域统一释放（保留返回值，便于页内主动重连）
-    state.wsCleanup = scope.resources.ws(api.connectWebSocket(msg => {
+    state.wsCleanup = scope.resources.ws(api.onWS(msg => {
       if (msg.type === 'history_update' || msg.type === 'task_update' || msg.type === 'playbook_run_update') load();
     }));
 

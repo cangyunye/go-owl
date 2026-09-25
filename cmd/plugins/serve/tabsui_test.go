@@ -144,3 +144,18 @@ func TestTabs_KeepAliveMechanism(t *testing.T) {
 	assert.NotContains(t, term, "window.addEventListener('resize'", "终端不应再用裸 window 监听")
 	assert.Contains(t, term, "scope.onResume(", "终端切回要补一次 fit")
 }
+
+// M4a：共享 WS 总线——四个页面共用一条连接，订阅者归零才关闭
+func TestWS_SharedBus(t *testing.T) {
+	api := readWebFile(t, "web/js/api.js")
+	assert.Contains(t, api, "onWS(onMessage)", "api.js 必须提供 onWS 订阅入口")
+	assert.Contains(t, api, "wsBusHandlers", "总线要维护订阅者集合")
+	assert.Contains(t, api, "wsSubscribers", "订阅者数量要可观测（便于测试与诊断）")
+
+	for _, p := range []string{"playbooks", "history", "task_detail", "exec"} {
+		src := readWebFile(t, "web/js/pages/"+p+".js")
+		assert.Contains(t, src, "api.onWS(", "%s.js 应改用共享总线", p)
+		assert.NotContains(t, src, "api.connectWebSocket(",
+			"%s.js 不应再自建 WS（每页一条连接 + 各自重连）", p)
+	}
+}

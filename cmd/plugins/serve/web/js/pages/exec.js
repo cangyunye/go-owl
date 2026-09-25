@@ -750,7 +750,7 @@ export function renderExec(render, navigate, user, api, shell, scope) {
         if (finished.size >= currentTaskIDs.length) finalize();
       };
 
-      wsCleanup = api.connectWebSocket(msg => {
+      wsCleanup = api.onWS(msg => {
         if (msg.type === 'task_output') {
           const t = msg.data;
           if (!t || !currentTaskIDs.includes(t.task_id)) return;
