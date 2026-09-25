@@ -1,4 +1,4 @@
-export function renderFiles(render, navigate, user, api, shell) {
+export function renderFiles(render, navigate, user, api, shell, scope) {
   let allNodes = [];
   let selectedNodes = new Set();
   let transfers = [];
@@ -781,13 +781,11 @@ export function renderFiles(render, navigate, user, api, shell) {
     }
   }
 
+  // 传输列表 5s 轮询：注册到页面作用域，切页自动停（原先的 stopAutoRefresh
+  // 全仓没有调用点，每进一次文件页就永久多一个定时器）
   function startAutoRefresh() {
     if (refreshTimer) clearInterval(refreshTimer);
-    refreshTimer = setInterval(loadTransfers, 5000);
-  }
-
-  function stopAutoRefresh() {
-    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    refreshTimer = scope.resources.setInterval(loadTransfers, 5000);
   }
 
   render(`

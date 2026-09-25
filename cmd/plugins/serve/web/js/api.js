@@ -317,7 +317,7 @@ export const api = {
   // aiChatStream 走 SSE 流式聊天；handlers: {onDelta, onTool, onProgress}。
   // 失败（含流中途断开）抛错，调用方可回退 aiChat。
   aiChatStream: async (payload, handlers = {}) => {
-    const res = await fetch(`${API_BASE}/ai/chat/stream`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
+    const res = await fetch(`${API_BASE}/ai/chat/stream`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload), signal: handlers.signal });
     if (res.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');

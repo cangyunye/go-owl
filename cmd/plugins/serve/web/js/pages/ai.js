@@ -1,6 +1,6 @@
 import { SlashMenu } from '../slash-menu.js';
 
-export async function renderAI(render, navigate, user, api, shell) {
+export async function renderAI(render, navigate, user, api, shell, scope) {
   let sessionId = null;
   let publicKeySpki = null;
   let chatMessages = [];
@@ -163,7 +163,7 @@ export async function renderAI(render, navigate, user, api, shell) {
 
   function scheduleStreamFlush() {
     if (streamFlushTimer) return;
-    streamFlushTimer = setTimeout(() => {
+    streamFlushTimer = scope.resources.setTimeout(() => {
       streamFlushTimer = null;
       renderStreamBubble();
     }, 200);
@@ -206,17 +206,23 @@ export async function renderAI(render, navigate, user, api, shell) {
 
       // 优先走 SSE 流式；失败回退一次性 /ai/chat
       let done = null;
+      const ac = new AbortController();
+      const offAbort = scope.resources.onDispose(() => ac.abort());
       try {
         done = await api.aiChatStream(payload, {
+          signal: ac.signal,
           onDelta: (t) => { ensureStreamBubble(); streamText += t; scheduleStreamFlush(); },
           onTool: (obj) => { if (obj && obj.name) { streamToolName = obj.name; if (streamBubble) renderStreamBubble(); } },
         });
       } catch (streamErr) {
-        if (streamErr && streamErr.isRateLimit) throw streamErr; // 限流不回退重试
+        // 切页/关标签导致的中止：静默收尾，不回退也不弹错
+        if (ac.signal.aborted) { offAbort(); return; }
+        if (streamErr && streamErr.isRateLimit) { offAbort(); throw streamErr; } // 限流不回退重试
         console.warn('stream failed, fallback to blocking chat:', streamErr);
         if (streamBubble) { streamBubble.el.remove(); resetStreamState(); showThinking(); }
         done = await api.aiChat(payload.message, payload.session_id, payload.encrypted_api_key, payload.provider, payload.model, payload.base_url, payload.api_type);
       }
+      offAbort();
 
       hideThinking();
       resetStreamState();
@@ -301,7 +307,7 @@ export async function renderAI(render, navigate, user, api, shell) {
           </div>
           <div class="modal-actions"><button class="btn btn-secondary" id="ai-approvals-close">关闭</button></div>
         </div>`;
-      document.body.appendChild(overlay);
+      scope.resources.overlay(overlay);
       overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
       overlay.querySelector('#ai-approvals-close').addEventListener('click', () => overlay.remove());
       overlay.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', async () => {

@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { createPageScope } from './pagescope.js';
 import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderExec } from './pages/exec.js';
@@ -14,6 +15,7 @@ import { renderHistory } from './pages/history.js';
 import { renderAlerts } from './pages/alerts.js';
 
 let currentCleanup = null;
+let currentScope = null;
 let shellRendered = false;
 let currentViewId = null;
 
@@ -69,6 +71,19 @@ const shell = {
     if (bc) bc.textContent = title;
   }
 };
+
+// 每次导航开始时调用：释放上一页的 cleanup 与资源作用域，返回新页面的作用域。
+// 页面把定时器/监听/浮层/WS/流注册到 scope.resources，导航切走时统一回收——
+// 不再依赖各页自己记得清理（历史泄漏见 web/js/pagescope.js 顶部说明）。
+function beginPage(name) {
+  if (currentCleanup) {
+    try { currentCleanup(); } catch (e) { console.warn('page cleanup failed:', e); }
+    currentCleanup = null;
+  }
+  if (currentScope) currentScope.dispose();
+  currentScope = createPageScope(name || 'page');
+  return currentScope;
+}
 
 function render(html, afterRender) {
   const container = document.querySelector('.view-container');
@@ -256,6 +271,7 @@ function switchView(viewId, pushState) {
   const currentNav = document.querySelector('.nav-item.active');
   if (currentNav && currentNav.dataset.view === viewId) return;
   currentViewId = viewId;
+  const scope = beginPage(viewId);
 
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.remove('active');
@@ -299,37 +315,37 @@ function switchView(viewId, pushState) {
 
   switch (viewId) {
     case 'dashboard':
-      renderDashboard(render, navigate, user, api, shell);
+      renderDashboard(render, navigate, user, api, shell, scope);
       break;
     case 'nodes':
-      renderNodes(render, navigate, user, api, shell);
+      renderNodes(render, navigate, user, api, shell, scope);
       break;
     case 'exec':
-      renderExec(render, navigate, user, api, shell);
+      renderExec(render, navigate, user, api, shell, scope);
       break;
     case 'playbooks':
-      renderPlaybooks(render, navigate, user, api, shell);
+      renderPlaybooks(render, navigate, user, api, shell, scope);
       break;
     case 'files':
-      renderFiles(render, navigate, user, api, shell);
+      renderFiles(render, navigate, user, api, shell, scope);
       break;
     case 'ai':
-      renderAI(render, navigate, user, api, shell);
+      renderAI(render, navigate, user, api, shell, scope);
       break;
     case 'history':
-      renderHistory(render, navigate, user, api, shell);
+      renderHistory(render, navigate, user, api, shell, scope);
       break;
     case 'alerts':
-      renderAlerts(render, navigate, user, api, shell);
+      renderAlerts(render, navigate, user, api, shell, scope);
       break;
     case 'settings':
-      renderSettings(render, navigate, user, api);
+      renderSettings(render, navigate, user, api, scope);
       break;
     case 'users':
-      renderUsers(render, navigate, user, api, shell);
+      renderUsers(render, navigate, user, api, shell, scope);
       break;
     default:
-      renderDashboard(render, navigate, user, api);
+      renderDashboard(render, navigate, user, api, shell, scope);
   }
 
   updatePanelContent(viewId);
@@ -461,6 +477,7 @@ function router() {
 
   if (path === '/login') {
     shellRendered = false;
+    beginPage('login');
     renderLogin(render, navigate);
     return;
   }
@@ -485,18 +502,20 @@ function router() {
   } else if (termMatch) {
     const termNodeId = decodeURIComponent(termMatch[1]);
     setViewMetadata('终端', '节点管理');
+    const scope = beginPage('terminal');
     import('./pages/terminal.js').then(m => {
-      m.renderTerminal(render, navigate, u, api, termNodeId);
+      m.renderTerminal(render, navigate, u, api, termNodeId, scope);
     });
   } else if (sftpMatch) {
     const sftpNodeId = decodeURIComponent(sftpMatch[1]);
     setViewMetadata('文件管理', '节点管理');
+    const scope = beginPage('sftp');
     import('./pages/sftp.js').then(m => {
-      m.renderSftp(render, navigate, u, api, sftpNodeId);
+      m.renderSftp(render, navigate, u, api, sftpNodeId, scope);
     });
   } else if (nodeMatch) {
     setViewMetadata('节点详情', '节点管理');
-    renderNodeDetail(render, navigate, u, api, decodeURIComponent(nodeMatch[1]));
+    renderNodeDetail(render, navigate, u, api, decodeURIComponent(nodeMatch[1]), beginPage('node-detail'));
   } else if (path === '/exec') {
     switchView('exec', false);
   } else if (path === '/tasks' || path === '/tasks/') {
@@ -504,8 +523,9 @@ function router() {
   } else if (taskMatch) {
     const taskId = decodeURIComponent(taskMatch[1]);
     setViewMetadata('任务详情', '任务历史');
+    const scope = beginPage('task-detail');
     import('./pages/task_detail.js').then(m => {
-      const cleanup = m.renderTaskDetail(render, navigate, u, api, taskId);
+      const cleanup = m.renderTaskDetail(render, navigate, u, api, taskId, scope);
       if (typeof cleanup === 'function') currentCleanup = cleanup;
     });
   } else if (path === '/playbooks') {

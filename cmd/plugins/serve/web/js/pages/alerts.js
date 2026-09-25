@@ -1,6 +1,6 @@
 // 告警页：告警列表（分组面板/状态级别/类型/节点筛选、分页）、处置（确认/解决）、
 // 详情与对策（查看/复制，编辑/新增/删除仅 admin）、监控配置（静默/告警类型/通知渠道，admin）。
-export function renderAlerts(render, navigate, user, api, shell) {
+export function renderAlerts(render, navigate, user, api, shell, scope) {
   const isOperator = ['operator', 'admin'].includes(user.role);
   const isAdmin = user.role === 'admin';
   const pageSize = 20;
@@ -261,11 +261,11 @@ export function renderAlerts(render, navigate, user, api, shell) {
       await navigator.clipboard.writeText(text);
     } catch {
       const ta = document.createElement('textarea');
-      ta.value = text; document.body.appendChild(ta); ta.select();
+      ta.value = text; scope.resources.overlay(ta); ta.select();
       try { document.execCommand('copy'); } catch {}
       ta.remove();
     }
-    if (btn) { const t = btn.textContent; btn.textContent = '✓ 已复制'; setTimeout(() => { btn.textContent = t; }, 1200); }
+    if (btn) { const t = btn.textContent; btn.textContent = '✓ 已复制'; scope.resources.setTimeout(() => { btn.textContent = t; }, 1200); }
   }
 
   async function openDetail(id) {
@@ -326,7 +326,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         if (plan.status === 'done' && !res.verification && (loadPlanProgress._tries?.[planId] || 0) < 40) {
           loadPlanProgress._tries = loadPlanProgress._tries || {};
           loadPlanProgress._tries[planId] = (loadPlanProgress._tries[planId] || 0) + 1;
-          setTimeout(() => loadPlanProgress(planId, area), 1500);
+          scope.resources.setTimeout(() => loadPlanProgress(planId, area), 1500);
           area.innerHTML = planProgressHtml(plan, null);
           return;
         }
@@ -352,7 +352,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         loadPlanProgress(planId, area);
       });
       if (plan && !['done', 'stopped', 'failed'].includes(plan.status)) {
-        setTimeout(() => loadPlanProgress(planId, area), 1500);
+        scope.resources.setTimeout(() => loadPlanProgress(planId, area), 1500);
       }
     }
 
@@ -460,7 +460,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
       </div>
     </div>`;
 
-    document.body.appendChild(overlay);
+    scope.resources.overlay(overlay);
     overlay.querySelector('#detail-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
@@ -582,7 +582,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
           <span style="color:var(--muted)">${esc(r.created_by || '')}</span>
         </li>`).join('')}</ul>` : '';
       if (runs.some(r => r.status === 'pending' || r.status === 'running')) {
-        setTimeout(loadBindingRuns, 2000);
+        scope.resources.setTimeout(loadBindingRuns, 2000);
       }
     }
     loadBindingRuns();
@@ -650,7 +650,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         </div>
       </div>
     </div>`;
-    document.body.appendChild(editor);
+    scope.resources.overlay(editor);
 
     const kindSel = editor.querySelector('#re-kind');
     kindSel.addEventListener('change', () => {
@@ -764,7 +764,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         </div>
       </div>
     </div>`;
-    document.body.appendChild(editor);
+    scope.resources.overlay(editor);
 
     const pbList = editor.querySelector('#be-pb-list');
     const searchInput = editor.querySelector('#be-search');
@@ -897,7 +897,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         </div>
       </div>
     </div>`;
-    document.body.appendChild(overlay);
+    scope.resources.overlay(overlay);
     const close = () => overlay.remove();
     overlay.querySelector('#sc-close').addEventListener('click', close);
     overlay.querySelector('#sc-cancel').addEventListener('click', close);
@@ -939,7 +939,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         <div id="dbg-result"></div>
       </div>
     </div>`;
-    document.body.appendChild(overlay);
+    scope.resources.overlay(overlay);
 
     // 默认选中范围内第一个节点
     const scopeFirst = (at.scope_nodes || '').split(',').map(x => x.trim()).filter(Boolean)[0];
@@ -1081,7 +1081,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         </div>
       </div>
     </div>`;
-    document.body.appendChild(editor);
+    scope.resources.overlay(editor);
 
     const modeSel = editor.querySelector('#ca-mode');
     const toggle = (sel, show) => { [sel + '-label', sel + '-wrap', sel + '-hint'].forEach(id => {
@@ -1183,7 +1183,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         if (r) openRemedyEditor({ alertTypeId: at.id, existing: r, onSaved: render });
       }));
     }
-    document.body.appendChild(overlay);
+    scope.resources.overlay(overlay);
     await render();
   }
 
@@ -1294,7 +1294,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         at.default_params.duration = parseInt(tr.querySelector('.at-dur').value) || 1;
         at.enabled = tr.querySelector('.at-enabled').checked;
         at.auto_approve = tr.querySelector('.at-auto').checked;
-        try { await api.updateAlertType(id, at); btn.textContent = '✓ 已保存'; setTimeout(() => { btn.textContent = '保存'; }, 1500); } catch (e) { alert('保存失败: ' + (e.message || e)); }
+        try { await api.updateAlertType(id, at); btn.textContent = '✓ 已保存'; scope.resources.setTimeout(() => { btn.textContent = '保存'; }, 1500); } catch (e) { alert('保存失败: ' + (e.message || e)); }
       });
     });
 

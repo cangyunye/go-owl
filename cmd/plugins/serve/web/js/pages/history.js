@@ -1,4 +1,4 @@
-export function renderHistory(render, navigate, user, api, shell) {
+export function renderHistory(render, navigate, user, api, shell, scope) {
   const isAdmin = user && user.role === 'admin';
   const pageSize = 50;
   const state = {
@@ -160,7 +160,7 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
         ${(!execBlocks && !tfRows && !commRows) ? '<p style="color:var(--muted)">无明细数据</p>' : ''}
       </div>
     </div>`;
-    document.body.appendChild(overlay);
+    scope.resources.overlay(overlay);
     overlay.querySelector('#detail-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
     overlay.querySelector('#dl-zip')?.addEventListener('click', () => {
@@ -212,17 +212,17 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
     let userTimer = null;
     document.getElementById('user-filter').addEventListener('input', (e) => {
       clearTimeout(userTimer);
-      userTimer = setTimeout(() => { state.user = e.target.value.trim(); state.page = 1; load(); }, 300);
+      userTimer = scope.resources.setTimeout(() => { state.user = e.target.value.trim(); state.page = 1; load(); }, 300);
     });
     let nodeTimer = null;
     document.getElementById('node-filter').addEventListener('input', (e) => {
       clearTimeout(nodeTimer);
-      nodeTimer = setTimeout(() => { state.nodeId = e.target.value.trim(); state.page = 1; load(); }, 300);
+      nodeTimer = scope.resources.setTimeout(() => { state.nodeId = e.target.value.trim(); state.page = 1; load(); }, 300);
     });
     let cmdTimer = null;
     document.getElementById('cmd-filter').addEventListener('input', (e) => {
       clearTimeout(cmdTimer);
-      cmdTimer = setTimeout(() => { state.command = e.target.value.trim(); state.page = 1; load(); }, 300);
+      cmdTimer = scope.resources.setTimeout(() => { state.command = e.target.value.trim(); state.page = 1; load(); }, 300);
     });
     document.getElementById('export-json').addEventListener('click', () => api.historyExport(buildParams(), 'json').catch(() => alert('导出失败')));
     document.getElementById('export-yaml').addEventListener('click', () => api.historyExport(buildParams(), 'yaml').catch(() => alert('导出失败')));
@@ -238,9 +238,10 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
       });
     }
 
-    state.wsCleanup = api.connectWebSocket(msg => {
+    // WS 与 cleanup 都交给页面作用域统一释放（保留返回值，便于页内主动重连）
+    state.wsCleanup = scope.resources.ws(api.connectWebSocket(msg => {
       if (msg.type === 'history_update' || msg.type === 'task_update' || msg.type === 'playbook_run_update') load();
-    });
+    }));
 
     return () => { if (state.wsCleanup) state.wsCleanup.close(); };
   });

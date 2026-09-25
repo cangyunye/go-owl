@@ -1,4 +1,4 @@
-export function renderNodes(render, navigate, user, api, shell) {
+export function renderNodes(render, navigate, user, api, shell, scope) {
   let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', status: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '', pingResults: {}, checkResults: {}, selectedIds: [], expandedId: null, groupCounts: {} };
   const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
   const canExec = ['admin', 'operator'].includes(user.role);
@@ -845,7 +845,8 @@ export function renderNodes(render, navigate, user, api, shell) {
       document.getElementById('modal-overlay').addEventListener('click', (e) => {
         if (e.target === e.currentTarget) hideAddModal();
       });
-      document.addEventListener('keydown', (e) => {
+      // 注册到作用域：document 级监听不能只加不移（历史上每次挂载泄漏一条）
+      scope.resources.on(document, 'keydown', (e) => {
         if (e.key === 'Escape') {
           const overlay = document.querySelector('.modal-overlay.open');
           if (overlay) overlay.classList.remove('open');

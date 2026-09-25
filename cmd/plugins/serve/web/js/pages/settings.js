@@ -1,4 +1,4 @@
-export function renderSettings(render, navigate, user, api) {
+export function renderSettings(render, navigate, user, api, scope) {
   loadSettings();
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -602,7 +602,8 @@ export function renderSettings(render, navigate, user, api) {
     aiModalOverlay.addEventListener('click', e => {
       if (e.target === aiModalOverlay) closeAiModal();
     });
-    document.addEventListener('keydown', e => {
+    // 走页面作用域：document 级监听不能只加不移（历史上每次挂载泄漏一条）
+    scope.resources.on(document, 'keydown', e => {
       if (e.key === 'Escape' && aiModalOverlay.classList.contains('open')) closeAiModal();
     });
 
@@ -917,8 +918,7 @@ export function renderSettings(render, navigate, user, api) {
     }
 
     const onSectionsChange = () => applySections();
-    document.addEventListener('owl:settings-sections', onSectionsChange);
+    scope.resources.on(document, 'owl:settings-sections', onSectionsChange);
     applySections();
-    return () => document.removeEventListener('owl:settings-sections', onSectionsChange);
   });
 }
