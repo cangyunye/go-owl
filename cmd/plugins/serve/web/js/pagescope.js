@@ -14,9 +14,12 @@
 //     scope.resources.onDispose(() => ac.abort());
 //   }
 
-export function createPageScope(name = 'page') {
+export function createPageScope(name = 'page', options = {}) {
   let disposalQueue = [];
   let disposed = false;
+  let snapshot = options.snapshot && typeof options.snapshot === 'object' ? options.snapshot : null;
+  let stateGetter = null;
+  const tabId = options.tabId || null;
 
   // 注册一个释放动作；返回「撤销注册」的函数（资源自行结束时可提前摘掉）。
   // 作用域已释放时：立即执行一次 fn（避免注册即泄漏），并返回空操作。
@@ -78,11 +81,44 @@ export function createPageScope(name = 'page') {
 
   return {
     name,
+    tabId,          // 供页面拼「按标签命名」的存储键（两个标签不能共用一个键）
     resources,
+
+    // ---- 标签页状态快照（M1：重建式标签切回时恢复页面上下文）----
+    // 页面挂载时用 defaults 声明状态形状并取回上次的快照：
+    //   let state = scope.restoreState({ page: 1, query: '', ... });
+    // 只合并 defaults 里出现过的键，避免旧快照注入未知字段。
+    restoreState(defaults) {
+      const out = { ...(defaults || {}) };
+      if (!snapshot) return out;
+      for (const k of Object.keys(out)) {
+        if (Object.prototype.hasOwnProperty.call(snapshot, k)) out[k] = snapshot[k];
+      }
+      return out;
+    },
+
+    // 注册状态提取器：app.js 在切走/关闭标签前取一次快照（惰性，不做周期性开销）。
+    // 传投影而不是整个状态对象，可避免把列表缓存也存进快照。
+    persistState(getter) {
+      stateGetter = typeof getter === 'function' ? getter : null;
+    },
+
+    // 供 app.js 调用：取当前状态的 JSON 快照（取不到就返回 null，此时保留标签上的旧快照）
+    takeSnapshot() {
+      if (!stateGetter) return null;
+      try {
+        return JSON.parse(JSON.stringify(stateGetter()));
+      } catch (e) {
+        console.warn('[scope:' + name + '] snapshot failed:', e);
+        return null;
+      }
+    },
+
     get disposed() { return disposed; },
     dispose() {
       if (disposed) return;
       disposed = true;
+      stateGetter = null;
       // 逆序释放：后注册的多依赖先生成的资源（如先建 WS 再注册其重连定时器）
       const queue = disposalQueue;
       disposalQueue = [];

@@ -33,10 +33,30 @@ export function renderFiles(render, navigate, user, api, shell, scope) {
   let tasksPage = 1;
   let tasksTotal = 0;
 
-  const saved = sessionStorage.getItem('files_selected_nodes');
+  // 勾选状态按标签命名空间存：同一个文件页的两个标签不能共用一份选择
+  const storageKey = 'owl-tab-' + (scope.tabId || 'default') + '-files-nodes';
+  const saved = sessionStorage.getItem(storageKey);
   if (saved) {
     try { JSON.parse(saved).forEach(id => selectedNodes.add(id)); } catch {}
   }
+
+  // 标签页状态：本标签的勾选/过滤/翻页，切回该标签时恢复
+  {
+    const snap = scope.restoreState({ selectedNodes: [], currentPage: 1, searchQuery: '', statusFilter: '', activeGroups: [], activeDirection: 'push', transferFilter: 'all', transferSearch: '', transferDir: 'all', recordsPage: 1, tasksPage: 1, stagingSearch: '' });
+    if (!saved && snap.selectedNodes && snap.selectedNodes.length) selectedNodes = new Set(snap.selectedNodes);
+    currentPage = snap.currentPage || currentPage;
+    searchQuery = snap.searchQuery || searchQuery;
+    statusFilter = snap.statusFilter || statusFilter;
+    activeGroups = snap.activeGroups || activeGroups;
+    activeDirection = snap.activeDirection || activeDirection;
+    transferFilter = snap.transferFilter || transferFilter;
+    transferSearch = snap.transferSearch || transferSearch;
+    transferDir = snap.transferDir || transferDir;
+    recordsPage = snap.recordsPage || recordsPage;
+    tasksPage = snap.tasksPage || tasksPage;
+    stagingSearch = snap.stagingSearch || stagingSearch;
+  }
+  scope.persistState(() => ({ selectedNodes: [...selectedNodes], currentPage, searchQuery, statusFilter, activeGroups, activeDirection, transferFilter, transferSearch, transferDir, recordsPage, tasksPage, stagingSearch }));
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
   function timeAgo(t) { if (!t) return '-'; const s = Math.floor((Date.now() - new Date(t).getTime())/1000); if (s<60) return s+'s'; if (s<3600) return Math.floor(s/60)+'m'; return Math.floor(s/3600)+'h'; }
@@ -69,7 +89,7 @@ export function renderFiles(render, navigate, user, api, shell, scope) {
   }
 
   function saveSelection() {
-    sessionStorage.setItem('files_selected_nodes', JSON.stringify(Array.from(selectedNodes)));
+    sessionStorage.setItem(storageKey, JSON.stringify(Array.from(selectedNodes)));
   }
 
   function updateSelectedCount() {

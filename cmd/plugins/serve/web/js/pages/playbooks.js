@@ -1,8 +1,8 @@
-export function renderPlaybooks(render, navigate, user, api, shell) {
+export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   const PB_VIEW_KEY = 'owl-pb-view';
   const PB_LIB_KEY = 'owl-pb-lib';
 
-  let state = {
+  let state = scope.restoreState({
     playbooks: [],
     filteredPlaybooks: [],
     query: '',
@@ -19,7 +19,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     pendingCancelId: null,
     failOnly: false,
     currentRun: null,
-  };
+  });
 
   let ws = null;
   let searchDebounceTimer = null;
@@ -28,6 +28,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
   // 创建/编辑向导状态（cp = create playbook）
   let cpState = { step: 1, totalSteps: 3, vars: [], tasks: [] };
+  scope.persistState(() => ({ query: state.query, selectedCategory: state.selectedCategory, view: state.view, libExpanded: state.libExpanded, selectedId: state.selectedId, runsPage: state.runsPage, failOnly: state.failOnly }));
   let cpTaskCounter = 0;
   let dragTaskIdx = -1;
 

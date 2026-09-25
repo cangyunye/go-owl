@@ -1,5 +1,7 @@
 export function renderNodes(render, navigate, user, api, shell, scope) {
-  let state = { nodes: [], total: 0, page: 1, pageSize: 20, query: '', status: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '', pingResults: {}, checkResults: {}, selectedIds: [], expandedId: null, groupCounts: {} };
+  // 标签页状态：切走再切回本标签时恢复筛选/搜索/展开项（列表缓存不入快照）
+  let state = scope.restoreState({ nodes: [], total: 0, page: 1, pageSize: 20, query: '', status: '', filters: { groups: [], users: [] }, selectedGroups: [], groupSearch: '', pingResults: {}, checkResults: {}, selectedIds: [], expandedId: null, groupCounts: {} });
+  scope.persistState(() => ({ page: state.page, query: state.query, status: state.status, selectedGroups: state.selectedGroups, groupSearch: state.groupSearch, expandedId: state.expandedId }));
   const canWrite = ['admin', 'editor', 'operator'].includes(user.role);
   const canExec = ['admin', 'operator'].includes(user.role);
   const isAdmin = user.role === 'admin';

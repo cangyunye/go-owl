@@ -1,4 +1,4 @@
-export function renderExec(render, navigate, user, api, shell) {
+export function renderExec(render, navigate, user, api, shell, scope) {
   let allNodes = [];
   let selectedNodes = new Set();
   let wsCleanup = null;
@@ -34,16 +34,31 @@ export function renderExec(render, navigate, user, api, shell) {
   const initNodes = params.get('nodes');
   const initGroups = params.get('groups');
 
-  const saved = sessionStorage.getItem('exec_selected_nodes');
+  // 勾选状态按标签命名空间存：同一个执行页的两个标签不能共用一份选择
+  const storageKey = 'owl-tab-' + (scope.tabId || 'default') + '-exec-nodes';
+  const saved = sessionStorage.getItem(storageKey);
   if (saved) {
     try { JSON.parse(saved).forEach(id => selectedNodes.add(id)); } catch {}
   }
+
+  // 标签页状态：本标签的勾选/过滤/执行模式，切回该标签时恢复
+  {
+    const snap = scope.restoreState({ selectedNodes: [], activeGroups: [], statusFilter: '', currentPage: 1, searchQuery: '', execMode: 'command', labelInputs: [] });
+    if (!saved && snap.selectedNodes && snap.selectedNodes.length) selectedNodes = new Set(snap.selectedNodes);
+    activeGroups = snap.activeGroups || activeGroups;
+    statusFilter = snap.statusFilter || statusFilter;
+    currentPage = snap.currentPage || currentPage;
+    searchQuery = snap.searchQuery || searchQuery;
+    execMode = snap.execMode || execMode;
+    labelInputs = snap.labelInputs || labelInputs;
+  }
+  scope.persistState(() => ({ selectedNodes: [...selectedNodes], activeGroups, statusFilter, currentPage, searchQuery, execMode, labelInputs }));
 
   if (initGroups) activeGroups = initGroups.split(',').filter(Boolean);
   if (initNodes) initNodes.split(',').filter(Boolean).forEach(id => selectedNodes.add(id));
 
   function saveSelection() {
-    sessionStorage.setItem('exec_selected_nodes', JSON.stringify(Array.from(selectedNodes)));
+    sessionStorage.setItem(storageKey, JSON.stringify(Array.from(selectedNodes)));
   }
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }

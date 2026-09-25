@@ -168,7 +168,8 @@ export function renderSettings(render, navigate, user, api, scope) {
   }
 
   // ---- AI provider config state ----
-  let activeProvider = 'anthropic';
+  let activeProvider = scope.restoreState({ activeProvider: 'anthropic' }).activeProvider;
+  scope.persistState(() => ({ activeProvider }));
 
   const PROVIDER_META = {
     anthropic: { label: 'Anthropic', storageKey: 'anthropic' },

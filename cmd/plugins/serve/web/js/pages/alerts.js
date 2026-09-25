@@ -4,11 +4,11 @@ export function renderAlerts(render, navigate, user, api, shell, scope) {
   const isOperator = ['operator', 'admin'].includes(user.role);
   const isAdmin = user.role === 'admin';
   const pageSize = 20;
-  const state = {
+  const state = scope.restoreState({
     status: 'active', severity: '', typeId: '', nodeId: '', page: 1, total: 0, items: [],
     detail: null, remedies: [], types: [], allGroups: [], selectedGroups: [], groupSearch: '',
-  };
-  let mode = 'list'; // list | config
+  });
+  let mode = scope.restoreState({ mode: 'list' }).mode; // list | config
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
   function timeAgo(t) { if (!t) return '-'; const s = Math.floor((Date.now() - (t * 1000)) / 1000); if (s < 60) return s + '秒前'; if (s < 3600) return Math.floor(s / 60) + '分钟前'; if (s < 86400) return Math.floor(s / 3600) + '小时前'; return Math.floor(s / 86400) + '天前'; }
@@ -16,6 +16,7 @@ export function renderAlerts(render, navigate, user, api, shell, scope) {
   function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 12); }
 
   const STATUS_TEXT = { open: '待处理', acked: '已确认', resolved: '已解决' };
+  scope.persistState(() => ({ status: state.status, severity: state.severity, typeId: state.typeId, nodeId: state.nodeId, page: state.page, selectedGroups: state.selectedGroups, groupSearch: state.groupSearch, mode }));
   const STATUS_CLS = { open: 'pending', acked: 'info', resolved: 'success' };
   const SEV_TEXT = { critical: '紧急', warn: '警告', info: '提示' };
   const SEV_COLOR = { critical: 'var(--danger)', warn: 'var(--warn)', info: 'var(--info)' };

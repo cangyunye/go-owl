@@ -34,6 +34,7 @@
   --nav-w-expanded: 192px;
   --panel-w: 260px;
   --header-h: 48px;
+  --tabbar-h: 34px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -473,6 +474,112 @@ a:hover { color: var(--accent-hover, var(--primary-hover)); }
 }
 .user-tag .name { font-size: var(--fs-sm); }
 .user-tag .role { font-size: var(--fs-xs); color: var(--muted); }
+
+/* ---- Tabbar（内建标签页）---- */
+.tabbar {
+  height: var(--tabbar-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.tabbar::-webkit-scrollbar { height: 4px; }
+.tabbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 208px;
+  padding: 0 6px 0 10px;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  transition: background var(--transition), color var(--transition);
+}
+.tab:hover { color: var(--fg); background: var(--surface-hover); }
+.tab.active { color: var(--fg); background: var(--bg); }
+.tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 2px;
+  background: var(--accent);
+}
+.tab.dragging { opacity: 0.45; }
+.tab-icon { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.85; }
+.tab-title {
+  max-width: 148px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-close {
+  width: 18px; height: 18px;
+  display: grid; place-items: center;
+  border: none; border-radius: var(--radius-sm);
+  background: none; color: var(--muted);
+  font-size: var(--fs-lg); line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+.tab:hover .tab-close, .tab.active .tab-close { opacity: 1; }
+.tab-close:hover { background: var(--danger); color: var(--accent-fg); }
+
+.tab-new {
+  align-self: center;
+  width: 24px; height: 24px;
+  margin-left: 4px;
+  display: grid; place-items: center;
+  border: none; border-radius: var(--radius-sm);
+  background: none; color: var(--muted);
+  font-size: var(--fs-xl); line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition), color var(--transition);
+}
+.tab-new:hover { background: var(--surface-2); color: var(--fg); }
+
+.tab-hint {
+  align-self: center;
+  margin-left: 10px;
+  font-size: var(--fs-xs);
+  color: var(--warn);
+  white-space: nowrap;
+}
+
+.tab-menu {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  min-width: 124px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-elevated);
+}
+.tab-menu button {
+  text-align: left;
+  padding: 6px 10px;
+  border: none; border-radius: var(--radius-sm);
+  background: none; color: var(--fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.tab-menu button:hover { background: var(--surface-hover); }
 
 /* ---- View Container ---- */
 .view-container {
@@ -2641,6 +2748,9 @@ tr:hover td { background: var(--surface-2); }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .topbar-stats { display: none; }
   .view-container { padding: 16px; }
+  .tabbar { padding: 0 4px; }
+  .tab-title { max-width: 92px; }
+  .tab-icon { display: none; }
 }
 
 /* ================================================================

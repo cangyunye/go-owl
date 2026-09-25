@@ -1,5 +1,6 @@
-export function renderUsers(render, navigate, user, api, shell) {
-  let state = { page: 1, pageSize: 20, query: '', total: 0, role: '', roleCounts: {} };
+export function renderUsers(render, navigate, user, api, shell, scope) {
+  let state = scope.restoreState({ page: 1, pageSize: 20, query: '', total: 0, role: '', roleCounts: {} });
+  scope.persistState(() => ({ page: state.page, query: state.query, role: state.role }));
   loadUsers();
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }

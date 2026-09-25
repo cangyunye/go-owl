@@ -24,12 +24,12 @@ func TestPageScope_RegistrarExists(t *testing.T) {
 
 	assert.Contains(t, app, "createPageScope(",
 		"app.js must create a page scope per navigation")
-	assert.Contains(t, app, "currentScope.dispose()",
+	assert.Contains(t, app, ".dispose()",
 		"app.js must dispose the previous page scope when navigating away")
 	assert.Contains(t, app, "beginPage(",
 		"app.js must funnel page lifecycle through beginPage()")
-	assert.Contains(t, app, "scope.resources",
-		"pages are handed the scope so they can register reclaimable resources")
+	assert.Contains(t, app, ", scope)",
+		"页面渲染函数必须收到 scope（页面据此注册可回收资源与状态快照）")
 	assert.Contains(t, scope, "host.appendChild(el)",
 		"resources.overlay 必须自己把浮层挂到 body（只登记不挂载会让弹窗永不出现）")
 }

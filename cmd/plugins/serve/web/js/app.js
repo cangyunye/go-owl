@@ -1,5 +1,6 @@
 import { api } from './api.js';
 import { createPageScope } from './pagescope.js';
+import { createTabStore } from './tabs.js';
 import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderExec } from './pages/exec.js';
@@ -47,6 +48,243 @@ const NAV_BOTTOM = [
   { id: 'users', icon: 'users', label: '用户管理' }
 ];
 
+const VIEW_ICONS = {};
+[...NAV_ITEMS, ...NAV_BOTTOM].forEach(it => { VIEW_ICONS[it.id] = it.icon; });
+
+// ---- 标签（M1：单挂载重建式）----
+// 一次只挂载一个标签的页面；切标签 = 当前页状态写入标签快照 → 释放 → 按目标标签路由重挂载。
+const tabs = createTabStore();
+let currentPageTabId = null;   // 当前挂载页面对应的标签（页面快照写回它）
+let tabMenuEl = null;
+let dragTabId = null;
+
+function routeForView(viewId) {
+  return viewId === 'dashboard' ? '/' : '/' + viewId;
+}
+
+// 路由 → 标签归属：详情类路由归到它的列表页，标题用详情名
+function routeInfo(path) {
+  const p = String(path || '/').split('?')[0].replace(/\/+$/, '') || '/';
+  if (p === '/') return { view: 'dashboard', title: '仪表盘', icon: VIEW_ICONS.dashboard };
+  if (p.startsWith('/nodes/')) return { view: 'nodes', title: '节点详情', icon: VIEW_ICONS.nodes };
+  if (p.startsWith('/terminal/')) return { view: 'nodes', title: '终端', icon: VIEW_ICONS.nodes };
+  if (p.startsWith('/sftp/')) return { view: 'nodes', title: '文件管理', icon: VIEW_ICONS.nodes };
+  if (p.startsWith('/tasks/')) return { view: 'history', title: '任务详情', icon: VIEW_ICONS.history };
+  const seg = p.slice(1);
+  if (VIEW_TITLES[seg]) return { view: seg, title: VIEW_TITLES[seg], icon: VIEW_ICONS[seg] || '' };
+  return { view: 'dashboard', title: '仪表盘', icon: VIEW_ICONS.dashboard };
+}
+
+// 启动时对齐「持久化标签集合」与「当前 URL」：URL 优先（深链接落在激活标签上）
+function bootTabs() {
+  tabs.restore();
+  const path = location.pathname + location.search;
+  const info = routeInfo(path);
+  const active = tabs.active();
+  if (!active) {
+    const t = tabs.create(info.view, path, info);
+    tabs.activate(t.id);
+  } else if (!tabs.tabs.some(t => t.route === path)) {
+    tabs.update(active.id, { view: info.view, route: path, title: info.title, icon: info.icon });
+  }
+}
+
+// 每一次路由变化都把当前 URL 记到激活标签上（标题由 switchView / setViewMetadata 补）
+function syncActiveTabRoute() {
+  const tab = tabs.active();
+  if (!tab) return;
+  const path = location.pathname + location.search;
+  if (tab.route === path) return;
+  const info = routeInfo(path);
+  tabs.update(tab.id, { route: path, view: info.view, icon: info.icon });
+}
+
+function activateTab(id) {
+  const tab = tabs.get(id);
+  if (!tab) return;
+  if (id === tabs.activeId) { renderTabbar(); return; }
+  tabs.activate(id);
+  history.pushState(null, '', tab.route || routeForView(tab.view));
+  router();
+}
+
+function closeTab(id) {
+  if (!tabs.get(id)) return;
+  const { wasActive } = tabs.close(id);
+  tabs.ensureOne('dashboard', '/');
+  if (!wasActive) return;
+  const next = tabs.active();
+  history.pushState(null, '', (next && next.route) || '/');
+  router();
+}
+
+function closeTabMenu() {
+  if (tabMenuEl) { tabMenuEl.remove(); tabMenuEl = null; }
+}
+
+function openTabMenu(x, y, id) {
+  closeTabMenu();
+  const el = document.createElement('div');
+  el.className = 'tab-menu';
+  el.id = 'tab-menu';
+  el.innerHTML = `
+    <button data-act="close">关闭</button>
+    <button data-act="others">关闭其他</button>
+    <button data-act="right">关闭右侧</button>
+    <button data-act="all">全部关闭</button>`;
+  el.style.left = Math.max(8, x) + 'px';
+  el.style.top = (y + 4) + 'px';
+  document.body.appendChild(el);
+  tabMenuEl = el;
+  const keepAlive = (keepId) => {
+    if (tabs.activeId !== keepId) {
+      tabs.activate(keepId);
+      const t = tabs.get(keepId);
+      history.pushState(null, '', (t && t.route) || '/');
+      router();
+    }
+  };
+  el.addEventListener('click', (e) => {
+    const act = e.target.closest('button') && e.target.closest('button').dataset.act;
+    if (!act) return;
+    closeTabMenu();
+    if (act === 'close') closeTab(id);
+    else if (act === 'others') { tabs.closeOthers(id); keepAlive(id); }
+    else if (act === 'right') { tabs.closeRight(id); keepAlive(id); }
+    else if (act === 'all') { tabs.closeAll(); tabs.ensureOne('dashboard', '/'); navigate('/'); }
+  });
+  setTimeout(() => document.addEventListener('click', closeTabMenu, { once: true }), 0);
+}
+
+function nextTab(delta) {
+  const list = tabs.tabs;
+  if (list.length < 2) return;
+  const idx = list.findIndex(t => t.id === tabs.activeId);
+  const next = list[(idx + delta + list.length) % list.length];
+  if (next) activateTab(next.id);
+}
+
+function showTabHint(msg) {
+  const bar = document.getElementById('tabbar');
+  if (!bar) return;
+  let hint = document.getElementById('tab-hint');
+  if (!hint) {
+    hint = document.createElement('span');
+    hint.id = 'tab-hint';
+    hint.className = 'tab-hint';
+    bar.appendChild(hint);
+  }
+  hint.textContent = msg;
+  clearTimeout(showTabHint._t);
+  showTabHint._t = setTimeout(() => { if (hint) hint.remove(); }, 2500);
+}
+
+function newTab() {
+  if (tabs.tabs.length >= tabs.limit) {
+    showTabHint(`标签上限 ${tabs.limit} 个，先关掉一个再用 Alt+T 新建`);
+    return;
+  }
+  const t = tabs.create('dashboard', '/', { title: VIEW_TITLES.dashboard, icon: VIEW_ICONS.dashboard });
+  activateTab(t.id);
+}
+
+// 导航入口：已打开的视图复用它的标签（保住里面的上下文），Ctrl/中键强制新标签
+function openView(viewId, opts = {}) {
+  const target = routeForView(viewId);
+  const info = { title: VIEW_TITLES[viewId] || viewId, icon: VIEW_ICONS[viewId] || '' };
+  if (opts.newTab) {
+    if (tabs.tabs.length >= tabs.limit) {
+      showTabHint(`标签上限 ${tabs.limit} 个，先关掉一个再新开`);
+      navigate(target);
+      return;
+    }
+    const t = tabs.create(viewId, target, info);
+    activateTab(t.id);
+    return;
+  }
+  const active = tabs.active();
+  if (active && active.view === viewId) {
+    if (location.pathname !== target) navigate(target);   // 详情页 → 回该视图列表
+    return;
+  }
+  const existing = tabs.byView(viewId)[0];
+  if (existing) { activateTab(existing.id); return; }
+  if (tabs.tabs.length >= tabs.limit) {
+    showTabHint(`标签上限 ${tabs.limit} 个，已在当前标签打开`);
+    navigate(target);
+    return;
+  }
+  const t = tabs.create(viewId, target, info);
+  activateTab(t.id);
+}
+
+function renderTabbar() {
+  const bar = document.getElementById('tabbar');
+  if (!bar) return;
+  const activeId = tabs.activeId;
+  bar.innerHTML = tabs.tabs.map(t => `
+    <div class="tab${t.id === activeId ? ' active' : ''}" data-tab-id="${esc(t.id)}" role="tab"
+         aria-selected="${t.id === activeId}" draggable="true" title="${esc(t.title)} · ${esc(t.route || '')}">
+      <svg class="tab-icon" aria-hidden="true"><use href="#icon-${t.icon || 'dashboard'}"/></svg>
+      <span class="tab-title">${esc(t.title)}</span>
+      <button type="button" class="tab-close" data-close="${esc(t.id)}" title="关闭标签 (Alt+W)" aria-label="关闭标签">×</button>
+    </div>`).join('') +
+    `<button type="button" class="tab-new" id="tab-new" title="新建标签 (Alt+T)" aria-label="新建标签">+</button>`;
+}
+
+function wireTabbar() {
+  const bar = document.getElementById('tabbar');
+  if (!bar) return;
+
+  bar.addEventListener('click', (e) => {
+    const closeBtn = e.target.closest('.tab-close');
+    if (closeBtn) { closeTab(closeBtn.dataset.close); return; }
+    if (e.target.closest('#tab-new')) { newTab(); return; }
+    const tabEl = e.target.closest('.tab');
+    if (tabEl) activateTab(tabEl.dataset.tabId);
+  });
+
+  bar.addEventListener('auxclick', (e) => {   // 中键关闭标签
+    if (e.button !== 1) return;
+    const tabEl = e.target.closest('.tab');
+    if (tabEl) { e.preventDefault(); closeTab(tabEl.dataset.tabId); }
+  });
+
+  bar.addEventListener('contextmenu', (e) => {
+    const tabEl = e.target.closest('.tab');
+    if (!tabEl) return;
+    e.preventDefault();
+    openTabMenu(e.clientX, e.clientY, tabEl.dataset.tabId);
+  });
+
+  // 拖拽排序
+  bar.addEventListener('dragstart', (e) => {
+    const tabEl = e.target.closest('.tab');
+    if (!tabEl) return;
+    dragTabId = tabEl.dataset.tabId;
+    tabEl.classList.add('dragging');
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  });
+  bar.addEventListener('dragend', (e) => {
+    const tabEl = e.target.closest('.tab');
+    if (tabEl) tabEl.classList.remove('dragging');
+    dragTabId = null;
+  });
+  bar.addEventListener('dragover', (e) => { if (dragTabId) e.preventDefault(); });
+  bar.addEventListener('drop', (e) => {
+    if (!dragTabId) return;
+    e.preventDefault();
+    const tabEl = e.target.closest('.tab');
+    if (!tabEl) return;
+    const toIndex = tabs.tabs.findIndex(t => t.id === tabEl.dataset.tabId);
+    if (toIndex >= 0) tabs.move(dragTabId, toIndex);
+    dragTabId = null;
+  });
+
+  tabs.subscribe(renderTabbar);
+  renderTabbar();
+}
+
 function esc(s) {
   return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 }
@@ -72,16 +310,29 @@ const shell = {
   }
 };
 
-// 每次导航开始时调用：释放上一页的 cleanup 与资源作用域，返回新页面的作用域。
-// 页面把定时器/监听/浮层/WS/流注册到 scope.resources，导航切走时统一回收——
-// 不再依赖各页自己记得清理（历史泄漏见 web/js/pagescope.js 顶部说明）。
+// 每次导航开始时调用：把上一页的状态快照/滚动位置写回它所属的标签，释放上一页的
+// cleanup 与资源作用域，再为即将挂载的页面建作用域（带上该标签上次的快照）。
 function beginPage(name) {
+  const outgoing = currentScope;
+  const host = currentPageTabId ? tabs.get(currentPageTabId) : null;
+  if (host && outgoing) {
+    const snap = outgoing.takeSnapshot();
+    if (snap) tabs.setSnapshot(host.id, outgoing.name, snap);
+    const vc = document.querySelector('.view-container');
+    if (vc) tabs.setScroll(host.id, outgoing.name, vc.scrollTop);
+  }
   if (currentCleanup) {
     try { currentCleanup(); } catch (e) { console.warn('page cleanup failed:', e); }
     currentCleanup = null;
   }
-  if (currentScope) currentScope.dispose();
-  currentScope = createPageScope(name || 'page');
+  if (outgoing) outgoing.dispose();
+
+  const tab = tabs.active();
+  currentPageTabId = tab ? tab.id : null;
+  currentScope = createPageScope(name, {
+    snapshot: tab ? tab.snapshots[name] : null,
+    tabId: currentPageTabId,   // 页面用它拼按标签命名的存储键
+  });
   return currentScope;
 }
 
@@ -99,6 +350,10 @@ function render(html, afterRender) {
     const cleanup = afterRender();
     if (typeof cleanup === 'function') currentCleanup = cleanup;
   }
+  // 恢复本标签在该页面的滚动位置（页面数据异步到达后高度变化，允许轻微偏移）
+  const tab = currentPageTabId ? tabs.get(currentPageTabId) : null;
+  const top = tab && currentScope ? (tab.scroll[currentScope.name] || 0) : 0;
+  if (container && top) container.scrollTop = top;
 }
 
 function renderShell() {
@@ -190,15 +445,22 @@ function renderShell() {
         </div>
       </div>
     </header>
+    <div class="tabbar" id="tabbar" role="tablist" aria-label="已打开的视图"></div>
     <div class="view-container" id="viewContainer"></div>
   </main>
 </div>`;
 
   shellRendered = true;
+  wireTabbar();
 
-  // Nav item click handlers
+  // Nav item click handlers：复用已打开的标签；Ctrl/⌘ 点击或中键强制新标签
   document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
-    btn.addEventListener('click', () => switchView(btn.dataset.view));
+    btn.addEventListener('click', (e) => openView(btn.dataset.view, { newTab: e.ctrlKey || e.metaKey }));
+    btn.addEventListener('auxclick', (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      openView(btn.dataset.view, { newTab: true });
+    });
   });
 
   // Panel collapse toggle
@@ -226,13 +488,19 @@ function renderShell() {
   navToggle.addEventListener('click', () => setNavExpanded(!navRail.classList.contains('expanded')));
   if (localStorage.getItem('owl-nav-expanded') === '1') setNavExpanded(true);
 
-  // Keyboard shortcuts: alt+1..7 for nav items
+  // Keyboard shortcuts: alt+1..7 for nav items, Alt+T/W 开关标签，Alt+PageUp/Down 切换
   document.addEventListener('keydown', (e) => {
-    if (e.altKey && !e.ctrlKey && !e.metaKey && e.key >= '1' && e.key <= '7') {
-      const idx = parseInt(e.key) - 1;
+    if (!e.altKey || e.ctrlKey || e.metaKey) return;
+    const key = (e.key || '').toLowerCase();
+    if (key === 't') { e.preventDefault(); newTab(); return; }
+    if (key === 'w') { e.preventDefault(); if (tabs.activeId) closeTab(tabs.activeId); return; }
+    if (key === 'pageup' || key === 'arrowleft') { e.preventDefault(); nextTab(-1); return; }
+    if (key === 'pagedown' || key === 'arrowright') { e.preventDefault(); nextTab(1); return; }
+    if (e.key >= '1' && e.key <= '7') {
+      const idx = parseInt(e.key, 10) - 1;
       if (idx < NAV_ITEMS.length) {
         e.preventDefault();
-        switchView(NAV_ITEMS[idx].id);
+        openView(NAV_ITEMS[idx].id);
       }
     }
   });
@@ -264,14 +532,14 @@ function logout() {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
   shellRendered = false;
+  tabs.closeAll();   // 标签属于上一个会话：退出即清空，避免换用户后残留
   navigate('/login');
 }
 
 function switchView(viewId, pushState) {
-  const currentNav = document.querySelector('.nav-item.active');
-  if (currentNav && currentNav.dataset.view === viewId) return;
   currentViewId = viewId;
   const scope = beginPage(viewId);
+  tabs.updateActive({ view: viewId, title: VIEW_TITLES[viewId] || viewId, icon: VIEW_ICONS[viewId] || '' });
 
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.remove('active');
@@ -477,6 +745,7 @@ function router() {
 
   if (path === '/login') {
     shellRendered = false;
+    if (tabs.tabs.length) tabs.closeAll();   // 会话失效/退出：不把上个用户的标签带进登录页
     beginPage('login');
     renderLogin(render, navigate);
     return;
@@ -487,6 +756,8 @@ function router() {
 
   // Ensure shell is rendered for any authenticated route
   renderShell();
+  bootTabs();               // 对齐持久化标签集合与当前 URL（URL 优先）
+  syncActiveTabRoute();     // 当前 URL 记到激活标签上
 
   const nodeMatch = path.match(/^\/nodes\/(.+)/);
   const taskMatch = path.match(/^\/tasks\/(.+)/);
@@ -549,6 +820,7 @@ function router() {
 function setViewMetadata(title, breadcrumb) {
   document.getElementById('viewTitle').textContent = title;
   document.getElementById('breadcrumbCurrent').textContent = breadcrumb || title;
+  tabs.updateActive({ title });
   // Activate closest nav item
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const route = title === '节点详情' ? 'nodes' : title === '任务详情' ? 'history' : '';
