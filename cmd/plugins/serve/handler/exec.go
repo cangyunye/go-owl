@@ -618,6 +618,57 @@ func (h *ExecHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, task)
 }
 
+// Output 按偏移取任务输出的增量端点：
+//   GET /api/v1/tasks/:id/output?offset=N&limit=M
+// 长输出的任务（几 MB）此前只能整段重传（任务记录里带着 output），
+// 增量拉取让客户端只取缺失的尾部；WS 只负责告知「有新输出」。
+func (h *ExecHandler) Output(c *gin.Context) {
+	task, err := h.task.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "task not found"})
+		return
+	}
+	offset := 0
+	if v, err := strconv.Atoi(c.Query("offset")); err == nil && v > 0 {
+		offset = v
+	}
+	limit := 256 * 1024
+	if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 {
+		limit = v
+	}
+	data, next := sliceOutput(task.Output, offset, limit)
+	c.JSON(http.StatusOK, gin.H{
+		"task_id":     task.ID,
+		"status":      task.Status,
+		"offset":      offset,
+		"next_offset": next,
+		"total":       len(task.Output),
+		"data":        data,
+	})
+}
+
+// sliceOutput 取 [offset, offset+limit) 的输出片段（按字节）。
+// 偏移越界按末尾处理（客户端游标落后/超前都不至于报错）；limit 上限 1MB，防止一次拉爆。
+func sliceOutput(out string, offset, limit int) (string, int) {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(out) {
+		offset = len(out)
+	}
+	if limit <= 0 {
+		limit = 256 * 1024
+	}
+	if limit > 1<<20 {
+		limit = 1 << 20
+	}
+	end := offset + limit
+	if end > len(out) {
+		end = len(out)
+	}
+	return out[offset:end], end
+}
+
 func (h *ExecHandler) List(c *gin.Context) {
 	// 按 record 拉取：执行页对账兜底用（一次提交的全部节点任务，无需分页）
 	if rec := strings.TrimSpace(c.Query("record_id")); rec != "" {
