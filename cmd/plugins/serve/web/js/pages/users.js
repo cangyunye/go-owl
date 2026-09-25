@@ -36,7 +36,7 @@ export function renderUsers(render, navigate, user, api, shell, scope) {
         <span class="group-text" style="flex:1"></span>
         <span class="count">${state.roleCounts[r.key] || 0}</span>
       </li>`)).join('');
-    shell.setPanelContent(items);
+    scope.panel.setContent(items);
     document.querySelectorAll('#panelList [data-panel-role]').forEach(el => {
       el.addEventListener('click', () => {
         state.role = el.dataset.panelRole;

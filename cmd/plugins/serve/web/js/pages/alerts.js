@@ -42,10 +42,10 @@ export function renderAlerts(render, navigate, user, api, shell, scope) {
   // ---------- 左侧面板：分组筛选（多选，仿节点管理） ----------
 
   function renderPanel() {
-    shell.setPanelTitle('告警分组');
+    scope.panel.setTitle('告警分组');
     const q = state.groupSearch.toLowerCase();
     const filtered = state.allGroups.filter(g => !q || g.toLowerCase().includes(q));
-    shell.setPanelContent(`
+    scope.panel.setContent(`
       <div style="padding:6px 10px">
         <input type="text" id="alert-group-search" placeholder="搜索分组…" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);font-size:var(--fs-xs);outline:none" value="${esc(state.groupSearch)}">
       </div>

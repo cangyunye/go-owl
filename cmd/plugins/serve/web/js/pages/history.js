@@ -30,7 +30,7 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
       const active = state.opType === key ? 'active' : '';
       return `<li class="panel-item ${active}" data-op="${key}"><span class="dot" style="background:var(--accent)"></span>${label} <span class="count">${count}</span></li>`;
     };
-    shell.setPanelContent(
+    scope.panel.setContent(
       item('', '全部') +
       item('command', '命令') +
       item('script', '脚本') +
@@ -50,6 +50,7 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
 
   function renderList() {
     const list = document.getElementById('history-list');
+
     if (!state.records.length) {
       list.innerHTML = '<div class="view-empty" style="padding:40px"><div class="empty-title">暂无历史记录</div></div>';
     } else {
@@ -207,6 +208,15 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
     <div class="pagination" id="history-pagination" style="margin-top:10px"></div>
   `, () => {
     load();
+
+    // 中键点某行 = 在新标签打开任务详情（委托一次即可，行随重绘更新）
+    document.getElementById('history-list').addEventListener('auxclick', (e) => {
+      if (e.button !== 1) return;
+      const row = e.target.closest('[data-task]');
+      if (!row) return;
+      e.preventDefault();
+      scope.openInNewTab('/tasks/' + encodeURIComponent(row.dataset.task));
+    });
 
     document.getElementById('status-filter').addEventListener('change', (e) => { state.status = e.target.value; state.page = 1; load(); });
     document.getElementById('time-filter').addEventListener('change', (e) => { state.last = e.target.value; state.page = 1; load(); });

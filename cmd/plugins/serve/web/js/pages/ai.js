@@ -95,7 +95,7 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     catch { return esc(text); }
   }
 
-  shell.setPanelContent('');
+  scope.panel.setContent('');
 
   // ---- Message DOM ----
   function addMsg(cls, html) {

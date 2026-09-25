@@ -87,3 +87,34 @@ func TestTabs_Interactions(t *testing.T) {
 		assert.True(t, strings.Contains(app, want), "标签栏交互缺少 %s", want)
 	}
 }
+
+// M2：面板随页面（scope.panel）、嵌套上下文入路由（scope.context）、详情页可在新标签打开
+func TestTabs_PanelAndRouteContext(t *testing.T) {
+	app := readWebFile(t, "web/js/app.js")
+	scope := readWebFile(t, "web/js/pagescope.js")
+
+	assert.Contains(t, app, "makePanel(", "壳层必须把面板交给页面作用域")
+	assert.Contains(t, app, "panel.reset()", "切页先清空面板，避免详情页留着上一页的分组面板")
+	assert.Contains(t, app, "routeContext", "嵌套上下文要能写回 URL（可深链接、刷新不丢）")
+	assert.Contains(t, app, "openPathInNewTab(", "必须支持在新标签打开路由")
+	assert.Contains(t, app, "suffix", "标签标题要带上下文层级后缀")
+
+	assert.Contains(t, scope, "panel:", "scope 必须暴露 panel")
+	assert.Contains(t, scope, "context:", "scope 必须暴露 context")
+	assert.Contains(t, scope, "openInNewTab:", "scope 必须暴露 openInNewTab")
+
+	for _, p := range []string{"nodes", "playbooks", "alerts", "history", "users", "exec", "files", "ai"} {
+		src := readWebFile(t, "web/js/pages/"+p+".js")
+		assert.Contains(t, src, "scope.panel.setContent(", "%s.js 的面板必须走 scope.panel", p)
+		assert.NotContains(t, src, "shell.setPanelContent(",
+			"%s.js 不应再直接用壳层面板单例（多标签下会串）", p)
+	}
+
+	nodes := readWebFile(t, "web/js/pages/nodes.js")
+	assert.Contains(t, nodes, "scope.context.set(", "节点页的筛选要进 URL")
+	assert.Contains(t, nodes, "scope.openInNewTab(", "节点页要支持中键在新标签打开详情")
+	pb := readWebFile(t, "web/js/pages/playbooks.js")
+	assert.Contains(t, pb, "scope.context.set(", "剧本页的分类要进 URL")
+	hist := readWebFile(t, "web/js/pages/history.js")
+	assert.Contains(t, hist, "scope.openInNewTab(", "任务历史要支持中键在新标签打开详情")
+}

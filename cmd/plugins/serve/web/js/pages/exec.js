@@ -65,7 +65,7 @@ export function renderExec(render, navigate, user, api, shell, scope) {
 
   function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 12); }
 
-  shell.setPanelContent(`
+  scope.panel.setContent(`
     <div class="panel-node-selector" style="display:flex;flex-direction:column;height:100%">
       <div class="panel-search">
         <input type="text" id="panel-node-search" placeholder="搜索节点名称或地址..." spellcheck="false">

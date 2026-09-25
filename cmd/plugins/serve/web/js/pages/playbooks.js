@@ -29,6 +29,19 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   // 创建/编辑向导状态（cp = create playbook）
   let cpState = { step: 1, totalSteps: 3, vars: [], tasks: [] };
   scope.persistState(() => ({ query: state.query, selectedCategory: state.selectedCategory, view: state.view, libExpanded: state.libExpanded, selectedId: state.selectedId, runsPage: state.runsPage, failOnly: state.failOnly }));
+
+  // 路由上下文（?cat=&q=）优先于标签快照；切换时写回 URL 并更新标签标题层级
+  {
+    const ctx = scope.context.get();
+    if (ctx.q != null) state.query = ctx.q;
+    if (ctx.cat != null) state.selectedCategory = ctx.cat;
+  }
+  function syncContext() {
+    scope.context.set({ cat: state.selectedCategory, q: state.query }, {
+      title: '剧本管理' + (state.selectedCategory ? ' · ' + state.selectedCategory : '') + (state.query ? ' · "' + state.query + '"' : ''),
+    });
+  }
+  syncContext();
   let cpTaskCounter = 0;
   let dragTaskIdx = -1;
 
@@ -161,11 +174,12 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
         </li>`)
     ].join('');
 
-    shell.setPanelContent(`<ul style="list-style:none;padding:0">${html}</ul>`);
+    scope.panel.setContent(`<ul style="list-style:none;padding:0">${html}</ul>`);
 
     document.querySelectorAll('.panel-item[data-category]').forEach(el => {
       el.addEventListener('click', () => {
         state.selectedCategory = el.dataset.category;
+        syncContext();
         applyFilters();
       });
     });

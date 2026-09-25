@@ -86,8 +86,8 @@ func TestUsersJS_PaginationAndSearch(t *testing.T) {
 func TestUsersJS_RolePanel(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/users.js")
 
-	assert.True(t, strings.Contains(src, "setPanelContent"),
-		"users.js must populate the left 用户角色 panel via shell.setPanelContent")
+	assert.True(t, strings.Contains(src, "scope.panel.setContent"),
+		"users.js must populate the left 用户角色 panel via scope.panel（M2 起面板归属当前页面）")
 	assert.True(t, strings.Contains(src, "role_counts"),
 		"users.js must read per-role counts from the users API meta")
 	assert.True(t, strings.Contains(src, "data-panel-role"),

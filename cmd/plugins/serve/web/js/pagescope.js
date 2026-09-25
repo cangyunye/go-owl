@@ -82,6 +82,12 @@ export function createPageScope(name = 'page', options = {}) {
   return {
     name,
     tabId,          // 供页面拼「按标签命名」的存储键（两个标签不能共用一个键）
+    // 面板随页面（切页时由 app.js 清空，页面用 panel.setContent 自己填）
+    panel: options.panel || { setContent() {}, setTitle() {}, reset() {} },
+    // 路由上下文：多层子菜单的选择进 URL（可深链接、刷新不丢）
+    context: options.context || { get: () => ({}), set: () => {} },
+    // 在新标签打开路由（中键点击列表行等）
+    openInNewTab: options.openInNewTab || (() => null),
     resources,
 
     // ---- 标签页状态快照（M1：重建式标签切回时恢复页面上下文）----

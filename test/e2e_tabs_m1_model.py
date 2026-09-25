@@ -120,7 +120,9 @@ def main():
                               'e => e.dispatchEvent(new MouseEvent("click", {ctrlKey: true, bubbles: true}))')
         page.wait_for_timeout(1600)
         titles = tab_titles(page)
-        assert titles.count('节点管理') == 2, 'B: Ctrl 点击应新开第二个节点标签，实际 %r' % titles
+        # 标题在 M2 之后会带上下文后缀（如 节点管理 · "alpha"），按前缀匹配
+        nodes_tabs = [t for t in titles if t.startswith('节点管理')]
+        assert len(nodes_tabs) == 2, 'B: Ctrl 点击应新开第二个节点标签，实际 %r' % titles
         assert node_filter(page) == '', 'B: 新标签应是干净上下文（不带 alpha），实际 %r' % node_filter(page)
         page.eval_on_selector('#tabbar .tab:nth-child(2)', 'e => e.click()')   # 回到第一个节点标签
         page.wait_for_timeout(1600)

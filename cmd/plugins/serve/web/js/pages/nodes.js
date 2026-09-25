@@ -201,6 +201,7 @@ export function renderNodes(render, navigate, user, api, shell, scope) {
     }
     loadPanelGroups();
     state.page = 1;
+    if (typeof syncContext === 'function') syncContext();
     loadNodes();
   }
 
@@ -609,7 +610,24 @@ export function renderNodes(render, navigate, user, api, shell, scope) {
     renderTable();
   }
 
-  shell.setPanelContent('<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载分组…</li>');
+  // 路由上下文（?group=&q=&status=）优先于标签快照：深链接/刷新都能还原筛选
+  {
+    const ctx = scope.context.get();
+    if (ctx.q != null) state.query = ctx.q;
+    if (ctx.status != null) state.status = ctx.status;
+    if (ctx.group != null) state.selectedGroups = ctx.group.split(',').filter(Boolean);
+  }
+
+  // 把当前筛选写回 URL（replaceState）+ 更新标签标题的层级后缀
+  function syncContext() {
+    const groups = state.selectedGroups.join(',');
+    scope.context.set({ group: groups, q: state.query, status: state.status }, {
+      title: '节点管理' + (groups ? ' · ' + groups : '') + (state.query ? ' · "' + state.query + '"' : ''),
+    });
+  }
+  syncContext();
+
+  scope.panel.setContent('<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载分组…</li>');
 
   loadNodes();
 
@@ -869,6 +887,7 @@ export function renderNodes(render, navigate, user, api, shell, scope) {
       searchDebounceTimer = setTimeout(() => {
         state.query = e.target.value.trim();
         state.page = 1;
+        syncContext();
         loadNodes();
       }, 100);
     });
@@ -876,7 +895,18 @@ export function renderNodes(render, navigate, user, api, shell, scope) {
     document.getElementById('status-filter').addEventListener('change', (e) => {
       state.status = e.target.value;
       state.page = 1;
+      syncContext();
       loadNodes();
+    });
+
+    // 中键点某行 = 在新标签打开该节点详情（原标签的筛选/滚动不受影响）。
+    // 行的标识在 data-toggle 上（左键是展开该行，不跳详情）。
+    document.getElementById('node-list').addEventListener('auxclick', (e) => {
+      if (e.button !== 1) return;
+      const row = e.target.closest('tr[data-toggle]');
+      if (!row) return;
+      e.preventDefault();
+      scope.openInNewTab('/nodes/' + encodeURIComponent(row.dataset.toggle));
     });
 
     document.getElementById('prev-btn').addEventListener('click', () => {

@@ -71,8 +71,68 @@ function routeInfo(path) {
   if (p.startsWith('/sftp/')) return { view: 'nodes', title: '文件管理', icon: VIEW_ICONS.nodes };
   if (p.startsWith('/tasks/')) return { view: 'history', title: '任务详情', icon: VIEW_ICONS.history };
   const seg = p.slice(1);
-  if (VIEW_TITLES[seg]) return { view: seg, title: VIEW_TITLES[seg], icon: VIEW_ICONS[seg] || '' };
+  if (VIEW_TITLES[seg]) {
+    const q = new URLSearchParams(String(path).split('?')[1] || '');
+    let suffix = '';
+    if (seg === 'nodes' && q.get('group')) suffix += ' · ' + q.get('group');
+    if (seg === 'playbooks' && q.get('cat')) suffix += ' · ' + q.get('cat');
+    if (q.get('q')) suffix += ' · "' + q.get('q') + '"';
+    return { view: seg, title: VIEW_TITLES[seg] + suffix, icon: VIEW_ICONS[seg] || '' };
+  }
   return { view: 'dashboard', title: '仪表盘', icon: VIEW_ICONS.dashboard };
+}
+
+// 路由上下文（?group= / ?cat= / ?q=）：让「多层子菜单」的选择进 URL——
+// 可深链接、刷新不丢、标签标题能看出层级，也便于区分同视图的多个标签。
+const routeContext = {
+  get() {
+    const q = new URLSearchParams(location.search);
+    const out = {};
+    q.forEach((v, k) => { out[k] = v; });
+    return out;
+  },
+  // 合并写回 URL；replaceState 避免筛选操作污染历史
+  set(patch, opts = {}) {
+    const q = new URLSearchParams(location.search);
+    for (const [k, v] of Object.entries(patch || {})) {
+      if (v === '' || v === null || v === undefined) q.delete(k);
+      else q.set(k, String(v));
+    }
+    const search = q.toString();
+    const path = location.pathname + (search ? '?' + search : '');
+    history.replaceState(null, '', path);
+    const info = routeInfo(path);
+    tabs.updateActive({ route: path, title: opts.title || info.title });
+  },
+};
+
+// 在「新标签」打开任意路由（中键点击列表行、右键菜单等）；超上限时退回当前标签
+function openPathInNewTab(path) {
+  if (tabs.tabs.length >= tabs.limit) {
+    showTabHint('标签上限 ' + tabs.limit + ' 个，已在当前标签打开');
+    navigate(path);
+    return null;
+  }
+  const info = routeInfo(path);
+  const t = tabs.create(info.view, path, info);
+  activateTab(t.id);
+  return t;
+}
+
+// 面板归属当前页面：切标签/切页时先清空，页面需要时用 scope.panel 自己填，
+// 避免详情页还留着上一页的分组面板（多标签下尤其误导）。
+function makePanel() {
+  return {
+    setContent(html) {
+      const list = document.getElementById('panelList');
+      if (list) list.innerHTML = html;
+    },
+    setTitle(title) { shell.setPanelTitle(title); },
+    reset() {
+      const list = document.getElementById('panelList');
+      if (list) list.innerHTML = '';
+    },
+  };
 }
 
 // 启动时对齐「持久化标签集合」与「当前 URL」：URL 优先（深链接落在激活标签上）
@@ -329,9 +389,14 @@ function beginPage(name) {
 
   const tab = tabs.active();
   currentPageTabId = tab ? tab.id : null;
+  const panel = makePanel();
+  panel.reset();   // 面板随页面：先清空，页面需要时自己填
   currentScope = createPageScope(name, {
     snapshot: tab ? tab.snapshots[name] : null,
-    tabId: currentPageTabId,   // 页面用它拼按标签命名的存储键
+    tabId: currentPageTabId,     // 页面用它拼按标签命名的存储键
+    panel,
+    context: routeContext,
+    openInNewTab: openPathInNewTab,
   });
   return currentScope;
 }
