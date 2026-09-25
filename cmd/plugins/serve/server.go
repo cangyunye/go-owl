@@ -275,6 +275,9 @@ func (s *Server) Init() (*AdminCredentials, error) {
 
 func (s *Server) setupRoutes() {
 	s.Router = gin.New()
+	// 传输层减负：全局 gzip（跳过 WS/SSE 等流式端点）。
+	// 必须在这里注册：gin 的 Use 只作用于之后注册的路由。
+	s.Router.Use(gzipResponses())
 	s.Router.Use(gin.Recovery(), accessLog())
 	// 不信任任何代理头：登录限流按 ClientIP 计数，若默认"信任所有代理"，
 	// 攻击者可用伪造的 X-Forwarded-For 轮换来源绕过限流。反向代理部署时
@@ -454,11 +457,17 @@ func (s *Server) setupRoutes() {
 		sub, _ := fs.Sub(webFS, "web")
 		staticFS = sub
 	}
+	// 静态资源：按内容哈希发 ETag 与缓存头。
+	// DevMode 下资源会热改，走 no-cache + 不加 ETag，避免哈希缓存失真。
 	static := s.Router.Group("/static")
-	static.Use(func(c *gin.Context) {
-		c.Header("Cache-Control", "no-cache")
-		c.Next()
-	})
+	if !s.Config.DevMode {
+		static.Use(staticETag(staticFS, "/static/"))
+	} else {
+		static.Use(func(c *gin.Context) {
+			c.Header("Cache-Control", "no-cache")
+			c.Next()
+		})
+	}
 	static.StaticFS("/", http.FS(staticFS))
 
 	// SPA catch-all: serve index.html for non-API routes
