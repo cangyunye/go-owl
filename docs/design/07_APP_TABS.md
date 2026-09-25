@@ -169,12 +169,18 @@ renderPlaybooks(render, navigate, user, api, shell, scope)
 | **M0 资源纪律** | `scope.resources` 注册器；修掉 files 5s 轮询泄漏、nodes/settings keydown 泄漏、alerts 轮询取消、ai SSE abort、body 浮层挂载即登记（切页摘除，M3 走 iframe 后天然帧内隔离） | [`web/js/pagescope.js`](../../cmd/plugins/serve/web/js/pagescope.js) + app.js `beginPage()` + 8 处页面迁移 + `pagescope_test.go` + `test/e2e_tabs_m0_resources.py` 泄漏哨兵 | 2~3 人日 | **已完成**（commit 4ee636e） |
 | **M1 标签模型 + 标签栏** | Tab 集合、`.tabbar` UI 与交互、URL/pushState 同步、localStorage 恢复、`snapshot/restore` 契约（列表类 8 页接入） | `web/js/tabs.js` + `app.js` 改造 + `app.css` 标签栏 + E2E | 4~6 人日 | **已完成**（commit 95e800a） |
 | **M2 面板随标签 + 嵌套上下文** | 面板归属页面（`scope.panel`）、`shell.* → scope.panel.*` 迁移、嵌套标题/图标、详情类路由开新标签、`?group=`/`?cat=` 等上下文入 route | `makePanel()` + `routeContext` + `openPathInNewTab()` + 8 页面板迁移 + E2E | 3~4 人日 | **已完成**（commit 013d0d3） |
-| **M3 会话类保活（方案 A：同文档保活）** | 每标签容器（视图 + 面板 DOM）随激活 attach/detach；非激活标签**失活即暂停**（scope.resources 加 pause/resume）；浮层挂到标签容器而非 body；`/terminal/:id`、`/sftp/:id`、AI 会话、剧本运行详情接入 | `tabs.js` 容器化 + `app.js` attach 生命周期 + 4 页后台行为审计 + E2E | 3~4 人日 | **M3a 已完成**（commit 24d710e，终端接入）；sftp/ai/playbooks 见 M3b |
+| **M3 会话类保活（方案 A：同文档保活）** | 每标签容器（视图 + 面板 DOM）随激活 attach/detach；非激活标签**失活即暂停**（scope.resources 加 pause/resume）；浮层挂到标签容器而非 body；`/terminal/:id`、`/sftp/:id`、AI 会话、剧本运行详情接入 | `tabs.js` 容器化 + `app.js` attach 生命周期 + 4 页后台行为审计 + E2E | 3~4 人日 | **已完成**（M3a 24d710e 终端；M3b cd9d6d5 sftp/ai/playbooks） |
 | **M5 会话服务端化（方案 C，M3 之后）** | 终端 PTY 会话服务端持久化 + attach/detach（tmux 式）；AI 生成与客户端解耦（断开继续跑、回来续看）；SFTP 上传改服务端执行。收益：**刷新/断网/关标签都不丢**，且天然支持多端同看 | 服务端会话注册表 + `terminal.go` 改造 + AI 运行托管 + `sftp` 上传服务端化 | 终端 3~5 人日，AI/SFTP 各 2~4 人日 | 未开始 |
 | **M4 共享 WS + 节流治理** | 壳层共享 WS 总线、4 处页面迁移、非激活标签轮询挂起/恢复、标签上限与内存提示、（可选）后端 WS 过滤 | `api.js onWS` + 4 页迁移 + E2E | 3~4 人日 | 未开始 |
 
 合计 16~23 人日（含测试）。M0→M1 即可交付「可用标签页」，M2 补齐子菜单并行，M3/M4 解决长任务与资源。
 
+> M3b 实施记录（2026-09-25）：审计要点是「后台工作与界面更新分离」——上传 XHR 与流式
+> 文本继续跑，界面更新在失活期间门控，切回靠 onResume 补。真正容易漏的是 **await 之后
+> 的续写**：页面在挂载时发起请求，返回时标签已被摘除，于是写 null 抛错（实测 sftp 的
+> `load()` 写 `#sftp-cwd`）。两条经验：渲染入口要守卫、await 之后要再查一次状态；
+> 以及保活分支绝不能只摘 DOM 而忘了 `pause()`（漏这一步时 M3b 用例持续报错）。
+>
 > M3a 实施记录（2026-09-25）：机制落地后只开了终端一个页面保活 —— 它的后台工作写 xterm
 > 实例，与 DOM 查询无关，最安全；sftp/ai/playbooks 失活时会用 `document.getElementById`
 > 找元素（保活后取到 null），需要逐页审计（M3b）。实施中发现两个真问题：同标签内换页会把
