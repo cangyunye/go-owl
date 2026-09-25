@@ -159,12 +159,17 @@ renderPlaybooks(render, navigate, user, api, shell, scope)
 |--------|------|--------|------|------|
 | **M0 资源纪律** | `scope.resources` 注册器；修掉 files 5s 轮询泄漏、nodes/settings keydown 泄漏、alerts 轮询取消、ai SSE abort、body 浮层挂载即登记（切页摘除，M3 走 iframe 后天然帧内隔离） | [`web/js/pagescope.js`](../../cmd/plugins/serve/web/js/pagescope.js) + app.js `beginPage()` + 8 处页面迁移 + `pagescope_test.go` + `test/e2e_tabs_m0_resources.py` 泄漏哨兵 | 2~3 人日 | **已完成**（commit 4ee636e） |
 | **M1 标签模型 + 标签栏** | Tab 集合、`.tabbar` UI 与交互、URL/pushState 同步、localStorage 恢复、`snapshot/restore` 契约（列表类 8 页接入） | `web/js/tabs.js` + `app.js` 改造 + `app.css` 标签栏 + E2E | 4~6 人日 | **已完成**（commit 95e800a） |
-| **M2 面板随标签 + 嵌套上下文** | 每标签面板容器、`shell.* → scope.panel.*` 迁移、嵌套标题/图标、详情类路由开新标签、`?group=`/`?cat=` 等上下文入 route | 面板容器化 + 8 页面板迁移 + E2E | 3~4 人日 | 未开始 |
+| **M2 面板随标签 + 嵌套上下文** | 面板归属页面（`scope.panel`）、`shell.* → scope.panel.*` 迁移、嵌套标题/图标、详情类路由开新标签、`?group=`/`?cat=` 等上下文入 route | `makePanel()` + `routeContext` + `openPathInNewTab()` + 8 页面板迁移 + E2E | 3~4 人日 | **已完成**（commit 013d0d3） |
 | **M3 会话类保活** | `embed=1` 精简模式（iframe 内只渲染视图）、`keepAlive` 标签的 iframe 挂载与生命周期、主题同步、`/terminal/:id`、`/sftp/:id`、AI 会话、剧本运行详情接入 | `app.js` embed 分支 + 4 页接入 + E2E（切走任务继续跑） | 4~6 人日 | 未开始 |
 | **M4 共享 WS + 节流治理** | 壳层共享 WS 总线、4 处页面迁移、非激活标签轮询挂起/恢复、标签上限与内存提示、（可选）后端 WS 过滤 | `api.js onWS` + 4 页迁移 + E2E | 3~4 人日 | 未开始 |
 
 合计 16~23 人日（含测试）。M0→M1 即可交付「可用标签页」，M2 补齐子菜单并行，M3/M4 解决长任务与资源。
 
+> M2 实施记录（2026-09-25）：`?group=`/`?cat=`/`?q=` 入 route 后，**刷新丢上下文**这个 M1 的
+> 局限也一并解决（上下文来自 URL，不再只靠内存快照）；顺带修掉一个既存误导——进详情页
+> （`/nodes/:id`、终端、SFTP）时面板会残留上一页的「节点分组」。截图（`docs/serve-web-ui.md`
+> 26 张）已在 M2 后随 commit 35231c2 重拍。
+>
 > M1 实施记录（2026-09-25）：标签语义定为「导航复用已打开的同视图标签（保住上下文），
 > Ctrl/中键才新开」；快照只留内存、标签集合持久化，因此刷新恢复的是标签与路由，
 > 页面内筛选靠同会话内的快照恢复。实施中两个坑：一是 8 个页面里 users/exec/playbooks
