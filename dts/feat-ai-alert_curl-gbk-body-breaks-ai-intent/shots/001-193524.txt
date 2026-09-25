@@ -1,0 +1,19 @@
+E2E 验证快照（修复后，UTF-8 文件体请求）
+=========================================
+环境: owl-serve @127.0.0.1:18080, OWL_DB_PATH=build/e2e/owl.db, seed 50 节点, OWL-OSS-001 x50 活跃告警
+
+[Web /api/v1/ai/chat 无 LLM key（本地降级链）]
+请求: {"message": "有哪些节点有告警？简要回答"} (UTF-8 file body)
+回复: 共 50 条告警：| OWL-OSS-001 | web-nginx-03 | critical | open | 节点 SSH 连续 3 次采集失败（失联）| ...（alert_list 工具真实执行）
+
+[Web 场景4 修复方案不执行]
+请求: {"message": "提供 OWL-OSS-001 告警的修复方案，先不要执行", "session_id": "e2e-fix-1"}
+回复: ## 告警码 OWL-OSS-001：节点失联 / 触发规则：引擎信号规则 / ### 可用对策（1 条）/ 1. 节点失联排查指引 [SOP] 风险:low 来源:builtin / 1. ping 与 ssh 手动连通性验证 ...
+
+[CLI owl ai（LLM 路由）]
+$ owl ai "有哪些节点有告警" → 30 条 active 告警按分组汇总（cache/db/gateway/kafka/monitor/web/worker）
+$ owl ai "列出所有发生 OWL_OSS_001 警告的节点" → 下划线码归一化，按分组列出全部节点 + limit 截断提示
+$ owl ai "提供 OWL-OSS-001 告警的修复方案，不要执行" → 排查 SOP + owl exec run/script 命令模板 + 风险 + 回滚方案 + "是否由我执行修复？回复是/否"（未执行任何操作）
+
+[场景5 确认流（internal/ai 单测覆盖）]
+方案确认"是" → execute_command 确认门拦截"即将执行：execute_command(nodes=[web-01], command=df -h) 是否继续？" → 再"是" → 已执行 → 工具真实运行 1 次；"否" → 取消不执行。

@@ -1,0 +1,23 @@
+[Playwright E2E: test/e2e_issue11_playbook_run_all_nodes.py @ http://127.0.0.1:18099]
+
+修复前（playbooks.js 裸调 api.nodes()）:
+  种子/真值 OK: 节点 140, e2e-big 90, e2e-small 50
+  FAIL: A: 目标节点应列 140 个，实际 20 个（只取了第一页？）
+
+修复后（改走 api.nodesAll()）:
+  种子/真值 OK: 节点 140, e2e-big 90, e2e-small 50
+  A PASS 目标节点 chips = 140
+  B PASS 全选计数 = 140
+  C PASS 分组徽标 e2e-big = 90 / e2e-small = 50
+  D PASS 搜索过滤命中 = 90
+  E PASS 提交 target_nodes = 140
+  F PASS 告警调试节点下拉 = 140
+  ALL PASS
+
+[Go 回归测试]
+修复前: --- FAIL: TestPlaybooksUI_RunTargetNodesLoadAll
+          run dialog must not call api.nodes() bare (returns only the first page of 20)
+修复后: ok  github.com/cangyunye/go-owl/cmd/plugins/serve  0.051s
+        (TestPlaybooksUI_* / TestNodePickers_LoadAllNodes 全绿)
+
+[全量包回归] 与改动前对比失败集合完全一致（34 个，均为 Windows 环境既有问题）
