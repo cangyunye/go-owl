@@ -23,7 +23,7 @@
 | [04_MONITORING_ALERTING.md](04_MONITORING_ALERTING.md) | 智能监控与告警体系设计 |
 | [05_CAPABILITY_MATCHING_SPEC.md](05_CAPABILITY_MATCHING_SPEC.md) | 能力库与 AI 匹配规范（脚本库·剧本库·告警自愈） |
 | [06_SFTP_FILE_BROWSER.md](06_SFTP_FILE_BROWSER.md) | SFTP 文件浏览器设计（v1.8.0，设计评审稿） |
-| [07_APP_TABS.md](07_APP_TABS.md) | 内建标签页设计（下一版本，设计评审稿） |
+| [07_APP_TABS.md](07_APP_TABS.md) | 内建标签页设计（v1.9.0，设计评审稿） |
 | [PLAYBOOK_ACTION_OPTIONS.md](PLAYBOOK_ACTION_OPTIONS.md) | Playbook 动作选项设计 |
 | [PLAYBOOK_TEMPLATE_SYSTEM.md](PLAYBOOK_TEMPLATE_SYSTEM.md) | Playbook 模板系统设计 |
 
