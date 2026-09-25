@@ -156,8 +156,12 @@ type execRequest struct {
 	RetryInterval    string `json:"retry_interval"`
 	RetryMaxInterval string `json:"retry_max_interval"`
 	NoRetry          bool   `json:"no_retry"`
-	ConnectTimeout   string `json:"connect_timeout"`
-	CommandTimeout   string `json:"command_timeout"`
+	// Detached 分离方式运行：命令在节点侧 setsid+nohup 后台执行，输出落日志文件，
+	// 服务端只记 pid 与日志路径（页面/服务重启都不影响它）。不依赖节点装任何代理，
+	// 只用节点自带的 sh/setsid/nohup。
+	Detached       bool   `json:"detached"`
+	ConnectTimeout string `json:"connect_timeout"`
+	CommandTimeout string `json:"command_timeout"`
 }
 
 type ExecConfig struct {
@@ -499,6 +503,9 @@ func (h *ExecHandler) Create(c *gin.Context) {
 
 	if cfg.Parallel {
 		for _, nid := range nodeIDs {
+			if req.Detached {
+				command = wrapDetachedCommand(command, detachedLogPath(nid))
+			}
 			task, err := h.createSingleTask(c, nid, command, cfg.Force, opID)
 			if err != nil {
 				if len(nodeIDs) == 1 {
@@ -524,6 +531,9 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	} else {
 		var serialTasks []*store.Task
 		for _, nid := range nodeIDs {
+			if req.Detached {
+				command = wrapDetachedCommand(command, detachedLogPath(nid))
+			}
 			task, err := h.createSingleTask(c, nid, command, cfg.Force, opID)
 			if err != nil {
 				continue
@@ -620,6 +630,78 @@ func stripOutputsForLight(tasks []*store.Task) []*store.Task {
 		t.Output = ""
 	}
 	return tasks
+}
+
+// detachedLogPath 生成节点侧日志路径：带节点标识与纳秒后缀，避免同批多节点互撞。
+func detachedLogPath(nodeID string) string {
+	safe := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			return r
+		}
+		return '_'
+	}, nodeID)
+	return fmt.Sprintf("/tmp/owl-detached-%s-%d.log", safe, time.Now().UnixNano())
+}
+
+// wrapDetachedCommand 把命令改写成「节点侧分离运行」：外层 SSH 命令立刻返回（只打印
+// pid 与日志路径），真正的进程脱离 SSH 通道继续跑，与页面/owl-serve 存活无关。
+func wrapDetachedCommand(cmd, logPath string) string {
+	// shell 单引号里的单引号要写成 引用关闭+转义+重新开启，用原始字符串避免二次转义
+	sq := `'\''` // shell：单引号里的单引号需写成 关闭+反斜杠+重新开启
+	quoted := "'" + strings.ReplaceAll(cmd, "'", sq) + "'"
+	return "LOG=" + logPath + `; : > "$LOG"; setsid nohup sh -c ` + quoted + ` >> "$LOG" 2>&1 & echo "detached_pid=$! log=$LOG"`
+}
+
+// DetachedLog 读分离运行进程的状态与日志尾部：
+//   GET /api/v1/tasks/:id/detached?tail=200
+// 用节点自带的 kill -0 判活、tail 取日志尾部，服务端不保存这些进程的任何状态。
+func (h *ExecHandler) DetachedLog(c *gin.Context) {
+	task, err := h.task.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "task not found"})
+		return
+	}
+	pid, logPath, ok := parseDetachedMeta(task.Output)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该任务不是分离方式运行"})
+		return
+	}
+	tail := 200
+	if v, err := parseInt(c.Query("tail"), 200); err == nil && v > 0 && v <= 5000 {
+		tail = v
+	}
+	if h.exec == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "executor unavailable"})
+		return
+	}
+	probe := fmt.Sprintf("if kill -0 %d 2>/dev/null; then echo RUNNING; else echo EXITED; fi; echo ---; tail -n %d %s 2>/dev/null", pid, tail, logPath)
+	out, _, _ := h.exec.Execute(c.Request.Context(), task.NodeID, probe)
+	running := strings.HasPrefix(out, "RUNNING")
+	data := out
+	if i := strings.Index(out, "---\n"); i >= 0 {
+		data = out[i+4:]
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"task_id":  task.ID,
+		"node_id":  task.NodeID,
+		"pid":      pid,
+		"log_path": logPath,
+		"running":  running,
+		"data":     data,
+	})
+}
+
+func parseDetachedMeta(output string) (pid int, logPath string, ok bool) {
+	for _, f := range strings.Fields(output) {
+		switch {
+		case strings.HasPrefix(f, "detached_pid="):
+			pid, _ = strconv.Atoi(strings.TrimPrefix(f, "detached_pid="))
+		case strings.HasPrefix(f, "log="):
+			logPath = strings.TrimPrefix(f, "log=")
+		}
+	}
+	return pid, logPath, pid > 0 && logPath != ""
 }
 
 func (h *ExecHandler) Get(c *gin.Context) {

@@ -318,6 +318,8 @@ func (s *Server) setupRoutes() {
 		reader.GET("/tasks/:id", s.execHandler.Get)
 		// 增量取输出：长输出任务只拉缺失的尾部（客户端游标 offset）
 		reader.GET("/tasks/:id/output", s.execHandler.Output)
+		// 分离运行进程的状态与日志尾部（节点侧 nohup 起的后台任务）
+		reader.GET("/tasks/:id/detached", s.execHandler.DetachedLog)
 		reader.GET("/staging/files", s.stagingHandler.List)
 		reader.GET("/staging/disk", s.stagingHandler.DiskInfo)
 		reader.GET("/transfer/records", s.transferHandler.Records)
