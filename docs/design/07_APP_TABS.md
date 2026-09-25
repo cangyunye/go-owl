@@ -164,13 +164,23 @@ renderPlaybooks(render, navigate, user, api, shell, scope)
 
 ## 4. 里程碑拆分（提交原子性对齐）
 
+> **本期需求已达成（2026-09-25）**：最初的要求是「多标签页 —— 一个标签进节点管理、一个进剧本管理、
+> 一个进系统设置、一个进监控（告警中心），也可以多个标签同时在节点管理」。这四类场景已实现并
+> 由 `test/e2e_tabs_acceptance.py` 逐条验收：四个视图各占一个标签 + 两个「节点管理」标签各持
+> 不同分组上下文（`节点管理 · e2e-small` / `节点管理 · e2e-big`），逐个切换渲染正常。
+>
+> 之后的 M3/M4 是「允许但不要求」的加固（会话保活、连接与传输减负）；**M5 不在本期需求内**，
+> 保留为备选（触发条件：出现「多端同看一个会话」或「会话列表/审计」的实际需求）。
+
+
+
 | 里程碑 | 内容 | 交付物 | 预估 | 状态 |
 |--------|------|--------|------|------|
 | **M0 资源纪律** | `scope.resources` 注册器；修掉 files 5s 轮询泄漏、nodes/settings keydown 泄漏、alerts 轮询取消、ai SSE abort、body 浮层挂载即登记（切页摘除，M3 走 iframe 后天然帧内隔离） | [`web/js/pagescope.js`](../../cmd/plugins/serve/web/js/pagescope.js) + app.js `beginPage()` + 8 处页面迁移 + `pagescope_test.go` + `test/e2e_tabs_m0_resources.py` 泄漏哨兵 | 2~3 人日 | **已完成**（commit 4ee636e） |
 | **M1 标签模型 + 标签栏** | Tab 集合、`.tabbar` UI 与交互、URL/pushState 同步、localStorage 恢复、`snapshot/restore` 契约（列表类 8 页接入） | `web/js/tabs.js` + `app.js` 改造 + `app.css` 标签栏 + E2E | 4~6 人日 | **已完成**（commit 95e800a） |
 | **M2 面板随标签 + 嵌套上下文** | 面板归属页面（`scope.panel`）、`shell.* → scope.panel.*` 迁移、嵌套标题/图标、详情类路由开新标签、`?group=`/`?cat=` 等上下文入 route | `makePanel()` + `routeContext` + `openPathInNewTab()` + 8 页面板迁移 + E2E | 3~4 人日 | **已完成**（commit 013d0d3） |
 | **M3 会话类保活（方案 A：同文档保活）** | 每标签容器（视图 + 面板 DOM）随激活 attach/detach；非激活标签**失活即暂停**（scope.resources 加 pause/resume）；浮层挂到标签容器而非 body；`/terminal/:id`、`/sftp/:id`、AI 会话、剧本运行详情接入 | `tabs.js` 容器化 + `app.js` attach 生命周期 + 4 页后台行为审计 + E2E | 3~4 人日 | **已完成**（M3a 24d710e 终端；M3b cd9d6d5 sftp/ai/playbooks） |
-| **M5 会话服务端化（方案 C，M3 之后）** | 终端 PTY 会话服务端持久化 + attach/detach（tmux 式）；AI 生成与客户端解耦（断开继续跑、回来续看）；SFTP 上传改服务端执行。收益：**刷新/断网/关标签都不丢**，且天然支持多端同看 | 服务端会话注册表 + `terminal.go` 改造 + AI 运行托管 + `sftp` 上传服务端化 | 终端 3~5 人日，AI/SFTP 各 2~4 人日 | 未开始 |
+| **M5 会话服务端化（方案 C，备选·非本期需求）** | 终端 PTY 会话服务端持久化 + attach/detach（tmux 式）；AI 生成与客户端解耦（断开继续跑、回来续看）；SFTP 上传改服务端执行。收益：**刷新/断网/关标签都不丢**，且天然支持多端同看 | 服务端会话注册表 + `terminal.go` 改造 + AI 运行托管 + `sftp` 上传服务端化 | 终端 3~5 人日，AI/SFTP 各 2~4 人日 | 未开始 |
 | **M4 共享 WS + 节流治理** | 壳层共享 WS 总线、4 处页面迁移、非激活标签轮询挂起/恢复、增量取输出（轻量列表 + 字节游标）、标签上限与内存提示 | `api.js onWS` + 4 页迁移 + `/tasks/:id/output` + E2E | 3~4 人日 | **已完成**（M4a bff470e 总线；M4b a2f3460+8ad98f7 增量输出） |
 
 合计 16~23 人日（含测试）。M0→M1 即可交付「可用标签页」，M2 补齐子菜单并行，M3/M4 解决长任务与资源。
