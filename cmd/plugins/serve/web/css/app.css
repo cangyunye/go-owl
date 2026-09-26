@@ -1855,7 +1855,19 @@ tr:hover td { background: var(--surface-2); }
   flex: 1;
   min-width: 0;
 }
-.exec-main { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.exec-main { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; --editor-h: auto; }
+
+/* 编辑器 ⇄ 输出终端之间的拖拉分隔条（高度偏好记忆在 localStorage，双击复位） */
+.exec-splitter {
+  height: 6px;
+  margin: -4px 0;
+  flex-shrink: 0;
+  border-radius: 3px;
+  cursor: row-resize;
+  background: transparent;
+  transition: background var(--transition);
+}
+.exec-splitter:hover, .exec-splitter.dragging { background: var(--accent-dim); }
 .exec-sidebar { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
 /* LAYOUT — Files 工作台：左列 = 传输表单 + 传输记录（纵向对齐）；
@@ -1891,7 +1903,9 @@ tr:hover td { background: var(--surface-2); }
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  /* 高度由分隔条驱动的 --editor-h 决定；未拖动时为 auto（内容自然高度） */
+  height: var(--editor-h, auto);
+  overflow: auto;
   flex-shrink: 0;
 }
 .cmd-editor .editor-header {

@@ -899,6 +899,7 @@ free -m</textarea>
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
           <span style="font-size:12px;color:var(--muted)" title="命令在节点侧 setsid+nohup 后台执行，输出写日志文件；关页面/刷新/owl-serve 重启都不影响它跑完。不依赖节点安装任何代理">分离方式运行</span>
         </label>
+        <div class="exec-splitter" id="exec-splitter" title="拖动调整编辑器高度，双击复位"></div>
         <div class="output-terminal">
           <div class="term-header">
             <div class="dot-group">
@@ -1046,6 +1047,37 @@ free -m</textarea>
       document.getElementById('cmd-input').value = '';
       updateExecButton();
     });
+    // 编辑器 ⇄ 输出区之间的分隔条：拖动改编辑器高度、记忆在本地、双击复位
+    const splitter = document.getElementById('exec-splitter');
+    if (splitter) {
+      const main = document.querySelector('.exec-main');
+      const savedH = parseInt(localStorage.getItem('owl-exec-editor-h') || '0', 10);
+      if (savedH > 0) main.style.setProperty('--editor-h', savedH + 'px');
+      let startY = 0, startH = 0;
+      const onMove = (e) => {
+        const max = Math.max(160, main.clientHeight - 260);
+        const h = Math.min(max, Math.max(120, startH + (e.clientY - startY)));
+        main.style.setProperty('--editor-h', h + 'px');
+      };
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove);
+        splitter.classList.remove('dragging');
+        const h = parseInt(main.style.getPropertyValue('--editor-h')) || 0;
+        if (h > 0) localStorage.setItem('owl-exec-editor-h', String(h));
+      };
+      scope.resources.onDispose(() => document.removeEventListener('pointermove', onMove));
+      splitter.addEventListener('pointerdown', (e) => {
+        startY = e.clientY;
+        startH = document.querySelector('.cmd-editor').offsetHeight;
+        splitter.classList.add('dragging');
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp, { once: true });
+      });
+      splitter.addEventListener('dblclick', () => {
+        main.style.removeProperty('--editor-h');
+        localStorage.removeItem('owl-exec-editor-h');
+      });
+    }
     document.getElementById('clear-term-btn').addEventListener('click', clearTerminal);
     document.getElementById('detached-log-btn').addEventListener('click', async () => {
       if (!detachedTaskId) return;
