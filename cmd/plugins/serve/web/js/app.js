@@ -488,7 +488,7 @@ function releaseOutgoingPage() {
     const snap = outgoing.takeSnapshot();
     if (snap) tabs.setSnapshot(host.id, outgoing.name, snap);
     const els = tabEls.get(host.id);
-    const vc = (els && els.view) || document.querySelector('.view-container');
+    const vc = els && els.view;
     if (vc) tabs.setScroll(host.id, outgoing.name, vc.scrollTop);
   }
   if (currentCleanup) {
@@ -538,7 +538,7 @@ function detachOtherViews(activeId) {
 }
 
 function render(html, afterRender) {
-  const container = activeViewEl() || document.querySelector('.view-container');
+  const container = activeViewEl();   // 只有标签容器；登录页走 #app 分支
   const app = document.getElementById('app');
   if (container && shellRendered) {
     container.innerHTML = html;
@@ -647,7 +647,8 @@ function renderShell() {
       </div>
     </header>
     <div class="tabbar" id="tabbar" role="tablist" aria-label="已打开的视图"></div>
-    <div class="view-container" id="viewContainer"></div>
+    <!-- 视图容器由每个标签自己持有（见 tabEls / createTabEls）：这里不放静态容器，
+         否则与标签容器同为 flex:1 子元素，高度会被对半劈开（页面上下变窄）。 -->
   </main>
 </div>`;
 

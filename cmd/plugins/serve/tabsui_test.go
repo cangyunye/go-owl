@@ -159,3 +159,13 @@ func TestWS_SharedBus(t *testing.T) {
 			"%s.js 不应再自建 WS（每页一条连接 + 各自重连）", p)
 	}
 }
+
+// 壳层不得再放静态视图容器：它与每标签容器同为 .view-container（flex:1），
+// 两个 flex 子元素会把主区高度对半劈开 —— 实测 900 高的窗口里内容区只有 409，
+// 终端/SFTP 页面因此「上下变窄」（重复 id 也一并消失）。
+func TestTabs_NoStaticViewContainer(t *testing.T) {
+	app := readWebFile(t, "web/js/app.js")
+	assert.NotContains(t, app, `class="view-container"`,
+		"视图容器由每个标签自己持有（createTabEls），壳层里不能再放静态 .view-container")
+	assert.Contains(t, app, "createTabEls(", "每标签容器必须由 createTabEls 创建")
+}
