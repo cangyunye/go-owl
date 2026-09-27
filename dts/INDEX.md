@@ -1,6 +1,18 @@
 # dts 问题档案索引
 
-共 30 条 · 未解决 29 · 已解决 1 · 更新于 2026-09-25T18:37:41+08:00
+共 32 条 · 未解决 29 · 已解决 3 · 更新于 2026-09-25T22:19:19+08:00
+
+## fix-webui
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-webui_nodes-list-search-broken](fix-webui_nodes-list-search-broken/dts.md) | 2026-09-25 | 节点管理里面没法搜节点（搜索框输入后列表不按关键字过滤） | resolved |
+
+## fix-ssh
+
+| id | 日期 | 摘要 | 状态 |
+|----|------|------|------|
+| [fix-ssh_raspberrypi4-password-auth-failed](fix-ssh_raspberrypi4-password-auth-failed/dts.md) | 2026-09-25 | raspberrypi4 节点无法连接（192.168.31.100，kali 账号密码认证）：终端页报 connect failed: SSH 连接失败 .. | resolved |
 
 ## feat-playbook
 

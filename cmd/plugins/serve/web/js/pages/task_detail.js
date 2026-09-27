@@ -22,7 +22,7 @@ export function renderTaskDetail(render, navigate, user, api, taskId) {
   `, () => {
     document.getElementById('logout-btn').addEventListener('click', () => { localStorage.removeItem('token'); localStorage.removeItem('user'); navigate('/login'); });
     load();
-    wsCleanup = api.connectWebSocket((msg) => {
+    wsCleanup = api.onWS((msg) => {
       if (msg.type === 'task_update' && msg.data && msg.data.id === taskId) {
         renderTask(msg.data);
       }

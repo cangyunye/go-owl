@@ -1,14 +1,15 @@
-export function renderHistory(render, navigate, user, api, shell) {
+export function renderHistory(render, navigate, user, api, shell, scope) {
   const isAdmin = user && user.role === 'admin';
   const pageSize = 50;
-  const state = {
+  const state = scope.restoreState({
     opType: '', status: '', nodeId: '', command: '', user: '', last: '', page: 1, total: 0, records: [], stats: null, wsCleanup: null,
-  };
+  });
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
   function timeAgo(t) { if (!t) return '-'; const s = Math.floor((Date.now() - new Date(t).getTime())/1000); if (s<60) return s+'秒前'; if (s<3600) return Math.floor(s/60)+'分钟前'; if (s<86400) return Math.floor(s/3600)+'小时前'; return Math.floor(s/86400)+'天前'; }
 
   const OP_LABELS = { command: '命令', script: '脚本', file_transfer: '文件传输', playbook: '剧本', node_manage: '节点' };
+  scope.persistState(() => ({ opType: state.opType, status: state.status, nodeId: state.nodeId, command: state.command, user: state.user, last: state.last, page: state.page }));
   // 操作来源徽章：AI 发起的执行可整体回溯（web 默认不展示，避免噪音）
 const ORIGIN_BADGE = { ai: '🤖 AI', cli: '⌨️ CLI', autoheal: '♻️ 自愈', binding: '🔗 告警绑定' };
 
@@ -29,7 +30,7 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
       const active = state.opType === key ? 'active' : '';
       return `<li class="panel-item ${active}" data-op="${key}"><span class="dot" style="background:var(--accent)"></span>${label} <span class="count">${count}</span></li>`;
     };
-    shell.setPanelContent(
+    scope.panel.setContent(
       item('', '全部') +
       item('command', '命令') +
       item('script', '脚本') +
@@ -49,6 +50,7 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
 
   function renderList() {
     const list = document.getElementById('history-list');
+
     if (!state.records.length) {
       list.innerHTML = '<div class="view-empty" style="padding:40px"><div class="empty-title">暂无历史记录</div></div>';
     } else {
@@ -160,7 +162,7 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
         ${(!execBlocks && !tfRows && !commRows) ? '<p style="color:var(--muted)">无明细数据</p>' : ''}
       </div>
     </div>`;
-    document.body.appendChild(overlay);
+    scope.resources.overlay(overlay);
     overlay.querySelector('#detail-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
     overlay.querySelector('#dl-zip')?.addEventListener('click', () => {
@@ -207,22 +209,31 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
   `, () => {
     load();
 
+    // 中键点某行 = 在新标签打开任务详情（委托一次即可，行随重绘更新）
+    document.getElementById('history-list').addEventListener('auxclick', (e) => {
+      if (e.button !== 1) return;
+      const row = e.target.closest('[data-task]');
+      if (!row) return;
+      e.preventDefault();
+      scope.openInNewTab('/tasks/' + encodeURIComponent(row.dataset.task));
+    });
+
     document.getElementById('status-filter').addEventListener('change', (e) => { state.status = e.target.value; state.page = 1; load(); });
     document.getElementById('time-filter').addEventListener('change', (e) => { state.last = e.target.value; state.page = 1; load(); });
     let userTimer = null;
     document.getElementById('user-filter').addEventListener('input', (e) => {
       clearTimeout(userTimer);
-      userTimer = setTimeout(() => { state.user = e.target.value.trim(); state.page = 1; load(); }, 300);
+      userTimer = scope.resources.setTimeout(() => { state.user = e.target.value.trim(); state.page = 1; load(); }, 300);
     });
     let nodeTimer = null;
     document.getElementById('node-filter').addEventListener('input', (e) => {
       clearTimeout(nodeTimer);
-      nodeTimer = setTimeout(() => { state.nodeId = e.target.value.trim(); state.page = 1; load(); }, 300);
+      nodeTimer = scope.resources.setTimeout(() => { state.nodeId = e.target.value.trim(); state.page = 1; load(); }, 300);
     });
     let cmdTimer = null;
     document.getElementById('cmd-filter').addEventListener('input', (e) => {
       clearTimeout(cmdTimer);
-      cmdTimer = setTimeout(() => { state.command = e.target.value.trim(); state.page = 1; load(); }, 300);
+      cmdTimer = scope.resources.setTimeout(() => { state.command = e.target.value.trim(); state.page = 1; load(); }, 300);
     });
     document.getElementById('export-json').addEventListener('click', () => api.historyExport(buildParams(), 'json').catch(() => alert('导出失败')));
     document.getElementById('export-yaml').addEventListener('click', () => api.historyExport(buildParams(), 'yaml').catch(() => alert('导出失败')));
@@ -238,9 +249,10 @@ const OP_ICON = { command: 'terminal', script: 'terminal', file_transfer: 'uploa
       });
     }
 
-    state.wsCleanup = api.connectWebSocket(msg => {
+    // WS 与 cleanup 都交给页面作用域统一释放（保留返回值，便于页内主动重连）
+    state.wsCleanup = scope.resources.ws(api.onWS(msg => {
       if (msg.type === 'history_update' || msg.type === 'task_update' || msg.type === 'playbook_run_update') load();
-    });
+    }));
 
     return () => { if (state.wsCleanup) state.wsCleanup.close(); };
   });

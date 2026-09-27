@@ -1,5 +1,18 @@
 const API_BASE = '/api/v1';
 
+// 全量节点列表的客户端缓存（见 api.nodesAll）
+const NODES_ALL_TTL = 30000;
+let nodesAllCache = { at: 0, nodes: null, inflight: null };
+
+// 共享 WS 总线（见 api.onWS）：一条连接 + 一组订阅者
+const wsBusHandlers = new Set();
+let wsBusConn = null;
+function busDispatch(msg) {
+  wsBusHandlers.forEach(fn => {
+    try { fn(msg); } catch (e) { console.warn('ws handler failed:', e); }
+  });
+}
+
 function token() {
   return localStorage.getItem('token');
 }
@@ -72,20 +85,43 @@ export const api = {
   // 节点选择器需要全量节点：GET /nodes 默认 page_size=20、服务端封顶 100，
   // 只取一页会让目标节点不全、分组计数与总数偏小。按 meta.total 翻页取完，
   // 返回节点数组（而非 {data,meta}），调用方直接当全量列表用。
-  nodesAll: async () => {
-    const nodes = [];
-    for (let page = 1; page <= 100; page++) {
-      const res = await api.nodes({ page, page_size: 100 });
-      const data = res.data || [];
-      const meta = res.meta || {};
-      nodes.push(...data);
-      const total = meta.total || 0;
-      const reachedTotal = total > 0 && nodes.length >= total;
-      const lastPage = data.length < (meta.page_size || 100);
-      if (data.length === 0 || reachedTotal || lastPage) break;
+  //
+  // 加一层共享缓存 + 并发去重：多个标签/多个入口（选择器、统计、批量操作）
+  // 常常在同一时刻各拉一遍全量，8 个标签就是 8 倍请求。这些数据短时不变，
+  // 缓存 30s 足够；节点发生增删改（见 invalidateNodesAll 的调用点）立即失效。
+  nodesAll: async ({ force = false } = {}) => {
+    const now = Date.now();
+    if (!force && nodesAllCache.nodes && now - nodesAllCache.at < NODES_ALL_TTL) {
+      return nodesAllCache.nodes;
     }
-    return nodes;
+    if (!force && nodesAllCache.inflight) return nodesAllCache.inflight;   // 并发去重
+    const task = (async () => {
+      const nodes = [];
+      for (let page = 1; page <= 100; page++) {
+        const res = await api.nodes({ page, page_size: 100 });
+        const data = res.data || [];
+        const meta = res.meta || {};
+        nodes.push(...data);
+        const total = meta.total || 0;
+        const reachedTotal = total > 0 && nodes.length >= total;
+        const lastPage = data.length < (meta.page_size || 100);
+        if (data.length === 0 || reachedTotal || lastPage) break;
+      }
+      return nodes;
+    })();
+    nodesAllCache.inflight = task;
+    try {
+      const nodes = await task;
+      nodesAllCache = { at: Date.now(), nodes, inflight: null };
+      return nodes;
+    } catch (e) {
+      nodesAllCache.inflight = null;
+      throw e;
+    }
   },
+
+  // 节点数据变更后调用：下次 nodesAll() 重新拉取（写入路径自己调，避免忘）
+  invalidateNodesAll: () => { nodesAllCache = { at: 0, nodes: null, inflight: null }; },
 
   nodeStats: () =>
     request('GET', '/nodes/stats'),
@@ -115,16 +151,17 @@ export const api = {
     request('GET', `/nodes/search?q=${encodeURIComponent(q)}`),
 
   createNode: (data) =>
-    request('POST', '/nodes', data),
+    request('POST', '/nodes', data).then(r => { api.invalidateNodesAll(); return r; }),
 
   updateNode: (id, data) =>
-    request('PUT', `/nodes/${encodeURIComponent(id)}`, data),
+    request('PUT', `/nodes/${encodeURIComponent(id)}`, data).then(r => { api.invalidateNodesAll(); return r; }),
 
   deleteNode: (id) =>
-    request('DELETE', `/nodes/${encodeURIComponent(id)}`),
+    request('DELETE', `/nodes/${encodeURIComponent(id)}`).then(r => { api.invalidateNodesAll(); return r; }),
 
   batchGroup: (nodeIds, { add, remove }) =>
-    request('POST', '/nodes/batch/groups', { node_ids: nodeIds, add: add || [], remove: remove || [] }),
+    request('POST', '/nodes/batch/groups', { node_ids: nodeIds, add: add || [], remove: remove || [] })
+      .then(r => { api.invalidateNodesAll(); return r; }),
 
   exportNodes: async (params) => {
     const t = token();
@@ -171,6 +208,7 @@ export const api = {
       const err = await res.json().catch(() => ({ message: res.statusText }));
       throw new Error(err.message || 'Import failed');
     }
+    api.invalidateNodesAll();
     return res.json();
   },
 
@@ -191,6 +229,17 @@ export const api = {
     for (const [k, v] of Object.entries(params || {})) if (v) q.set(k, v);
     return request('GET', `/tasks?${q}`);
   },
+
+  // 按字节游标取任务输出增量（配合 WS 广播里的 offset 使用）
+  taskOutput: (id, offset = 0, limit = 0) => {
+    const q = new URLSearchParams({ offset: String(offset) });
+    if (limit > 0) q.set('limit', String(limit));
+    return request('GET', `/tasks/${encodeURIComponent(id)}/output?${q}`);
+  },
+
+  // 分离运行进程的状态与日志尾部（节点侧 nohup 起的后台任务）
+  taskDetached: (id, tail = 200) =>
+    request('GET', `/tasks/${encodeURIComponent(id)}/detached?tail=${tail}`),
 
   task: (id) =>
     request('GET', `/tasks/${encodeURIComponent(id)}`),
@@ -317,7 +366,7 @@ export const api = {
   // aiChatStream 走 SSE 流式聊天；handlers: {onDelta, onTool, onProgress}。
   // 失败（含流中途断开）抛错，调用方可回退 aiChat。
   aiChatStream: async (payload, handlers = {}) => {
-    const res = await fetch(`${API_BASE}/ai/chat/stream`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
+    const res = await fetch(`${API_BASE}/ai/chat/stream`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload), signal: handlers.signal });
     if (res.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -537,6 +586,28 @@ export const api = {
 
   // 建连改用一次性票据：长期 JWT 不再出现在 URL 中（避免进反代日志/浏览器历史）。
   // 保持同步签名返回句柄，票据异步获取，未取到则保持断开。
+  // 共享 WS 总线：全应用一条连接，所有订阅者共用（代替「每个页面各建一条 + 各自 3s 重连」）。
+  // 广播是全量的（服务端 WSHub 不做订阅过滤），所以多一条连接只是多一份解码与缓冲，
+  // 收敛成一条纯赚；页面的失活门控仍由各自的 scope 负责。
+  // 返回 { close() } 与 connectWebSocket 同形状，调用点无需改写法。
+  onWS(onMessage) {
+    const handler = onMessage;
+    wsBusHandlers.add(handler);
+    if (!wsBusConn) wsBusConn = api.connectWebSocket(busDispatch);
+    let closed = false;
+    return {
+      close() {
+        if (closed) return;
+        closed = true;
+        wsBusHandlers.delete(handler);
+        if (wsBusHandlers.size === 0 && wsBusConn) { wsBusConn.close(); wsBusConn = null; }
+      },
+    };
+  },
+
+  // 当前共享连接上的订阅者数量（诊断/测试用）
+  wsSubscribers: () => wsBusHandlers.size,
+
   connectWebSocket(onMessage) {
     let ws = null;
     let closed = false;

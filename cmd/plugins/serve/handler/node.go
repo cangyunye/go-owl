@@ -101,6 +101,15 @@ func (h *NodeHandler) List(c *gin.Context) {
 		FROM nodes WHERE 1=1`
 	args := []interface{}{}
 
+	// 关键字搜索（id/名称/地址/用户/分组/标签）：执行页面板与节点页都靠它过滤，
+	// 此前列表端点没有 q 参数，前端传了也被忽略 —— 表现为「搜了没反应」。
+	if kw := strings.TrimSpace(c.Query("q")); kw != "" {
+		pattern := "%" + strings.ToLower(kw) + "%"
+		query += ` AND (LOWER(id) LIKE ? OR LOWER(name) LIKE ? OR LOWER(address) LIKE ?
+			OR LOWER(user) LIKE ? OR LOWER(groups) LIKE ? OR LOWER(labels) LIKE ?)`
+		args = append(args, pattern, pattern, pattern, pattern, pattern, pattern)
+	}
+
 	if g := c.Query("group"); g != "" {
 		groupNames := strings.Split(g, ",")
 		clauses := []string{}
@@ -286,13 +295,15 @@ func (h *NodeHandler) Search(c *gin.Context) {
 		return
 	}
 
+	// 必须包含 id：节点通常靠 id 辨识（如 wsl-kube 的 name 是 "WSL Ubuntu"），
+	// 只匹配 name/address/user/groups/labels 会出现「按 id 搜不到」。
 	query := `SELECT id, name, address, port, user, status, groups, labels,
 		COALESCE(proxy_jump, ''), COALESCE(created_at, ''), COALESCE(updated_at, '')
 		FROM nodes WHERE
-		LOWER(name) LIKE ? OR LOWER(address) LIKE ? OR LOWER(user) LIKE ?
+		LOWER(id) LIKE ? OR LOWER(name) LIKE ? OR LOWER(address) LIKE ? OR LOWER(user) LIKE ?
 		OR LOWER(groups) LIKE ? OR LOWER(labels) LIKE ?`
 	pattern := "%" + strings.ToLower(q) + "%"
-	args := []interface{}{pattern, pattern, pattern, pattern, pattern}
+	args := []interface{}{pattern, pattern, pattern, pattern, pattern, pattern}
 
 	rows, err := h.db.Query(query, args...)
 	if err != nil {

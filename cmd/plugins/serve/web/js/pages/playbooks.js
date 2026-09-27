@@ -1,8 +1,8 @@
-export function renderPlaybooks(render, navigate, user, api, shell) {
+export function renderPlaybooks(render, navigate, user, api, shell, scope) {
   const PB_VIEW_KEY = 'owl-pb-view';
   const PB_LIB_KEY = 'owl-pb-lib';
 
-  let state = {
+  let state = scope.restoreState({
     playbooks: [],
     filteredPlaybooks: [],
     query: '',
@@ -19,7 +19,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
     pendingCancelId: null,
     failOnly: false,
     currentRun: null,
-  };
+  });
 
   let ws = null;
   let searchDebounceTimer = null;
@@ -28,6 +28,20 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
 
   // 创建/编辑向导状态（cp = create playbook）
   let cpState = { step: 1, totalSteps: 3, vars: [], tasks: [] };
+  scope.persistState(() => ({ query: state.query, selectedCategory: state.selectedCategory, view: state.view, libExpanded: state.libExpanded, selectedId: state.selectedId, runsPage: state.runsPage, failOnly: state.failOnly }));
+
+  // 路由上下文（?cat=&q=）优先于标签快照；切换时写回 URL 并更新标签标题层级
+  {
+    const ctx = scope.context.get();
+    if (ctx.q != null) state.query = ctx.q;
+    if (ctx.cat != null) state.selectedCategory = ctx.cat;
+  }
+  function syncContext() {
+    scope.context.set({ cat: state.selectedCategory, q: state.query }, {
+      title: '剧本管理' + (state.selectedCategory ? ' · ' + state.selectedCategory : '') + (state.query ? ' · "' + state.query + '"' : ''),
+    });
+  }
+  syncContext();
   let cpTaskCounter = 0;
   let dragTaskIdx = -1;
 
@@ -141,6 +155,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   // ==================== 左侧分类面板 ====================
 
   function renderPanel() {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     const counts = {};
     for (const pb of state.playbooks) {
       const c = pb.category || '';
@@ -160,11 +176,12 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
         </li>`)
     ].join('');
 
-    shell.setPanelContent(`<ul style="list-style:none;padding:0">${html}</ul>`);
+    scope.panel.setContent(`<ul style="list-style:none;padding:0">${html}</ul>`);
 
     document.querySelectorAll('.panel-item[data-category]').forEach(el => {
       el.addEventListener('click', () => {
         state.selectedCategory = el.dataset.category;
+        syncContext();
         applyFilters();
       });
     });
@@ -173,6 +190,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   // ==================== 主栏：剧本列表 ====================
 
   function renderList() {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     const body = document.getElementById('pb-list-body');
     if (!body) return;
     const countEl = document.getElementById('pb-count');
@@ -213,6 +232,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   }
 
   function renderGrid() {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     const cards = state.filteredPlaybooks.map(pb => `
       <div class="playbook-card ${state.selectedId === pb.id ? 'selected' : ''}" data-pb-id="${esc(pb.id)}">
         <div class="pb-header">
@@ -433,6 +454,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   }
 
   function renderRuns(runs) {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     state.runs = runs || [];
     const list = document.getElementById('playbook-runs-list');
     if (!list) return;
@@ -469,6 +492,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   }
 
   function showRunDetail(run) {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     state.currentRun = run;
     const detail = document.getElementById('run-detail');
     if (!detail) return;
@@ -515,6 +540,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   async function loadRuns() {
     try {
       const res = await api.playbookRuns({ page: state.runsPage, page_size: state.runsPageSize });
+    if (scope.paused) return;   // await 之后：标签可能已被摘除
       state.runsTotal = res.meta?.total || 0;
       renderRuns(res.data || []);
     } catch { state.runsTotal = 0; renderRuns([]); }
@@ -526,6 +552,8 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   }
 
   function renderRunsPagination() {
+    if (scope.paused) return;   // 失活：容器已摘除，切回时由 onResume 刷新
+
     const info = document.getElementById('runs-page-info');
     if (!info) return;
     if (state.runsPage > runsTotalPages()) state.runsPage = runsTotalPages();
@@ -1092,7 +1120,16 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
   // ==================== 页面骨架 ====================
 
   function setupWebSocket() {
-    ws = api.connectWebSocket(msg => {
+    // 失活期间不处理广播（页面 DOM 已摘除，渲染函数里的 getElementById 会取到 null）。
+    // 运行本身在服务端继续，切回时用 onResume 补一次拉取即可。
+
+    // 切回本标签：补拉运行列表与当前打开的运行详情（失活期间的更新被门控丢掉了）
+    scope.onResume(() => {
+      loadRuns();
+      const cur = state.currentRun;
+      if (cur && cur.id) api.playbookRun(cur.id).then(run => showRunDetail(run)).catch(() => {});
+    });
+    ws = api.onWS(scope.gate(msg => {
       if (msg.type === 'playbook_run_update') {
         loadRuns();
         const detail = document.getElementById('run-detail');
@@ -1100,7 +1137,7 @@ export function renderPlaybooks(render, navigate, user, api, shell) {
           showRunDetail(msg.data);
         }
       }
-    });
+    }));
   }
 
   render(`

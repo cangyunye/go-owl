@@ -1,14 +1,14 @@
 // 告警页：告警列表（分组面板/状态级别/类型/节点筛选、分页）、处置（确认/解决）、
 // 详情与对策（查看/复制，编辑/新增/删除仅 admin）、监控配置（静默/告警类型/通知渠道，admin）。
-export function renderAlerts(render, navigate, user, api, shell) {
+export function renderAlerts(render, navigate, user, api, shell, scope) {
   const isOperator = ['operator', 'admin'].includes(user.role);
   const isAdmin = user.role === 'admin';
   const pageSize = 20;
-  const state = {
+  const state = scope.restoreState({
     status: 'active', severity: '', typeId: '', nodeId: '', page: 1, total: 0, items: [],
     detail: null, remedies: [], types: [], allGroups: [], selectedGroups: [], groupSearch: '',
-  };
-  let mode = 'list'; // list | config
+  });
+  let mode = scope.restoreState({ mode: 'list' }).mode; // list | config
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
   function timeAgo(t) { if (!t) return '-'; const s = Math.floor((Date.now() - (t * 1000)) / 1000); if (s < 60) return s + '秒前'; if (s < 3600) return Math.floor(s / 60) + '分钟前'; if (s < 86400) return Math.floor(s / 3600) + '小时前'; return Math.floor(s / 86400) + '天前'; }
@@ -16,6 +16,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
   function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 12); }
 
   const STATUS_TEXT = { open: '待处理', acked: '已确认', resolved: '已解决' };
+  scope.persistState(() => ({ status: state.status, severity: state.severity, typeId: state.typeId, nodeId: state.nodeId, page: state.page, selectedGroups: state.selectedGroups, groupSearch: state.groupSearch, mode }));
   const STATUS_CLS = { open: 'pending', acked: 'info', resolved: 'success' };
   const SEV_TEXT = { critical: '紧急', warn: '警告', info: '提示' };
   const SEV_COLOR = { critical: 'var(--danger)', warn: 'var(--warn)', info: 'var(--info)' };
@@ -41,10 +42,10 @@ export function renderAlerts(render, navigate, user, api, shell) {
   // ---------- 左侧面板：分组筛选（多选，仿节点管理） ----------
 
   function renderPanel() {
-    shell.setPanelTitle('告警分组');
+    scope.panel.setTitle('告警分组');
     const q = state.groupSearch.toLowerCase();
     const filtered = state.allGroups.filter(g => !q || g.toLowerCase().includes(q));
-    shell.setPanelContent(`
+    scope.panel.setContent(`
       <div style="padding:6px 10px">
         <input type="text" id="alert-group-search" placeholder="搜索分组…" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);font-size:var(--fs-xs);outline:none" value="${esc(state.groupSearch)}">
       </div>
@@ -261,11 +262,11 @@ export function renderAlerts(render, navigate, user, api, shell) {
       await navigator.clipboard.writeText(text);
     } catch {
       const ta = document.createElement('textarea');
-      ta.value = text; document.body.appendChild(ta); ta.select();
+      ta.value = text; scope.resources.overlay(ta); ta.select();
       try { document.execCommand('copy'); } catch {}
       ta.remove();
     }
-    if (btn) { const t = btn.textContent; btn.textContent = '✓ 已复制'; setTimeout(() => { btn.textContent = t; }, 1200); }
+    if (btn) { const t = btn.textContent; btn.textContent = '✓ 已复制'; scope.resources.setTimeout(() => { btn.textContent = t; }, 1200); }
   }
 
   async function openDetail(id) {
@@ -326,7 +327,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         if (plan.status === 'done' && !res.verification && (loadPlanProgress._tries?.[planId] || 0) < 40) {
           loadPlanProgress._tries = loadPlanProgress._tries || {};
           loadPlanProgress._tries[planId] = (loadPlanProgress._tries[planId] || 0) + 1;
-          setTimeout(() => loadPlanProgress(planId, area), 1500);
+          scope.resources.setTimeout(() => loadPlanProgress(planId, area), 1500);
           area.innerHTML = planProgressHtml(plan, null);
           return;
         }
@@ -352,7 +353,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         loadPlanProgress(planId, area);
       });
       if (plan && !['done', 'stopped', 'failed'].includes(plan.status)) {
-        setTimeout(() => loadPlanProgress(planId, area), 1500);
+        scope.resources.setTimeout(() => loadPlanProgress(planId, area), 1500);
       }
     }
 
@@ -460,7 +461,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
       </div>
     </div>`;
 
-    document.body.appendChild(overlay);
+    scope.resources.overlay(overlay);
     overlay.querySelector('#detail-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
@@ -582,7 +583,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
           <span style="color:var(--muted)">${esc(r.created_by || '')}</span>
         </li>`).join('')}</ul>` : '';
       if (runs.some(r => r.status === 'pending' || r.status === 'running')) {
-        setTimeout(loadBindingRuns, 2000);
+        scope.resources.setTimeout(loadBindingRuns, 2000);
       }
     }
     loadBindingRuns();
@@ -650,7 +651,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         </div>
       </div>
     </div>`;
-    document.body.appendChild(editor);
+    scope.resources.overlay(editor);
 
     const kindSel = editor.querySelector('#re-kind');
     kindSel.addEventListener('change', () => {
@@ -764,7 +765,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         </div>
       </div>
     </div>`;
-    document.body.appendChild(editor);
+    scope.resources.overlay(editor);
 
     const pbList = editor.querySelector('#be-pb-list');
     const searchInput = editor.querySelector('#be-search');
@@ -897,7 +898,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         </div>
       </div>
     </div>`;
-    document.body.appendChild(overlay);
+    scope.resources.overlay(overlay);
     const close = () => overlay.remove();
     overlay.querySelector('#sc-close').addEventListener('click', close);
     overlay.querySelector('#sc-cancel').addEventListener('click', close);
@@ -939,7 +940,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         <div id="dbg-result"></div>
       </div>
     </div>`;
-    document.body.appendChild(overlay);
+    scope.resources.overlay(overlay);
 
     // 默认选中范围内第一个节点
     const scopeFirst = (at.scope_nodes || '').split(',').map(x => x.trim()).filter(Boolean)[0];
@@ -1081,7 +1082,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         </div>
       </div>
     </div>`;
-    document.body.appendChild(editor);
+    scope.resources.overlay(editor);
 
     const modeSel = editor.querySelector('#ca-mode');
     const toggle = (sel, show) => { [sel + '-label', sel + '-wrap', sel + '-hint'].forEach(id => {
@@ -1183,7 +1184,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         if (r) openRemedyEditor({ alertTypeId: at.id, existing: r, onSaved: render });
       }));
     }
-    document.body.appendChild(overlay);
+    scope.resources.overlay(overlay);
     await render();
   }
 
@@ -1294,7 +1295,7 @@ export function renderAlerts(render, navigate, user, api, shell) {
         at.default_params.duration = parseInt(tr.querySelector('.at-dur').value) || 1;
         at.enabled = tr.querySelector('.at-enabled').checked;
         at.auto_approve = tr.querySelector('.at-auto').checked;
-        try { await api.updateAlertType(id, at); btn.textContent = '✓ 已保存'; setTimeout(() => { btn.textContent = '保存'; }, 1500); } catch (e) { alert('保存失败: ' + (e.message || e)); }
+        try { await api.updateAlertType(id, at); btn.textContent = '✓ 已保存'; scope.resources.setTimeout(() => { btn.textContent = '保存'; }, 1500); } catch (e) { alert('保存失败: ' + (e.message || e)); }
       });
     });
 

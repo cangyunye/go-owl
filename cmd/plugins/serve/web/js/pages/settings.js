@@ -1,4 +1,4 @@
-export function renderSettings(render, navigate, user, api) {
+export function renderSettings(render, navigate, user, api, scope) {
   loadSettings();
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -23,6 +23,14 @@ export function renderSettings(render, navigate, user, api) {
     'history.retention_days': {
       desc: '历史记录保留天数（0 = 关闭定期清理）',
       defaultValue: '90'
+    },
+    'terminal.idle_timeout_min': {
+      desc: '终端空闲超时（分钟）：终端连续 N 分钟无任何输入/输出时自动断开并释放会话；0 = 不启用',
+      defaultValue: '30'
+    },
+    'terminal.max_per_user': {
+      desc: '每用户并发终端数上限（超出后拒绝新建终端）；0 = 不限制',
+      defaultValue: '5'
     }
   };
 
@@ -168,7 +176,8 @@ export function renderSettings(render, navigate, user, api) {
   }
 
   // ---- AI provider config state ----
-  let activeProvider = 'anthropic';
+  let activeProvider = scope.restoreState({ activeProvider: 'anthropic' }).activeProvider;
+  scope.persistState(() => ({ activeProvider }));
 
   const PROVIDER_META = {
     anthropic: { label: 'Anthropic', storageKey: 'anthropic' },
@@ -602,7 +611,8 @@ export function renderSettings(render, navigate, user, api) {
     aiModalOverlay.addEventListener('click', e => {
       if (e.target === aiModalOverlay) closeAiModal();
     });
-    document.addEventListener('keydown', e => {
+    // 走页面作用域：document 级监听不能只加不移（历史上每次挂载泄漏一条）
+    scope.resources.on(document, 'keydown', e => {
       if (e.key === 'Escape' && aiModalOverlay.classList.contains('open')) closeAiModal();
     });
 
@@ -917,8 +927,7 @@ export function renderSettings(render, navigate, user, api) {
     }
 
     const onSectionsChange = () => applySections();
-    document.addEventListener('owl:settings-sections', onSectionsChange);
+    scope.resources.on(document, 'owl:settings-sections', onSectionsChange);
     applySections();
-    return () => document.removeEventListener('owl:settings-sections', onSectionsChange);
   });
 }

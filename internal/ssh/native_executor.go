@@ -181,13 +181,25 @@ func containsAnySSH(s string, substrs ...string) bool {
 // ConnectionError SSH 连接错误
 type ConnectionError struct {
 	NodeID    string
+	User      string
 	ErrorType ErrorType
 	Stderr    string
 	Cause     error
 }
 
 func (e *ConnectionError) Error() string {
-	return fmt.Sprintf("SSH 连接失败 on node %s: %s", e.NodeID, stringsTrimSpace(e.Stderr))
+	who := ""
+	if e.User != "" {
+		who = " (user=" + e.User + ")"
+	}
+	hint := ""
+	if e.ErrorType == ErrorTypeAuth {
+		// 认证失败通常是账号/密码/密钥不匹配，或该账号被 sshd 禁止登录（如 root
+		// 默认 PermitRootLogin prohibit-password）。缺了这句，底层
+		// "unable to authenticate" 既看不出用的哪个账号，也没有排查方向。
+		hint = " —— 认证失败：检查该节点的用户名/密码/密钥，确认该用户被 sshd 允许登录（root 通常默认禁止密码登录）"
+	}
+	return fmt.Sprintf("SSH 连接失败 on node %s%s: %s%s", e.NodeID, who, stringsTrimSpace(e.Stderr), hint)
 }
 
 func (e *ConnectionError) Unwrap() error {

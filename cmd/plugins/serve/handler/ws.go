@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strconv"
 	"context"
 	"fmt"
 	"log"
@@ -107,7 +108,9 @@ func (h *WSHub) BroadcastTaskUpdate(task interface{}) {
 	})
 }
 
-func (h *WSHub) BroadcastTaskOutput(taskID, nodeID, line, lineType string) {
+// BroadcastTaskOutput 广播一行输出。offset 是这一行在任务输出中的**起始字节位置**，
+// 客户端据此维护精确游标：断线重连后可用 /tasks/:id/output?offset= 只补缺失的尾部。
+func (h *WSHub) BroadcastTaskOutput(taskID, nodeID, line, lineType string, offset int64) {
 	h.Broadcast(WSMessage{
 		Type: "task_output",
 		Data: map[string]string{
@@ -115,6 +118,7 @@ func (h *WSHub) BroadcastTaskOutput(taskID, nodeID, line, lineType string) {
 			"node_id": nodeID,
 			"line":    line,
 			"type":    lineType,
+			"offset":  strconv.FormatInt(offset, 10),
 		},
 	})
 }

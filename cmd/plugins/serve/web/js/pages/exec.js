@@ -1,4 +1,4 @@
-export function renderExec(render, navigate, user, api, shell) {
+export function renderExec(render, navigate, user, api, shell, scope) {
   let allNodes = [];
   let selectedNodes = new Set();
   let wsCleanup = null;
@@ -8,6 +8,8 @@ export function renderExec(render, navigate, user, api, shell) {
   let currentOpID = '';
   // 实时输出对账：WS 可能因断线或服务端断开慢客户端而缺行，终态广播带全量 output
   let receivedLines = {};   // task_id -> 已收到的实时行数
+  let receivedBytes = {};   // task_id -> 已收到的实时输出字节游标（来自广播的 offset）
+  let detachedTaskId = null;   // 最近一次分离运行的任务 id
   let taskUpdates = {};     // task_id -> 最近一次终态广播(含完整 output)
   let activeGroups = [];
   let allGroups = [];
@@ -34,23 +36,38 @@ export function renderExec(render, navigate, user, api, shell) {
   const initNodes = params.get('nodes');
   const initGroups = params.get('groups');
 
-  const saved = sessionStorage.getItem('exec_selected_nodes');
+  // 勾选状态按标签命名空间存：同一个执行页的两个标签不能共用一份选择
+  const storageKey = 'owl-tab-' + (scope.tabId || 'default') + '-exec-nodes';
+  const saved = sessionStorage.getItem(storageKey);
   if (saved) {
     try { JSON.parse(saved).forEach(id => selectedNodes.add(id)); } catch {}
   }
+
+  // 标签页状态：本标签的勾选/过滤/执行模式，切回该标签时恢复
+  {
+    const snap = scope.restoreState({ selectedNodes: [], activeGroups: [], statusFilter: '', currentPage: 1, searchQuery: '', execMode: 'command', labelInputs: [] });
+    if (!saved && snap.selectedNodes && snap.selectedNodes.length) selectedNodes = new Set(snap.selectedNodes);
+    activeGroups = snap.activeGroups || activeGroups;
+    statusFilter = snap.statusFilter || statusFilter;
+    currentPage = snap.currentPage || currentPage;
+    searchQuery = snap.searchQuery || searchQuery;
+    execMode = snap.execMode || execMode;
+    labelInputs = snap.labelInputs || labelInputs;
+  }
+  scope.persistState(() => ({ selectedNodes: [...selectedNodes], activeGroups, statusFilter, currentPage, searchQuery, execMode, labelInputs }));
 
   if (initGroups) activeGroups = initGroups.split(',').filter(Boolean);
   if (initNodes) initNodes.split(',').filter(Boolean).forEach(id => selectedNodes.add(id));
 
   function saveSelection() {
-    sessionStorage.setItem('exec_selected_nodes', JSON.stringify(Array.from(selectedNodes)));
+    sessionStorage.setItem(storageKey, JSON.stringify(Array.from(selectedNodes)));
   }
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
   function tagColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i); return 'tag-r' + (Math.abs(h) % 12); }
 
-  shell.setPanelContent(`
+  scope.panel.setContent(`
     <div class="panel-node-selector" style="display:flex;flex-direction:column;height:100%">
       <div class="panel-search">
         <input type="text" id="panel-node-search" placeholder="搜索节点名称或地址..." spellcheck="false">
@@ -433,6 +450,29 @@ export function renderExec(render, navigate, user, api, shell) {
   // rebuildTerminalFromRecords 用任务记录里的全量 output 重建终端视图：
   // 实时流缺行时(WS 断线 / 慢客户端被断开 / 采集中断)由终态广播兜底，
   // 保证终端最终与任务历史一致。
+  // backfillMissingTail 按游标补输出：对每个任务取 [receivedBytes, total) 的片段追加。
+  // 返回 false 表示有任务补不齐（调用方退回整段重建兜底）。
+  async function backfillMissingTail() {
+    let allOk = true;
+    for (const id of currentTaskIDs) {
+      const rec = taskUpdates[id] || {};
+      const total = Number(rec.output_len || 0) || outputLineCount(rec.output || '');
+      const from = receivedBytes[id] || 0;
+      if (!total || total <= from) continue;
+      try {
+        const res = await api.taskOutput(id, from);
+        const chunk = res.data || '';
+        if (!chunk) continue;
+        if (currentTaskIDs.length > 1) appendTerminal(`[${esc(rec.node_id || '')}] —— 补全缺失输出 ——`, 'ts');
+        chunk.replace(/\n+$/, '').split('\n').forEach(x => appendTerminal(esc(x), 'out'));
+        receivedBytes[id] = res.next_offset || total;
+      } catch {
+        allOk = false;
+      }
+    }
+    return allOk;
+  }
+
   function rebuildTerminalFromRecords(tasks) {
     clearTerminal();
     appendTerminal('⚠ 检测到实时输出有缺失，已用任务记录补全（完整输出以任务详情为准）：', 'ts');
@@ -636,6 +676,7 @@ export function renderExec(render, navigate, user, api, shell) {
       });
     }
 
+    if (document.getElementById("detached-run")?.checked) payload.detached = true;
     return payload;
   }
 
@@ -674,6 +715,11 @@ export function renderExec(render, navigate, user, api, shell) {
       const res = await api.execAdvanced(payload);
 
       const tasks = res.tasks || [];
+      if (payload.detached && tasks.length) {
+        detachedTaskId = tasks[0].id;
+        const dbtn = document.getElementById("detached-log-btn");
+        if (dbtn) dbtn.style.display = "";
+      }
       currentTaskIDs = tasks.map(t => t.id);
       currentTasks = tasks;
       currentOpID = (tasks[0] && tasks[0].record_id) || '';
@@ -714,9 +760,18 @@ export function renderExec(render, navigate, user, api, shell) {
           return;
         }
         const updates = currentTaskIDs.map(id => taskUpdates[id]).filter(Boolean);
-        const incomplete = updates.some(u => outputLineCount(u.output) > (receivedLines[u.id] || 0));
+        // 轻量记录只有 output_len：按字节游标判断是否缺输出；完整记录退回行数判断
+        const incomplete = currentTaskIDs.some(id => {
+          const u = taskUpdates[id] || {};
+          const total = Number(u.output_len || 0);
+          if (total > 0) return total > (receivedBytes[id] || 0);
+          return outputLineCount(u.output || '') > (receivedLines[id] || 0);
+        });
         if (incomplete) {
-          rebuildTerminalFromRecords(updates);
+          // 优先按游标补缺失的尾部（只传差额）；拉不到再退回整段重建
+          backfillMissingTail().then(ok => {
+            if (!ok) rebuildTerminalFromRecords(currentTaskIDs.map(id => taskUpdates[id]).filter(Boolean));
+          });
         } else {
           appendTerminal('— 全部任务已结束，可在任务历史中查看输出 —', 'ts');
         }
@@ -735,11 +790,13 @@ export function renderExec(render, navigate, user, api, shell) {
         if (finished.size >= currentTaskIDs.length) finalize();
       };
 
-      wsCleanup = api.connectWebSocket(msg => {
+      wsCleanup = api.onWS(msg => {
         if (msg.type === 'task_output') {
           const t = msg.data;
           if (!t || !currentTaskIDs.includes(t.task_id)) return;
           receivedLines[t.task_id] = (receivedLines[t.task_id] || 0) + 1;
+          // 广播带 offset（本行起始字节）：据此得到精确游标，重连后只补缺失尾部
+          receivedBytes[t.task_id] = (parseInt(t.offset, 10) || 0) + (t.line || '').length + 1;
           if (suppressOutput) return;
           const prefix = isSingle ? '' : `[${esc(t.node_id)}] `;
           appendTerminal(prefix + esc(t.line), t.type === 'stderr' ? 'err' : 'out');
@@ -755,7 +812,8 @@ export function renderExec(render, navigate, user, api, shell) {
       const reconcile = async () => {
         if (!currentOpID || finished.size >= currentTaskIDs.length) { stopReconcile(); return; }
         try {
-          const res = await api.tasks({ record_id: currentOpID, page_size: 100 });
+          // 轻量：只要状态与输出长度，不重传 output（长输出任务的轮询代价归零）
+          const res = await api.tasks({ record_id: currentOpID, page_size: 100, light: 1 });
           (res.data || []).forEach(t => {
             if (currentTaskIDs.includes(t.id) && isTerminal(t.status)) markFinished(t);
           });
@@ -836,6 +894,12 @@ free -m</textarea>
           </div>
         </div>
 
+        <label class="toggle-row" style="margin:8px 0 0 2px">
+          <input type="checkbox" id="detached-run">
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span style="font-size:12px;color:var(--muted)" title="命令在节点侧 setsid+nohup 后台执行，输出写日志文件；关页面/刷新/owl-serve 重启都不影响它跑完。不依赖节点安装任何代理">分离方式运行</span>
+        </label>
+        <div class="exec-splitter" id="exec-splitter" title="拖动调整编辑器高度，双击复位"></div>
         <div class="output-terminal">
           <div class="term-header">
             <div class="dot-group">
@@ -847,6 +911,7 @@ free -m</textarea>
             <span style="flex:1"></span>
             <button class="btn btn-ghost btn-sm" onclick="window.location='/history'">历史记录</button>
             <button class="btn btn-ghost btn-sm" id="clear-term-btn">清屏</button>
+            <button class="btn btn-ghost btn-sm" id="detached-log-btn" style="display:none">查看分离输出</button>
           </div>
           <div class="term-body" id="term-body">
             <div class="line" style="color:var(--muted)">选择节点并点击「执行」查看输出</div>
@@ -982,7 +1047,46 @@ free -m</textarea>
       document.getElementById('cmd-input').value = '';
       updateExecButton();
     });
+    // 编辑器 ⇄ 输出区之间的分隔条：拖动改编辑器高度、记忆在本地、双击复位
+    const splitter = document.getElementById('exec-splitter');
+    if (splitter) {
+      const main = document.querySelector('.exec-main');
+      const savedH = parseInt(localStorage.getItem('owl-exec-editor-h') || '0', 10);
+      if (savedH > 0) main.style.setProperty('--editor-h', savedH + 'px');
+      let startY = 0, startH = 0;
+      const onMove = (e) => {
+        const max = Math.max(160, main.clientHeight - 260);
+        const h = Math.min(max, Math.max(120, startH + (e.clientY - startY)));
+        main.style.setProperty('--editor-h', h + 'px');
+      };
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove);
+        splitter.classList.remove('dragging');
+        const h = parseInt(main.style.getPropertyValue('--editor-h')) || 0;
+        if (h > 0) localStorage.setItem('owl-exec-editor-h', String(h));
+      };
+      scope.resources.onDispose(() => document.removeEventListener('pointermove', onMove));
+      splitter.addEventListener('pointerdown', (e) => {
+        startY = e.clientY;
+        startH = document.querySelector('.cmd-editor').offsetHeight;
+        splitter.classList.add('dragging');
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp, { once: true });
+      });
+      splitter.addEventListener('dblclick', () => {
+        main.style.removeProperty('--editor-h');
+        localStorage.removeItem('owl-exec-editor-h');
+      });
+    }
     document.getElementById('clear-term-btn').addEventListener('click', clearTerminal);
+    document.getElementById('detached-log-btn').addEventListener('click', async () => {
+      if (!detachedTaskId) return;
+      try {
+        const res = await api.taskDetached(detachedTaskId, 200);
+        appendTerminal("— 分离进程 " + (res.running ? "运行中" : "已结束") + "（pid=" + res.pid + "，日志 " + res.log_path + "）—", "ts");
+        (res.data || "").split("\n").forEach(x => { if (x.trim()) appendTerminal(esc(x), "out"); });
+      } catch (e) { appendTerminal("读取分离输出失败: " + esc(e.message || e), "err"); }
+    });
 
     document.querySelectorAll('.status-btn').forEach(btn => {
       btn.addEventListener('click', function() {

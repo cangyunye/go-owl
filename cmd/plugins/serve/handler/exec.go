@@ -156,8 +156,12 @@ type execRequest struct {
 	RetryInterval    string `json:"retry_interval"`
 	RetryMaxInterval string `json:"retry_max_interval"`
 	NoRetry          bool   `json:"no_retry"`
-	ConnectTimeout   string `json:"connect_timeout"`
-	CommandTimeout   string `json:"command_timeout"`
+	// Detached 分离方式运行：命令在节点侧 setsid+nohup 后台执行，输出落日志文件，
+	// 服务端只记 pid 与日志路径（页面/服务重启都不影响它）。不依赖节点装任何代理，
+	// 只用节点自带的 sh/setsid/nohup。
+	Detached       bool   `json:"detached"`
+	ConnectTimeout string `json:"connect_timeout"`
+	CommandTimeout string `json:"command_timeout"`
 }
 
 type ExecConfig struct {
@@ -499,6 +503,9 @@ func (h *ExecHandler) Create(c *gin.Context) {
 
 	if cfg.Parallel {
 		for _, nid := range nodeIDs {
+			if req.Detached {
+				command = wrapDetachedCommand(command, detachedLogPath(nid))
+			}
 			task, err := h.createSingleTask(c, nid, command, cfg.Force, opID)
 			if err != nil {
 				if len(nodeIDs) == 1 {
@@ -524,6 +531,9 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	} else {
 		var serialTasks []*store.Task
 		for _, nid := range nodeIDs {
+			if req.Detached {
+				command = wrapDetachedCommand(command, detachedLogPath(nid))
+			}
 			task, err := h.createSingleTask(c, nid, command, cfg.Force, opID)
 			if err != nil {
 				continue
@@ -608,6 +618,92 @@ func (h *ExecHandler) createSingleTask(c *gin.Context, nid, command string, forc
 	return &taskResult{task: task}, nil
 }
 
+// stripOutputsForLight 为「轻量列表」用：把 output 换成 output_len 后清空 output。
+// 客户端对账只需要状态与长度（输出走 /tasks/:id/output 游标增量），
+// 长输出任务因此不再每次整轮询都整段重传。
+func stripOutputsForLight(tasks []*store.Task) []*store.Task {
+	for _, t := range tasks {
+		if t == nil {
+			continue
+		}
+		t.OutputLen = len(t.Output)
+		t.Output = ""
+	}
+	return tasks
+}
+
+// detachedLogPath 生成节点侧日志路径：带节点标识与纳秒后缀，避免同批多节点互撞。
+func detachedLogPath(nodeID string) string {
+	safe := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			return r
+		}
+		return '_'
+	}, nodeID)
+	return fmt.Sprintf("/tmp/owl-detached-%s-%d.log", safe, time.Now().UnixNano())
+}
+
+// wrapDetachedCommand 把命令改写成「节点侧分离运行」：外层 SSH 命令立刻返回（只打印
+// pid 与日志路径），真正的进程脱离 SSH 通道继续跑，与页面/owl-serve 存活无关。
+func wrapDetachedCommand(cmd, logPath string) string {
+	// shell 单引号里的单引号要写成 引用关闭+转义+重新开启，用原始字符串避免二次转义
+	sq := `'\''` // shell：单引号里的单引号需写成 关闭+反斜杠+重新开启
+	quoted := "'" + strings.ReplaceAll(cmd, "'", sq) + "'"
+	return "LOG=" + logPath + `; : > "$LOG"; setsid nohup sh -c ` + quoted + ` >> "$LOG" 2>&1 & echo "detached_pid=$! log=$LOG"`
+}
+
+// DetachedLog 读分离运行进程的状态与日志尾部：
+//   GET /api/v1/tasks/:id/detached?tail=200
+// 用节点自带的 kill -0 判活、tail 取日志尾部，服务端不保存这些进程的任何状态。
+func (h *ExecHandler) DetachedLog(c *gin.Context) {
+	task, err := h.task.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "task not found"})
+		return
+	}
+	pid, logPath, ok := parseDetachedMeta(task.Output)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该任务不是分离方式运行"})
+		return
+	}
+	tail := 200
+	if v, err := parseInt(c.Query("tail"), 200); err == nil && v > 0 && v <= 5000 {
+		tail = v
+	}
+	if h.exec == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "executor unavailable"})
+		return
+	}
+	probe := fmt.Sprintf("if kill -0 %d 2>/dev/null; then echo RUNNING; else echo EXITED; fi; echo ---; tail -n %d %s 2>/dev/null", pid, tail, logPath)
+	out, _, _ := h.exec.Execute(c.Request.Context(), task.NodeID, probe)
+	running := strings.HasPrefix(out, "RUNNING")
+	data := out
+	if i := strings.Index(out, "---\n"); i >= 0 {
+		data = out[i+4:]
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"task_id":  task.ID,
+		"node_id":  task.NodeID,
+		"pid":      pid,
+		"log_path": logPath,
+		"running":  running,
+		"data":     data,
+	})
+}
+
+func parseDetachedMeta(output string) (pid int, logPath string, ok bool) {
+	for _, f := range strings.Fields(output) {
+		switch {
+		case strings.HasPrefix(f, "detached_pid="):
+			pid, _ = strconv.Atoi(strings.TrimPrefix(f, "detached_pid="))
+		case strings.HasPrefix(f, "log="):
+			logPath = strings.TrimPrefix(f, "log=")
+		}
+	}
+	return pid, logPath, pid > 0 && logPath != ""
+}
+
 func (h *ExecHandler) Get(c *gin.Context) {
 	id := c.Param("id")
 	task, err := h.task.Get(c.Request.Context(), id)
@@ -618,6 +714,57 @@ func (h *ExecHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, task)
 }
 
+// Output 按偏移取任务输出的增量端点：
+//   GET /api/v1/tasks/:id/output?offset=N&limit=M
+// 长输出的任务（几 MB）此前只能整段重传（任务记录里带着 output），
+// 增量拉取让客户端只取缺失的尾部；WS 只负责告知「有新输出」。
+func (h *ExecHandler) Output(c *gin.Context) {
+	task, err := h.task.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "task not found"})
+		return
+	}
+	offset := 0
+	if v, err := strconv.Atoi(c.Query("offset")); err == nil && v > 0 {
+		offset = v
+	}
+	limit := 256 * 1024
+	if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 {
+		limit = v
+	}
+	data, next := sliceOutput(task.Output, offset, limit)
+	c.JSON(http.StatusOK, gin.H{
+		"task_id":     task.ID,
+		"status":      task.Status,
+		"offset":      offset,
+		"next_offset": next,
+		"total":       len(task.Output),
+		"data":        data,
+	})
+}
+
+// sliceOutput 取 [offset, offset+limit) 的输出片段（按字节）。
+// 偏移越界按末尾处理（客户端游标落后/超前都不至于报错）；limit 上限 1MB，防止一次拉爆。
+func sliceOutput(out string, offset, limit int) (string, int) {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(out) {
+		offset = len(out)
+	}
+	if limit <= 0 {
+		limit = 256 * 1024
+	}
+	if limit > 1<<20 {
+		limit = 1 << 20
+	}
+	end := offset + limit
+	if end > len(out) {
+		end = len(out)
+	}
+	return out[offset:end], end
+}
+
 func (h *ExecHandler) List(c *gin.Context) {
 	// 按 record 拉取：执行页对账兜底用（一次提交的全部节点任务，无需分页）
 	if rec := strings.TrimSpace(c.Query("record_id")); rec != "" {
@@ -625,6 +772,9 @@ func (h *ExecHandler) List(c *gin.Context) {
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "list failed"})
 			return
+		}
+		if c.Query("light") != "" {
+			tasks = stripOutputsForLight(tasks)
 		}
 		c.JSON(http.StatusOK, gin.H{
 			"data": tasks,
@@ -646,6 +796,9 @@ func (h *ExecHandler) List(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "list failed"})
 		return
+	}
+	if c.Query("light") != "" {
+		tasks = stripOutputsForLight(tasks)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"data": tasks,
@@ -756,7 +909,7 @@ func (h *ExecHandler) executeTask(taskID string, cfg ExecConfig) {
 		}
 		notice := retryNotice(attempt+1, retryCount+1, wait, lastError)
 		if h.hub != nil {
-			h.hub.BroadcastTaskOutput(taskID, task.NodeID, notice, "stderr")
+			h.hub.BroadcastTaskOutput(taskID, task.NodeID, notice, "stderr", 0)
 		}
 		debug("尝试 %d/%d 失败: %s", attempt+1, retryCount+1, lastError.Error())
 	}
@@ -876,11 +1029,14 @@ func (h *ExecHandler) streamExecute(ctx context.Context, taskID, nodeID, command
 		h.writeRunning(ctx, taskID, buf.String())
 	}
 	defer flush()
+	// streamOffset 记录已广播字节数：每行广播时带上它的起始偏移，供客户端维护精确游标
+	var streamOffset int64
 	appendLine := func(line OutputLine) {
 		buf.WriteString(line.Line)
 		buf.WriteString("\n")
 		if h.hub != nil {
-			h.hub.BroadcastTaskOutput(taskID, line.NodeID, line.Line, line.Type)
+			h.hub.BroadcastTaskOutput(taskID, line.NodeID, line.Line, line.Type, streamOffset)
+			streamOffset += int64(len(line.Line)) + 1
 		}
 		// 限频落库:逐行写库在并发执行时会放大 sqlite 锁竞争,实时性以 WS 广播承担
 		if time.Since(lastFlush) >= 150*time.Millisecond {

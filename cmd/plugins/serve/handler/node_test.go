@@ -442,3 +442,55 @@ func TestNodeStats_OfflineIncludesUnknown(t *testing.T) {
 	assert.Equal(t, 2, resp.Offline)
 	assert.Equal(t, 1, resp.Warn)
 }
+
+// 列表端点的关键字搜索：执行页面板的搜索框走的就是 api.nodes({q})，
+// 此前 List 没有 q 参数，前端传了被忽略 —— 表现为「搜了没反应」。
+func TestNodeList_FilterByQuery(t *testing.T) {
+	h, _ := newTestNodeHandler(t)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/api/v1/nodes", h.List)
+
+	// 按 id 搜
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/nodes?q=web-01", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		Data []NodeResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Len(t, body.Data, 1, "按 id 搜索应只命中 web-01")
+	assert.Equal(t, "web-01", body.Data[0].ID)
+
+	// 按分组/标签也走同一路径
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/api/v1/nodes?q=staging", nil))
+	var body2 struct {
+		Data []NodeResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &body2))
+	assert.Len(t, body2.Data, 1, "按标签值搜应命中 dev-01")
+}
+
+// 搜索端点必须匹配 id：节点常靠 id 辨识（name 可能是展示名）
+func TestNodeSearch_MatchesID(t *testing.T) {
+	h, db := newTestNodeHandler(t)
+	_, err := db.Exec(`INSERT INTO nodes (id, name, address, port, user, status, groups, labels)
+		VALUES ('wsl-kube', 'WSL Ubuntu', '172.20.214.44', 2222, 'kube', 'online', '["wsl"]', '{}')`)
+	require.NoError(t, err)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/api/v1/nodes/search", h.Search)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/nodes/search?q=wsl-kube", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		Data []NodeResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Len(t, body.Data, 1, "按 id 搜索应命中（name 与 id 不同也要能搜到）")
+	assert.Equal(t, "wsl-kube", body.Data[0].ID)
+}

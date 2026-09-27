@@ -24,6 +24,8 @@ type Task struct {
 	Command     string     `json:"command"`
 	Status      TaskStatus `json:"status"`
 	Output      string     `json:"output,omitempty"`
+	// OutputLen 仅轻量列表（?light=1）填充：客户端据此判断需要补拉多少尾部
+	OutputLen   int        `json:"output_len,omitempty"`
 	ExitCode    *int       `json:"exit_code,omitempty"`
 	RecordID    string     `json:"record_id,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
