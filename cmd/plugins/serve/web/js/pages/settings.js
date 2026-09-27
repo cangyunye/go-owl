@@ -23,6 +23,14 @@ export function renderSettings(render, navigate, user, api, scope) {
     'history.retention_days': {
       desc: '历史记录保留天数（0 = 关闭定期清理）',
       defaultValue: '90'
+    },
+    'terminal.idle_timeout_min': {
+      desc: '终端空闲超时（分钟）：终端连续 N 分钟无任何输入/输出时自动断开并释放会话；0 = 不启用',
+      defaultValue: '30'
+    },
+    'terminal.max_per_user': {
+      desc: '每用户并发终端数上限（超出后拒绝新建终端）；0 = 不限制',
+      defaultValue: '5'
     }
   };
 

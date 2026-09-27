@@ -64,7 +64,7 @@ export function renderTerminal(render, navigate, user, api, nodeId, scope) {
         if (msg.type === 'output') {
           term.write(msg.data);
         } else if (msg.type === 'exit') {
-          term.write(`\r\n[会话结束，退出码 ${msg.code}]\r\n`);
+          term.write((msg.data ? msg.data.split("\n").join("\r\n") + "\r\n" : "") + `\r\n[会话结束，退出码 ${msg.code}]\r\n`);
           setStatus('已断开', 'var(--danger)');
         }
       };
