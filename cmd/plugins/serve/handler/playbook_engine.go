@@ -43,6 +43,30 @@ type webCommandExecutor struct {
 	// parentCtx 为该 run 的取消上下文，每步命令从中派生超时 ctx；
 	// 取消运行即中断所有在跑命令。
 	parentCtx context.Context
+
+	// nodeUserCache 缓存节点连接用户（每 run 一个执行器实例，节点集合
+	// 固定）：多节点多步骤时避免每步重复查库并解密凭据（R7）。
+	userMu    sync.Mutex
+	userCache map[string]string
+}
+
+// nodeUser 返回节点连接用户；解析失败必须 fail-closed（S15）：静默
+// 置空会让 root 规则组整体失效，root 危险命令被无提示放行。
+func (e *webCommandExecutor) nodeUser(nodeID string) (string, error) {
+	e.userMu.Lock()
+	defer e.userMu.Unlock()
+	if u, ok := e.userCache[nodeID]; ok {
+		return u, nil
+	}
+	info, err := e.ssh.getNodeInfo(nodeID)
+	if err != nil {
+		return "", err
+	}
+	if e.userCache == nil {
+		e.userCache = make(map[string]string)
+	}
+	e.userCache[nodeID] = info.User
+	return info.User, nil
 }
 
 func (e *webCommandExecutor) Execute(tk *task.Task, nodeMgr controlnode.Manager) error {
@@ -51,9 +75,14 @@ func (e *webCommandExecutor) Execute(tk *task.Task, nodeMgr controlnode.Manager)
 
 func (e *webCommandExecutor) ExecuteOnNode(nodeID string, cmd string, timeout time.Duration) (*task.TaskResult, error) {
 	if e.check != nil {
-		var user string
-		if info, err := e.ssh.getNodeInfo(nodeID); err == nil {
-			user = info.User
+		user, userErr := e.nodeUser(nodeID)
+		if userErr != nil {
+			now := time.Now()
+			err := fmt.Errorf("黑名单检查前解析节点失败（fail-closed）: %w", userErr)
+			return &task.TaskResult{
+				NodeID: nodeID, ExitCode: -1, Error: err,
+				Output: err.Error(), StartTime: now, EndTime: now,
+			}, err
 		}
 		if _, err := e.check.CheckForExec(user, cmd, e.force); err != nil {
 			now := time.Now()
@@ -255,11 +284,13 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 		if sc, ok := pbExecutor.(interface {
 			SetScriptCheckFunc(fn pbexec.ScriptCheckFunc)
 		}); ok {
-			checker, sshRunnerRef, force := h.checker, sshRunner, run.DangerConfirmed
+			// 脚本检查与命令检查共用同一个 webCommandExecutor：
+			// 同一 fail-closed 语义 + 同一份用户缓存。
+			checker, cmdExecRef, force := h.checker, cmdExec, run.DangerConfirmed
 			sc.SetScriptCheckFunc(func(nodeID, scriptContent string) error {
-				var user string
-				if info, err := sshRunnerRef.getNodeInfo(nodeID); err == nil {
-					user = info.User
+				user, userErr := cmdExecRef.nodeUser(nodeID)
+				if userErr != nil {
+					return fmt.Errorf("黑名单检查前解析节点失败（fail-closed）: %w", userErr)
 				}
 				_, err := checker.CheckForExec(user, scriptContent, force)
 				return err
@@ -410,18 +441,21 @@ func allParsedTasks(pb *pbexec.ParsedPlaybook) []*pbexec.ParsedTask {
 	return allTasks
 }
 
-func webStepResultFromTask(t *pbexec.ParsedTask, r *pbexec.TaskResult) *webmodel.StepResult {
-	status := "completed"
-	errMsg := ""
+// stepStatusOf 步骤状态与错误信息的唯一判定口径：
+// Error 优先（拦截/连接类失败），其次非零退出码。
+func stepStatusOf(r *pbexec.TaskResult) (status, errMsg string) {
 	if r.Error != nil {
-		status = "failed"
-		errMsg = r.Error.Error()
-	} else if r.ExitCode != 0 {
-		status = "failed"
-		errMsg = fmt.Sprintf("exit code %d", r.ExitCode)
+		return "failed", r.Error.Error()
 	}
-	output := r.Output
-	output = truncateRunes(output, stepOutputLimit)
+	if r.ExitCode != 0 {
+		return "failed", fmt.Sprintf("exit code %d", r.ExitCode)
+	}
+	return "completed", ""
+}
+
+func webStepResultFromTask(t *pbexec.ParsedTask, r *pbexec.TaskResult) *webmodel.StepResult {
+	status, errMsg := stepStatusOf(r)
+	output := truncateRunes(r.Output, stepOutputLimit)
 	return &webmodel.StepResult{
 		TaskName:   t.Name,
 		NodeID:     r.NodeID,
@@ -466,15 +500,7 @@ func recordWebStepStates(runID string, pb *pbexec.ParsedPlaybook, exec *pbexec.P
 			continue
 		}
 		for _, r := range taskResults {
-			status := "completed"
-			errMsg := ""
-			if r.Error != nil {
-				status = "failed"
-				errMsg = r.Error.Error()
-			} else if r.ExitCode != 0 {
-				status = "failed"
-				errMsg = fmt.Sprintf("exit code %d", r.ExitCode)
-			}
+			status, errMsg := stepStatusOf(r)
 			stdout := truncateRunes(r.Output, stepOutputLimit)
 			startedAt := r.StartTime
 			finishedAt := r.EndTime

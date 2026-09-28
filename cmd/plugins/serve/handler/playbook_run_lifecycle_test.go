@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
@@ -118,4 +121,74 @@ tasks:
 		}
 	}
 	assert.True(t, banned, "危险步骤应以黑名单拦截失败收场，实际: %+v", run.Results)
+}
+
+// S15：黑名单检查前 getNodeInfo 失败（节点行缺失/凭据解密失败）时
+// user 被静默置空，root 规则组全部跳过——root 危险命令被放行且无任何
+// 提示。改为 fail-closed：解析失败即拦截，错误可见、不发起执行。
+func TestExecuteOnNode_NodeResolveFailureFailsClosed(t *testing.T) {
+	ssh := &fakeSSHRunner{nodeErr: errors.New("node row gone")}
+	exec := &webCommandExecutor{ssh: ssh, check: blacklist.NewDefaultChecker()}
+
+	result, err := exec.ExecuteOnNode("n1", "uptime", time.Second)
+
+	require.Error(t, err, "节点解析失败必须 fail-closed，不得以空用户降级检查")
+	require.NotNil(t, result)
+	assert.Equal(t, -1, result.ExitCode)
+	assert.Empty(t, ssh.executedCommands(), "fail-closed 后不得发起任何执行")
+}
+
+// R7：黑名单用户解析按 run 缓存——多节点多步骤时此前每步都查库并
+// 解密凭据。缓存后同一节点只解析一次，结果一致。
+func TestWebCommandExecutor_NodeUserCached(t *testing.T) {
+	ssh := &fakeSSHRunner{user: "root"}
+	exec := &webCommandExecutor{ssh: ssh, check: blacklist.NewDefaultChecker()}
+
+	for i := 0; i < 3; i++ {
+		u, err := exec.nodeUser("n1")
+		require.NoError(t, err)
+		assert.Equal(t, "root", u)
+	}
+}
+
+// R9：run.Warnings 此前只写在内存对象上，store 无对应列——刷新后
+// RunGet 警告消失。预检警告必须落库并随查询返回。
+func TestRun_PersistsPreflightWarnings(t *testing.T) {
+	const pbYAML = `
+name: warned
+execution_mode: fail_continue
+tasks:
+  - name: cleanup
+    action: shell
+    args:
+      cmd: rm -rf /tmp/data
+`
+	h, rs, pbFile := newPlaybookEngineTestHandler(t, pbYAML)
+	h.db.SetMaxOpenConns(1)
+	h.checker = blacklist.NewDefaultChecker()
+	require.NoError(t, h.playbooks.Upsert(t.Context(), &model.Playbook{
+		ID: "pb-file-id", Name: "warned", FilePath: pbFile, FileExists: true,
+	}))
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/v1/playbooks/pb-file-id/run", strings.NewReader(`{"target_nodes":["n1"]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: "pb-file-id"}}
+	h.Run(c)
+	require.Equal(t, http.StatusAccepted, w.Code, w.Body.String())
+
+	var run model.PlaybookRun
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &run))
+
+	got, err := rs.Get(t.Context(), run.ID)
+	require.NoError(t, err)
+	found := false
+	for _, warn := range got.Warnings {
+		if strings.Contains(warn, "黑名单") {
+			found = true
+		}
+	}
+	assert.True(t, found, "落库的 Warnings 应包含预检黑名单警告，实际: %v", got.Warnings)
 }

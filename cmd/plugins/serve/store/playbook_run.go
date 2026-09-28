@@ -52,6 +52,11 @@ func (s *PlaybookRunStore) Init(ctx context.Context) error {
 		!strings.Contains(err.Error(), "already exists") {
 		return err
 	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE playbook_runs ADD COLUMN warnings TEXT DEFAULT '[]'`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") &&
+		!strings.Contains(err.Error(), "already exists") {
+		return err
+	}
 	return nil
 }
 
@@ -83,13 +88,14 @@ func (s *PlaybookRunStore) scanRow(scanner interface {
 	Scan(dest ...interface{}) error
 }) (*model.PlaybookRun, error) {
 	run := &model.PlaybookRun{}
-	var targetNodesStr, extraVarsStr, resultsStr string
+	var targetNodesStr, extraVarsStr, resultsStr, warningsStr string
 	var startedAt, completedAt sql.NullTime
 	var totalSteps int
 	err := scanner.Scan(
 		&run.ID, &run.PlaybookID, &run.PlaybookName, &run.PlaybookFile,
 		&run.Status, &targetNodesStr, &extraVarsStr, &run.Tags, &run.DangerConfirmed,
-		&run.Error, &resultsStr, &run.CreatedAt, &startedAt, &completedAt, &totalSteps)
+		&run.Error, &resultsStr, &run.CreatedAt, &startedAt, &completedAt, &totalSteps,
+		&warningsStr)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +103,7 @@ func (s *PlaybookRunStore) scanRow(scanner interface {
 	json.Unmarshal([]byte(targetNodesStr), &run.TargetNodes)
 	json.Unmarshal([]byte(extraVarsStr), &run.ExtraVars)
 	json.Unmarshal([]byte(resultsStr), &run.Results)
+	json.Unmarshal([]byte(warningsStr), &run.Warnings)
 	if startedAt.Valid {
 		run.StartedAt = &startedAt.Time
 	}
@@ -111,7 +118,7 @@ func (s *PlaybookRunStore) scanRow(scanner interface {
 
 func (s *PlaybookRunStore) Get(ctx context.Context, id string) (*model.PlaybookRun, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(danger_confirmed,0), COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at, COALESCE(total_steps,0) FROM playbook_runs WHERE id = ?`, id)
+		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(danger_confirmed,0), COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at, COALESCE(total_steps,0), COALESCE(warnings,'[]') FROM playbook_runs WHERE id = ?`, id)
 	return s.scanRow(row)
 }
 
@@ -120,7 +127,7 @@ func (s *PlaybookRunStore) List(ctx context.Context, limit, offset int) ([]*mode
 	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playbook_runs`).Scan(&total)
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(danger_confirmed,0), COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at, COALESCE(total_steps,0)
+		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(danger_confirmed,0), COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at, COALESCE(total_steps,0), COALESCE(warnings,'[]')
 		FROM playbook_runs ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -163,6 +170,17 @@ func (s *PlaybookRunStore) CancelIfActive(ctx context.Context, id string, errMsg
 	}
 	n, err := res.RowsAffected()
 	return n > 0, err
+}
+
+// SetWarnings 持久化预检警告（JSON 数组列），Get/List 读回，
+// 刷新页面后运行详情仍能看到警告（R9）。
+func (s *PlaybookRunStore) SetWarnings(ctx context.Context, id string, warnings []string) error {
+	data, err := json.Marshal(warnings)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE playbook_runs SET warnings = ? WHERE id = ?`, string(data), id)
+	return err
 }
 
 func (s *PlaybookRunStore) SetTotalSteps(ctx context.Context, id string, total int) error {

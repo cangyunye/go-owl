@@ -63,6 +63,7 @@ type fakeExecResult struct {
 type fakeSSHRunner struct {
 	mu        sync.Mutex
 	user      string
+	nodeErr   error                    // 非 nil 时 getNodeInfo 返回该错误（S15 fail-closed 测试）
 	results   map[string]fakeExecResult
 	calls     []string
 	onExecute func(command string)     // 每次执行时回调（测试同步用）
@@ -96,6 +97,9 @@ func (f *fakeSSHRunner) Execute(ctx context.Context, nodeID, command string) (st
 }
 
 func (f *fakeSSHRunner) getNodeInfo(nodeID string) (*nodeSSHInfo, error) {
+	if f.nodeErr != nil {
+		return nil, f.nodeErr
+	}
 	return &nodeSSHInfo{User: f.user}, nil
 }
 

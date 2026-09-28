@@ -20,6 +20,32 @@ func openPlaybookRunTestDB(t *testing.T) *PlaybookRunStore {
 	return s
 }
 
+// R9：Warnings 落库往返。
+func TestPlaybookRunStore_WarningsRoundTrip(t *testing.T) {
+	rs := openPlaybookRunTestDB(t)
+
+	run, err := rs.Create(t.Context(), "pb-1", "demo", "/x.yaml", []string{"n1"}, nil, "", false)
+	require.NoError(t, err)
+
+	want := []string{"步骤 \"cleanup\" 命中危险命令黑名单（root 视角）: rm -rf /tmp/data"}
+	require.NoError(t, rs.SetWarnings(t.Context(), run.ID, want))
+
+	got, err := rs.Get(t.Context(), run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, want, got.Warnings, "SetWarnings 后 Get 应返回警告")
+
+	list, _, err := rs.List(t.Context(), 10, 0)
+	require.NoError(t, err)
+	var listed *model.PlaybookRun
+	for _, r := range list {
+		if r.ID == run.ID {
+			listed = r
+		}
+	}
+	require.NotNil(t, listed)
+	assert.Equal(t, want, listed.Warnings, "List 也应返回警告")
+}
+
 func TestPlaybookRunStore_CreateAndGet(t *testing.T) {
 	s := openPlaybookRunTestDB(t)
 	ctx := context.Background()

@@ -511,6 +511,10 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 	}
 
 	run.Warnings = h.preflightPlaybook(pb.FilePath)
+	// 警告落库：只写内存的话刷新后 RunGet 就看不到了（R9）
+	if err := h.runs.SetWarnings(c.Request.Context(), run.ID, run.Warnings); err != nil {
+		log.Printf("persist run warnings: %v", err)
+	}
 
 	op := &store.Operation{TaskID: run.ID, OpType: "playbook", Command: "playbook run " + pb.Name, Targets: req.TargetNodes, PlaybookPath: pb.FilePath, Status: "running", CreatedAt: time.Now().UTC(), Forced: req.DangerConfirmed, Username: c.GetString("username")}
 	if err := h.History.RecordOperation(c.Request.Context(), op); err != nil {
@@ -728,6 +732,9 @@ func (h *PlaybookHandler) RunForAlert(ctx context.Context, playbookID, nodeID, c
 		return "", fmt.Errorf("创建运行失败: %w", err)
 	}
 	run.Warnings = h.preflightPlaybook(pb.FilePath)
+	if err := h.runs.SetWarnings(ctx, run.ID, run.Warnings); err != nil {
+		log.Printf("persist run warnings: %v", err)
+	}
 
 	op := &store.Operation{TaskID: run.ID, OpType: "playbook",
 		Command: "playbook run " + pb.Name + " (alert binding)",
