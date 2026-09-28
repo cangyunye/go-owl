@@ -114,6 +114,12 @@ func configPath() string {
 	return filepath.Join(home, ".owl", "blacklist.yaml")
 }
 
+// ConfigPath 返回黑名单配置文件路径（~/.owl/blacklist.yaml）；
+// 无法定位家目录时返回空串。
+func ConfigPath() string {
+	return configPath()
+}
+
 func LoadConfig() (*Config, error) {
 	path := configPath()
 	if path == "" {

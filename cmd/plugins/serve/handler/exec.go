@@ -53,12 +53,9 @@ type ExecHandler struct {
 }
 
 func newBlacklistChecker() *blacklist.Checker {
-	cfg, err := blacklist.LoadConfig()
-	if err != nil {
-		log.Printf("load blacklist config: %v (using defaults)", err)
-		cfg = &blacklist.Config{Rules: blacklist.DefaultRules()}
-	}
-	return blacklist.NewChecker(cfg)
+	// 进程级共享实例：设置页保存黑名单后经 ReloadShared 原地热重载，
+	// 所有执行路径（命令/剧本/script/AI）即时生效，无需重启。
+	return blacklist.Shared()
 }
 
 func NewExecHandler(db *sql.DB, ts *store.TaskStore, hub *WSHub) *ExecHandler {

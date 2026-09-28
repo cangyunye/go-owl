@@ -2,6 +2,7 @@ package blacklist
 
 import (
 	"regexp"
+	"sync"
 	"strings"
 )
 
@@ -30,13 +31,39 @@ type compiledRule struct {
 	patterns []compiledPattern
 }
 
+// Checker 危险命令检查器。规则在构造/Reload 时预编译；Check 与 Reload
+// 并发安全（Web 设置页保存后原地热重载，正在执行的 run 不受影响）。
 type Checker struct {
-	config *Config
-	rules  []compiledRule
+	mu    sync.RWMutex
+	rules []compiledRule
+	cfg   *Config
 }
 
 func NewChecker(cfg *Config) *Checker {
-	c := &Checker{config: cfg}
+	c := &Checker{}
+	c.compile(cfg)
+	return c
+}
+
+// Reload 原地替换规则集（保留实例身份：进程内所有持有方立即生效）。
+func (c *Checker) Reload(cfg *Config) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.compile(cfg)
+}
+
+// Config 返回当前生效规则集的快照（保存现场/诊断用）。
+func (c *Checker) Config() *Config {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.cfg
+}
+
+func (c *Checker) compile(cfg *Config) {
+	if cfg == nil {
+		cfg = &Config{}
+	}
+	rules := make([]compiledRule, 0, len(cfg.Rules))
 	for _, r := range cfg.Rules {
 		cr := compiledRule{user: r.User}
 		for _, p := range r.Patterns {
@@ -46,9 +73,10 @@ func NewChecker(cfg *Config) *Checker {
 			}
 			cr.patterns = append(cr.patterns, cp)
 		}
-		c.rules = append(c.rules, cr)
+		rules = append(rules, cr)
 	}
-	return c
+	c.rules = rules
+	c.cfg = cfg
 }
 
 // NewDefaultChecker 使用默认规则创建检查器（Web 端剧本/命令执行校验使用）。
@@ -61,9 +89,13 @@ func (c *Checker) Check(user, command string) *CheckResult {
 		User: user,
 	}
 
+	c.mu.RLock()
+	rules := c.rules
+	c.mu.RUnlock()
+
 	lines := splitCommand(command)
 
-	for _, rule := range c.rules {
+	for _, rule := range rules {
 		if rule.user != user && rule.user != "*" {
 			continue
 		}
@@ -118,6 +150,44 @@ func atBoundary(line string, idx int) bool {
 		return true
 	}
 	return false
+}
+
+// ---- 进程级共享检查器 ----
+
+var (
+	sharedMu sync.Mutex
+	shared   *Checker
+)
+
+// Shared 返回进程级共享检查器（serve 各 handler 共用同一实例，
+// ReloadShared 后所有持有方即时生效，无需重启）。
+func Shared() *Checker {
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	if shared == nil {
+		cfg, err := LoadConfig()
+		if err != nil || cfg == nil {
+			cfg = &Config{Rules: DefaultRules()}
+		}
+		shared = NewChecker(cfg)
+	}
+	return shared
+}
+
+// ReloadShared 按当前配置文件重新加载共享检查器并返回。
+func ReloadShared() (*Checker, error) {
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	cfg, err := LoadConfig()
+	if err != nil || cfg == nil {
+		cfg = &Config{Rules: DefaultRules()}
+	}
+	if shared == nil {
+		shared = NewChecker(cfg)
+	} else {
+		shared.Reload(cfg)
+	}
+	return shared, nil
 }
 
 func stripQuoted(s string) string {

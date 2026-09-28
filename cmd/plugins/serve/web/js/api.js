@@ -256,6 +256,12 @@ export const api = {
   updateSetting: (key, value) =>
     request('PUT', `/settings/${encodeURIComponent(key)}`, { value }),
 
+  blacklistConfig: () =>
+    request('GET', '/blacklist'),
+
+  saveBlacklistConfig: (content) =>
+    request('PUT', '/blacklist', { content }),
+
   dbStats: () =>
     request('GET', '/db/stats'),
 

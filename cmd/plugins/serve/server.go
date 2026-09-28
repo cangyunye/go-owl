@@ -420,6 +420,9 @@ func (s *Server) setupRoutes() {
 			admin.GET("/settings", s.settingsHandler.List)
 			admin.GET("/settings/:key", s.settingsHandler.Get)
 			admin.PUT("/settings/:key", s.settingsHandler.Set)
+			// 黑名单配置（独立路径：gin 静态段与 /settings/:key 参数段同位置冲突）
+			admin.GET("/blacklist", s.settingsHandler.GetBlacklist)
+			admin.PUT("/blacklist", s.settingsHandler.SetBlacklist)
 			// 数据库可观测性：各表行数/占用与手动空间回收（admin）
 			admin.GET("/db/stats", s.dbStatsHandler.Stats)
 			admin.POST("/db/vacuum", s.dbStatsHandler.Vacuum)

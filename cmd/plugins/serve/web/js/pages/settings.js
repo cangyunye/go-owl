@@ -142,6 +142,46 @@ export function renderSettings(render, navigate, user, api, scope) {
     }
   }
 
+  // ---- 危险命令黑名单（~/.owl/blacklist.yaml）----
+  async function loadBlacklist() {
+    const pathEl = document.getElementById('blacklist-path');
+    const editor = document.getElementById('blacklist-editor');
+    const msg = document.getElementById('blacklist-msg');
+    if (!editor) return;
+    try {
+      const res = await api.blacklistConfig();
+      const d = res.data || {};
+      if (pathEl) {
+        pathEl.textContent = '配置文件：' + (d.path || '~/.owl/blacklist.yaml')
+          + (d.exists ? '' : '（尚不存在，当前使用内置默认规则；保存后创建）');
+      }
+      editor.value = d.content || '';
+      editor.dataset.defaults = d.defaults || '';
+    } catch (e) {
+      if (msg) msg.textContent = '加载失败: ' + (e.message || e);
+    }
+  }
+
+  async function saveBlacklist() {
+    const editor = document.getElementById('blacklist-editor');
+    const msg = document.getElementById('blacklist-msg');
+    if (!editor || !msg) return;
+    const content = editor.value;
+    if (!content.trim()) {
+      if (!confirm('规则为空将不拦截任何危险命令（等于关闭拦截），确认保存？')) return;
+    }
+    msg.textContent = '保存中…';
+    try {
+      const res = await api.saveBlacklistConfig(content);
+      const d = res.data || {};
+      const warn = (d.warnings && d.warnings.length) ? ' ⚠️ ' + d.warnings.join('；') : '';
+      msg.textContent = `✓ 已保存并即时生效：${d.rules} 组规则 / ${d.patterns} 条模式${warn}`;
+      setTimeout(() => { msg.textContent = ''; }, 8000);
+    } catch (e) {
+      msg.textContent = '保存失败: ' + (e.message || e);
+    }
+  }
+
   function renderTable(settings) {
     const list = document.getElementById('settings-list');
     if (settings.length === 0) {
@@ -383,6 +423,27 @@ export function renderSettings(render, navigate, user, api, scope) {
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary btn-sm" id="add-setting-btn"><svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg> 添加配置</button>
+    </div>
+    </div>
+
+    <div id="settings-blacklist-card">
+    <div class="section-card">
+      <div class="panel-head">
+        <div style="flex:1;min-width:0">
+          <h3 class="panel-title">🛡️ 危险命令黑名单</h3>
+          <div class="panel-desc">命令 / 剧本 / 脚本执行的拦截规则，serve 与 CLI 共用同一份配置；保存后热重载即时生效，无需重启</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="field-hint" id="blacklist-path" style="margin-bottom:8px">加载中…</div>
+        <textarea id="blacklist-editor" spellcheck="false" style="width:100%;min-height:260px;font-family:var(--font-mono);font-size:var(--fs-xs);border:1px solid var(--border);border-radius:var(--radius);padding:8px;background:transparent;color:var(--fg)"></textarea>
+        <div class="field-hint" id="blacklist-msg" style="margin-top:6px"></div>
+      </div>
+      <div class="panel-foot">
+        <button class="btn btn-primary btn-sm" id="blacklist-save">保存并生效</button>
+        <button class="btn btn-secondary btn-sm" id="blacklist-load-defaults">载入默认规则</button>
+        <span class="field-hint">命中拦截的命令：Web 端勾选「确认危险命令」放行，CLI 用 --force；pattern 支持正则，无法编译时按字面匹配</span>
+      </div>
     </div>
     </div>
 
@@ -856,6 +917,14 @@ export function renderSettings(render, navigate, user, api, scope) {
 
     // Load all providers
     ['anthropic', 'deepseek', 'openai', 'qwen', 'volcengine', 'minimax', 'mimo', 'custom'].forEach(loadAiConfig);
+
+    // ---- Blacklist config ----
+    loadBlacklist();
+    document.getElementById('blacklist-save').addEventListener('click', saveBlacklist);
+    document.getElementById('blacklist-load-defaults').addEventListener('click', () => {
+      const editor = document.getElementById('blacklist-editor');
+      if (editor && editor.dataset.defaults) editor.value = editor.dataset.defaults;
+    });
 
     // ---- KV Settings Modal Logic ----
     document.getElementById('mon-save').addEventListener('click', saveMonitorCard);
