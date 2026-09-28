@@ -576,6 +576,8 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
     document.getElementById('run-playbook-name-display').textContent = pb ? pb.name : id;
     document.getElementById('run-playbook-target').value = '';
     document.getElementById('run-playbook-error').textContent = '';
+    const dangerEl = document.getElementById('run-danger-confirm');
+    if (dangerEl) dangerEl.checked = false;
     const warnEl = document.getElementById('run-playbook-warnings');
     if (warnEl) { warnEl.style.display = 'none'; warnEl.textContent = ''; }
     renderRunVars();
@@ -1256,6 +1258,12 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
             <div id="run-vars-list"></div>
             <button type="button" class="btn btn-secondary btn-sm" id="run-add-var" style="margin-top:6px">+ 添加变量</button>
           </div>
+          <div class="form-row">
+            <label style="display:flex;gap:6px;align-items:flex-start;cursor:pointer">
+              <input type="checkbox" id="run-danger-confirm" style="margin-top:2px">
+              <span style="color:var(--danger)">确认危险命令<span class="lbl-hint">（root 连接下 rm -rf / shutdown / kill -9 / sudo 等默认被黑名单拦截；勾选后本次运行放行）</span></span>
+            </label>
+          </div>
           <div class="adv-toggle" id="run-staging-toggle">
             <span class="arrow" id="run-staging-arrow">▶</span> 中转站文件（upload/script 引用时可选用）
           </div>
@@ -1511,6 +1519,7 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
       if (runSel.nodes.size > 0) body.target_nodes = Array.from(runSel.nodes);
       if (runSel.groups.size > 0) body.groups = Array.from(runSel.groups);
       if (runSel.tags.size > 0) body.tags = Array.from(runSel.tags).join(',');
+      if (document.getElementById('run-danger-confirm')?.checked) body.danger_confirmed = true;
       const extraVars = {};
       for (const v of runVars) {
         if (v.key.trim()) extraVars[v.key.trim()] = v.value.trim();
@@ -1522,7 +1531,7 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
         if (warnings.length > 0) {
           const warnEl = document.getElementById('run-playbook-warnings');
           warnEl.style.display = 'block';
-          warnEl.textContent = '⚠ 引用文件缺失（可先上传到中转站再运行）:\n' + warnings.join('\n');
+          warnEl.textContent = '⚠ 预检警告（请检查修正，或确认无误后再次执行）:\n' + warnings.join('\n');
           return;
         }
         closeRunModal();

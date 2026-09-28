@@ -571,7 +571,37 @@ func (h *PlaybookHandler) preflightPlaybook(pbFile string) []string {
 			warnings = append(warnings, fmt.Sprintf("task %q: src file not found: %s (upload it via the staging area first)", t.Name, ref))
 		}
 	}
+
+	// 危险命令预检：按 root（最严格视角）检查每步命令，命中即警告。
+	// 不做预检时用户要到步骤被拦且失败原因不可见时才知道（曾无任何提示）。
+	if h.checker != nil {
+		for _, t := range allTasks {
+			cmd := commandArgOfTask(t)
+			if cmd == "" {
+				continue
+			}
+			if _, err := h.checker.CheckForExec("root", cmd, false); err != nil {
+				warnings = append(warnings, fmt.Sprintf(
+					"步骤 %q 命中危险命令黑名单（root 视角）: %s —— 运行时将被拦截；确需执行请勾选「确认危险命令」", t.Name, cmd))
+			}
+		}
+	}
 	return warnings
+}
+
+// commandArgOfTask 提取 command/shell 类任务待执行的命令串；非命令类任务返回空。
+func commandArgOfTask(t *pbexec.ParsedTask) string {
+	switch strings.ToLower(t.Action) {
+	case "command", "cmd", "shell", "":
+	default:
+		return ""
+	}
+	for _, key := range []string{"cmd", "command"} {
+		if s, ok := t.Args[key].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // RunList 支持真分页（page/page_size，与 user/node handler 同约定），

@@ -12,12 +12,14 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
+	"github.com/cangyunye/go-owl/internal/control/blacklist"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	gossh "golang.org/x/crypto/ssh"
@@ -457,4 +459,47 @@ tasks:
 	got, err := rs.Get(t.Context(), run.ID)
 	require.NoError(t, err)
 	assert.Equal(t, model.RunStatusCancelled, got.Status, "取消后终态必须是 cancelled")
+}
+
+// 预检必须指出剧本里哪些步骤会命中危险命令黑名单——
+// 否则用户要到运行失败且端上无任何提示时才知道被拦了。
+func TestPreflightPlaybook_BlacklistWarning(t *testing.T) {
+	const dangerYAML = `
+name: danger-preflight
+tasks:
+  - name: cleanup
+    action: shell
+    args:
+      cmd: rm -rf /tmp/data
+  - name: safe_step
+    action: shell
+    args:
+      cmd: echo ok
+`
+	h, _, pbFile := newPlaybookEngineTestHandler(t, dangerYAML)
+	// 固定用默认黑名单规则，避免本机 ~/.owl/blacklist.yaml 影响断言
+	h.checker = blacklist.NewChecker(&blacklist.Config{Rules: blacklist.DefaultRules()})
+
+	warnings := h.preflightPlaybook(pbFile)
+	require.NotEmpty(t, warnings, "危险命令必须产生预检警告")
+
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "cleanup") && strings.Contains(w, "rm -rf") {
+			found = true
+		}
+	}
+	assert.True(t, found, "警告必须指出步骤名与命中的命令，实际警告: %v", warnings)
+
+	const safeYAML = `
+name: safe-preflight
+tasks:
+  - name: safe_step
+    action: shell
+    args:
+      cmd: echo ok
+`
+	h2, _, safeFile := newPlaybookEngineTestHandler(t, safeYAML)
+	h2.checker = h.checker
+	assert.Empty(t, h2.preflightPlaybook(safeFile), "安全剧本不应产生黑名单警告")
 }
