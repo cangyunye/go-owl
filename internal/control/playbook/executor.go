@@ -130,9 +130,29 @@ func (e *playbookExecutor) SetPlaybookBaseDir(path string) {
 	}
 }
 
+// SetScriptCheckFunc 注入脚本内容黑名单检查（透传给动作执行器）。
+func (e *playbookExecutor) SetScriptCheckFunc(fn ScriptCheckFunc) {
+	if r, ok := e.runner.(*defaultActionRunner); ok {
+		r.SetScriptCheckFunc(fn)
+	}
+}
+
+// SetBaseContext 设置运行取消上下文（透传给动作执行器）。
+func (e *playbookExecutor) SetBaseContext(ctx context.Context) {
+	if r, ok := e.runner.(*defaultActionRunner); ok {
+		r.SetBaseContext(ctx)
+	}
+}
+
 type ActionRunner interface {
 	RunAction(action string, args map[string]interface{}, nodeID string, vars map[string]interface{}, actionOpts *ActionOptions) (*TaskResult, error)
 }
+
+// ScriptCheckFunc 校验脚本动作内容是否允许在节点上执行（可选注入；
+// nil 表示不检查）。返回非 nil error 表示拦截（如命中危险命令黑名单
+// 且未被确认）。command/cmd/shell 动作经 CommandExecutor 内部的检查点，
+// script 动作由 ScriptExecutor 自行拨 SSH，必须在此单独接检查。
+type ScriptCheckFunc func(nodeID, scriptContent string) error
 
 type defaultActionRunner struct {
 	cmdExec         command.CommandExecutor
@@ -141,6 +161,10 @@ type defaultActionRunner struct {
 	opts            *PlaybookOptions
 	playbookBaseDir string
 	downloadBaseDir string
+	scriptCheck     ScriptCheckFunc
+	// baseCtx 为该次运行的取消上下文，脚本动作从中派生；
+	// 取消运行时未开始的脚本步骤不再发起新的 SSH 执行。
+	baseCtx context.Context
 }
 
 func NewDefaultActionRunnerWithOptions(cmdExec command.CommandExecutor, nodeResolver *node.NodeResolver, opts *PlaybookOptions) *defaultActionRunner {
@@ -149,7 +173,22 @@ func NewDefaultActionRunnerWithOptions(cmdExec command.CommandExecutor, nodeReso
 		nodeResolver: nodeResolver,
 		transferMgr:  transfer.NewTransferManager(nodeResolver),
 		opts:         opts,
+		baseCtx:      context.Background(),
 	}
+}
+
+// SetScriptCheckFunc 注入脚本内容检查器（Web 端接黑名单；CLI 未注入时
+// 走自身交互确认，行为不变）。
+func (r *defaultActionRunner) SetScriptCheckFunc(fn ScriptCheckFunc) {
+	r.scriptCheck = fn
+}
+
+// SetBaseContext 设置运行取消上下文，脚本执行从中派生。
+func (r *defaultActionRunner) SetBaseContext(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	r.baseCtx = ctx
 }
 
 // SetPlaybookBaseDir 设置 Playbook 所在的基础目录，用于解析相对路径
@@ -281,29 +320,10 @@ func (r *defaultActionRunner) runScript(result *TaskResult, args map[string]inte
 		return result, result.Error
 	}
 
-	// 解析路径和替换变量
-	scriptPath = r.resolvePath(r.interpolateVariables(scriptPath, vars))
-	result.Command = "bash " + scriptPath
-
-	// 检查脚本文件是否存在
-	if !(len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://")) {
-		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-			result.Error = fmt.Errorf("script file not found: %s", scriptPath)
-			result.EndTime = time.Now()
-			return result, result.Error
-		}
-	}
-
-	// 读取其他参数
+	// 读取其他参数（先于存在性检查：inline 模式下 script 参数是
+	// 脚本内容而非路径，不能按文件 stat）
 	opts := &script.ScriptExecutionOptions{
 		DestDir: "/tmp",
-	}
-
-	if v, ok := args["dest"].(string); ok {
-		opts.DestDir = r.interpolateVariables(v, vars)
-	}
-	if v, ok := args["args"].(string); ok {
-		opts.Args = r.interpolateVariables(v, vars)
 	}
 	if v, ok := args["inline"].(bool); ok {
 		opts.Inline = v
@@ -312,8 +332,52 @@ func (r *defaultActionRunner) runScript(result *TaskResult, args map[string]inte
 		opts.Keep = v
 	}
 
+	// 解析路径和替换变量
+	scriptPath = r.resolvePath(r.interpolateVariables(scriptPath, vars))
+	result.Command = "bash " + scriptPath
+
+	// 检查脚本文件是否存在（inline 与 URL 除外）
+	isURL := len(scriptPath) > 8 && (scriptPath[:7] == "http://" || scriptPath[:8] == "https://")
+	if !opts.Inline && !isURL {
+		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+			result.Error = fmt.Errorf("script file not found: %s", scriptPath)
+			result.EndTime = time.Now()
+			return result, result.Error
+		}
+	}
+
+	if v, ok := args["dest"].(string); ok {
+		opts.DestDir = r.interpolateVariables(v, vars)
+	}
+	if v, ok := args["args"].(string); ok {
+		opts.Args = r.interpolateVariables(v, vars)
+	}
+
 	mergedOpts := MergeActionOptions(actionOpts, r.getGlobalDefaults())
 	opts.Timeout = mergedOpts.GetTimeout()
+	opts.Ctx = r.baseCtx
+
+	// 脚本内容与命令一视同仁地过黑名单：inline 的内容即参数本身，
+	// 文件脚本读取内容检查（执行器随后也会读它）。
+	if r.scriptCheck != nil {
+		content := scriptPath
+		if !opts.Inline {
+			data, readErr := os.ReadFile(scriptPath)
+			if readErr != nil {
+				result.Error = fmt.Errorf("读取脚本文件失败: %w", readErr)
+				result.EndTime = time.Now()
+				return result, result.Error
+			}
+			content = string(data)
+		}
+		if checkErr := r.scriptCheck(nodeID, content); checkErr != nil {
+			result.ExitCode = -1
+			result.Error = checkErr
+			result.Output = checkErr.Error()
+			result.EndTime = time.Now()
+			return result, checkErr
+		}
+	}
 
 	// 创建 script executor
 	scriptExec := script.NewScriptExecutor(r.nodeResolver, r.transferMgr)

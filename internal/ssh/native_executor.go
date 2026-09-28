@@ -3,6 +3,7 @@ package ssh
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -27,7 +28,16 @@ func NewNativeNodeExecutor(connInfo *ConnectionInfo) *NativeNodeExecutor {
 }
 
 func (e *NativeNodeExecutor) Execute(command string, timeout time.Duration) (int, string, error) {
-	return e.execute(command, timeout, timeout)
+	return e.executeContext(context.Background(), command, timeout, timeout)
+}
+
+// ExecuteContext 在 Execute 基础上跟随外部 ctx：取消运行（或 ctx 超时）
+// 即断开 SSH 连接立即返回。脚本动作的取消/超时都经由此入口。
+func (e *NativeNodeExecutor) ExecuteContext(ctx context.Context, command string, timeout time.Duration) (int, string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return e.executeContext(ctx, command, timeout, timeout)
 }
 
 // WriteFile 通过 SSH 将本地文件写入远程路径（基于 crypto/ssh）
@@ -82,13 +92,13 @@ func (e *NativeNodeExecutor) ExecuteWithConfig(command string, config *TimeoutCo
 	}
 	// 连接超时单独作用于拨号/握手，命令超时作用于命令运行，
 	// 二者不可相加当作拨号超时（否则不可达主机按 connect+command 长期挂起）。
-	return e.execute(command, config.ConnectTimeout, config.CommandTimeout)
+	return e.executeContext(context.Background(), command, config.ConnectTimeout, config.CommandTimeout)
 }
 
-func (e *NativeNodeExecutor) execute(command string, dialTimeout, commandTimeout time.Duration) (int, string, error) {
+func (e *NativeNodeExecutor) executeContext(parent context.Context, command string, dialTimeout, commandTimeout time.Duration) (int, string, error) {
 	addr := net.JoinHostPort(e.connInfo.Address, strconv.Itoa(e.connInfo.Port))
 
-	client, err := Dial(context.Background(), addr, DialOptions{
+	client, err := Dial(parent, addr, DialOptions{
 		User:           e.connInfo.GetUser(),
 		Password:       e.connInfo.Password,
 		KeyFile:        e.connInfo.KeyFile,
@@ -111,8 +121,12 @@ func (e *NativeNodeExecutor) execute(command string, dialTimeout, commandTimeout
 	session.Stdout = &stdout
 	session.Stderr = &stderr
 
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
-	defer cancel()
+	ctx := parent
+	if commandTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(parent, commandTimeout)
+		defer cancel()
+	}
 
 	done := make(chan error, 1)
 	go func() {
@@ -133,8 +147,13 @@ func (e *NativeNodeExecutor) execute(command string, dialTimeout, commandTimeout
 		}
 		return 0, output, nil
 	case <-ctx.Done():
-		session.Signal(gossh.SIGTERM)
-		return -1, "", fmt.Errorf("命令执行超时")
+		// 先礼貌终止再断连：断连是硬保证（依赖 SIGHUP 的远端进程
+		// 对 nohup/守护进程无效），不能只 Signal 不关闭。
+		_ = session.Signal(gossh.SIGTERM)
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return -1, "", fmt.Errorf("命令执行超时")
+		}
+		return -1, "", fmt.Errorf("命令已取消: %w", ctx.Err())
 	}
 }
 

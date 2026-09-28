@@ -27,6 +27,9 @@ type ScriptExecutionOptions struct {
 	Timeout time.Duration
 	Inline  bool // 是否直接发送内容执行
 	Keep    bool // 是否保留脚本文件
+	// Ctx 为可选的取消上下文（nil 取 context.Background()）：
+	// 已取消时不再发起新的脚本执行，执行中的命令随 ctx 断连。
+	Ctx context.Context
 }
 
 // NewScriptExecutor 创建脚本执行器
@@ -105,6 +108,12 @@ func (e *ScriptExecutor) executeScriptOnNode(nodeID, scriptPath, scriptName stri
 	}
 	startTime := time.Now()
 
+	if opts.Ctx != nil && opts.Ctx.Err() != nil {
+		result.Error = fmt.Errorf("脚本执行已取消: %w", opts.Ctx.Err())
+		result.EndTime = time.Now()
+		return result
+	}
+
 	nodeInfo, err := e.nodeResolver.Resolve(nodeID)
 	if err != nil {
 		result.Error = fmt.Errorf("解析节点失败: %w", err)
@@ -147,9 +156,17 @@ func (e *ScriptExecutor) newNodeExecutor(nodeInfo *node.ResolvedNode) (*ssh.Nati
 	return ssh.NewNativeNodeExecutor(connInfo), nil
 }
 
+// executeCtx 归一执行上下文：未设置时回退 Background。
+func (e *ScriptExecutor) executeCtx(opts *ScriptExecutionOptions) context.Context {
+	if opts.Ctx != nil {
+		return opts.Ctx
+	}
+	return context.Background()
+}
+
 // executeViaFile 通过文件方式执行
 func (e *ScriptExecutor) executeViaFile(nodeInfo *node.ResolvedNode, scriptName string, content []byte, opts *ScriptExecutionOptions) (int, string, error) {
-	ctx := context.Background()
+	ctx := e.executeCtx(opts)
 
 	// 1. 保存为临时文件
 	tmpFile, err := os.CreateTemp("", "owl-script-*.sh")
@@ -187,12 +204,12 @@ func (e *ScriptExecutor) executeViaFile(nodeInfo *node.ResolvedNode, scriptName 
 		cmd = fmt.Sprintf("chmod +x %s && %s", remotePath, remotePath)
 	}
 
-	exitCode, output, execErr := executor.Execute(cmd, opts.Timeout)
+	exitCode, output, execErr := executor.ExecuteContext(ctx, cmd, opts.Timeout)
 
 	// 4. 清理脚本文件（除非 --keep）
 	if !opts.Keep {
 		cleanCmd := fmt.Sprintf("rm -f %s", remotePath)
-		executor.Execute(cleanCmd, 30*time.Second)
+		executor.ExecuteContext(ctx, cleanCmd, 30*time.Second)
 	}
 
 	return exitCode, output, execErr
@@ -200,7 +217,7 @@ func (e *ScriptExecutor) executeViaFile(nodeInfo *node.ResolvedNode, scriptName 
 
 // executeInline 内联方式执行
 func (e *ScriptExecutor) executeInline(nodeInfo *node.ResolvedNode, content []byte, opts *ScriptExecutionOptions) (int, string, error) {
-	ctx := context.Background()
+	ctx := e.executeCtx(opts)
 
 	tmpFile, err := os.CreateTemp("", "owl-script-*.sh")
 	if err != nil {
@@ -236,11 +253,11 @@ func (e *ScriptExecutor) executeInline(nodeInfo *node.ResolvedNode, content []by
 		execCmd = fmt.Sprintf("bash %s", remotePath)
 	}
 
-	exitCode, output, execErr := executor.Execute(execCmd, opts.Timeout)
+	exitCode, output, execErr := executor.ExecuteContext(ctx, execCmd, opts.Timeout)
 
 	// 立即清理
 	cleanCmd := fmt.Sprintf("rm -f %s", remotePath)
-	executor.Execute(cleanCmd, 30*time.Second)
+	executor.ExecuteContext(ctx, cleanCmd, 30*time.Second)
 
 	return exitCode, output, execErr
 }

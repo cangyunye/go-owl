@@ -503,3 +503,30 @@ tasks:
 	h2.checker = h.checker
 	assert.Empty(t, h2.preflightPlaybook(safeFile), "安全剧本不应产生黑名单警告")
 }
+
+// script 动作同样要预检：inline 的内容即脚本本身，文件脚本读内容检查，
+// 否则用户要到运行被拦才知道（预检的存在意义）。
+func TestPreflightPlaybook_ScriptActionWarning(t *testing.T) {
+	const dangerYAML = `
+name: danger-script-preflight
+tasks:
+  - name: evil_inline
+    action: script
+    args:
+      script: "echo start && rm -rf /data"
+      inline: true
+`
+	h, _, pbFile := newPlaybookEngineTestHandler(t, dangerYAML)
+	h.checker = blacklist.NewChecker(&blacklist.Config{Rules: blacklist.DefaultRules()})
+
+	warnings := h.preflightPlaybook(pbFile)
+	require.NotEmpty(t, warnings, "危险 inline 脚本必须产生预检警告")
+
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "evil_inline") && strings.Contains(w, "rm -rf") {
+			found = true
+		}
+	}
+	assert.True(t, found, "警告必须指出步骤名与命中的内容，实际警告: %v", warnings)
+}

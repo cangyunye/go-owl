@@ -576,7 +576,7 @@ func (h *PlaybookHandler) preflightPlaybook(pbFile string) []string {
 	// 不做预检时用户要到步骤被拦且失败原因不可见时才知道（曾无任何提示）。
 	if h.checker != nil {
 		for _, t := range allTasks {
-			cmd := commandArgOfTask(t)
+			cmd := commandArgOfTask(t, baseDir)
 			if cmd == "" {
 				continue
 			}
@@ -589,17 +589,33 @@ func (h *PlaybookHandler) preflightPlaybook(pbFile string) []string {
 	return warnings
 }
 
-// commandArgOfTask 提取 command/shell 类任务待执行的命令串；非命令类任务返回空。
-func commandArgOfTask(t *pbexec.ParsedTask) string {
+// commandArgOfTask 提取 command/shell/script 类任务待检查的命令/脚本串；
+// 其他任务返回空。script 动作：inline 的内容即参数本身；文件脚本读取
+// 内容预检（读不到时回退为路径本身，运行时由 ScriptCheckFunc 兜底）。
+func commandArgOfTask(t *pbexec.ParsedTask, baseDir string) string {
 	switch strings.ToLower(t.Action) {
 	case "command", "cmd", "shell", "":
-	default:
-		return ""
-	}
-	for _, key := range []string{"cmd", "command"} {
-		if s, ok := t.Args[key].(string); ok && s != "" {
+		for _, key := range []string{"cmd", "command"} {
+			if s, ok := t.Args[key].(string); ok && s != "" {
+				return s
+			}
+		}
+	case "script":
+		s, _ := t.Args["script"].(string)
+		if s == "" {
+			return ""
+		}
+		if inline, _ := t.Args["inline"].(bool); inline {
 			return s
 		}
+		path := s
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(baseDir, path)
+		}
+		if data, err := os.ReadFile(path); err == nil {
+			return string(data)
+		}
+		return s
 	}
 	return ""
 }

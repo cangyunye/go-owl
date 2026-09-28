@@ -244,6 +244,26 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 			dds.SetDownloadBaseDir(stagingDir)
 		}
 	}
+	// script 动作由 ScriptExecutor 自行拨 SSH，绕过 webCommandExecutor
+	// 检查点，必须在这里单独接黑名单与取消上下文。
+	if h.checker != nil {
+		if sc, ok := pbExecutor.(interface {
+			SetScriptCheckFunc(fn pbexec.ScriptCheckFunc)
+		}); ok {
+			checker, sshRunnerRef, force := h.checker, sshRunner, run.DangerConfirmed
+			sc.SetScriptCheckFunc(func(nodeID, scriptContent string) error {
+				var user string
+				if info, err := sshRunnerRef.getNodeInfo(nodeID); err == nil {
+					user = info.User
+				}
+				_, err := checker.CheckForExec(user, scriptContent, force)
+				return err
+			})
+		}
+	}
+	if bc, ok := pbExecutor.(interface{ SetBaseContext(ctx context.Context) }); ok {
+		bc.SetBaseContext(runCtx)
+	}
 
 	var targetNodes []*commonmodel.Node
 	for _, n := range nodeMgr.List() {
