@@ -357,3 +357,32 @@ func readKey(t *testing.T) string {
 	}
 	return string(key)
 }
+
+// AI 触发的剧本运行必须走 V2 引擎：V1 用 context.Background() 执行，
+// watchdog 失效（交互式命令永久挂死）、不注册取消、无逐步进度。
+// 本测试离线验证 AI 路径经 V2 引擎执行 ansible 风格剧本并产出步骤结果
+// （fake runner 注入，不依赖本机 sshd）。
+func TestWebExecutor_RunPlaybook_OfflineThroughV2Engine(t *testing.T) {
+	e := aiExecutorSetupOffline(t)
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "admin"})
+
+	pbDir := t.TempDir()
+	pbFile := filepath.Join(pbDir, "ai-offline.yaml")
+	pbYAML := "name: ai-offline\ntasks:\n  - Say hello:\n      command: echo AI_OFFLINE_OK\n"
+	require.NoError(t, os.WriteFile(pbFile, []byte(pbYAML), 0644))
+	require.NoError(t, e.playbookStore.Upsert(ctx, &model.Playbook{
+		ID: "ai-offline", Name: "ai-offline", FilePath: pbFile, FileExists: true, TasksCount: 1,
+	}))
+
+	e.PlaybookHandler = NewPlaybookHandler(e.db, e.playbookStore, e.playbookRunStore, e.nodeStore, nil)
+	e.PlaybookHandler.History = e.History
+	e.PlaybookHandler.sshRunner = &fakeSSHRunner{user: "root", results: map[string]fakeExecResult{
+		"echo AI_OFFLINE_OK": {output: "AI_OFFLINE_OK"},
+	}}
+
+	res, err := e.RunPlaybook(ctx, ai2.RunPlaybookParams{Name: "ai-offline", Nodes: []string{"n1"}})
+	require.NoError(t, err)
+	assert.Contains(t, res.Text, "completed", "经 V2 引擎应以 completed 收场，实际: %s", res.Text)
+	assert.Contains(t, res.Text, "Say hello", "步骤名应来自 ansible 单键任务名")
+	assert.Contains(t, res.Text, "exit=0", "步骤应携带底层退出码")
+}

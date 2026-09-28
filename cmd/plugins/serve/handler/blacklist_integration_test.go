@@ -5,8 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
@@ -365,74 +364,70 @@ func TestExecCreate_NodeUserScanErrorFailsClosed(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "query node users failed")
 }
 
-type recordingExecutor struct {
-	called int
-}
+// V1 引擎（executePlaybookRun/executePlaybookTask）已删除，其黑名单
+// 拦截语义由 V2 运行时链路（webCommandExecutor.CheckForExec）承接；
+// 原任务级测试迁移为以下 V2 端到端等价断言。
 
-func (r *recordingExecutor) Execute(_ context.Context, _, _ string) (string, int, error) {
-	r.called++
-	return "ok", 0, nil
-}
-
-func (r *recordingExecutor) ExecuteStream(_ context.Context, _, _ string, _ chan<- OutputLine) (int, error) {
-	r.called++
-	return 0, nil
-}
-
-func TestExecutePlaybookTask_DangerousCommandBlocked(t *testing.T) {
-	db := blacklistTestNodeDB(t)
-	h := &PlaybookHandler{db: db, checker: blacklist.NewDefaultChecker()}
-	rec := &recordingExecutor{}
-
-	step := h.executePlaybookTask(t.Context(), rec, "test-node", "cleanup",
-		map[string]interface{}{"command": "rm -rf /var/data"})
-
-	assert.Zero(t, rec.called)
-	assert.Equal(t, "failed", step.Status)
-	assert.Equal(t, -1, step.ExitCode)
-	assert.Contains(t, step.Error, "黑名单")
-}
-
-func TestExecutePlaybookTask_SafeCommandAllowed(t *testing.T) {
-	db := blacklistTestNodeDB(t)
-	h := &PlaybookHandler{db: db, checker: blacklist.NewDefaultChecker()}
-	rec := &recordingExecutor{}
-
-	step := h.executePlaybookTask(t.Context(), rec, "test-node", "check",
-		map[string]interface{}{"command": "uptime"})
-
-	assert.Equal(t, 1, rec.called)
-	assert.Equal(t, "completed", step.Status)
-	assert.Equal(t, 0, step.ExitCode)
-}
-
-func TestExecutePlaybookRun_V1_DangerousStepBlocked(t *testing.T) {
-	db := blacklistTestNodeDB(t)
-
-	rs := store.NewPlaybookRunStore(db)
-	require.NoError(t, rs.Init(t.Context()))
-	hs := store.NewHistoryStore(db)
-	require.NoError(t, hs.Init(t.Context()))
-
-	h := NewPlaybookHandler(db, nil, rs, nil, nil)
-	h.History = hs
+func TestExecutePlaybookRunV2_CommandBlockedByBlacklist(t *testing.T) {
+	const pbYAML = `
+name: evil
+execution_mode: fail_continue
+tasks:
+  - name: cleanup
+    action: shell
+    args:
+      cmd: rm -rf /var/data
+`
+	h, rs, pbFile := newPlaybookEngineTestHandler(t, pbYAML)
+	ssh := &fakeSSHRunner{user: "root"}
+	h.sshRunner = ssh
 	h.checker = blacklist.NewDefaultChecker()
 
-	pbFile := filepath.Join(t.TempDir(), "evil.yaml")
-	content := "name: evil\ntasks:\n  - cleanup:\n      command: rm -rf /var/data\n"
-	require.NoError(t, os.WriteFile(pbFile, []byte(content), 0644))
-
-	run, err := rs.Create(t.Context(), "pb-1", "evil", pbFile, []string{"test-node"}, nil, "", false)
+	run, err := rs.Create(t.Context(), "pb-1", "evil", pbFile, []string{"n1"}, nil, "", false)
 	require.NoError(t, err)
 
-	h.executePlaybookRun(run.ID)
+	h.executePlaybookRunV2(run.ID)
 
-	finished, err := rs.Get(t.Context(), run.ID)
+	run, err = rs.Get(t.Context(), run.ID)
 	require.NoError(t, err)
-	assert.Equal(t, model.RunStatusFailed, finished.Status)
-	require.Len(t, finished.Results, 1)
-	assert.Equal(t, -1, finished.Results[0].ExitCode)
-	assert.Contains(t, finished.Results[0].Error, "黑名单")
+	assert.Equal(t, model.RunStatusFailed, run.Status)
+	assert.Empty(t, ssh.executedCommands(), "被拦截的命令不得发起任何 SSH 执行")
+
+	found := false
+	for _, s := range run.Results {
+		if s.TaskName == "cleanup" && s.Status == "failed" && strings.Contains(s.Error, "黑名单") {
+			found = true
+		}
+	}
+	assert.True(t, found, "失败步骤必须携带黑名单拦截原因，实际: %+v", run.Results)
+}
+
+func TestExecutePlaybookRunV2_CommandSafeAllowed(t *testing.T) {
+	const pbYAML = `
+name: safe
+execution_mode: fail_continue
+tasks:
+  - name: check
+    action: shell
+    args:
+      cmd: uptime
+`
+	h, rs, pbFile := newPlaybookEngineTestHandler(t, pbYAML)
+	ssh := &fakeSSHRunner{user: "root", results: map[string]fakeExecResult{
+		"uptime": {output: "load ok", exitCode: 0},
+	}}
+	h.sshRunner = ssh
+	h.checker = blacklist.NewDefaultChecker()
+
+	run, err := rs.Create(t.Context(), "pb-1", "safe", pbFile, []string{"n1"}, nil, "", false)
+	require.NoError(t, err)
+
+	h.executePlaybookRunV2(run.ID)
+
+	run, err = rs.Get(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Len(t, ssh.executedCommands(), 1, "安全命令应照常执行")
+	assert.Equal(t, model.RunStatusCompleted, run.Status)
 }
 
 // adminCtx 返回带 admin 身份的 ctx（ctx 化后替代共享 userRole 注入）。

@@ -553,7 +553,9 @@ func (e *WebExecutor) RunPlaybook(ctx context.Context, params ai2.RunPlaybookPar
 	if e.PlaybookHandler == nil {
 		return &ai2.RunPlaybookResult{Text: fmt.Sprintf("剧本运行已创建 (ID: %s)，但执行器未就绪", run.ID)}, nil
 	}
-	e.PlaybookHandler.executePlaybookRun(run.ID)
+	// V2 引擎同步执行：ctx 贯穿（超时/取消真实生效）、任务解析经 pbexec
+	// 解析器（ansible 风格已归一）、逐步推送结果。V1 已删除。
+	e.PlaybookHandler.executePlaybookRunV2(run.ID)
 
 	finished, err := e.playbookRunStore.Get(ctx, run.ID)
 	if err != nil {

@@ -1,6 +1,7 @@
 package playbook
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -134,6 +135,12 @@ func (p *Parser) ParseFromFile(filePath string) (*ParsedPlaybook, error) {
 }
 
 func (p *Parser) Parse(content string) (*ParsedPlaybook, error) {
+	// 兼容 V1 引擎支持的 ansible 单键风格（- 任务名: {command: ...}）：
+	// 结构体解码会丢弃未知键，必须先在 yaml.Node 层归一为 owl 风格。
+	if normalized, err := normalizeAnsibleStyle(content); err == nil {
+		content = normalized
+	}
+
 	var raw Playbook
 	if err := yaml.Unmarshal([]byte(content), &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
@@ -656,5 +663,90 @@ func toFloat64(v interface{}) (float64, bool) {
 		return f, true
 	default:
 		return 0, false
+	}
+}
+
+// playbookTaskYAMLKeys 是 PlaybookTask 已知的顶层 yaml 键；条目中出现
+// 其他键时视为 ansible 单键风格（键名即任务名）。
+var playbookTaskYAMLKeys = map[string]bool{
+	"name": true, "action": true, "args": true, "when": true, "with_items": true,
+	"loop_control": true, "ignore_errors": true, "any_errors_fatal": true,
+	"tags": true, "register": true, "changed_when": true, "failed_when": true,
+	"timeout": true, "retry": true, "include": true, "vars": true,
+}
+
+// taskActionArgKeys 内层参数里可推断动作的键（后者优先级不覆盖前者，命中即定）
+var taskActionArgKeys = []string{"command", "shell", "cmd", "script", "upload", "download"}
+
+// normalizeAnsibleStyle 把 ansible 单键风格任务归一为 owl 风格；
+// 非 ansible 风格的文档原样返回。
+func normalizeAnsibleStyle(content string) (string, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return content, err
+	}
+	normalizeAnsibleTasks(&doc)
+	var buf bytes.Buffer
+	if err := yaml.NewEncoder(&buf).Encode(&doc); err != nil {
+		return content, err
+	}
+	return buf.String(), nil
+}
+
+func normalizeAnsibleTasks(doc *yaml.Node) {
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
+		return
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return
+	}
+	for _, section := range []string{"tasks", "pre_tasks", "post_tasks"} {
+		for i := 0; i+1 < len(root.Content); i += 2 {
+			if root.Content[i].Value != section {
+				continue
+			}
+			seq := root.Content[i+1]
+			if seq.Kind != yaml.SequenceNode {
+				continue
+			}
+			for _, item := range seq.Content {
+				normalizeAnsibleTaskItem(item)
+			}
+		}
+	}
+}
+
+func normalizeAnsibleTaskItem(item *yaml.Node) {
+	// 仅改写「单键映射且键值也是映射」的条目；owl 风格与多键条目
+	// 交给结构体解码。
+	if item.Kind != yaml.MappingNode || len(item.Content) != 2 {
+		return
+	}
+	keyNode, valNode := item.Content[0], item.Content[1]
+	if keyNode.Kind != yaml.ScalarNode || playbookTaskYAMLKeys[keyNode.Value] {
+		return
+	}
+	if valNode.Kind != yaml.MappingNode {
+		return
+	}
+
+	action := ""
+	for _, act := range taskActionArgKeys {
+		for j := 0; j+1 < len(valNode.Content); j += 2 {
+			if valNode.Content[j].Value == act {
+				action = act
+			}
+		}
+	}
+
+	scalar := func(v string) *yaml.Node {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}
+	}
+	// 映射节点按 key/value 交错存储：name/action 键需要配对的值节点。
+	item.Content = []*yaml.Node{
+		scalar("name"), scalar(keyNode.Value),
+		scalar("action"), scalar(action),
+		scalar("args"), valNode,
 	}
 }

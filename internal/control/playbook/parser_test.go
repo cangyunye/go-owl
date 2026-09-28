@@ -984,3 +984,39 @@ tasks:
 		}
 	})
 }
+
+// V1 引擎支持 ansible 单键风格任务（- 任务名: {command: ...}），AI 与
+// 历史剧本沿用该写法；V2 的 pbexec 解析器必须同样承接，否则存量剧本
+// 在切换引擎后全部变成 "has no action or args" 解析失败。
+func TestParser_ParseAnsibleSingleKeyStyle(t *testing.T) {
+	content := `
+name: legacy-style
+tasks:
+  - Say hello:
+      command: echo AI_PLAYBOOK_OK
+  - deploy:
+      shell: ./deploy.sh
+`
+	p := NewParser()
+	pb, err := p.Parse(content)
+	if err != nil {
+		t.Fatalf("ansible 风格剧本应可解析: %v", err)
+	}
+	if len(pb.Tasks) != 2 {
+		t.Fatalf("应解析出 2 个任务，实际 %d", len(pb.Tasks))
+	}
+	first := pb.Tasks[0]
+	if first.Name != "Say hello" {
+		t.Errorf("任务名应取单键键名 %q，实际 %q", "Say hello", first.Name)
+	}
+	if first.Action != "command" {
+		t.Errorf("动作应从参数键推断为 command，实际 %q", first.Action)
+	}
+	if v, _ := first.Args["command"].(string); v != "echo AI_PLAYBOOK_OK" {
+		t.Errorf("args 应保留原参数映射，实际 %v", first.Args)
+	}
+	second := pb.Tasks[1]
+	if second.Name != "deploy" || second.Action != "shell" {
+		t.Errorf("第二个任务应解析为 deploy/shell，实际 %s/%s", second.Name, second.Action)
+	}
+}
