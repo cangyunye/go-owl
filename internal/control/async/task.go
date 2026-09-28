@@ -47,12 +47,12 @@ type AsyncTask struct {
 type AsyncTaskStatus string
 
 const (
-	AsyncTaskStatusPending   AsyncTaskStatus = "pending"    // 等待执行
-	AsyncTaskStatusRunning   AsyncTaskStatus = "running"    // 执行中
-	AsyncTaskStatusSuccess   AsyncTaskStatus = "success"    // 执行成功
-	AsyncTaskStatusFailed    AsyncTaskStatus = "failed"     // 执行失败
-	AsyncTaskStatusTimeout   AsyncTaskStatus = "timeout"    // 超时
-	AsyncTaskStatusCanceled  AsyncTaskStatus = "canceled"   // 已取消
+	AsyncTaskStatusPending  AsyncTaskStatus = "pending"  // 等待执行
+	AsyncTaskStatusRunning  AsyncTaskStatus = "running"  // 执行中
+	AsyncTaskStatusSuccess  AsyncTaskStatus = "success"  // 执行成功
+	AsyncTaskStatusFailed   AsyncTaskStatus = "failed"   // 执行失败
+	AsyncTaskStatusTimeout  AsyncTaskStatus = "timeout"  // 超时
+	AsyncTaskStatusCanceled AsyncTaskStatus = "canceled" // 已取消
 )
 
 // AsyncOptions 异步执行选项

@@ -32,10 +32,10 @@ func NewAsyncTaskManager(opts *AsyncOptions) *AsyncTaskManager {
 	}
 
 	return &AsyncTaskManager{
-		tasks:          make(map[string]*AsyncTask),
-		remoteBaseDir:  opts.RemoteBaseDir,
-		maxConcurrent:  100,
-		cleanupAfter:   24 * time.Hour,
+		tasks:         make(map[string]*AsyncTask),
+		remoteBaseDir: opts.RemoteBaseDir,
+		maxConcurrent: 100,
+		cleanupAfter:  24 * time.Hour,
 	}
 }
 
