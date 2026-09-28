@@ -111,6 +111,9 @@ func (s *Server) Init() (*AdminCredentials, error) {
 			return nil, fmt.Errorf("set pragma: %w", err)
 		}
 	}
+	if err := hardenDBFile(s.Config.DBPath); err != nil {
+		log.Printf("owl-serve: 收紧数据库文件权限失败: %v", err)
+	}
 
 	// Init stores
 	s.Users = store.NewUserStore(db)
@@ -722,7 +725,24 @@ tasks:
 func ensureDBDir(dbPath string) error {
 	dir := filepath.Dir(dbPath)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return os.MkdirAll(dir, 0755)
+		// owl.db 存节点凭据与 jwt_secret，目录仅限属主进入
+		return os.MkdirAll(dir, 0700)
+	}
+	return nil
+}
+
+// hardenDBFile 把库文件及 WAL/SHM/日志文件收紧为 0600。sqlite 侧文件
+// 以进程 umask 默认权限创建（通常 0644），多用户机器上任何本地用户都
+// 能读到节点凭据与 jwt_secret。文件尚未创建时静默返回（调用点在
+// schema 初始化后，此仅为兜底）。
+func hardenDBFile(dbPath string) error {
+	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm", dbPath + "-journal"} {
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		if err := os.Chmod(p, 0600); err != nil {
+			return fmt.Errorf("chmod %s: %w", p, err)
+		}
 	}
 	return nil
 }
@@ -769,6 +789,9 @@ func (s *Server) ResetAdmin() (*AdminCredentials, error) {
 
 	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); err != nil {
 		return nil, fmt.Errorf("set pragma: %w", err)
+	}
+	if err := hardenDBFile(s.Config.DBPath); err != nil {
+		log.Printf("owl-serve: 收紧数据库文件权限失败: %v", err)
 	}
 
 	users := store.NewUserStore(db)

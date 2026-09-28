@@ -41,6 +41,7 @@ func DefaultConfig() *Config {
 func ensureDBDir(path string) {
 	dir := filepath.Dir(path)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.MkdirAll(dir, 0755)
+		// owl.db 存节点凭据与历史，目录仅限属主进入
+		os.MkdirAll(dir, 0700)
 	}
 }

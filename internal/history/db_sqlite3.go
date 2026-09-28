@@ -65,9 +65,21 @@ func NewDB(config *Config) (DBInterface, error) {
 		_ = conn.Close()
 		return nil, err
 	}
+	hardenDBFile(dbPath)
 
 	globalDB = db
 	return db, nil
+}
+
+// hardenDBFile 把库文件及 WAL/SHM 收紧为 0600（umask 默认 0644，
+// 多用户机器上任意本地用户可读节点凭据）。文件不存在时静默返回。
+func hardenDBFile(dbPath string) {
+	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm", dbPath + "-journal"} {
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		_ = os.Chmod(p, 0600)
+	}
 }
 
 // Connection 获取底层连接
@@ -344,6 +356,6 @@ func (s *SQLite3) Cleanup(retentionDays int) error {
 func (s *SQLite3) ensureDBDir() {
 	dir := filepath.Dir(s.path)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.MkdirAll(dir, 0755)
+		os.MkdirAll(dir, 0700)
 	}
 }
