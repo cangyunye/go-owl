@@ -285,6 +285,10 @@ tasks:
         echo "运行 CLI 命令结构性测试 (cmd/cli/cmd/)"
         {{.GO}} test ./cmd/cli/cmd/...
         echo ""
+        echo "运行 serve 子模块测试 (cmd/plugins/serve 为独立 go.mod，根模块 ./... 覆盖不到)"
+        cd cmd/plugins/serve && {{.GO}} test ./...
+        cd -
+        echo ""
         echo "运行 internal 层逻辑测试"
         {{.GO}} test ./internal/...
 
@@ -309,11 +313,13 @@ tasks:
     desc: 快速测试（跳过耗时项）
     cmds:
       - '{{.GO}} test ./cmd/cli/cmd/... ./internal/...'
+      - 'cd cmd/plugins/serve && {{.GO}} test ./...'
 
   test-coverage:
     desc: 测试并生成覆盖率报告 coverage.html
     cmds:
       - '{{.GO}} test -coverprofile=coverage.out ./...'
+      - 'cd cmd/plugins/serve && {{.GO}} test ./...'
       - '{{.GO}} tool cover -html=coverage.out -o coverage.html'
 
   test-bash:
