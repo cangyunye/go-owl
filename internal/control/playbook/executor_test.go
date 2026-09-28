@@ -203,14 +203,6 @@ func TestTaskContext(t *testing.T) {
 	}
 }
 
-func TestExecutor_Stop(t *testing.T) {
-	executor := &playbookExecutor{}
-	err := executor.Stop("exec-1")
-	if err == nil {
-		t.Error("expected error for stop (not implemented)")
-	}
-}
-
 type MockNodeManager struct {
 	nodes map[string]*model.Node
 }

@@ -397,20 +397,6 @@ func (h *PlaybookHandler) broadcastRunUpdate(ctx context.Context, runID string) 
 	}
 }
 
-func toWebStepResults(pb *pbexec.ParsedPlaybook, exec *pbexec.PlaybookExecution) []*webmodel.StepResult {
-	if exec == nil {
-		return nil
-	}
-
-	var results []*webmodel.StepResult
-	for _, t := range allParsedTasks(pb) {
-		for _, r := range exec.Results[t.Name] {
-			results = append(results, webStepResultFromTask(t, r))
-		}
-	}
-	return results
-}
-
 func allParsedTasks(pb *pbexec.ParsedPlaybook) []*pbexec.ParsedTask {
 	allTasks := make([]*pbexec.ParsedTask, 0, len(pb.PreTasks)+len(pb.Tasks)+len(pb.PostTasks))
 	allTasks = append(allTasks, pb.PreTasks...)

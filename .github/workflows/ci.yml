@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: go test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: ['.', 'cmd/plugins/serve', 'cmd/owl-serve']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test ${{ matrix.module }}
+        run: go test ./...
+        working-directory: ${{ matrix.module }}
+
+      - name: Vet ${{ matrix.module }}
+        if: matrix.module == '.'
+        run: go vet ./...

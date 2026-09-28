@@ -72,7 +72,8 @@ type PlaybookOptions struct {
 type Executor interface {
 	Execute(playbook *ParsedPlaybook, targets []*model.Node, extraVars map[string]interface{}) (*PlaybookExecution, error)
 	ExecuteTask(exec *PlaybookExecution, task *ParsedTask) ([]*TaskResult, error)
-	Stop(execID string) error
+	// 中断经上层 ctx 传播（Web 端 runCancels 注册表 + parentCtx），
+	// 引擎级 Stop 从未接线，已从接口移除。
 }
 
 type checkpoint struct {
@@ -857,10 +858,6 @@ func (e *playbookExecutor) shouldContinueExecution(exec *PlaybookExecution) bool
 
 func (e *playbookExecutor) ExecuteTask(exec *PlaybookExecution, task *ParsedTask) ([]*TaskResult, error) {
 	return e.executeTaskInternal(exec, task)
-}
-
-func (e *playbookExecutor) Stop(execID string) error {
-	return fmt.Errorf("stop functionality not implemented yet")
 }
 
 func (e *PlaybookExecution) GetTaskResult(taskName string) []*TaskResult {
