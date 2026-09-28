@@ -707,23 +707,7 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 
 	now := time.Now()
 	exec.EndTime = &now
-
-	if exec.Status == ExecutionStatusRunning {
-		hasFailure := false
-		for _, results := range exec.Results {
-			for _, result := range results {
-				if result.ExitCode != 0 && result.Error != nil {
-					hasFailure = true
-					break
-				}
-			}
-		}
-		if hasFailure {
-			exec.Status = ExecutionStatusFailed
-		} else {
-			exec.Status = ExecutionStatusCompleted
-		}
-	}
+	exec.applyTerminalStatus()
 
 	// 中止失败（pipeline 快停走 break 到这里）必须把错误返回给调用方：
 	// handler 靠它写 run.error，返回 nil 会表现为"静默失败"。
@@ -731,6 +715,36 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 		return exec, fmt.Errorf("%s", exec.Error)
 	}
 	return exec, nil
+}
+
+// IsFailedResult 单一失败判定口径：非零退出码即失败（shell 语义），
+// Error 是补充信息。历史上终态判定（ExitCode!=0 && Error!=nil）与
+// FailureCount（ExitCode!=0）两套口径并存，是 946542b 修复的
+// 「误判成功」类缺陷的温床，现统一由此谓词判定。
+func IsFailedResult(r *TaskResult) bool {
+	return r.ExitCode != 0
+}
+
+// applyTerminalStatus 依据结果集推导执行终态（仅当仍在 running 时生效，
+// 已被取消/中止标记的执行不覆盖）。
+func (e *PlaybookExecution) applyTerminalStatus() {
+	if e.Status != ExecutionStatusRunning {
+		return
+	}
+	hasFailure := false
+	for _, results := range e.Results {
+		for _, result := range results {
+			if IsFailedResult(result) {
+				hasFailure = true
+				break
+			}
+		}
+	}
+	if hasFailure {
+		e.Status = ExecutionStatusFailed
+	} else {
+		e.Status = ExecutionStatusCompleted
+	}
 }
 
 func (e *playbookExecutor) executeTaskInternal(exec *PlaybookExecution, task *ParsedTask) ([]*TaskResult, error) {
@@ -876,7 +890,7 @@ func (e *PlaybookExecution) SuccessCount() int {
 	count := 0
 	for _, results := range e.Results {
 		for _, result := range results {
-			if result.ExitCode == 0 {
+			if !IsFailedResult(result) {
 				count++
 			}
 		}
@@ -888,7 +902,7 @@ func (e *PlaybookExecution) FailureCount() int {
 	count := 0
 	for _, results := range e.Results {
 		for _, result := range results {
-			if result.ExitCode != 0 {
+			if IsFailedResult(result) {
 				count++
 			}
 		}

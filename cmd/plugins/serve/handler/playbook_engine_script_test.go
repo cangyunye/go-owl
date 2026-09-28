@@ -3,6 +3,7 @@ package handler
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
@@ -78,5 +79,24 @@ tasks:
 		if s.TaskName == "probe" {
 			assert.NotContains(t, s.Error, "黑名单", "安全脚本不应被拦截")
 		}
+	}
+}
+
+// R4/S17：步骤输出截断曾以字节 [:4093] 硬切，可能把多字节 UTF-8 字符
+// 切成非法序列（乱码入库/广播）。truncateRunes 在 rune 边界回退。
+func TestTruncateRunes_UTF8Boundary(t *testing.T) {
+	s := strings.Repeat("好", 3000) // 9000 字节
+	out := truncateRunes(s, 4096)
+	if !utf8.ValidString(out) {
+		t.Fatal("截断结果必须是合法 UTF-8")
+	}
+	if !strings.HasSuffix(out, "...") {
+		t.Fatal("截断结果应以 ... 结尾")
+	}
+	if len(out) > 4096 {
+		t.Fatalf("截断后不得超过上限，实际 %d", len(out))
+	}
+	if got := truncateRunes("short", 4096); got != "short" {
+		t.Fatalf("未超限内容应原样返回，实际 %q", got)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	webmodel "github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
@@ -96,10 +97,14 @@ func (e *webCommandExecutor) ExecuteOnNode(nodeID string, cmd string, timeout ti
 	return result, err
 }
 
+// defaultWebCommandTimeout 为 Web 命令执行器在调用方未给超时时的兜底值
+// （与剧本动作的 DefaultCommandTimeout 语义不同，勿混用）。
+const defaultWebCommandTimeout = 30 * time.Second
+
 // ExecuteOnNodeWithConfig 实现 CommandExecutor 接口；Web 侧无独立的连接阶段，
 // 以命令超时为准执行。
 func (e *webCommandExecutor) ExecuteOnNodeWithConfig(nodeID string, cmd string, config *owlssh.TimeoutConfig) (*task.TaskResult, error) {
-	timeout := 30 * time.Second
+	timeout := defaultWebCommandTimeout
 	if config != nil && config.CommandTimeout > 0 {
 		timeout = config.CommandTimeout
 	}
@@ -416,9 +421,7 @@ func webStepResultFromTask(t *pbexec.ParsedTask, r *pbexec.TaskResult) *webmodel
 		errMsg = fmt.Sprintf("exit code %d", r.ExitCode)
 	}
 	output := r.Output
-	if len(output) > 4096 {
-		output = output[:4093] + "..."
-	}
+	output = truncateRunes(output, stepOutputLimit)
 	return &webmodel.StepResult{
 		TaskName:   t.Name,
 		NodeID:     r.NodeID,
@@ -429,6 +432,22 @@ func webStepResultFromTask(t *pbexec.ParsedTask, r *pbexec.TaskResult) *webmodel
 		Error:      errMsg,
 		DurationMs: r.EndTime.Sub(r.StartTime).Milliseconds(),
 	}
+}
+
+// stepOutputLimit 单条步骤输出的存储/广播上限（字节）。
+const stepOutputLimit = 4096
+
+// truncateRunes 超限时在 rune 边界回退后截断并追加省略号，
+// 避免把多字节 UTF-8 字符切成非法序列（乱码入库/广播）。
+func truncateRunes(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	cut := limit - 3
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "..."
 }
 
 func recordWebStepStates(runID string, pb *pbexec.ParsedPlaybook, exec *pbexec.PlaybookExecution) {
@@ -456,10 +475,7 @@ func recordWebStepStates(runID string, pb *pbexec.ParsedPlaybook, exec *pbexec.P
 				status = "failed"
 				errMsg = fmt.Sprintf("exit code %d", r.ExitCode)
 			}
-			stdout := r.Output
-			if len(stdout) > 4096 {
-				stdout = stdout[:4093] + "..."
-			}
+			stdout := truncateRunes(r.Output, stepOutputLimit)
 			startedAt := r.StartTime
 			finishedAt := r.EndTime
 			history.UpsertStepState(&history.PlaybookStepState{

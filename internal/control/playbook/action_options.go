@@ -28,16 +28,24 @@ type PlaybookDefaults struct {
 	RetryConfig   *command.RetryConfig
 }
 
+// 剧本动作超时/重试的默认值。此前 10s/5min/30s 在本文件与
+// executor.go、Web 引擎里各写一份（七八处），改动默认值极易漏改。
+const (
+	DefaultConnectTimeout   = 10 * time.Second
+	DefaultCommandTimeout   = 5 * time.Minute
+	DefaultRetryMaxInterval = 30 * time.Second
+)
+
 func DefaultPlaybookDefaults() *PlaybookDefaults {
 	return &PlaybookDefaults{
 		TimeoutConfig: &ssh.TimeoutConfig{
-			ConnectTimeout: 10 * time.Second,
-			CommandTimeout: 5 * time.Minute,
+			ConnectTimeout: DefaultConnectTimeout,
+			CommandTimeout: DefaultCommandTimeout,
 		},
 		RetryConfig: &command.RetryConfig{
-			MaxRetries:    0,
+			MaxRetries:      0,
 			InitialInterval: 1 * time.Second,
-			MaxInterval:   30 * time.Second,
+			MaxInterval:     DefaultRetryMaxInterval,
 		},
 	}
 }
@@ -46,14 +54,14 @@ func (opts *ActionOptions) GetTimeout() time.Duration {
 	if opts != nil && opts.Timeout != nil && opts.Timeout.Command > 0 {
 		return opts.Timeout.Command
 	}
-	return 5 * time.Minute
+	return DefaultCommandTimeout
 }
 
 func (opts *ActionOptions) GetConnectTimeout() time.Duration {
 	if opts != nil && opts.Timeout != nil && opts.Timeout.Connect > 0 {
 		return opts.Timeout.Connect
 	}
-	return 10 * time.Second
+	return DefaultConnectTimeout
 }
 
 func (opts *ActionOptions) ShouldRetry() bool {
@@ -78,8 +86,8 @@ func (opts *ActionOptions) GetRetryConfig() *command.RetryConfig {
 func (opts *ActionOptions) GetTimeoutConfig() *ssh.TimeoutConfig {
 	if opts == nil {
 		return &ssh.TimeoutConfig{
-			ConnectTimeout: 10 * time.Second,
-			CommandTimeout: 5 * time.Minute,
+			ConnectTimeout: DefaultConnectTimeout,
+			CommandTimeout: DefaultCommandTimeout,
 		}
 	}
 	return &ssh.TimeoutConfig{
@@ -100,8 +108,8 @@ func MergeActionOptions(taskOpts *ActionOptions, globalOpts *PlaybookDefaults) *
 		}
 	} else {
 		result.Timeout = &TimeoutOption{
-			Connect: 10 * time.Second,
-			Command: 5 * time.Minute,
+			Connect: DefaultConnectTimeout,
+			Command: DefaultCommandTimeout,
 		}
 	}
 
@@ -121,8 +129,8 @@ func MergeActionOptions(taskOpts *ActionOptions, globalOpts *PlaybookDefaults) *
 func (opts *TimeoutOption) ToSSHConfig() *ssh.TimeoutConfig {
 	if opts == nil {
 		return &ssh.TimeoutConfig{
-			ConnectTimeout: 10 * time.Second,
-			CommandTimeout: 5 * time.Minute,
+			ConnectTimeout: DefaultConnectTimeout,
+			CommandTimeout: DefaultCommandTimeout,
 		}
 	}
 	return &ssh.TimeoutConfig{
