@@ -554,6 +554,9 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 		}
 		preTask := playbook.PreTasks[i]
 		results, err := e.executeTaskInternal(exec, preTask)
+		// 先保留结果再处理错误：中止时失败步骤自身的执行记录不能丢，
+		// 否则前端只能看到失败之前的步骤，失败原因无处可查。
+		exec.Results[preTask.Name] = append(exec.Results[preTask.Name], results...)
 		if err != nil {
 			if !preTask.Options.IgnoreErrors {
 				exec.Status = ExecutionStatusFailed
@@ -564,7 +567,6 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 				return exec, err
 			}
 		}
-		exec.Results[preTask.Name] = append(exec.Results[preTask.Name], results...)
 	}
 
 	for i := range playbook.Tasks {
@@ -578,6 +580,8 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 		}
 
 		results, err := e.executeTaskInternal(exec, mainTask)
+		// 先保留结果再处理错误：pipeline 快停时失败步骤自身的执行记录不能丢。
+		exec.Results[mainTask.Name] = append(exec.Results[mainTask.Name], results...)
 		if err != nil {
 			if !mainTask.Options.IgnoreErrors {
 				if playbook.ExecutionMode == ExecutionModePipeline || mainTask.Options.AnyErrorsFatal {
@@ -590,7 +594,6 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 				}
 			}
 		}
-		exec.Results[mainTask.Name] = append(exec.Results[mainTask.Name], results...)
 
 		for _, result := range results {
 			if mainTask.Options.Register != "" {
@@ -605,6 +608,7 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 		}
 		postTask := playbook.PostTasks[i]
 		results, err := e.executeTaskInternal(exec, postTask)
+		exec.Results[postTask.Name] = append(exec.Results[postTask.Name], results...)
 		if err != nil {
 			if !postTask.Options.IgnoreErrors {
 				exec.Status = ExecutionStatusFailed
@@ -615,7 +619,6 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 				return exec, err
 			}
 		}
-		exec.Results[postTask.Name] = append(exec.Results[postTask.Name], results...)
 	}
 
 	now := time.Now()
@@ -638,6 +641,11 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 		}
 	}
 
+	// 中止失败（pipeline 快停走 break 到这里）必须把错误返回给调用方：
+	// handler 靠它写 run.error，返回 nil 会表现为"静默失败"。
+	if exec.Status == ExecutionStatusFailed && exec.Error != "" {
+		return exec, fmt.Errorf("%s", exec.Error)
+	}
 	return exec, nil
 }
 

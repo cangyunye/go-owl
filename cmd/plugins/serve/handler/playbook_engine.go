@@ -21,8 +21,21 @@ import (
 	owlssh "github.com/cangyunye/go-owl/internal/ssh"
 )
 
+// playbookHub 抽象 WS 广播能力；测试注入 fake 捕获每条推送，
+// 防止引擎改版时再次悄悄丢掉逐步广播（V1→V2 的教训）。
+type playbookHub interface {
+	Broadcast(WSMessage)
+	BroadcastHistoryUpdate()
+}
+
+// playbookSSHRunner 抽象远端命令执行；测试注入 fake 控制退出码/延迟/挂死。
+type playbookSSHRunner interface {
+	Execute(ctx context.Context, nodeID, command string) (string, int, error)
+	getNodeInfo(nodeID string) (*nodeSSHInfo, error)
+}
+
 type webCommandExecutor struct {
-	ssh   *sshExecutor
+	ssh   playbookSSHRunner
 	check *blacklist.Checker
 	force bool
 }
@@ -57,15 +70,20 @@ func (e *webCommandExecutor) ExecuteOnNode(nodeID string, cmd string, timeout ti
 	output, exitCode, err := e.ssh.Execute(ctx, nodeID, cmd)
 	end := time.Now()
 
+	// 非零退出码必须以 error 暴露：执行器的 pipeline 快停语义完全依赖
+	// err 非 nil。曾因返回 err=nil 导致 Web 端 pipeline 对退出码失败
+	// "假装没失败"，与 CLI 行为分裂。
+	if err == nil && exitCode != 0 {
+		err = fmt.Errorf("exit code %d", exitCode)
+	}
+
 	result := &task.TaskResult{
 		NodeID:    nodeID,
 		ExitCode:  exitCode,
 		Output:    output,
+		Error:     err,
 		StartTime: start,
 		EndTime:   end,
-	}
-	if err != nil {
-		result.Error = err
 	}
 	return result, err
 }
@@ -189,8 +207,12 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 	}
 
 	nodeMgr := newWebNodeManager(h.db, run.TargetNodes)
+	sshRunner := h.sshRunner
+	if sshRunner == nil {
+		sshRunner = &sshExecutor{db: h.db}
+	}
 	cmdExec := &webCommandExecutor{
-		ssh:   &sshExecutor{db: h.db},
+		ssh:   sshRunner,
 		check: h.checker,
 		force: run.DangerConfirmed,
 	}
@@ -265,7 +287,17 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 		histStatus = "failed"
 	}
 
-	h.runs.UpdateStatus(ctx, runID, finalStatus, "")
+	// 失败原因必须写进 run.error：中止错误优先，其次失败步骤计数。
+	// 传空字符串会让 run 变 failed 却无任何解释（"静默失败"）。
+	errMsg := ""
+	switch {
+	case execErr != nil:
+		errMsg = execErr.Error()
+	case failed > 0:
+		errMsg = fmt.Sprintf("%d/%d 个步骤执行失败", failed, failed+success)
+	}
+
+	h.runs.UpdateStatus(ctx, runID, finalStatus, errMsg)
 	if err := h.History.UpdateOperationStatus(ctx, runID, opStatus); err != nil {
 		log.Printf("update op status: %v", err)
 	}

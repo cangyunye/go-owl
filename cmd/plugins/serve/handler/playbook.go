@@ -29,12 +29,14 @@ type PlaybookHandler struct {
 	playbooks *store.PlaybookStore
 	runs      *store.PlaybookRunStore
 	nodes     *store.NodeStore
-	hub       *WSHub
+	hub       playbookHub
 	History   *store.HistoryStore
 	checker   *blacklist.Checker
+	// sshRunner 为 nil 时使用真实 SSH 执行器；测试注入 fake 锁定引擎行为。
+	sshRunner playbookSSHRunner
 }
 
-func NewPlaybookHandler(db *sql.DB, ps *store.PlaybookStore, rs *store.PlaybookRunStore, ns *store.NodeStore, hub *WSHub) *PlaybookHandler {
+func NewPlaybookHandler(db *sql.DB, ps *store.PlaybookStore, rs *store.PlaybookRunStore, ns *store.NodeStore, hub playbookHub) *PlaybookHandler {
 	return &PlaybookHandler{db: db, playbooks: ps, runs: rs, nodes: ns, hub: hub, checker: newBlacklistChecker()}
 }
 
