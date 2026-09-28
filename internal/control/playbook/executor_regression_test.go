@@ -58,8 +58,8 @@ type fakeNodeManager struct {
 	nodes []*model.Node
 }
 
-func (m *fakeNodeManager) Register(n *model.Node) error                       { return nil }
-func (m *fakeNodeManager) Unregister(id string) error                         { return nil }
+func (m *fakeNodeManager) Register(n *model.Node) error                          { return nil }
+func (m *fakeNodeManager) Unregister(id string) error                            { return nil }
 func (m *fakeNodeManager) UpdateStatus(id string, status model.NodeStatus) error { return nil }
 func (m *fakeNodeManager) GetByID(id string) (*model.Node, error) {
 	for _, n := range m.nodes {
@@ -69,13 +69,13 @@ func (m *fakeNodeManager) GetByID(id string) (*model.Node, error) {
 	}
 	return nil, fmt.Errorf("node %s not found", id)
 }
-func (m *fakeNodeManager) List() []*model.Node                            { return m.nodes }
-func (m *fakeNodeManager) GetByGroup(group string) []*model.Node          { return nil }
+func (m *fakeNodeManager) List() []*model.Node                                { return m.nodes }
+func (m *fakeNodeManager) GetByGroup(group string) []*model.Node              { return nil }
 func (m *fakeNodeManager) GetByLabels(labels map[string]string) []*model.Node { return nil }
-func (m *fakeNodeManager) GetOnlineNodes() []*model.Node                  { return m.nodes }
-func (m *fakeNodeManager) Count() int                                     { return len(m.nodes) }
-func (m *fakeNodeManager) SearchByName(pattern string) []*model.Node      { return nil }
-func (m *fakeNodeManager) SearchByAddress(pattern string) []*model.Node   { return nil }
+func (m *fakeNodeManager) GetOnlineNodes() []*model.Node                      { return m.nodes }
+func (m *fakeNodeManager) Count() int                                         { return len(m.nodes) }
+func (m *fakeNodeManager) SearchByName(pattern string) []*model.Node          { return nil }
+func (m *fakeNodeManager) SearchByAddress(pattern string) []*model.Node       { return nil }
 
 var _ controlnode.Manager = (*fakeNodeManager)(nil)
 
@@ -186,6 +186,9 @@ tasks:
 	assert.Len(t, exec.GetTaskResult("step2_fail"), 1, "失败步骤必须有记录")
 	failed := exec.GetTaskResult("step2_fail")
 	assert.NotNil(t, failed[0].Error)
+	// 退出码必须保留：FailureCount（run 终态判定）依赖 ExitCode != 0，
+	// 丢失会把失败误判成成功（E2E 曾抓到 run completed 的退化）。
+	assert.Equal(t, 1, failed[0].ExitCode, "失败步骤的退出码必须从底层结果保留")
 	assert.Len(t, exec.GetTaskResult("step3_still_runs"), 1, "失败后后续步骤必须继续执行")
 }
 

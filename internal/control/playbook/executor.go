@@ -11,8 +11,8 @@ import (
 
 	"github.com/cangyunye/go-owl/internal/common/model"
 	"github.com/cangyunye/go-owl/internal/control/command"
-	"github.com/cangyunye/go-owl/internal/control/script"
 	controlnode "github.com/cangyunye/go-owl/internal/control/node"
+	"github.com/cangyunye/go-owl/internal/control/script"
 	"github.com/cangyunye/go-owl/internal/control/task"
 	"github.com/cangyunye/go-owl/internal/control/transfer"
 	"github.com/cangyunye/go-owl/internal/node"
@@ -23,10 +23,10 @@ type ExecutionStatus string
 
 const (
 	ExecutionStatusPending   ExecutionStatus = "pending"
-	ExecutionStatusRunning  ExecutionStatus = "running"
+	ExecutionStatusRunning   ExecutionStatus = "running"
 	ExecutionStatusCompleted ExecutionStatus = "completed"
-	ExecutionStatusFailed   ExecutionStatus = "failed"
-	ExecutionStatusAborted  ExecutionStatus = "aborted"
+	ExecutionStatusFailed    ExecutionStatus = "failed"
+	ExecutionStatusAborted   ExecutionStatus = "aborted"
 )
 
 type ExecutionMode string
@@ -37,9 +37,9 @@ const (
 )
 
 type TaskResult struct {
-	TaskName  string
-	NodeID    string
-	Action    string
+	TaskName string
+	NodeID   string
+	Action   string
 	// Command 是插值后实际下发执行的命令/资源描述（command/shell/script 等），
 	// 供执行日志与历史的 command 列使用；动作未产生命令串时为空。
 	Command   string
@@ -89,7 +89,7 @@ type playbookExecutor struct {
 	nodeResolver *node.NodeResolver
 
 	// 断点续跑
-	resumeFrom     *checkpoint // 非 nil 时从此处跳过已执行任务
+	resumeFrom     *checkpoint                   // 非 nil 时从此处跳过已执行任务
 	checkpointFunc func(phase string, index int) // 保存 checkpoint 的回调
 	// progressFunc 每个节点步骤完成（含失败）即回调，供上层实时推送进度
 	progressFunc func(*TaskResult)
@@ -145,10 +145,10 @@ type defaultActionRunner struct {
 
 func NewDefaultActionRunnerWithOptions(cmdExec command.CommandExecutor, nodeResolver *node.NodeResolver, opts *PlaybookOptions) *defaultActionRunner {
 	return &defaultActionRunner{
-		cmdExec:       cmdExec,
-		nodeResolver:  nodeResolver,
-		transferMgr:   transfer.NewTransferManager(nodeResolver),
-		opts:          opts,
+		cmdExec:      cmdExec,
+		nodeResolver: nodeResolver,
+		transferMgr:  transfer.NewTransferManager(nodeResolver),
+		opts:         opts,
 	}
 }
 
@@ -240,10 +240,21 @@ func (r *defaultActionRunner) runCommand(result *TaskResult, args map[string]int
 	if r.cmdExec != nil {
 		taskResult, err := executeCommandOnNode(r.cmdExec, nodeID, cmd, mergedOpts)
 		if err != nil {
+			// 出错也要保留底层结果里的退出码/输出：FailureCount 与
+			// 前端展示都依赖 ExitCode，丢了会把失败误判成成功。
+			if taskResult != nil {
+				result.ExitCode = taskResult.ExitCode
+				if result.Output == "" {
+					result.Output = taskResult.Output
+				}
+			}
 			if mergedOpts.ShouldRetry() {
 				taskResult, err = r.executeWithRetry(nodeID, cmd, mergedOpts)
 			}
 			if err != nil {
+				if taskResult != nil && result.ExitCode == 0 {
+					result.ExitCode = taskResult.ExitCode
+				}
 				result.Error = err
 				result.EndTime = time.Now()
 				return result, err

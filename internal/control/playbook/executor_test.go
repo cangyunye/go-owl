@@ -1,4 +1,4 @@
-﻿package playbook
+package playbook
 
 import (
 	"fmt"
@@ -447,9 +447,9 @@ func TestExecutor_Execute(t *testing.T) {
 }
 
 type mockCmdExecutor struct {
-	callCount      int
-	failOnCall     int
-	executedCmds   []string
+	callCount    int
+	failOnCall   int
+	executedCmds []string
 }
 
 func (m *mockCmdExecutor) ExecuteOnNode(nodeID string, command string, timeout time.Duration) (*task.TaskResult, error) {
@@ -530,21 +530,21 @@ func TestExecutor_Execute_PipelineModeFailsFast(t *testing.T) {
 		Variables:     make(map[string]interface{}),
 		Tasks: []*ParsedTask{
 			{
-				Name:   "task 1",
-				Action: "shell",
-				Args:   map[string]interface{}{"cmd": "echo ok"},
+				Name:    "task 1",
+				Action:  "shell",
+				Args:    map[string]interface{}{"cmd": "echo ok"},
 				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
 			},
 			{
-				Name:   "task 2",
-				Action: "shell",
-				Args:   map[string]interface{}{"cmd": "fail"},
+				Name:    "task 2",
+				Action:  "shell",
+				Args:    map[string]interface{}{"cmd": "fail"},
 				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
 			},
 			{
-				Name:   "task 3",
-				Action: "shell",
-				Args:   map[string]interface{}{"cmd": "should not run"},
+				Name:    "task 3",
+				Action:  "shell",
+				Args:    map[string]interface{}{"cmd": "should not run"},
 				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
 			},
 		},
@@ -582,21 +582,21 @@ func TestExecutor_Execute_FailContinueRunsAll(t *testing.T) {
 		Variables:     make(map[string]interface{}),
 		Tasks: []*ParsedTask{
 			{
-				Name:   "task 1",
-				Action: "shell",
-				Args:   map[string]interface{}{"cmd": "ok"},
+				Name:    "task 1",
+				Action:  "shell",
+				Args:    map[string]interface{}{"cmd": "ok"},
 				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
 			},
 			{
-				Name:   "task 2",
-				Action: "shell",
-				Args:   map[string]interface{}{"cmd": "fail"},
+				Name:    "task 2",
+				Action:  "shell",
+				Args:    map[string]interface{}{"cmd": "fail"},
 				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
 			},
 			{
-				Name:   "task 3",
-				Action: "shell",
-				Args:   map[string]interface{}{"cmd": "should also run"},
+				Name:    "task 3",
+				Action:  "shell",
+				Args:    map[string]interface{}{"cmd": "should also run"},
 				Options: TaskOptions{IgnoreErrors: false, AnyErrorsFatal: false},
 			},
 		},
@@ -613,8 +613,11 @@ func TestExecutor_Execute_FailContinueRunsAll(t *testing.T) {
 	if !task3Executed {
 		t.Error("task 3 should have been executed in fail_continue mode")
 	}
-	if exec.Status != ExecutionStatusCompleted {
-		t.Errorf("expected Status Completed (fail_continue swallows error), got '%s'", exec.Status)
+	// fail_continue 吞掉的是"中止"（继续跑完全部任务），不是"失败判定"：
+	// 步骤失败（ExitCode!=0 + Error）时 exec.Status 必须是 failed，
+	// 否则上层会把失败 run 误标成 completed。
+	if exec.Status != ExecutionStatusFailed {
+		t.Errorf("expected Status Failed (failed step detected, run-all preserved), got '%s'", exec.Status)
 	}
 }
 
@@ -792,9 +795,6 @@ func TestDefaultActionRunner_ResolveDownloadDest(t *testing.T) {
 		}
 	})
 }
-
-
-
 
 // TestDefaultActionRunner_RunAction_RecordsCommand：TaskResult 必须携带
 // 插值后的真实命令串，执行日志（logfile/history）才能记录 command 列。
