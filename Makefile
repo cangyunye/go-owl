@@ -24,13 +24,13 @@
 SHELL       := /bin/sh
 GO          ?= go
 BUILD_DIR   := build
-# 自动跟随最近 git tag（如 v1.0.0 → 1.0.0）；无 git/无 tag 时回退 0.16.0；可用 make VERSION=x 覆盖
+# 自动跟随最近 git tag（如 v1.0.0 → 1.0.0）；无 git/无 tag 时回退 1.10.0；可用 make VERSION=x 覆盖
 # 注意: 不能用 $${v\#v} 去 v 前缀 —— \# 会被原样传给 /bin/sh, dash 报 Bad substitution
 # (stderr), stdout 为空 → 版本号静默注入空值, owl --version 报 unknown flag。
 # 改用 sed 去 v 前缀, 失败回退由 ifeq 兜底。
 VERSION     := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
 ifeq ($(VERSION),)
-VERSION     := 0.16.0
+VERSION     := 1.10.0
 endif
 
 CLI_MAIN    := ./cmd/cli
