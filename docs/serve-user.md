@@ -204,10 +204,14 @@ GET /api/v1/tasks?page=1&page_size=50
 
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|
+| POST | `/playbooks/upload` | 上传本地剧本文件 | operator+ |
 | GET  | `/playbooks` | 剧本列表 | operator+ |
-| GET  | `/playbooks/:name` | 剧本详情 | operator+ |
-| POST | `/playbooks/:name/run` | 执行剧本 | operator+ |
-| GET  | `/playbook/runs` | 运行历史 | operator+ |
+| GET  | `/playbooks/:id` | 剧本详情 | operator+ |
+| GET  | `/playbooks/:id/file` | 读取剧本内容 | operator+ |
+| GET  | `/playbooks/:id/download` | 下载剧本文件 | operator+ |
+| GET  | `/playbooks/:id/edit` | 进入编辑（返回内容） | operator+ |
+| POST | `/playbooks/:id/run` | 执行剧本（body 可带 `danger_confirmed`） | operator+ |
+| GET  | `/playbook/runs` | 运行历史（支持 page/page_size） | operator+ |
 | GET  | `/playbook/runs/:id` | 运行详情 | operator+ |
 | GET  | `/playbook/settings/path` | 获取剧本目录路径 | operator+ |
 | POST | `/playbook/template` | 保存/新建本地剧本 | operator+ |
@@ -248,6 +252,12 @@ GET /api/v1/tasks?page=1&page_size=50
 |-----|--------|------|
 | `staging_dir` | `~/.owl/staging` | 文件中转站临时地址（上传文件的暂存目录，必须为绝对路径） |
 | `staging_min_free` | `10` | 文件中转站最小剩余空间（GB），磁盘剩余空间低于该值时拒绝上传 |
+| `terminal.idle_timeout_min` | `30` | Web 终端空闲超时（分钟），<=0 表示不启用 |
+| `terminal.max_per_user` | `5` | 每用户并发 Web 终端上限，<=0 表示不限制 |
+| `monitor.*` | 见键名 | 监控采集/告警保留期/升级窗口/回滚验证等（`monitor.enabled` 总开关） |
+| `logs.executions_retention_days` | — | 执行日志保留天数（0 = 关闭定期清理） |
+| `history.retention_days` | — | 历史记录保留天数（0 = 关闭定期清理） |
+| `ai.rate_limit_per_min` | — | AI 每分钟请求限额 |
 
 界面说明：
 
@@ -273,13 +283,20 @@ GET /api/v1/tasks?page=1&page_size=50
 | 路由 | 页面 | 说明 |
 |------|------|------|
 | `/login` | 登录 | 用户名密码登录 |
+| `/alerts` | 告警中心 | 监控告警列表、处置（确认/恢复）、对策计划与自动放行审批 |
 | `/nodes` | 节点管理 | 搜索、筛选、批量操作 |
 | `/nodes/:id` | 节点详情 | 查看/编辑节点 |
-| `/tasks` | 任务列表 | 执行命令（多节点/脚本/分组过滤）、查看历史、结果面板 |
+| `/exec` | 命令执行 | 多节点/脚本/分组过滤执行、结果面板 |
+| `/tasks` | 任务列表 | 执行历史列表 |
 | `/tasks/:id` | 任务详情 | 流式输出、退出码、实时计时、取消 |
-| `/playbooks` | 剧本管理 | 剧本列表、执行、取消（operator+） |
-| `/settings` | 设置管理 | 键值设置（admin，含文件中转站临时地址/空间阈值配置） |
+| `/playbooks` | 剧本管理 | 剧本列表、执行（含危险命令确认勾选框）、运行进度与取消 |
+| `/files` | 文件管理 | 文件浏览与传输（含文件中转站） |
+| `/ai` | AI 助手 | 自然语言运维对话 |
+| `/history` | 执行历史 | 操作审计 |
+| `/settings` | 设置管理 | 键值设置（admin，见下文配置项） |
 | `/users` | 用户管理 | CRUD + 角色分配（admin） |
+| `/terminal/:id` | 终端独立页 | 节点 Web 终端（票据鉴权） |
+| `/sftp/:id` | 文件独立页 | 节点 SFTP 浏览（票据鉴权） |
 
 ### 节点管理功能
 

@@ -2,11 +2,11 @@
 
 ## 📖 简介
 
-Go-Owl 的 AI 助手经过优化，现在可以严格地将自然语言请求映射到 4 种核心操作上，不会生成超出范围的内容。
+Go-Owl 的 AI 助手将自然语言请求映射到一组受控的运维工具（节点查询、命令/脚本执行、剧本运行、文件传输、告警查询等）。工具集以只读/受权限约束为主，写操作（如新增节点）在 Web 管理页面完成。
 
 ## 🎯 支持的操作类型
 
-AI 助手只能帮助您执行以下 4 种操作：
+以下为 4 类核心操作（Web 端 AI 另含告警查询/处置等工具，以 `owl ai --help` 与页面内提示为准）：
 
 ### 1. 查询节点信息
 查看节点状态、分组、标签等信息。
@@ -130,7 +130,7 @@ owl ai "在所有节点上执行 uptime"
 ai:
   provider: qwen  # openai / anthropic / qwen / deepseek
   model: qwen-max
-  api-key: your-api-key
+  api_key: your-api-key
 ```
 
 ### 配置 TUI 主题
@@ -149,5 +149,5 @@ ai:
 ## 📚 相关文档
 
 - [README.md](README.md) - 项目主文档
-- [AI_OPTIMIZATION_PLAN.md](AI_OPTIMIZATION_PLAN.md) - AI 优化详细计划
-- [LOGGING_PLAN.md](LOGGING_PLAN.md) - 日志系统文档
+- [AI 优化详细计划](docs/dev/AI_OPTIMIZATION_PLAN.md)
+- [日志系统文档](docs/dev/LOGGING_PLAN.md)

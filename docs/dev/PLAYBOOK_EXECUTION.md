@@ -99,19 +99,22 @@ func (e *playbookExecutor) Execute(playbook *ParsedPlaybook, targets []*model.No
 **pipeline 模式核心代码**（executor.go 简化）：
 
 ```go
+// v1.9.1 起：中止前先保留失败步骤的结果（早期版本先 break 导致
+// 失败步骤从 Results 里消失，前端与 ExitCode 统计都看不到它）
 for i := range playbook.Tasks {
     if playbook.ExecutionMode == ExecutionModePipeline && exec.Status == ExecutionStatusFailed {
         break
     }
     results, err := e.executeTaskInternal(exec, mainTask)
+    // 先收集结果再处理错误：中止路径也必须留下失败步骤的记录
+    exec.Results[mainTask.Name] = append(exec.Results[mainTask.Name], results...)
     if err != nil && !mainTask.Options.IgnoreErrors {
         if playbook.ExecutionMode == ExecutionModePipeline || mainTask.Options.AnyErrorsFatal {
             exec.Status = ExecutionStatusFailed
             exec.Error = err.Error()
-            break  // break 退出循环，落入最终状态判定
+            break // 中止循环，落入最终状态判定
         }
     }
-    exec.Results[mainTask.Name] = append(exec.Results[mainTask.Name], results...)
 }
 ```
 
@@ -473,6 +476,6 @@ tasks:
 
 ---
 
-**文档版本**: v1.0  
-**更新时间**: 2026-06-01  
-**适用版本**: go-owl main branch
+**文档版本**: v1.1  
+**更新时间**: 2026-09-28  
+**适用版本**: go-owl main branch（v1.9.1+）

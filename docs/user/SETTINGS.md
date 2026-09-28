@@ -67,13 +67,15 @@ owl settings set <key> <value>
 
 | 配置项 | 说明 |
 |--------|------|
-| `server.address` | 服务器地址 |
-| `server.timeout` | 超时时间 |
-| `output.format` | 输出格式 (table, json, yaml) |
+| `output.format` | 输出格式 (table, json, simple) |
 | `output.color` | 启用颜色 (true, false) |
-| `diffusion.fan-out` | 扇出系数 |
-| `diffusion.source-count` | 源节点数量 |
-| `defaults.timeout` | 默认超时时间 |
+| `default.timeout` | 默认超时时间 |
+| `default.group` | 默认目标分组 |
+| `default.parallel` | 默认并发执行 (true, false) |
+| `default.labels` | 默认标签（key1=val1,key2=val2） |
+| `target.groups` | 目标分组 |
+| `target.label` | 目标标签 |
+| `target.nodes` | 目标节点 |
 
 ### 示例
 
@@ -84,8 +86,8 @@ owl settings set output.format json
 # 设置颜色输出
 owl settings set output.color false
 
-# 设置扇出系数
-owl settings set diffusion.fan-out 5
+# 设置默认目标分组
+owl settings set default.group web
 ```
 
 ---

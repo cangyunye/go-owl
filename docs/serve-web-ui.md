@@ -109,7 +109,7 @@
 
 ![剧本详情](images/serve/14-playbook-detail.png)
 
-点击「Run」弹出执行配置：目标节点/分组、任务标签、Extra Vars，并可引用中转站文件：
+点击「Run」弹出执行配置：目标节点/分组、任务标签、Extra Vars，并可引用中转站文件；命中危险命令黑名单时需勾选「确认危险命令」（danger_confirmed）才能放行：
 
 ![运行剧本](images/serve/15-playbook-run-modal.png)
 

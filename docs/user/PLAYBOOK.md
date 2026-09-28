@@ -11,7 +11,10 @@ owl playbook - 剧本管理
 ├── owl playbook list     - 列出剧本
 ├── owl playbook run     - 执行剧本
 ├── owl playbook validate - 验证剧本
-└── owl playbook template - 创建剧本
+├── owl playbook new      - 新建剧本文件
+├── owl playbook scaffold - 生成剧本骨架示例
+├── owl playbook state    - 断点续跑状态（list / show <run-id>）
+└── owl playbook template - 模板向导（create / list / info / export）
 ```
 
 ---
@@ -58,7 +61,7 @@ owl playbook list --format json
 ```bash
 owl playbook run <playbook-name>
 owl playbook run <playbook-name> --nodes node1,node2
-owl playbook run deploy-app --vars version=v1.2.0
+owl playbook run deploy-app --extra-vars version=v1.2.0
 ```
 
 ### 目标节点选择优先级
@@ -81,7 +84,7 @@ owl playbook run deploy-app --vars version=v1.2.0
 | `--nodes` | 目标节点 ID（逗号分隔） |
 | `--groups` | 按分组选择节点 |
 | `--label` | 按标签选择节点 |
-| `--vars` | 传递变量 |
+| `--extra-vars` | 传递变量（可多次使用或逗号分隔） |
 | `--tags` | 只执行指定标签的步骤 |
 | `--skip-tags` | 跳过指定标签的步骤 |
 | `--check` | 检查模式（不实际执行） |
@@ -102,7 +105,7 @@ owl playbook run deploy-app
 owl playbook run deploy-app --nodes web-01,web-02
 
 # 传递变量
-owl playbook run deploy-app --vars version=v1.2.0,env=prod
+owl playbook run deploy-app --extra-vars version=v1.2.0,env=prod
 
 # 检查模式
 owl playbook run deploy-app --check
@@ -439,7 +442,7 @@ $ owl playbook run health-check --nodes test-01
 
 ```bash
 # 步骤
-$ owl playbook run deploy-app --vars version=v1.0.0 --nodes test-01
+$ owl playbook run deploy-app --extra-vars version=v1.0.0 --nodes test-01
 
 # 预期结果
 # 使用变量值执行剧本
@@ -497,10 +500,11 @@ $ owl playbook run include-test --nodes test-01
 
 ```bash
 # 步骤
-$ owl playbook template
+$ owl playbook template create
 
 # 预期结果
 # 进入交互式创建剧本向导
+# （template 为父命令，裸执行只打印 create/list/info/export 子命令帮助）
 ```
 
 ---

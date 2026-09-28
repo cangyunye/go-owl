@@ -65,7 +65,7 @@
 | [design/02_RETRY_MECHANISM.md](design/02_RETRY_MECHANISM.md) | 命令重试机制 | ✅ 已实现 |
 | [design/03_ASYNC_EXECUTION.md](design/03_ASYNC_EXECUTION.md) | 异步执行模式 | ⚠️ 部分实现 |
 | [design/PLAYBOOK_ACTION_OPTIONS.md](design/PLAYBOOK_ACTION_OPTIONS.md) | Playbook Action 超时重试配置 | ✅ 已实现 |
-| [design/PLAYBOOK_TEMPLATE_SYSTEM.md](design/PLAYBOOK_TEMPLATE_SYSTEM.md) | Playbook 模板系统方案 | ⚠️ 未实现 |
+| [design/PLAYBOOK_TEMPLATE_SYSTEM.md](design/PLAYBOOK_TEMPLATE_SYSTEM.md) | Playbook 模板系统方案 | ✅ 已实现（owl playbook template create/list/info/export）|
 
 ---
 
