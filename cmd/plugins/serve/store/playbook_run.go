@@ -149,6 +149,22 @@ func (s *PlaybookRunStore) UpdateStatus(ctx context.Context, id string, status m
 	return err
 }
 
+// CancelIfActive 原子取消：仅当 run 尚处终态之前时改为 cancelled。
+// 单条条件 UPDATE 消除「Get 见 running → 引擎完成 → UpdateStatus 把
+// 终态改写为 cancelled」的竞态；返回是否确实取消了。
+func (s *PlaybookRunStore) CancelIfActive(ctx context.Context, id string, errMsg string) (bool, error) {
+	now := time.Now().UTC()
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE playbook_runs SET status = ?, error = ?, completed_at = ?
+		WHERE id = ? AND status NOT IN ('completed','failed','cancelled')`,
+		model.RunStatusCancelled, errMsg, now, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 func (s *PlaybookRunStore) SetTotalSteps(ctx context.Context, id string, total int) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE playbook_runs SET total_steps = ? WHERE id = ?`, total, id)
 	return err

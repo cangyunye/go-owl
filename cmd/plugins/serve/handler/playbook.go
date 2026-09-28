@@ -685,9 +685,18 @@ func (h *PlaybookHandler) RunCancel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "run already finished"})
 		return
 	}
-	h.runs.UpdateStatus(c.Request.Context(), id, model.RunStatusCancelled, "cancelled by user")
+	// 原子条件更新：Get 与改写之间引擎可能已完成（终态不得被覆盖）；
 	// 只有改库拦不住在跑的引擎（它只在启动时检查一次状态），
 	// 必须同时通过注册的 cancel 传播中断信号。
+	cancelled, err := h.runs.CancelIfActive(c.Request.Context(), id, "cancelled by user")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "cancel failed"})
+		return
+	}
+	if !cancelled {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "run already finished"})
+		return
+	}
 	h.cancelRun(id)
 	okAction(c, "cancelled")
 }
@@ -698,7 +707,9 @@ func upsertSetting(db *sql.DB, key, value string) {
 
 // RunForAlert 以告警节点为目标发起剧本运行（告警绑定执行入口，
 // 实现 monitor.PlaybookRunner 接口）。绑定为管理员显式配置，
-// 危险确认视为已同意；返回 playbook_run ID。
+// 默认视为危险已确认（历史行为）；可经设置键
+// monitor.playbook_force_danger_confirmed=false 关闭强制放行，
+// 关闭后命中黑名单的剧本会被正常拦截。返回 playbook_run ID。
 func (h *PlaybookHandler) RunForAlert(ctx context.Context, playbookID, nodeID, createdBy string) (string, error) {
 	pb, err := h.playbooks.Get(ctx, playbookID)
 	if err != nil {
@@ -707,7 +718,12 @@ func (h *PlaybookHandler) RunForAlert(ctx context.Context, playbookID, nodeID, c
 	if !pb.FileExists {
 		return "", fmt.Errorf("剧本文件缺失: %s", pb.FilePath)
 	}
-	run, err := h.runs.Create(ctx, pb.ID, pb.Name, pb.FilePath, []string{nodeID}, nil, "", true)
+	force := true
+	var v string
+	if h.db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.playbook_force_danger_confirmed'`).Scan(&v) == nil {
+		force = v == "true" || v == "1" || v == "on"
+	}
+	run, err := h.runs.Create(ctx, pb.ID, pb.Name, pb.FilePath, []string{nodeID}, nil, "", force)
 	if err != nil {
 		return "", fmt.Errorf("创建运行失败: %w", err)
 	}
