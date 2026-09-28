@@ -55,17 +55,22 @@ type fakeExecResult struct {
 
 // fakeSSHRunner 按 cmd→结果表返回，记录每次执行调用。
 type fakeSSHRunner struct {
-	mu      sync.Mutex
-	user    string
-	results map[string]fakeExecResult
-	calls   []string
+	mu        sync.Mutex
+	user      string
+	results   map[string]fakeExecResult
+	calls     []string
+	onExecute func(command string) // 每次执行时回调（测试同步用）
 }
 
 func (f *fakeSSHRunner) Execute(ctx context.Context, nodeID, command string) (string, int, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, command)
+	onExec := f.onExecute
 	r, ok := f.results[command]
 	f.mu.Unlock()
+	if onExec != nil {
+		onExec(command)
+	}
 	if !ok {
 		r = fakeExecResult{output: "ok"}
 	}
@@ -187,4 +192,90 @@ tasks:
 	assert.NotEmpty(t, byTask["step2_fail"][0].Error, "失败步骤必须携带失败原因")
 
 	assert.Empty(t, byTask["step3_never"], "pipeline 模式失败后后续步骤不应执行")
+}
+
+// 逐步推送是本文件存在的理由：V1 引擎每执行一步就广播一次，
+// V2 改版把它悄悄弄丢，退化成"终态一次性全量"，运行中什么都看不到。
+// 本测试锁死：每步执行完必须立即广播 playbook_run_update 且结果渐进增长。
+func TestExecutePlaybookRunV2_BroadcastsPerStep(t *testing.T) {
+	const pbYAML = `
+name: per-step-broadcast
+tasks:
+  - name: step1
+    action: shell
+    args:
+      cmd: echo one
+  - name: step2
+    action: shell
+    args:
+      cmd: echo two
+  - name: step3
+    action: shell
+    args:
+      cmd: echo three
+`
+	h, rs, pbFile := newPlaybookEngineTestHandler(t, pbYAML)
+	hub := &fakeHub{}
+	h.hub = hub
+
+	step1Done := make(chan struct{})
+	release := make(chan struct{})
+	ssh := &fakeSSHRunner{user: "root", onExecute: func(command string) {
+		if command == "echo one" {
+			close(step1Done)
+		}
+		if command == "echo three" {
+			<-release // 卡住第三步：让断言有机会在"运行中"检查推送
+		}
+	}}
+	h.sshRunner = ssh
+
+	run, err := rs.Create(t.Context(), "pb-1", "per-step-broadcast", pbFile, []string{"n1"}, nil, "", false)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		h.executePlaybookRunV2(run.ID)
+		close(done)
+	}()
+
+	select {
+	case <-step1Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("第一步长时间未执行")
+	}
+	// 等 step2 也执行完，此时 run 卡在 step3、终态未到
+	require.Eventually(t, func() bool {
+		for _, c := range ssh.executedCommands() {
+			if c == "echo two" {
+				return true
+			}
+		}
+		return false
+	}, 3*time.Second, 10*time.Millisecond)
+
+	// 关键断言：run 仍在进行中（step3 未放行、终态广播未发），
+	// step1/step2 的结果必须已经推送——逐步推送，不是终态一次性全量。
+	sawPartialResults := false
+	for _, m := range hub.runUpdates() {
+		if r, ok := m.Data.(*model.PlaybookRun); ok && r.ID == run.ID && len(r.Results) >= 2 {
+			sawPartialResults = true
+			break
+		}
+	}
+	assert.True(t, sawPartialResults, "运行中必须逐步广播已完成步骤的结果（V1→V2 曾退化为终态一次性全量）")
+
+	close(release)
+	<-done
+
+	// 终态时三步全部推送过
+	finalUpdates := hub.runUpdates()
+	var lastRun *model.PlaybookRun
+	for _, m := range finalUpdates {
+		if r, ok := m.Data.(*model.PlaybookRun); ok && r.ID == run.ID {
+			lastRun = r
+		}
+	}
+	require.NotNil(t, lastRun)
+	assert.Len(t, lastRun.Results, 3, "结束时全部步骤结果必须可见")
 }

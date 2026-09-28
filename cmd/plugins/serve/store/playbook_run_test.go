@@ -232,3 +232,22 @@ func toStepResult(s *stepResult) *model.StepResult {
 		ExitCode: s.ExitCode,
 	}
 }
+
+// total_steps 必须持久化并随 Get/List 读出：运行中前端靠它算进度百分比。
+func TestPlaybookRunStore_TotalStepsRoundTrip(t *testing.T) {
+	s := openPlaybookRunTestDB(t)
+	ctx := context.Background()
+
+	run, err := s.Create(ctx, "pb-1", "demo", "/tmp/x.yaml", []string{"n1"}, nil, "", false)
+	require.NoError(t, err)
+	require.NoError(t, s.SetTotalSteps(ctx, run.ID, 9))
+
+	got, err := s.Get(ctx, run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 9, got.TotalSteps)
+
+	// 旧库无该列时 COALESCE 兜底为 0，不报错
+	runs, _, err := s.List(ctx, 10, 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, runs)
+}

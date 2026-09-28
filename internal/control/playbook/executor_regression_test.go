@@ -6,6 +6,7 @@ package playbook
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -121,6 +122,36 @@ func TestPipeline_FailureKeepsFailedStepResult(t *testing.T) {
 
 	// 失败后的步骤不得执行
 	assert.Empty(t, exec.GetTaskResult("step3_never"), "pipeline 模式失败后后续步骤不应执行")
+}
+
+// 进度回调必须每个节点步骤完成即触发（含失败步骤），且未执行的步骤不触发——
+// 上层逐步推送完全依赖它。
+func TestProgressFunc_CalledPerStepIncludingFailure(t *testing.T) {
+	mgr := &fakeNodeManager{nodes: []*model.Node{{ID: "n1", Name: "n1"}}}
+	cmdExec := &fakeCommandExecutor{exitCodes: map[string]int{"exit 1": 1}}
+	execer := NewExecutorWithOptions(mgr, cmdExec, nil, nil, &PlaybookOptions{})
+
+	var mu sync.Mutex
+	var progress []string
+	if setter, ok := execer.(interface{ SetProgressFunc(func(*TaskResult)) }); ok {
+		setter.SetProgressFunc(func(r *TaskResult) {
+			mu.Lock()
+			defer mu.Unlock()
+			progress = append(progress, r.TaskName)
+		})
+	} else {
+		t.Fatal("executor 必须支持 SetProgressFunc（逐步推送依赖此回调）")
+	}
+
+	pb, err := NewParser().Parse(regressionPipelineYAML)
+	require.NoError(t, err)
+
+	execer.Execute(pb, mgr.nodes, nil)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"step1_ok", "step2_fail"}, progress,
+		"进度回调必须覆盖已执行的每一步（含失败步），未执行的步骤不得出现")
 }
 
 // fail_continue 模式必须跑完所有任务，失败步骤与后续步骤都要有记录。

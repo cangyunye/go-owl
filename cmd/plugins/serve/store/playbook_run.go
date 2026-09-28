@@ -47,6 +47,11 @@ func (s *PlaybookRunStore) Init(ctx context.Context) error {
 		!strings.Contains(err.Error(), "already exists") {
 		return err
 	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE playbook_runs ADD COLUMN total_steps INTEGER DEFAULT 0`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") &&
+		!strings.Contains(err.Error(), "already exists") {
+		return err
+	}
 	return nil
 }
 
@@ -80,13 +85,15 @@ func (s *PlaybookRunStore) scanRow(scanner interface {
 	run := &model.PlaybookRun{}
 	var targetNodesStr, extraVarsStr, resultsStr string
 	var startedAt, completedAt sql.NullTime
+	var totalSteps int
 	err := scanner.Scan(
 		&run.ID, &run.PlaybookID, &run.PlaybookName, &run.PlaybookFile,
 		&run.Status, &targetNodesStr, &extraVarsStr, &run.Tags, &run.DangerConfirmed,
-		&run.Error, &resultsStr, &run.CreatedAt, &startedAt, &completedAt)
+		&run.Error, &resultsStr, &run.CreatedAt, &startedAt, &completedAt, &totalSteps)
 	if err != nil {
 		return nil, err
 	}
+	run.TotalSteps = totalSteps
 	json.Unmarshal([]byte(targetNodesStr), &run.TargetNodes)
 	json.Unmarshal([]byte(extraVarsStr), &run.ExtraVars)
 	json.Unmarshal([]byte(resultsStr), &run.Results)
@@ -104,7 +111,7 @@ func (s *PlaybookRunStore) scanRow(scanner interface {
 
 func (s *PlaybookRunStore) Get(ctx context.Context, id string) (*model.PlaybookRun, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(danger_confirmed,0), COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at FROM playbook_runs WHERE id = ?`, id)
+		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(danger_confirmed,0), COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at, COALESCE(total_steps,0) FROM playbook_runs WHERE id = ?`, id)
 	return s.scanRow(row)
 }
 
@@ -113,7 +120,7 @@ func (s *PlaybookRunStore) List(ctx context.Context, limit, offset int) ([]*mode
 	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playbook_runs`).Scan(&total)
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(danger_confirmed,0), COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at
+		`SELECT id, playbook_id, playbook_name, playbook_file, status, target_nodes, extra_vars, tags, COALESCE(danger_confirmed,0), COALESCE(error,''), COALESCE(results,'[]'), created_at, started_at, completed_at, COALESCE(total_steps,0)
 		FROM playbook_runs ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -139,6 +146,11 @@ func (s *PlaybookRunStore) UpdateStatus(ctx context.Context, id string, status m
 		completed_at = CASE WHEN ? IN ('completed','failed','cancelled') THEN ? ELSE completed_at END
 		WHERE id = ?`,
 		status, errMsg, status, now, status, now, id)
+	return err
+}
+
+func (s *PlaybookRunStore) SetTotalSteps(ctx context.Context, id string, total int) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE playbook_runs SET total_steps = ? WHERE id = ?`, total, id)
 	return err
 }
 

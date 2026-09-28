@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	webmodel "github.com/cangyunye/go-owl/cmd/plugins/serve/model"
@@ -241,7 +242,7 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 
 	pbContent, _ := os.ReadFile(run.PlaybookFile)
 	pbHash := history.ComputePlaybookHash(string(pbContent), run.TargetNodes)
-	totalSteps := len(parsedPlaybook.PreTasks) + len(parsedPlaybook.Tasks) + len(parsedPlaybook.PostTasks)
+	taskCount := len(parsedPlaybook.PreTasks) + len(parsedPlaybook.Tasks) + len(parsedPlaybook.PostTasks)
 	history.CreatePlaybookRun(&history.PlaybookRun{
 		ID:           runID,
 		PlaybookName: run.PlaybookName,
@@ -249,22 +250,56 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 		Nodes:        run.TargetNodes,
 		Status:       "running",
 		StartedAt:    time.Now(),
-		TotalSteps:   totalSteps,
+		TotalSteps:   taskCount,
 	})
 
-	execution, execErr := pbExecutor.Execute(parsedPlaybook, targetNodes, extraVars)
-
-	for _, step := range toWebStepResults(parsedPlaybook, execution) {
-		h.runs.AppendResult(ctx, runID, step)
-		ce := &store.CommandExecution{
-			TaskID: runID, NodeID: step.NodeID, Command: step.TaskName,
-			ExitCode: step.ExitCode, Stdout: step.Output, Stderr: step.Error,
-			DurationMs: step.DurationMs, Success: step.ExitCode == 0, CreatedAt: time.Now().UTC(),
-		}
-		if e := h.History.RecordCommandExecution(ctx, ce); e != nil {
-			log.Printf("record command execution: %v", e)
-		}
+	// 运行前下发预估总步数（任务数×节点数），前端据此算进度百分比
+	if err := h.runs.SetTotalSteps(ctx, runID, taskCount*len(run.TargetNodes)); err != nil {
+		log.Printf("set total steps: %v", err)
 	}
+
+	// 逐步进度：每个节点步骤完成（含失败）即写库并广播。
+	// V1→V2 改版曾把逐步推送弄丢，运行中前端什么都看不到——
+	// 回归测试 TestExecutePlaybookRunV2_BroadcastsPerStep 锁死此行为。
+	taskByName := make(map[string]*pbexec.ParsedTask)
+	for _, t := range allParsedTasks(parsedPlaybook) {
+		taskByName[t.Name] = t
+	}
+	var progressMu sync.Mutex
+	if setter, ok := pbExecutor.(interface {
+		SetProgressFunc(func(*pbexec.TaskResult))
+	}); ok {
+		setter.SetProgressFunc(func(r *pbexec.TaskResult) {
+			t := taskByName[r.TaskName]
+			if t == nil {
+				return
+			}
+			// 多节点并发执行时回调来自不同 goroutine，
+			// AppendResult 是读-改-写，必须串行化防丢结果。
+			progressMu.Lock()
+			defer progressMu.Unlock()
+			step := webStepResultFromTask(t, r)
+			if err := h.runs.AppendResult(ctx, runID, step); err != nil {
+				log.Printf("append step result: %v", err)
+				return
+			}
+			ce := &store.CommandExecution{
+				TaskID: runID, NodeID: step.NodeID,
+				Command:  r.Command,
+				ExitCode: step.ExitCode, Stdout: step.Output, Stderr: step.Error,
+				DurationMs: step.DurationMs, Success: step.ExitCode == 0, CreatedAt: time.Now().UTC(),
+			}
+			if ce.Command == "" {
+				ce.Command = t.Name
+			}
+			if e := h.History.RecordCommandExecution(ctx, ce); e != nil {
+				log.Printf("record command execution: %v", e)
+			}
+			h.broadcastRunUpdate(ctx, runID)
+		})
+	}
+
+	execution, execErr := pbExecutor.Execute(parsedPlaybook, targetNodes, extraVars)
 
 	recordWebStepStates(runID, parsedPlaybook, execution)
 
@@ -324,44 +359,47 @@ func toWebStepResults(pb *pbexec.ParsedPlaybook, exec *pbexec.PlaybookExecution)
 		return nil
 	}
 
+	var results []*webmodel.StepResult
+	for _, t := range allParsedTasks(pb) {
+		for _, r := range exec.Results[t.Name] {
+			results = append(results, webStepResultFromTask(t, r))
+		}
+	}
+	return results
+}
+
+func allParsedTasks(pb *pbexec.ParsedPlaybook) []*pbexec.ParsedTask {
 	allTasks := make([]*pbexec.ParsedTask, 0, len(pb.PreTasks)+len(pb.Tasks)+len(pb.PostTasks))
 	allTasks = append(allTasks, pb.PreTasks...)
 	allTasks = append(allTasks, pb.Tasks...)
 	allTasks = append(allTasks, pb.PostTasks...)
+	return allTasks
+}
 
-	var results []*webmodel.StepResult
-	for _, t := range allTasks {
-		taskResults, ok := exec.Results[t.Name]
-		if !ok {
-			continue
-		}
-		for _, r := range taskResults {
-			status := "completed"
-			errMsg := ""
-			if r.Error != nil {
-				status = "failed"
-				errMsg = r.Error.Error()
-			} else if r.ExitCode != 0 {
-				status = "failed"
-				errMsg = fmt.Sprintf("exit code %d", r.ExitCode)
-			}
-			output := r.Output
-			if len(output) > 4096 {
-				output = output[:4093] + "..."
-			}
-			results = append(results, &webmodel.StepResult{
-				TaskName:   t.Name,
-				NodeID:     r.NodeID,
-				Action:     t.Action,
-				Status:     status,
-				ExitCode:   r.ExitCode,
-				Output:     output,
-				Error:      errMsg,
-				DurationMs: r.EndTime.Sub(r.StartTime).Milliseconds(),
-			})
-		}
+func webStepResultFromTask(t *pbexec.ParsedTask, r *pbexec.TaskResult) *webmodel.StepResult {
+	status := "completed"
+	errMsg := ""
+	if r.Error != nil {
+		status = "failed"
+		errMsg = r.Error.Error()
+	} else if r.ExitCode != 0 {
+		status = "failed"
+		errMsg = fmt.Sprintf("exit code %d", r.ExitCode)
 	}
-	return results
+	output := r.Output
+	if len(output) > 4096 {
+		output = output[:4093] + "..."
+	}
+	return &webmodel.StepResult{
+		TaskName:   t.Name,
+		NodeID:     r.NodeID,
+		Action:     t.Action,
+		Status:     status,
+		ExitCode:   r.ExitCode,
+		Output:     output,
+		Error:      errMsg,
+		DurationMs: r.EndTime.Sub(r.StartTime).Milliseconds(),
+	}
 }
 
 func recordWebStepStates(runID string, pb *pbexec.ParsedPlaybook, exec *pbexec.PlaybookExecution) {

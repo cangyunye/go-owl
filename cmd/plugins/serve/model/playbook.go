@@ -36,10 +36,13 @@ type PlaybookRun struct {
 	DangerConfirmed bool              `json:"danger_confirmed,omitempty"`
 	Error           string            `json:"error,omitempty"`
 	Warnings        []string          `json:"warnings,omitempty"`
-	Results         []*StepResult     `json:"results,omitempty"`
-	CreatedAt       time.Time         `json:"created_at"`
-	StartedAt       *time.Time        `json:"started_at,omitempty"`
-	CompletedAt     *time.Time        `json:"completed_at,omitempty"`
+	// TotalSteps 为预估总步数（任务数×节点数），运行中前端据此算进度百分比；
+	// loop 展开的步骤可能超出该值。
+	TotalSteps  int           `json:"total_steps,omitempty"`
+	Results     []*StepResult `json:"results,omitempty"`
+	CreatedAt   time.Time     `json:"created_at"`
+	StartedAt   *time.Time    `json:"started_at,omitempty"`
+	CompletedAt *time.Time    `json:"completed_at,omitempty"`
 }
 
 type StepResult struct {

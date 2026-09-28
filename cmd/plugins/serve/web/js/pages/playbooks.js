@@ -499,11 +499,13 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
     if (!detail) return;
     const nodes = run.target_nodes || [];
     const results = run.results || [];
-    const total = results.length;
+    // total_steps 是任务数×节点数的预估值（运行前下发），
+    // 运行中据此算进度；loop 展开可能超出，clamp 到 100%。
+    const total = run.total_steps || results.length;
     const done = results.filter(r => r.status === 'completed' || r.status === 'success').length;
     const failed = results.filter(r => r.status === 'failed' || r.status === 'error').length;
     const shown = state.failOnly ? results.filter(r => r.status === 'failed' || r.status === 'error') : results;
-    const pct = total ? Math.round(((done + failed) / total) * 100) : 0;
+    const pct = total ? Math.min(100, Math.round(((done + failed) / total) * 100)) : 0;
 
     const steps = shown.map(r => `<tr>
       <td>${esc(r.task_name)}</td>

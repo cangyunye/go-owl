@@ -91,6 +91,8 @@ type playbookExecutor struct {
 	// 断点续跑
 	resumeFrom     *checkpoint // 非 nil 时从此处跳过已执行任务
 	checkpointFunc func(phase string, index int) // 保存 checkpoint 的回调
+	// progressFunc 每个节点步骤完成（含失败）即回调，供上层实时推送进度
+	progressFunc func(*TaskResult)
 }
 
 // SetResumeFrom 设置断点续跑的起始位置
@@ -101,6 +103,12 @@ func (e *playbookExecutor) SetResumeFrom(phase string, index int) {
 // SetCheckpointFunc 设置 checkpoint 保存回调
 func (e *playbookExecutor) SetCheckpointFunc(fn func(phase string, index int)) {
 	e.checkpointFunc = fn
+}
+
+// SetProgressFunc 设置步骤进度回调：每个节点步骤完成（含失败）即触发，
+// 上层用于逐步写库与广播，运行中才有可见进度。
+func (e *playbookExecutor) SetProgressFunc(fn func(*TaskResult)) {
+	e.progressFunc = fn
 }
 
 func NewExecutorWithOptions(nodeMgr controlnode.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, nodeResolver *node.NodeResolver, opts *PlaybookOptions) Executor {
@@ -747,6 +755,10 @@ func (e *playbookExecutor) executeTaskForNode(exec *PlaybookExecution, task *Par
 
 	result, err := e.runner.RunAction(task.Action, task.Args, nodeID, taskVars, task.ActionOpts)
 	result.TaskName = task.Name
+
+	if e.progressFunc != nil {
+		e.progressFunc(result)
+	}
 
 	if err != nil && task.Options.FailedWhen != "" {
 		evaluator := NewConditionEvaluator(taskVars)
