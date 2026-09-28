@@ -6,9 +6,12 @@ package handler
 
 import (
 	"context"
+	"crypto/ed25519"
 	"database/sql"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +20,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	gossh "golang.org/x/crypto/ssh"
 )
 
 // fakeHub 捕获所有广播，供断言推送时机与内容。
@@ -59,15 +63,27 @@ type fakeSSHRunner struct {
 	user      string
 	results   map[string]fakeExecResult
 	calls     []string
-	onExecute func(command string) // 每次执行时回调（测试同步用）
+	onExecute func(command string)     // 每次执行时回调（测试同步用）
+	hangOn    map[string]chan struct{} // cmd → 释放门；阻塞至放行或 ctx 取消
 }
 
 func (f *fakeSSHRunner) Execute(ctx context.Context, nodeID, command string) (string, int, error) {
+	// 入口检查 ctx：模拟真实链路在取消后连接即失败
+	if err := ctx.Err(); err != nil {
+		return "", -1, err
+	}
 	f.mu.Lock()
 	f.calls = append(f.calls, command)
 	onExec := f.onExecute
 	r, ok := f.results[command]
 	f.mu.Unlock()
+	if release, ok := f.hangOn[command]; ok {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return "", -1, ctx.Err()
+		}
+	}
 	if onExec != nil {
 		onExec(command)
 	}
@@ -278,4 +294,167 @@ tasks:
 	}
 	require.NotNil(t, lastRun)
 	assert.Len(t, lastRun.Results, 3, "结束时全部步骤结果必须可见")
+}
+
+// 起 exec 后永久挂死的进程内 SSH server（不复用 internal/ssh 的 helper——
+// 那些是包内私有），模拟远端命令阻塞（交互输入等）。
+func startHangingSSHServer(t *testing.T) string {
+	t.Helper()
+
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	signer, err := gossh.NewSignerFromSigner(priv)
+	require.NoError(t, err)
+
+	cfg := &gossh.ServerConfig{PasswordCallback: func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
+		return &gossh.Permissions{}, nil
+	}}
+	cfg.AddHostKey(signer)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { ln.Close() })
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				sconn, chans, reqs, err := gossh.NewServerConn(c, cfg)
+				if err != nil {
+					c.Close()
+					return
+				}
+				defer sconn.Close()
+				go gossh.DiscardRequests(reqs)
+				for newChan := range chans {
+					if newChan.ChannelType() != "session" {
+						newChan.Reject(gossh.UnknownChannelType, "unsupported")
+						continue
+					}
+					_, chReqs, err := newChan.Accept()
+					if err != nil {
+						continue
+					}
+					go func() {
+						for req := range chReqs {
+							if req.Type == "exec" {
+								req.Reply(true, nil)
+								// 收到 exec 后什么都不做：远端命令挂死
+								return
+							}
+							req.Reply(false, nil)
+						}
+					}()
+				}
+			}(conn)
+		}
+	}()
+	return ln.Addr().String()
+}
+
+// Web 链路的命令超时必须真实生效：CombinedOutput 不响应 ctx，
+// 曾导致交互式命令把 run 永久卡在 running。回归测试锁死：
+// ctx 超时后 Execute 必须返回（watchdog 断连）。
+func TestSSHExecutor_Execute_ContextTimeoutTerminates(t *testing.T) {
+	addr := startHangingSSHServer(t)
+	host, portStr, _ := net.SplitHostPort(addr)
+	port, _ := strconv.Atoi(portStr)
+
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	_, err = db.Exec(`CREATE TABLE nodes (
+		id TEXT PRIMARY KEY, name TEXT, address TEXT, port INTEGER DEFAULT 22,
+		user TEXT, password TEXT, ssh_key TEXT, status TEXT DEFAULT 'unknown',
+		groups TEXT DEFAULT '[]', labels TEXT DEFAULT '{}',
+		proxy_jump TEXT DEFAULT '', created_at TIMESTAMP, updated_at TIMESTAMP)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO nodes (id, name, address, port, user, password, status, groups, labels)
+		VALUES ('n1', 'n1', ?, ?, 'root', 'pw', 'online', '[]', '{}')`, host, port)
+	require.NoError(t, err)
+
+	e := &sshExecutor{db: db}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	type execOutcome struct {
+		out  string
+		code int
+		err  error
+	}
+	ch := make(chan execOutcome, 1)
+	start := time.Now()
+	go func() {
+		out, code, execErr := e.Execute(ctx, "n1", "hang-forever")
+		ch <- execOutcome{out, code, execErr}
+	}()
+
+	select {
+	case r := <-ch:
+		require.Error(t, r.err, "ctx 超时后必须返回错误")
+		assert.Less(t, time.Since(start), 5*time.Second, "超时必须在秒级返回")
+	case <-time.After(5 * time.Second):
+		t.Fatal("ctx 超时后 Execute 仍未返回：超时形同虚设，命令挂死会永久卡住 run")
+	}
+}
+
+// 运行中取消必须能终止执行（包括卡在交互命令上的步骤），
+// 终态必须是 cancelled 而不是永远 running 或误标 failed。
+func TestExecutePlaybookRunV2_CancelTerminates(t *testing.T) {
+	const pbYAML = `
+name: cancel-terminates
+tasks:
+  - name: step1
+    action: shell
+    args:
+      cmd: echo one
+  - name: step2
+    action: shell
+    args:
+      cmd: echo two
+  - name: step3
+    action: shell
+    args:
+      cmd: echo three
+`
+	h, rs, pbFile := newPlaybookEngineTestHandler(t, pbYAML)
+	hub := &fakeHub{}
+	h.hub = hub
+
+	release := make(chan struct{})
+	ssh := &fakeSSHRunner{user: "root", hangOn: map[string]chan struct{}{
+		"echo two": release, // step2 模拟卡死，且不放行——只能靠取消终止
+	}}
+	h.sshRunner = ssh
+
+	run, err := rs.Create(t.Context(), "pb-1", "cancel-terminates", pbFile, []string{"n1"}, nil, "", false)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		h.executePlaybookRunV2(run.ID)
+		close(done)
+	}()
+
+	// 等 step2 真正卡住
+	require.Eventually(t, func() bool {
+		return len(ssh.executedCommands()) >= 2
+	}, 3*time.Second, 10*time.Millisecond)
+
+	// 用户取消：不释放 step2，运行必须因此终止
+	h.cancelRun(run.ID)
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("取消后运行未终止：卡住的命令无法被中断，run 会永远停在 running")
+	}
+
+	got, err := rs.Get(t.Context(), run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.RunStatusCancelled, got.Status, "取消后终态必须是 cancelled")
 }

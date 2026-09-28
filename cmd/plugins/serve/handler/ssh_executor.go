@@ -119,11 +119,27 @@ func (e *sshExecutor) Execute(ctx context.Context, nodeID, command string) (stri
 	}
 	defer session.Close()
 
+	// 同 ExecuteStream：CombinedOutput/Wait 不响应 ctx，ctx 取消/超时时
+	// 必须主动断开连接，否则命令超时设置无法真正终止远端命令，
+	// 交互式命令会把任务永久挂住。
+	watchDone := make(chan struct{})
+	defer close(watchDone)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = session.Close()
+			_ = client.Close()
+		case <-watchDone:
+		}
+	}()
+
 	output, err := session.CombinedOutput(command)
 	exitCode := 0
 	if err != nil {
 		if exitErr, ok := err.(*gossh.ExitError); ok {
 			exitCode = exitErr.ExitStatus()
+		} else if ctx.Err() != nil {
+			return "", -1, fmt.Errorf("ssh exec: %w（ctx: %v）", err, ctx.Err())
 		} else {
 			return "", -1, fmt.Errorf("ssh exec: %w", err)
 		}

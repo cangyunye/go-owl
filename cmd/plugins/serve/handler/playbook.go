@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
@@ -34,6 +35,37 @@ type PlaybookHandler struct {
 	checker   *blacklist.Checker
 	// sshRunner 为 nil 时使用真实 SSH 执行器；测试注入 fake 锁定引擎行为。
 	sshRunner playbookSSHRunner
+
+	// 运行取消注册表：runID → cancel。引擎只在启动时检查一次数据库状态，
+	// 运行中取消必须走 ctx 传播才能真正中断（含卡在交互命令上的步骤）。
+	runCancels   map[string]context.CancelFunc
+	runCancelsMu sync.Mutex
+}
+
+// registerRunCancel 登记运行级 cancel；返回清理函数供 defer 调用。
+func (h *PlaybookHandler) registerRunCancel(runID string, cancel context.CancelFunc) (cleanup func()) {
+	h.runCancelsMu.Lock()
+	defer h.runCancelsMu.Unlock()
+	if h.runCancels == nil {
+		h.runCancels = make(map[string]context.CancelFunc)
+	}
+	h.runCancels[runID] = cancel
+	return func() {
+		h.runCancelsMu.Lock()
+		defer h.runCancelsMu.Unlock()
+		delete(h.runCancels, runID)
+	}
+}
+
+// cancelRun 取消运行；返回是否找到在跑的运行。
+func (h *PlaybookHandler) cancelRun(runID string) bool {
+	h.runCancelsMu.Lock()
+	defer h.runCancelsMu.Unlock()
+	cancel, ok := h.runCancels[runID]
+	if ok {
+		cancel()
+	}
+	return ok
 }
 
 func NewPlaybookHandler(db *sql.DB, ps *store.PlaybookStore, rs *store.PlaybookRunStore, ns *store.NodeStore, hub playbookHub) *PlaybookHandler {
@@ -608,6 +640,9 @@ func (h *PlaybookHandler) RunCancel(c *gin.Context) {
 		return
 	}
 	h.runs.UpdateStatus(c.Request.Context(), id, model.RunStatusCancelled, "cancelled by user")
+	// 只有改库拦不住在跑的引擎（它只在启动时检查一次状态），
+	// 必须同时通过注册的 cancel 传播中断信号。
+	h.cancelRun(id)
 	okAction(c, "cancelled")
 }
 

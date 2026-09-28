@@ -39,6 +39,9 @@ type webCommandExecutor struct {
 	ssh   playbookSSHRunner
 	check *blacklist.Checker
 	force bool
+	// parentCtx 为该 run 的取消上下文，每步命令从中派生超时 ctx；
+	// 取消运行即中断所有在跑命令。
+	parentCtx context.Context
 }
 
 func (e *webCommandExecutor) Execute(tk *task.Task, nodeMgr controlnode.Manager) error {
@@ -60,10 +63,14 @@ func (e *webCommandExecutor) ExecuteOnNode(nodeID string, cmd string, timeout ti
 		}
 	}
 
-	ctx := context.Background()
+	base := e.parentCtx
+	if base == nil {
+		base = context.Background()
+	}
+	ctx := base
 	if timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = context.WithTimeout(base, timeout)
 		defer cancel()
 	}
 
@@ -193,6 +200,13 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 		return
 	}
 
+	// runCtx 只承载 SSH 执行；库操作始终用 ctx（后台），
+	// 否则取消后连终态都写不进去。运行中取消靠 ctx 传播：
+	// 引擎只在启动时检查一次数据库状态，改库是拦不住在跑命令的。
+	runCtx, cancelRunCtx := context.WithCancel(context.Background())
+	cleanup := h.registerRunCancel(runID, cancelRunCtx)
+	defer cleanup()
+
 	h.runs.UpdateStatus(ctx, runID, webmodel.RunStatusRunning, "")
 	run.Status = webmodel.RunStatusRunning
 	if h.hub != nil {
@@ -213,9 +227,10 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 		sshRunner = &sshExecutor{db: h.db}
 	}
 	cmdExec := &webCommandExecutor{
-		ssh:   sshRunner,
-		check: h.checker,
-		force: run.DangerConfirmed,
+		parentCtx: runCtx,
+		ssh:       sshRunner,
+		check:     h.checker,
+		force:     run.DangerConfirmed,
 	}
 	nodeResolver := node.NewNodeResolver()
 
@@ -330,6 +345,14 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 		errMsg = execErr.Error()
 	case failed > 0:
 		errMsg = fmt.Sprintf("%d/%d 个步骤执行失败", failed, failed+success)
+	}
+
+	// 用户取消优先于失败：被取消的运行不得误标为 failed/running
+	if runCtx.Err() != nil {
+		finalStatus = webmodel.RunStatusCancelled
+		opStatus = "cancelled"
+		histStatus = "cancelled"
+		errMsg = "运行已被用户取消"
 	}
 
 	h.runs.UpdateStatus(ctx, runID, finalStatus, errMsg)
