@@ -36,9 +36,19 @@ func DefaultRules() []Rule {
 				"mount --bind ",
 				"umount -f ",
 
-				// 用户权限提升（需要确认）
-				" su ",
-				" sudo ",
+				// 用户权限提升（需要确认；不带前导空格，
+				// 行首的 sudo/su 同样要触发确认）
+				"sudo ",
+				"su ",
+
+				// 解释器调用（需要确认：引号参数被剥离防误报后，
+				// 真实载荷会经 bash/sh/eval 再次执行，必须整体确认）
+				"bash -c ",
+				"sh -c ",
+				"zsh -c ",
+				"dash -c ",
+				"ksh -c ",
+				"eval ",
 
 				// 远程操作（需要确认）
 				"ssh -",

