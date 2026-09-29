@@ -499,6 +499,8 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
     if (!detail) return;
     const nodes = run.target_nodes || [];
     const results = run.results || [];
+    // 执行中步骤（仅内存快照）：步骤开始即推送，长任务期间也能看到卡在哪
+    const running = run.running_steps || [];
     // total_steps 是任务数×节点数的预估值（运行前下发），
     // 运行中据此算进度；loop 展开可能超出，clamp 到 100%。
     const total = run.total_steps || results.length;
@@ -506,6 +508,15 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
     const failed = results.filter(r => r.status === 'failed' || r.status === 'error').length;
     const shown = state.failOnly ? results.filter(r => r.status === 'failed' || r.status === 'error') : results;
     const pct = total ? Math.min(100, Math.round(((done + failed) / total) * 100)) : 0;
+
+    const runningRows = (state.failOnly ? [] : running).map(r => `<tr>
+      <td>${esc(r.task_name)}</td>
+      <td class="cell-mono">${esc(r.node_id || '—')}</td>
+      <td>${esc(r.action || '')}</td>
+      <td><span class="status-badge status-running">running</span></td>
+      <td>—</td>
+      <td class="cell-output cell-muted">执行中…</td>
+    </tr>`).join('');
 
     const steps = shown.map(r => `<tr>
       <td>${esc(r.task_name)}</td>
@@ -526,14 +537,14 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
       </div>
       <div class="run-progress-row">
         <div class="run-progress"><i style="width:${pct}%"></i></div>
-        <span>${done + failed}/${total} 步 · 成功 ${done} · 失败 ${failed}</span>
+        <span>${done + failed}/${total} 步 · 成功 ${done} · 失败 ${failed}${running.length ? ` · 执行中 ${running.length}` : ''}</span>
         <label class="run-failonly"><input type="checkbox" id="run-fail-only" ${state.failOnly ? 'checked' : ''}> 仅看失败</label>
       </div>
       <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius)">
         <table class="run-steps">
           <colgroup><col style="width:20%"><col style="width:14%"><col style="width:12%"><col style="width:10%"><col style="width:7%"><col style="width:37%"></colgroup>
           <thead><tr><th>任务</th><th>节点</th><th>动作</th><th>状态</th><th>退出码</th><th>输出</th></tr></thead>
-          <tbody>${steps || `<tr><td colspan="6" class="empty-state">${state.failOnly ? '没有失败步骤' : '暂无步骤结果'}</td></tr>`}</tbody>
+          <tbody>${runningRows}${steps || (runningRows ? '' : `<tr><td colspan="6" class="empty-state">${state.failOnly ? '没有失败步骤' : '暂无步骤结果'}</td></tr>`)}</tbody>
         </table>
       </div>
     `;

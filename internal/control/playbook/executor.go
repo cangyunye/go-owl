@@ -94,6 +94,9 @@ type playbookExecutor struct {
 	checkpointFunc func(phase string, index int) // 保存 checkpoint 的回调
 	// progressFunc 每个节点步骤完成（含失败）即回调，供上层实时推送进度
 	progressFunc func(*TaskResult)
+	// stepStartFunc 每个节点步骤开始执行（RunAction 之前）即回调，供上层
+	// 实时显示"执行中步骤"——长任务执行期间用户也能看到当前卡在哪一步
+	stepStartFunc func(taskName, nodeID string)
 }
 
 // SetResumeFrom 设置断点续跑的起始位置
@@ -110,6 +113,12 @@ func (e *playbookExecutor) SetCheckpointFunc(fn func(phase string, index int)) {
 // 上层用于逐步写库与广播，运行中才有可见进度。
 func (e *playbookExecutor) SetProgressFunc(fn func(*TaskResult)) {
 	e.progressFunc = fn
+}
+
+// SetStepStartFunc 设置步骤开始回调：每个节点步骤开始执行（RunAction 之前）
+// 即触发；when 跳过的任务不会触发。上层用于展示"执行中步骤"。
+func (e *playbookExecutor) SetStepStartFunc(fn func(taskName, nodeID string)) {
+	e.stepStartFunc = fn
 }
 
 func NewExecutorWithOptions(nodeMgr controlnode.Manager, cmdExec command.CommandExecutor, taskSched task.Scheduler, nodeResolver *node.NodeResolver, opts *PlaybookOptions) Executor {
@@ -841,6 +850,10 @@ func (e *playbookExecutor) executeTaskForNode(exec *PlaybookExecution, task *Par
 			e.nodeResolver = node.NewNodeResolver()
 		}
 		e.runner = NewDefaultActionRunnerWithOptions(e.cmdExec, e.nodeResolver, e.options)
+	}
+
+	if e.stepStartFunc != nil {
+		e.stepStartFunc(task.Name, nodeID)
 	}
 
 	result, err := e.runner.RunAction(task.Action, task.Args, nodeID, taskVars, task.ActionOpts)

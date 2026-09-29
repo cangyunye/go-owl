@@ -63,7 +63,7 @@ type fakeExecResult struct {
 type fakeSSHRunner struct {
 	mu        sync.Mutex
 	user      string
-	nodeErr   error                    // 非 nil 时 getNodeInfo 返回该错误（S15 fail-closed 测试）
+	nodeErr   error // 非 nil 时 getNodeInfo 返回该错误（S15 fail-closed 测试）
 	results   map[string]fakeExecResult
 	calls     []string
 	onExecute func(command string)     // 每次执行时回调（测试同步用）
@@ -533,4 +533,111 @@ tasks:
 		}
 	}
 	assert.True(t, found, "警告必须指出步骤名与命中的内容，实际警告: %v", warnings)
+}
+
+// 执行中步骤必须实时可见：步骤开始（尚未完成）时，广播里就要出现该步骤
+// 的 running 状态；完成后转入 results 且 running_steps 清空。
+// 用户环境曾出现"某步卡住数小时、运行中零反馈"——本测试锁死可见性。
+func TestExecutePlaybookRunV2_RunningStepVisibleWhileInFlight(t *testing.T) {
+	const pbYAML = `
+name: running-step-visible
+tasks:
+  - name: step1
+    action: shell
+    args:
+      cmd: echo one
+  - name: step2
+    action: shell
+    args:
+      cmd: echo two
+`
+	h, rs, pbFile := newPlaybookEngineTestHandler(t, pbYAML)
+	hub := &fakeHub{}
+	h.hub = hub
+
+	release := make(chan struct{})
+	ssh := &fakeSSHRunner{user: "root", hangOn: map[string]chan struct{}{
+		"echo one": release, // step1 执行中挂起
+	}}
+	h.sshRunner = ssh
+
+	run, err := rs.Create(t.Context(), "pb-1", "running-step-visible", pbFile, []string{"n1"}, nil, "", false)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		h.executePlaybookRunV2(run.ID)
+		close(done)
+	}()
+
+	// step1 在执行中（未完成）时，广播必须携带 running_steps
+	var sawRunning bool
+	for i := 0; i < 100 && !sawRunning; i++ {
+		for _, m := range hub.runUpdates() {
+			r, ok := m.Data.(*model.PlaybookRun)
+			if !ok || r.ID != run.ID {
+				continue
+			}
+			for _, s := range r.RunningSteps {
+				if s.TaskName == "step1" && s.NodeID == "n1" && s.Status == "running" {
+					sawRunning = true
+				}
+			}
+		}
+		if !sawRunning {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	assert.True(t, sawRunning, "步骤开始执行后广播必须携带 running_steps（长任务执行期间零反馈的教训）")
+
+	close(release)
+	<-done
+
+	// 完成后：转入 results，running_steps 清空
+	var lastRun *model.PlaybookRun
+	for _, m := range hub.runUpdates() {
+		if r, ok := m.Data.(*model.PlaybookRun); ok && r.ID == run.ID {
+			lastRun = r
+		}
+	}
+	require.NotNil(t, lastRun)
+	assert.Empty(t, lastRun.RunningSteps, "步骤完成后 running_steps 必须清空")
+	found := false
+	for _, s := range lastRun.Results {
+		if s.TaskName == "step1" && s.Status == "completed" {
+			found = true
+		}
+	}
+	assert.True(t, found, "完成的步骤必须出现在 results")
+}
+
+// 最坏情况防线：底层执行器完全无视 ctx（连接/会话层面挂死）时，
+// ExecuteOnNode 的外层硬超时必须让步骤在超时后强制返回失败，
+// 绝不允许单个步骤把整个 run 卡死数小时。
+func TestExecuteOnNode_HardTimeout_WhenRunnerIgnoresContext(t *testing.T) {
+	e := &webCommandExecutor{
+		parentCtx: context.Background(),
+		ssh:       hangsForeverRunner{},
+	}
+
+	start := time.Now()
+	result, err := e.ExecuteOnNode("n1", "hang", 300*time.Millisecond)
+
+	require.Error(t, err, "硬超时后必须返回错误")
+	assert.Less(t, time.Since(start), 3*time.Second, "必须在超时后立即返回")
+	require.NotNil(t, result)
+	assert.Equal(t, -1, result.ExitCode, "超时步骤退出码必须是 -1")
+	assert.Contains(t, err.Error(), "超时", "错误信息必须说明是超时")
+}
+
+// hangsForeverRunner 完全阻塞、无视 ctx——模拟连接层挂死的最坏情况。
+type hangsForeverRunner struct{}
+
+func (hangsForeverRunner) Execute(ctx context.Context, nodeID, command string) (string, int, error) {
+	<-ctx.Done() // 假装响应 ctx 但永远等不到：外层 ctx 由测试控制
+	select {}    // 双保险：永久阻塞
+}
+
+func (hangsForeverRunner) getNodeInfo(nodeID string) (*nodeSSHInfo, error) {
+	return &nodeSSHInfo{User: "root"}, nil
 }

@@ -38,11 +38,15 @@ type PlaybookRun struct {
 	Warnings        []string          `json:"warnings,omitempty"`
 	// TotalSteps 为预估总步数（任务数×节点数），运行中前端据此算进度百分比；
 	// loop 展开的步骤可能超出该值。
-	TotalSteps  int           `json:"total_steps,omitempty"`
-	Results     []*StepResult `json:"results,omitempty"`
-	CreatedAt   time.Time     `json:"created_at"`
-	StartedAt   *time.Time    `json:"started_at,omitempty"`
-	CompletedAt *time.Time    `json:"completed_at,omitempty"`
+	TotalSteps int `json:"total_steps,omitempty"`
+	// RunningSteps 为正在执行中的步骤快照（仅内存、不落库），步骤开始即
+	// 推送，完成后转入 Results 并从本字段移除——长任务执行期间用户也能
+	// 看到当前卡在哪一步。
+	RunningSteps []*StepResult `json:"running_steps,omitempty"`
+	Results      []*StepResult `json:"results,omitempty"`
+	CreatedAt    time.Time     `json:"created_at"`
+	StartedAt    *time.Time    `json:"started_at,omitempty"`
+	CompletedAt  *time.Time    `json:"completed_at,omitempty"`
 }
 
 type StepResult struct {

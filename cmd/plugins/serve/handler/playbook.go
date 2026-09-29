@@ -40,6 +40,59 @@ type PlaybookHandler struct {
 	// 运行中取消必须走 ctx 传播才能真正中断（含卡在交互命令上的步骤）。
 	runCancels   map[string]context.CancelFunc
 	runCancelsMu sync.Mutex
+
+	// 执行中步骤注册表：runID → in-flight 步骤快照（仅内存）。
+	// 步骤开始即进入，完成即移除；broadcastRunUpdate 附带到推送载荷，
+	// 长任务执行期间用户也能看到当前卡在哪一步。
+	runningSteps   map[string][]*model.StepResult
+	runningStepsMu sync.Mutex
+}
+
+// addRunningStep 登记一个执行中步骤。
+func (h *PlaybookHandler) addRunningStep(runID string, step *model.StepResult) {
+	h.runningStepsMu.Lock()
+	defer h.runningStepsMu.Unlock()
+	if h.runningSteps == nil {
+		h.runningSteps = make(map[string][]*model.StepResult)
+	}
+	h.runningSteps[runID] = append(h.runningSteps[runID], step)
+}
+
+// removeRunningStep 步骤完成时移除对应的执行中条目。
+func (h *PlaybookHandler) removeRunningStep(runID, taskName, nodeID string) {
+	h.runningStepsMu.Lock()
+	defer h.runningStepsMu.Unlock()
+	steps := h.runningSteps[runID]
+	out := steps[:0]
+	for _, s := range steps {
+		if s.TaskName == taskName && s.NodeID == nodeID {
+			continue
+		}
+		out = append(out, s)
+	}
+	if len(out) == 0 {
+		delete(h.runningSteps, runID)
+	} else {
+		h.runningSteps[runID] = out
+	}
+}
+
+// clearRunningSteps 运行结束时清空该 run 的全部执行中条目。
+func (h *PlaybookHandler) clearRunningSteps(runID string) {
+	h.runningStepsMu.Lock()
+	defer h.runningStepsMu.Unlock()
+	delete(h.runningSteps, runID)
+}
+
+// snapshotRunningSteps 返回该 run 当前执行中步骤的副本。
+func (h *PlaybookHandler) snapshotRunningSteps(runID string) []*model.StepResult {
+	h.runningStepsMu.Lock()
+	defer h.runningStepsMu.Unlock()
+	steps := h.runningSteps[runID]
+	if len(steps) == 0 {
+		return nil
+	}
+	return append([]*model.StepResult(nil), steps...)
 }
 
 // registerRunCancel 登记运行级 cancel；返回清理函数供 defer 调用。
@@ -653,6 +706,9 @@ func (h *PlaybookHandler) RunGet(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "run not found"})
 		return
 	}
+	// 附带执行中步骤快照：REST 与 WS 广播口径一致，
+	// 页面加载/WS 断线轮询时也能看到当前卡在哪一步
+	run.RunningSteps = h.snapshotRunningSteps(id)
 	c.JSON(http.StatusOK, run)
 }
 

@@ -257,3 +257,35 @@ post_tasks:
 	require.Len(t, exec2.GetTaskResult("post_fail"), 1, "post_tasks 失败步骤的结果必须保留")
 	assert.Empty(t, exec2.GetTaskResult("post_never"), "post_tasks 失败后后续 post 任务不应执行")
 }
+
+// 步骤开始回调：每个节点步骤开始执行（RunAction 之前）即触发，
+// 未执行的步骤（when 跳过）不得触发——上层"执行中步骤"实时显示依赖它。
+func TestStepStartFunc_FiredBeforeExecution(t *testing.T) {
+	mgr := &fakeNodeManager{nodes: []*model.Node{{ID: "n1", Name: "n1"}}}
+	cmdExec := &fakeCommandExecutor{exitCodes: map[string]int{"exit 1": 1}}
+	execer := NewExecutorWithOptions(mgr, cmdExec, nil, nil, &PlaybookOptions{})
+
+	var mu sync.Mutex
+	var starts []string
+	if setter, ok := execer.(interface {
+		SetStepStartFunc(func(taskName, nodeID string))
+	}); ok {
+		setter.SetStepStartFunc(func(taskName, nodeID string) {
+			mu.Lock()
+			defer mu.Unlock()
+			starts = append(starts, taskName+"@"+nodeID)
+		})
+	} else {
+		t.Fatal("executor 必须支持 SetStepStartFunc（执行中步骤显示依赖此回调）")
+	}
+
+	pb, err := NewParser().Parse(regressionPipelineYAML)
+	require.NoError(t, err)
+
+	execer.Execute(pb, mgr.nodes, nil)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"step1_ok@n1", "step2_fail@n1"}, starts,
+		"步骤开始回调必须在执行前触发且覆盖每个执行步骤")
+}

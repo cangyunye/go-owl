@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -74,6 +75,46 @@ func (e *webCommandExecutor) Execute(tk *task.Task, nodeMgr controlnode.Manager)
 }
 
 func (e *webCommandExecutor) ExecuteOnNode(nodeID string, cmd string, timeout time.Duration) (*task.TaskResult, error) {
+	base := e.parentCtx
+	if base == nil {
+		base = context.Background()
+	}
+	ctx := base
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(base, timeout)
+	defer cancel()
+
+	// 外层硬超时：dial、NewSession、执行器内部任何不响应 ctx 的阻塞点
+	// 都无法超出本截止时间。曾出现单步卡住数小时把整个 run 拖死的案例
+	// （fail_continue 与 pipeline 均中招）——任何步骤都不允许无限等待。
+	type execOutcome struct {
+		result *task.TaskResult
+		err    error
+	}
+	ch := make(chan execOutcome, 1)
+	go func() {
+		result, err := e.executeOnNode(ctx, nodeID, cmd)
+		ch <- execOutcome{result: result, err: err}
+	}()
+
+	select {
+	case out := <-ch:
+		return out.result, out.err
+	case <-ctx.Done():
+		now := time.Now()
+		err := fmt.Errorf("命令执行超时(%s)，步骤被强制中止（外层硬超时）", timeout)
+		return &task.TaskResult{
+			NodeID: nodeID, ExitCode: -1, Error: err,
+			Output: err.Error(), StartTime: now, EndTime: now,
+		}, err
+	}
+}
+
+// executeOnNode 执行单步：黑名单检查 + SSH 执行。始终在外层硬超时的
+// goroutine 内运行。
+func (e *webCommandExecutor) executeOnNode(ctx context.Context, nodeID string, cmd string) (*task.TaskResult, error) {
 	if e.check != nil {
 		user, userErr := e.nodeUser(nodeID)
 		if userErr != nil {
@@ -91,17 +132,6 @@ func (e *webCommandExecutor) ExecuteOnNode(nodeID string, cmd string, timeout ti
 				Output: err.Error(), StartTime: now, EndTime: now,
 			}, err
 		}
-	}
-
-	base := e.parentCtx
-	if base == nil {
-		base = context.Background()
-	}
-	ctx := base
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(base, timeout)
-		defer cancel()
 	}
 
 	start := time.Now()
@@ -225,6 +255,23 @@ func (m *webNodeManager) SearchByAddress(pattern string) []*commonmodel.Node {
 func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 	ctx := context.Background()
 
+	// panic 防护：引擎 goroutine 一旦 panic，进程可能被带崩或 run 永远
+	// 停在 running。兜底把 run 标记为 failed 并广播，症状不再无声。
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("playbook run %s panicked: %v\n%s", runID, r, debug.Stack())
+			errMsg := fmt.Sprintf("执行引擎内部错误(panic): %v", r)
+			if err := h.runs.UpdateStatus(ctx, runID, webmodel.RunStatusFailed, errMsg); err == nil {
+				if h.History != nil {
+					_ = h.History.UpdateOperationStatus(ctx, runID, "failed")
+				}
+				history.FinishPlaybookRun(runID, "failed", 0, 0)
+				h.clearRunningSteps(runID)
+				h.broadcastRunUpdate(ctx, runID)
+			}
+		}
+	}()
+
 	run, err := h.runs.Get(ctx, runID)
 	if err != nil {
 		return
@@ -240,6 +287,7 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 	runCtx, cancelRunCtx := context.WithCancel(context.Background())
 	cleanup := h.registerRunCancel(runID, cancelRunCtx)
 	defer cleanup()
+	defer h.clearRunningSteps(runID)
 
 	h.runs.UpdateStatus(ctx, runID, webmodel.RunStatusRunning, "")
 	run.Status = webmodel.RunStatusRunning
@@ -329,48 +377,94 @@ func (h *PlaybookHandler) executePlaybookRunV2(runID string) {
 		log.Printf("set total steps: %v", err)
 	}
 
-	// 逐步进度：每个节点步骤完成（含失败）即写库并广播。
+	// 逐步进度：步骤开始/完成事件先进内存队列，由专职 writer 串行写库并
+	// 广播。执行器回调只做非阻塞入队——DB 争用（监控长事务/VACUUM 等）
+	// 时执行器绝不被拖住，避免"单步卡住数小时"级别的事故。
 	// V1→V2 改版曾把逐步推送弄丢，运行中前端什么都看不到——
 	// 回归测试 TestExecutePlaybookRunV2_BroadcastsPerStep 锁死此行为。
 	taskByName := make(map[string]*pbexec.ParsedTask)
 	for _, t := range allParsedTasks(parsedPlaybook) {
 		taskByName[t.Name] = t
 	}
-	var progressMu sync.Mutex
+	type pbStepEvent struct {
+		start *struct {
+			taskName, nodeID string
+		}
+		done *pbexec.TaskResult
+	}
+	stepCh := make(chan pbStepEvent, 1024)
+	var closeOnce sync.Once
+	defer closeOnce.Do(func() { close(stepCh) })
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		for ev := range stepCh {
+			switch {
+			case ev.start != nil:
+				h.addRunningStep(runID, &webmodel.StepResult{
+					TaskName: ev.start.taskName,
+					NodeID:   ev.start.nodeID,
+					Action:   taskByName[ev.start.taskName].Action,
+					Status:   "running",
+				})
+				h.broadcastRunUpdate(ctx, runID)
+			case ev.done != nil:
+				r, t := ev.done, taskByName[ev.done.TaskName]
+				if t == nil {
+					continue
+				}
+				h.removeRunningStep(runID, r.TaskName, r.NodeID)
+				step := webStepResultFromTask(t, r)
+				if err := h.runs.AppendResult(ctx, runID, step); err != nil {
+					// 写库失败也必须广播：前端至少能看到步骤开始/完成的实时状态
+					log.Printf("append step result: %v", err)
+				} else {
+					ce := &store.CommandExecution{
+						TaskID: runID, NodeID: step.NodeID,
+						Command:  r.Command,
+						ExitCode: step.ExitCode, Stdout: step.Output, Stderr: step.Error,
+						DurationMs: step.DurationMs, Success: step.ExitCode == 0, CreatedAt: time.Now().UTC(),
+					}
+					if ce.Command == "" {
+						ce.Command = t.Name
+					}
+					if e := h.History.RecordCommandExecution(ctx, ce); e != nil {
+						log.Printf("record command execution: %v", e)
+					}
+				}
+				h.broadcastRunUpdate(ctx, runID)
+			}
+		}
+	}()
+
+	enqueue := func(ev pbStepEvent) {
+		// 队列满时阻塞入队：1024 个在途步骤远超正常规模，宁可等也不丢结果；
+		// writer 正常情况下消化极快，仅 DB 严重争用时短暂等待。
+		stepCh <- ev
+	}
 	if setter, ok := pbExecutor.(interface {
 		SetProgressFunc(func(*pbexec.TaskResult))
 	}); ok {
 		setter.SetProgressFunc(func(r *pbexec.TaskResult) {
-			t := taskByName[r.TaskName]
-			if t == nil {
-				return
-			}
-			// 多节点并发执行时回调来自不同 goroutine，
-			// AppendResult 是读-改-写，必须串行化防丢结果。
-			progressMu.Lock()
-			defer progressMu.Unlock()
-			step := webStepResultFromTask(t, r)
-			if err := h.runs.AppendResult(ctx, runID, step); err != nil {
-				log.Printf("append step result: %v", err)
-				return
-			}
-			ce := &store.CommandExecution{
-				TaskID: runID, NodeID: step.NodeID,
-				Command:  r.Command,
-				ExitCode: step.ExitCode, Stdout: step.Output, Stderr: step.Error,
-				DurationMs: step.DurationMs, Success: step.ExitCode == 0, CreatedAt: time.Now().UTC(),
-			}
-			if ce.Command == "" {
-				ce.Command = t.Name
-			}
-			if e := h.History.RecordCommandExecution(ctx, ce); e != nil {
-				log.Printf("record command execution: %v", e)
-			}
-			h.broadcastRunUpdate(ctx, runID)
+			enqueue(pbStepEvent{done: r})
+		})
+	}
+	if setter, ok := pbExecutor.(interface {
+		SetStepStartFunc(func(taskName, nodeID string))
+	}); ok {
+		setter.SetStepStartFunc(func(taskName, nodeID string) {
+			enqueue(pbStepEvent{start: &struct {
+				taskName, nodeID string
+			}{taskName, nodeID}})
 		})
 	}
 
 	execution, execErr := pbExecutor.Execute(parsedPlaybook, targetNodes, extraVars)
+
+	// 执行结束：关闭事件队列并等待 writer 把剩余步骤全部落库，
+	// 之后才能写终态，否则 results 会缺最后几步。
+	closeOnce.Do(func() { close(stepCh) })
+	<-writerDone
 
 	recordWebStepStates(runID, parsedPlaybook, execution)
 
@@ -429,6 +523,9 @@ func (h *PlaybookHandler) broadcastRunUpdate(ctx context.Context, runID string) 
 	}
 	run, err := h.runs.Get(ctx, runID)
 	if err == nil {
+		// 附带执行中步骤快照（仅内存）：前端在长任务执行期间也能看到
+		// "当前卡在哪一步、哪个节点"
+		run.RunningSteps = h.snapshotRunningSteps(runID)
 		h.hub.Broadcast(WSMessage{Type: "playbook_run_update", Data: run})
 	}
 }
