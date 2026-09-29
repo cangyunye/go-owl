@@ -550,7 +550,7 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
       </div>
       <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius)">
         <table class="run-steps">
-          <colgroup><col style="width:17%"><col style="width:13%"><col style="width:10%"><col style="width:14%"><col style="width:7%"><col style="width:39%"></colgroup>
+          <colgroup><col style="width:14%"><col style="width:11%"><col style="width:9%"><col style="width:11%"><col style="width:8%"><col style="width:47%"></colgroup>
           <thead><tr><th>任务</th><th>节点</th><th>动作</th><th>状态</th><th>退出码</th><th>输出</th></tr></thead>
           <tbody>${runningRows}${steps || (runningRows ? '' : `<tr><td colspan="6" class="empty-state">${state.failOnly ? '没有失败步骤' : '暂无步骤结果'}</td></tr>`)}</tbody>
         </table>
@@ -1235,7 +1235,7 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
 
     <!-- 运行详情模态窗口：点「查看」弹出，不再在页面下方常驻（避免反复下跳） -->
     <div class="modal-overlay" id="run-detail-modal">
-      <div class="modal modal-lg">
+      <div class="modal modal-xl">
         <div class="modal-header">
           <h3 style="margin:0">运行详情</h3>
           <button type="button" class="btn btn-ghost btn-sm" id="run-detail-close" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-xl)">&times;</button>
