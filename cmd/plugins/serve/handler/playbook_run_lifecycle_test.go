@@ -173,7 +173,7 @@ tasks:
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest("POST", "/api/v1/playbooks/pb-file-id/run", strings.NewReader(`{"target_nodes":["n1"]}`))
+	c.Request = httptest.NewRequest("POST", "/api/v1/playbooks/pb-file-id/run", strings.NewReader(`{"target_nodes":["n1"],"danger_confirmed":true}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = gin.Params{{Key: "id", Value: "pb-file-id"}}
 	h.Run(c)

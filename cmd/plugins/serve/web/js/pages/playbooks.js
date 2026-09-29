@@ -442,14 +442,7 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
       }
 
       const id = pending.id;
-      history.replaceState(null, '', '/playbooks?run=' + encodeURIComponent(id));
-      api.playbookRun(id).then(run => {
-        const detail = document.getElementById('run-detail');
-        if (detail) detail.dataset.runId = id;
-        showRunDetail(run);
-        const card = document.getElementById('run-detail-card');
-        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }).catch(err => showRunDetailError(err));
+      openRunDetailModal(id);
     });
   }
 
@@ -489,6 +482,21 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
     if (!detail) return;
     detail.innerHTML = `<p class="empty-state" style="color:var(--danger)">加载运行详情失败: ${esc(err && err.message ? err.message : err)}</p>`;
     console.error('load playbook run detail failed:', err);
+  }
+
+  // 打开运行详情模态窗口并加载该 run（「查看」按钮与 ?run= 深链接共用）
+  function openRunDetailModal(runId) {
+    history.replaceState(null, '', '/playbooks?run=' + encodeURIComponent(runId));
+    const detail = document.getElementById('run-detail');
+    if (detail) detail.dataset.runId = runId;
+    const overlay = document.getElementById('run-detail-modal');
+    if (overlay) overlay.classList.add('open');
+    api.playbookRun(runId).then(showRunDetail).catch(err => showRunDetailError(err));
+  }
+
+  function closeRunDetailModal() {
+    const overlay = document.getElementById('run-detail-modal');
+    if (overlay) overlay.classList.remove('open');
   }
 
   function showRunDetail(run) {
@@ -542,7 +550,7 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
       </div>
       <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius)">
         <table class="run-steps">
-          <colgroup><col style="width:20%"><col style="width:14%"><col style="width:12%"><col style="width:10%"><col style="width:7%"><col style="width:37%"></colgroup>
+          <colgroup><col style="width:17%"><col style="width:13%"><col style="width:10%"><col style="width:14%"><col style="width:7%"><col style="width:39%"></colgroup>
           <thead><tr><th>任务</th><th>节点</th><th>动作</th><th>状态</th><th>退出码</th><th>输出</th></tr></thead>
           <tbody>${runningRows}${steps || (runningRows ? '' : `<tr><td colspan="6" class="empty-state">${state.failOnly ? '没有失败步骤' : '暂无步骤结果'}</td></tr>`)}</tbody>
         </table>
@@ -1148,7 +1156,9 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
       if (msg.type === 'playbook_run_update') {
         loadRuns();
         const detail = document.getElementById('run-detail');
-        if (msg.data && detail && msg.data.id === detail.dataset.runId) {
+        const overlay = document.getElementById('run-detail-modal');
+        // 仅在详情模态打开且正是该 run 时刷新；关闭后不再重绘隐藏内容
+        if (msg.data && detail && overlay?.classList.contains('open') && msg.data.id === detail.dataset.runId) {
           showRunDetail(msg.data);
         }
       }
@@ -1223,14 +1233,15 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
       </div>
     </div>
 
-    <div class="section-card" id="run-detail-card">
-      <div class="panel-head">
-        <div style="flex:1;min-width:0">
-          <h3 class="panel-title">运行详情</h3>
-          <div class="panel-desc">选中运行记录后展示分步执行结果</div>
+    <!-- 运行详情模态窗口：点「查看」弹出，不再在页面下方常驻（避免反复下跳） -->
+    <div class="modal-overlay" id="run-detail-modal">
+      <div class="modal modal-lg">
+        <div class="modal-header">
+          <h3 style="margin:0">运行详情</h3>
+          <button type="button" class="btn btn-ghost btn-sm" id="run-detail-close" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-xl)">&times;</button>
         </div>
+        <div class="modal-body" id="run-detail" data-run-id="" style="max-height:70vh;overflow-y:auto;padding:16px 24px"><p class="empty-state">选择一个运行记录查看详情</p></div>
       </div>
-      <div class="panel-body" id="run-detail" data-run-id="" style="padding:16px 24px"><p class="empty-state">选择一个运行记录查看详情</p></div>
     </div>
 
     <input type="file" id="upload-playbook-file" accept=".yaml,.yml" style="display:none">
@@ -1526,6 +1537,19 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
         document.getElementById('run-playbook-error').textContent = '请选择至少一个目标节点或分组';
         return;
       }
+      // 防重复提交：请求进行中禁用按钮——预检警告曾导致弹窗不关闭，
+      // 用户可反复点击产生多个重复任务
+      const submitBtn = document.getElementById('run-playbook-submit');
+      if (submitBtn.disabled) return;
+      submitBtn.disabled = true;
+      try {
+        await submitRun(id);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    async function submitRun(id) {
       const body = {};
       if (runSel.nodes.size > 0) body.target_nodes = Array.from(runSel.nodes);
       if (runSel.groups.size > 0) body.groups = Array.from(runSel.groups);
@@ -1538,17 +1562,19 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
       if (Object.keys(extraVars).length) body.extra_vars = extraVars;
       try {
         const res = await api.runPlaybook(id, body);
-        const warnings = (res && res.warnings) || [];
-        if (warnings.length > 0) {
+        const missing = (res && res.warnings) || [];
+        // 仅文件缺失需要处理后才能执行、阻断弹窗；危险命令未确认时
+        // 后端直接 422 拒绝（不创建任务），由下方 catch 展示拒绝原因
+        if (missing.length > 0) {
           const warnEl = document.getElementById('run-playbook-warnings');
           warnEl.style.display = 'block';
-          warnEl.textContent = '⚠ 预检警告（请检查修正，或确认无误后再次执行）:\n' + warnings.join('\n');
+          warnEl.textContent = '⚠ 预检警告（请检查修正，或确认无误后再次执行）:\n' + missing.join('\n');
           return;
         }
         closeRunModal();
         loadRuns();
       } catch (e) { document.getElementById('run-playbook-error').textContent = e.message; }
-    });
+    }
 
     // ---- 创建/编辑向导 ----
     bindCpTaskEvents();
@@ -1641,13 +1667,14 @@ export function renderPlaybooks(render, navigate, user, api, shell, scope) {
 
     const runId = new URLSearchParams(location.search).get('run');
     if (runId) {
-      api.playbookRun(runId).then(run => {
-        document.getElementById('run-detail').dataset.runId = runId;
-        showRunDetail(run);
-        const card = document.getElementById('run-detail-card');
-        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }).catch(err => showRunDetailError(err));
+      openRunDetailModal(runId);
     }
+
+    // 运行详情模态的关闭交互
+    document.getElementById('run-detail-close').addEventListener('click', closeRunDetailModal);
+    document.getElementById('run-detail-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeRunDetailModal();
+    });
 
     // 离开页面时关闭 WebSocket：否则每次进入都留下一条永久重连的悬挂连接
     return () => {

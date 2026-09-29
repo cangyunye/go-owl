@@ -557,15 +557,28 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 		return
 	}
 
+	// 预检先行：未勾选危险确认且剧本命中黑名单时直接拒绝——
+	// 不创建任务（此前"弹窗提醒"式阻断任务已产生，白跑一次）
+	warnings, dangerWarnings := h.preflightPlaybook(pb.FilePath)
+	if len(dangerWarnings) > 0 && !req.DangerConfirmed {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"code":    422,
+			"message": "剧本包含危险命令（黑名单），确需执行请勾选「确认危险命令」后再次执行:\n" + strings.Join(dangerWarnings, "\n"),
+		})
+		return
+	}
+
 	run, err := h.runs.Create(c.Request.Context(), pb.ID, pb.Name, pb.FilePath, req.TargetNodes, req.ExtraVars, req.Tags, req.DangerConfirmed)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "create run failed"})
 		return
 	}
 
-	run.Warnings = h.preflightPlaybook(pb.FilePath)
-	// 警告落库：只写内存的话刷新后 RunGet 就看不到了（R9）
-	if err := h.runs.SetWarnings(c.Request.Context(), run.ID, run.Warnings); err != nil {
+	run.Warnings = warnings
+	run.DangerWarnings = dangerWarnings
+	// 警告落库：只写内存的话刷新后 RunGet 就看不到了（R9）。
+	// 两类警告合并落库（存储单列），分桶只在响应载荷上。
+	if err := h.runs.SetWarnings(c.Request.Context(), run.ID, append(append([]string{}, run.Warnings...), run.DangerWarnings...)); err != nil {
 		log.Printf("persist run warnings: %v", err)
 	}
 
@@ -587,12 +600,13 @@ func (h *PlaybookHandler) Run(c *gin.Context) {
 }
 
 // preflightPlaybook 运行前预检：检查 upload/script 引用的本地源文件是否存在，
-// 缺失项返回 warning（不阻塞执行）
-func (h *PlaybookHandler) preflightPlaybook(pbFile string) []string {
+// 缺失项返回 warning（不阻塞执行）。第二返回值为危险命令黑名单警告，
+// 与文件缺失警告分桶——前端勾选危险确认后不据此阻断运行弹窗。
+func (h *PlaybookHandler) preflightPlaybook(pbFile string) (warnings, dangerWarnings []string) {
 	parser := pbexec.NewParser()
 	parsed, err := parser.ParseFromFile(pbFile)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 
 	allTasks := make([]*pbexec.ParsedTask, 0, len(parsed.PreTasks)+len(parsed.Tasks)+len(parsed.PostTasks))
@@ -601,7 +615,6 @@ func (h *PlaybookHandler) preflightPlaybook(pbFile string) []string {
 	allTasks = append(allTasks, parsed.PostTasks...)
 
 	baseDir := filepath.Dir(pbFile)
-	var warnings []string
 	for _, t := range allTasks {
 		var ref string
 		switch strings.ToLower(t.Action) {
@@ -631,6 +644,8 @@ func (h *PlaybookHandler) preflightPlaybook(pbFile string) []string {
 
 	// 危险命令预检：按 root（最严格视角）检查每步命令，命中即警告。
 	// 不做预检时用户要到步骤被拦且失败原因不可见时才知道（曾无任何提示）。
+	// 黑名单警告单独分桶：勾选「确认危险命令」后前端不再据此阻断弹窗
+	// （否则弹窗永远关不上、可反复提交重复任务）。
 	if h.checker != nil {
 		for _, t := range allTasks {
 			cmd := commandArgOfTask(t, baseDir)
@@ -638,12 +653,12 @@ func (h *PlaybookHandler) preflightPlaybook(pbFile string) []string {
 				continue
 			}
 			if _, err := h.checker.CheckForExec("root", cmd, false); err != nil {
-				warnings = append(warnings, fmt.Sprintf(
+				dangerWarnings = append(dangerWarnings, fmt.Sprintf(
 					"步骤 %q 命中危险命令黑名单（root 视角）: %s —— 运行时将被拦截；确需执行请勾选「确认危险命令」", t.Name, cmd))
 			}
 		}
 	}
-	return warnings
+	return warnings, dangerWarnings
 }
 
 // commandArgOfTask 提取 command/shell/script 类任务待检查的命令/脚本串；
@@ -787,8 +802,8 @@ func (h *PlaybookHandler) RunForAlert(ctx context.Context, playbookID, nodeID, c
 	if err != nil {
 		return "", fmt.Errorf("创建运行失败: %w", err)
 	}
-	run.Warnings = h.preflightPlaybook(pb.FilePath)
-	if err := h.runs.SetWarnings(ctx, run.ID, run.Warnings); err != nil {
+	run.Warnings, run.DangerWarnings = h.preflightPlaybook(pb.FilePath)
+	if err := h.runs.SetWarnings(ctx, run.ID, append(append([]string{}, run.Warnings...), run.DangerWarnings...)); err != nil {
 		log.Printf("persist run warnings: %v", err)
 	}
 

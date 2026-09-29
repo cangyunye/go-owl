@@ -2,12 +2,16 @@ package handler
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/cangyunye/go-owl/internal/secrets"
@@ -106,6 +110,14 @@ func (e *sshExecutor) dialNode(ctx context.Context, nodeID string) (*owlssh.Clie
 	})
 }
 
+// Execute 执行远端命令并等待其主进程退出。
+//
+// 关键点：gossh 的 session.Wait/CombinedOutput 都等到 SSH 通道关闭才返回，
+// 而 start.sh 这类启动后台守护进程的脚本会继承 stdout/stderr 管道且不退出
+// ——EOF 永远不来，步骤永久 running（用户实测卡死 8 小时）。因此用
+// 「哨兵标记」：把命令包一层子 shell，主命令退出后 echo 一个随机标记，
+// 客户端读到标记即返回并按标记携带的退出码收尾，绝不傻等 EOF。
+// 标记未出现时（连接中断、被超时杀等）由 Wait/ctx watchdog 兜底返回。
 func (e *sshExecutor) Execute(ctx context.Context, nodeID, command string) (string, int, error) {
 	client, err := e.dialNode(ctx, nodeID)
 	if err != nil {
@@ -119,9 +131,8 @@ func (e *sshExecutor) Execute(ctx context.Context, nodeID, command string) (stri
 	}
 	defer session.Close()
 
-	// 同 ExecuteStream：CombinedOutput/Wait 不响应 ctx，ctx 取消/超时时
-	// 必须主动断开连接，否则命令超时设置无法真正终止远端命令，
-	// 交互式命令会把任务永久挂住。
+	// Wait/pipe 读取均不响应 ctx，ctx 取消/超时时必须主动断开连接，
+	// 否则命令超时设置无法真正终止远端命令，交互式命令会把任务永久挂住。
 	watchDone := make(chan struct{})
 	defer close(watchDone)
 	go func() {
@@ -133,18 +144,105 @@ func (e *sshExecutor) Execute(ctx context.Context, nodeID, command string) (stri
 		}
 	}()
 
-	output, err := session.CombinedOutput(command)
-	exitCode := 0
+	stdout, err := session.StdoutPipe()
 	if err != nil {
-		if exitErr, ok := err.(*gossh.ExitError); ok {
-			exitCode = exitErr.ExitStatus()
-		} else if ctx.Err() != nil {
-			return "", -1, fmt.Errorf("ssh exec: %w（ctx: %v）", err, ctx.Err())
-		} else {
-			return "", -1, fmt.Errorf("ssh exec: %w", err)
-		}
+		return "", -1, fmt.Errorf("stdout pipe: %w", err)
 	}
-	return string(output), exitCode, nil
+	stderr, err := session.StderrPipe()
+	if err != nil {
+		return "", -1, fmt.Errorf("stderr pipe: %w", err)
+	}
+
+	// 随机 nonce 防止命令输出撞上标记串
+	nonce := strconv.FormatInt(time.Now().UnixNano(), 36) + strconv.Itoa(rand.IntN(1e9))
+	sentinel := "__OWLDONE_" + nonce + "_"
+	// ${__owl_rc} 必须显式定界：$__owl_rc__ 会被 shell 当作变量 __owl_rc__（未定义，输出空）
+	wrapped := fmt.Sprintf("( %s ); __owl_rc=$?; echo %s${__owl_rc}__; exit $__owl_rc", command, sentinel)
+	sentinelPrefix := []byte(sentinel)
+	sentinelTail := []byte("__")
+
+	var bufMu sync.Mutex
+	var out bytes.Buffer
+	// sentinelDone 携带主命令退出码；仅在 stdout 流中检出标记时发送
+	sentinelDone := make(chan int, 1)
+	collect := func(r io.Reader, detect bool) <-chan struct{} {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			chunk := make([]byte, 32*1024)
+			var tail []byte // 保留跨 chunk 的标记前缀
+			for {
+				n, rerr := r.Read(chunk)
+				if n > 0 {
+					bufMu.Lock()
+					out.Write(chunk[:n])
+					bufMu.Unlock()
+					if detect {
+						tail = append(tail, chunk[:n]...)
+						if idx := bytes.Index(tail, sentinelPrefix); idx >= 0 {
+							rest := tail[idx+len(sentinelPrefix):]
+							if end := bytes.Index(rest, sentinelTail); end >= 0 {
+								if rc, perr := strconv.Atoi(string(rest[:end])); perr == nil {
+									sentinelDone <- rc
+									return
+								}
+							}
+						}
+						// 只保留可能容纳半截标记的尾部，防无限增长
+						if len(tail) > len(sentinel)+16 {
+							tail = tail[len(tail)-len(sentinel)-16:]
+						}
+					}
+				}
+				if rerr != nil {
+					return
+				}
+			}
+		}()
+		return done
+	}
+	stdoutDone := collect(stdout, true)
+	stderrDone := collect(stderr, false)
+
+	if err := session.Start(wrapped); err != nil {
+		return "", -1, fmt.Errorf("ssh start: %w", err)
+	}
+	waitDone := make(chan error, 1)
+	go func() { waitDone <- session.Wait() }()
+
+	select {
+	case rc := <-sentinelDone:
+		// 主命令已退出：立即收尾，不等守护进程关闭通道。
+		// 输出截掉标记及其后内容。
+		bufMu.Lock()
+		full := out.String()
+		bufMu.Unlock()
+		if idx := strings.LastIndex(full, sentinel); idx >= 0 {
+			full = full[:idx]
+		}
+		_ = session.Close()
+		return full, rc, nil
+	case waitErr := <-waitDone:
+		// 通道关闭且未见标记（老服务端/异常路径）：EOF 已到，沿用原语义
+		<-stdoutDone
+		<-stderrDone
+		bufMu.Lock()
+		output := out.String()
+		bufMu.Unlock()
+		exitCode := 0
+		if waitErr != nil {
+			if exitErr, ok := waitErr.(*gossh.ExitError); ok {
+				exitCode = exitErr.ExitStatus()
+			} else if ctx.Err() != nil {
+				return output, -1, fmt.Errorf("ssh exec: %w（ctx: %v）", waitErr, ctx.Err())
+			} else {
+				return output, -1, fmt.Errorf("ssh exec: %w", waitErr)
+			}
+		}
+		return output, exitCode, nil
+	case <-ctx.Done():
+		return "", -1, fmt.Errorf("ssh exec: %w", ctx.Err())
+	}
 }
 
 func (e *sshExecutor) ExecuteStream(ctx context.Context, nodeID, command string, outputCh chan<- OutputLine) (int, error) {

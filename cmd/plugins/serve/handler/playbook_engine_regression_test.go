@@ -8,8 +8,12 @@ import (
 	"context"
 	"crypto/ed25519"
 	"database/sql"
+	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,6 +24,7 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	"github.com/cangyunye/go-owl/internal/control/blacklist"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	gossh "golang.org/x/crypto/ssh"
@@ -278,14 +283,15 @@ tasks:
 
 	// 关键断言：run 仍在进行中（step3 未放行、终态广播未发），
 	// step1/step2 的结果必须已经推送——逐步推送，不是终态一次性全量。
-	sawPartialResults := false
-	for _, m := range hub.runUpdates() {
-		if r, ok := m.Data.(*model.PlaybookRun); ok && r.ID == run.ID && len(r.Results) >= 2 {
-			sawPartialResults = true
-			break
+	// 步骤落库走异步 writer，广播相对命令执行有毫秒级延迟，轮询等待。
+	require.Eventually(t, func() bool {
+		for _, m := range hub.runUpdates() {
+			if r, ok := m.Data.(*model.PlaybookRun); ok && r.ID == run.ID && len(r.Results) >= 2 {
+				return true
+			}
 		}
-	}
-	assert.True(t, sawPartialResults, "运行中必须逐步广播已完成步骤的结果（V1→V2 曾退化为终态一次性全量）")
+		return false
+	}, 3*time.Second, 10*time.Millisecond, "运行中必须逐步广播已完成步骤的结果（V1→V2 曾退化为终态一次性全量）")
 
 	close(release)
 	<-done
@@ -467,6 +473,9 @@ tasks:
 
 // 预检必须指出剧本里哪些步骤会命中危险命令黑名单——
 // 否则用户要到运行失败且端上无任何提示时才知道被拦了。
+// 黑名单警告必须与"引用文件缺失"警告分桶返回：前端据此决定是否
+// 阻断运行弹窗——勾选了危险确认后黑名单警告不得再阻断（否则弹窗
+// 永远关不上、可反复提交重复任务）。
 func TestPreflightPlaybook_BlacklistWarning(t *testing.T) {
 	const dangerYAML = `
 name: danger-preflight
@@ -484,16 +493,17 @@ tasks:
 	// 固定用默认黑名单规则，避免本机 ~/.owl/blacklist.yaml 影响断言
 	h.checker = blacklist.NewChecker(&blacklist.Config{Rules: blacklist.DefaultRules()})
 
-	warnings := h.preflightPlaybook(pbFile)
-	require.NotEmpty(t, warnings, "危险命令必须产生预检警告")
+	warnings, dangerWarnings := h.preflightPlaybook(pbFile)
+	require.NotEmpty(t, dangerWarnings, "危险命令必须产生黑名单预检警告")
+	assert.Empty(t, warnings, "纯危险命令剧本不得产生文件缺失警告")
 
 	found := false
-	for _, w := range warnings {
+	for _, w := range dangerWarnings {
 		if strings.Contains(w, "cleanup") && strings.Contains(w, "rm -rf") {
 			found = true
 		}
 	}
-	assert.True(t, found, "警告必须指出步骤名与命中的命令，实际警告: %v", warnings)
+	assert.True(t, found, "警告必须指出步骤名与命中的命令，实际警告: %v", dangerWarnings)
 
 	const safeYAML = `
 name: safe-preflight
@@ -505,7 +515,31 @@ tasks:
 `
 	h2, _, safeFile := newPlaybookEngineTestHandler(t, safeYAML)
 	h2.checker = h.checker
-	assert.Empty(t, h2.preflightPlaybook(safeFile), "安全剧本不应产生黑名单警告")
+	w, d := h2.preflightPlaybook(safeFile)
+	assert.Empty(t, w)
+	assert.Empty(t, d, "安全剧本不应产生黑名单警告")
+
+	// 混合剧本：文件缺失进 warnings 桶，危险命令进 dangerWarnings 桶
+	const mixedYAML = `
+name: mixed-preflight
+tasks:
+  - name: risky
+    action: shell
+    args:
+      cmd: sudo systemctl restart app
+  - name: upload_step
+    action: upload
+    args:
+      src: ./does-not-exist.bin
+      dest: /tmp/x.bin
+`
+	h3, _, mixedFile := newPlaybookEngineTestHandler(t, mixedYAML)
+	h3.checker = h.checker
+	w3, d3 := h3.preflightPlaybook(mixedFile)
+	require.Len(t, w3, 1, "文件缺失警告必须留在 warnings 桶")
+	assert.Contains(t, w3[0], "does-not-exist.bin")
+	require.NotEmpty(t, d3, "危险命令警告必须进 dangerWarnings 桶")
+	assert.Contains(t, d3[0], "risky")
 }
 
 // script 动作同样要预检：inline 的内容即脚本本身，文件脚本读内容检查，
@@ -523,16 +557,16 @@ tasks:
 	h, _, pbFile := newPlaybookEngineTestHandler(t, dangerYAML)
 	h.checker = blacklist.NewChecker(&blacklist.Config{Rules: blacklist.DefaultRules()})
 
-	warnings := h.preflightPlaybook(pbFile)
-	require.NotEmpty(t, warnings, "危险 inline 脚本必须产生预检警告")
+	_, dangerWarnings := h.preflightPlaybook(pbFile)
+	require.NotEmpty(t, dangerWarnings, "危险 inline 脚本必须产生预检警告")
 
 	found := false
-	for _, w := range warnings {
+	for _, w := range dangerWarnings {
 		if strings.Contains(w, "evil_inline") && strings.Contains(w, "rm -rf") {
 			found = true
 		}
 	}
-	assert.True(t, found, "警告必须指出步骤名与命中的内容，实际警告: %v", warnings)
+	assert.True(t, found, "警告必须指出步骤名与命中的内容，实际警告: %v", dangerWarnings)
 }
 
 // 执行中步骤必须实时可见：步骤开始（尚未完成）时，广播里就要出现该步骤
@@ -640,4 +674,193 @@ func (hangsForeverRunner) Execute(ctx context.Context, nodeID, command string) (
 
 func (hangsForeverRunner) getNodeInfo(nodeID string) (*nodeSSHInfo, error) {
 	return &nodeSSHInfo{User: "root"}, nil
+}
+
+// daemon 式 sshd：exec 请求用 /bin/sh 真实执行（wrapped 命令会 echo 出
+// 哨兵标记），回传输出 + exit-status，但**不关闭通道**——模拟守护进程
+// 继承输出管道后 EOF 永不到来的场景（ssh "nohup cmd &" 挂住的经典机制）。
+func startDaemonStyleSSHServer(t *testing.T) string {
+	t.Helper()
+
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	signer, err := gossh.NewSignerFromSigner(priv)
+	require.NoError(t, err)
+
+	cfg := &gossh.ServerConfig{PasswordCallback: func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
+		return &gossh.Permissions{}, nil
+	}}
+	cfg.AddHostKey(signer)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { ln.Close() })
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				sconn, chans, reqs, err := gossh.NewServerConn(c, cfg)
+				if err != nil {
+					c.Close()
+					return
+				}
+				defer sconn.Close()
+				go gossh.DiscardRequests(reqs)
+				for newChan := range chans {
+					if newChan.ChannelType() != "session" {
+						newChan.Reject(gossh.UnknownChannelType, "unsupported")
+						continue
+					}
+					ch, chReqs, err := newChan.Accept()
+					if err != nil {
+						continue
+					}
+					go func() {
+						for req := range chReqs {
+							if req.Type != "exec" {
+								req.Reply(false, nil)
+								continue
+							}
+							if len(req.Payload) < 4 {
+								req.Reply(false, nil)
+								return
+							}
+							n := int(req.Payload[0])<<24 | int(req.Payload[1])<<16 | int(req.Payload[2])<<8 | int(req.Payload[3])
+							if n > len(req.Payload)-4 {
+								n = len(req.Payload) - 4
+							}
+							command := string(req.Payload[4 : 4+n])
+							req.Reply(true, nil)
+
+							out, rerr := exec.Command("/bin/sh", "-c", command).CombinedOutput()
+							if len(out) > 0 {
+								_, _ = ch.Write(out)
+							}
+							code := 0
+							if rerr != nil {
+								var ee *exec.ExitError
+								if errors.As(rerr, &ee) {
+									code = ee.ExitCode()
+								} else {
+									code = 127
+								}
+							}
+							_, _ = ch.SendRequest("exit-status", false, gossh.Marshal(struct{ Code uint32 }{uint32(code)}))
+							// 关键：不关闭 channel——守护进程持有输出管道，
+							// EOF 永远不会到来
+							for range chReqs {
+							}
+							return
+						}
+					}()
+				}
+			}(conn)
+		}
+	}()
+	return ln.Addr().String()
+}
+
+// 守护进程脚本（start.sh 启动后台服务）必须能让步骤正常结束：
+// 主命令退出（exit-status 到达）即返回，不能傻等管道 EOF——
+// 那会让步骤永远 running，run 卡死（用户实测 8 小时）。
+func TestSSHExecutor_Execute_ReturnsAfterCommandExit_DaemonOutput(t *testing.T) {
+	addr := startDaemonStyleSSHServer(t)
+	host, portStr, _ := net.SplitHostPort(addr)
+	port, _ := strconv.Atoi(portStr)
+
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	_, err = db.Exec(`CREATE TABLE nodes (
+		id TEXT PRIMARY KEY, name TEXT, address TEXT, port INTEGER DEFAULT 22,
+		user TEXT, password TEXT, ssh_key TEXT, status TEXT DEFAULT 'unknown',
+		groups TEXT DEFAULT '[]', labels TEXT DEFAULT '{}',
+		proxy_jump TEXT DEFAULT '', created_at TIMESTAMP, updated_at TIMESTAMP)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO nodes (id, name, address, port, user, password, status, groups, labels)
+		VALUES ('n1', 'n1', ?, ?, 'root', 'pw', 'online', '[]', '{}')`, host, port)
+	require.NoError(t, err)
+
+	e := &sshExecutor{db: db}
+
+	start := time.Now()
+	out, code, err := e.Execute(context.Background(), "n1", "echo started")
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, code, "主命令退出码 0")
+	assert.Equal(t, "started", strings.TrimSpace(out), "主命令的输出必须完整带回且截掉哨兵标记")
+	assert.Less(t, time.Since(start), 5*time.Second, "主命令退出后必须立即返回，不得等待守护进程关闭管道")
+}
+
+// 未勾选危险确认且剧本命中黑名单时，Run 必须 422 拒绝且不创建任务——
+// 此前"弹窗提醒"式阻断任务已产生，白跑一次还可能被反复点击刷任务。
+func TestRun_RejectsBlacklistedWithoutConfirmation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const dangerYAML = `
+name: reject-without-confirm
+tasks:
+  - name: cleanup
+    action: shell
+    args:
+      cmd: rm -rf /tmp/data
+`
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	// :memory: 的每个连接是独立库，且异步引擎 goroutine 与断言并发写
+	// 需要 busy 等待——强制单连接串行化。
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
+		id TEXT PRIMARY KEY, name TEXT, address TEXT, port INTEGER DEFAULT 22,
+		user TEXT, password TEXT, ssh_key TEXT, status TEXT DEFAULT 'unknown',
+		groups TEXT DEFAULT '[]', labels TEXT DEFAULT '{}',
+		proxy_jump TEXT DEFAULT '', created_at TIMESTAMP, updated_at TIMESTAMP)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO nodes (id, name, address, port, user, status, groups, labels) VALUES ('n1', 'node1', '127.0.0.1', 22, 'root', 'online', '[]', '{}')`)
+	require.NoError(t, err)
+
+	ps := store.NewPlaybookStore(db)
+	require.NoError(t, ps.Init(t.Context()))
+	rs := store.NewPlaybookRunStore(db)
+	require.NoError(t, rs.Init(t.Context()))
+	ns := store.NewNodeStore(db)
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(t.Context()))
+
+	pbFile := filepath.Join(t.TempDir(), "danger.yaml")
+	require.NoError(t, os.WriteFile(pbFile, []byte(dangerYAML), 0644))
+	_, err = db.Exec(`INSERT INTO playbooks (id, name, file_path, file_exists, updated_at) VALUES ('pb-rej', 'reject-without-confirm', ?, 1, datetime('now'))`, pbFile)
+	require.NoError(t, err)
+
+	h := NewPlaybookHandler(db, ps, rs, ns, nil)
+	h.History = hs
+	h.checker = blacklist.NewChecker(&blacklist.Config{Rules: blacklist.DefaultRules()})
+	h.sshRunner = &fakeSSHRunner{user: "root"}
+
+	r := gin.New()
+	r.POST("/pb/:id/run", func(c *gin.Context) { c.Set("username", "admin"); h.Run(c) })
+
+	// 未确认 → 422 且不产生任务
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/pb/pb-rej/run", strings.NewReader(`{"target_nodes":["n1"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, 422, w.Code, "未确认时必须 422")
+	assert.Contains(t, w.Body.String(), "确认危险命令")
+	runs, total, _ := rs.List(t.Context(), 10, 0)
+	assert.Equal(t, 0, total, "未确认时不得创建任务")
+	_ = runs
+
+	// 已确认 → 202 正常创建
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest("POST", "/pb/pb-rej/run", strings.NewReader(`{"target_nodes":["n1"],"danger_confirmed":true}`))
+	req2.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w2, req2)
+	require.Equal(t, http.StatusAccepted, w2.Code)
+	_, total2, _ := rs.List(t.Context(), 10, 0)
+	assert.Equal(t, 1, total2, "确认后应创建任务")
 }

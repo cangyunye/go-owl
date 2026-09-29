@@ -36,6 +36,9 @@ type PlaybookRun struct {
 	DangerConfirmed bool              `json:"danger_confirmed,omitempty"`
 	Error           string            `json:"error,omitempty"`
 	Warnings        []string          `json:"warnings,omitempty"`
+	// DangerWarnings 为危险命令黑名单预检警告，与 Warnings（引用文件缺失
+	// 等需处理项）分桶：前端勾选危险确认后不据此阻断运行弹窗。
+	DangerWarnings []string `json:"danger_warnings,omitempty"`
 	// TotalSteps 为预估总步数（任务数×节点数），运行中前端据此算进度百分比；
 	// loop 展开的步骤可能超出该值。
 	TotalSteps int `json:"total_steps,omitempty"`

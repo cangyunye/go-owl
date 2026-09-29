@@ -4491,6 +4491,8 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   overflow-wrap: anywhere;
   vertical-align: top;
 }
+.run-steps .status-badge { white-space: nowrap; }
+.run-steps td.cell-mono { white-space: nowrap; }
 .run-steps th {
   font: 600 var(--fs-xs)/1 var(--font-display);
   letter-spacing: 0.08em;

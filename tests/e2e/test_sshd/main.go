@@ -8,10 +8,10 @@ import (
 	"crypto/ed25519"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os/exec"
-	"time"
 
 	gossh "golang.org/x/crypto/ssh"
 )
@@ -93,16 +93,31 @@ func handleSession(ch gossh.Channel, chReqs <-chan *gossh.Request) {
 		req.Reply(true, nil)
 
 		log.Printf("exec %q", command)
+		// 用 Start + Process.Wait 而非 CombinedOutput：与真实 OpenSSH 语义
+		// 一致——主命令退出即发 exit-status，但通道保持打开直到输出管道
+		// 全部关闭（后台守护进程继承管道时 EOF 迟迟不来，客户端必须
+		// 依靠哨兵标记提前返回，否则会挂住——这正是被测行为）。
 		cmd := exec.Command("/bin/sh", "-c", command)
-		output, err := cmd.CombinedOutput()
-		if len(output) > 0 {
-			if _, err := ch.Write(output); err != nil {
-				return
-			}
-		}
-		exitCode := 0
+		stdoutP, err := cmd.StdoutPipe()
 		if err != nil {
-			if ee, ok := err.(*exec.ExitError); ok {
+			return
+		}
+		stderrP, err := cmd.StderrPipe()
+		if err != nil {
+			return
+		}
+		if err := cmd.Start(); err != nil {
+			log.Printf("start: %v", err)
+			ch.Write([]byte("test sshd: " + err.Error()))
+			ch.SendRequest("exit-status", false, gossh.Marshal(struct{ Code uint32 }{127}))
+			return
+		}
+		go func() { _, _ = io.Copy(ch, stdoutP) }()
+		go func() { _, _ = io.Copy(ch.Stderr(), stderrP) }()
+
+		exitCode := 0
+		if _, perr := cmd.Process.Wait(); perr != nil {
+			if ee, ok := perr.(*exec.ExitError); ok {
 				exitCode = ee.ExitCode()
 			} else {
 				exitCode = 127
@@ -111,11 +126,7 @@ func handleSession(ch gossh.Channel, chReqs <-chan *gossh.Request) {
 		if _, err := ch.SendRequest("exit-status", false, gossh.Marshal(struct{ Code uint32 }{uint32(exitCode)})); err != nil {
 			return
 		}
-		// 给输出留一点冲刷时间后关闭
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			ch.Close()
-		}()
+		// 不关闭 channel：保持与真实 sshd 一致的守护场景语义
 		return
 	}
 }
