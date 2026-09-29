@@ -87,11 +87,14 @@ func (s *TaskStore) Init(ctx context.Context) error {
 	// tasks 表由命令执行/传输/监控共享，record_id/node_id/status 上的
 	// 索引覆盖 ListByRecord（按 record 对账）、ListByNode、updateOpStatus
 	// （按 record_id 聚合状态）与 ListByCommandPrefix 之外的常规过滤；
+	// created_at 索引覆盖 List（仪表盘"最近任务"与历史列表按时间倒序分页），
+	// 免去长表全表扫描 + 临时排序；
 	// CREATE INDEX IF NOT EXISTS 对存量库幂等生效。
 	for _, stmt := range []string{
 		`CREATE INDEX IF NOT EXISTS idx_tasks_record_id ON tasks (record_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_node_id ON tasks (node_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks (created_at)`,
 	} {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
 			return err

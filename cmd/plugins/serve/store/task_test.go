@@ -196,6 +196,42 @@ func TestTaskStore_ListOmitsOutput(t *testing.T) {
 	assert.Equal(t, big, got.Output)
 }
 
+// TestTaskStore_List_UsesCreatedAtIndex 任务列表按 created_at 排序分页，
+// tasks 长期累积后全表扫描 + 排序会让仪表盘"最近任务"变慢；
+// 断言查询计划走 created_at 索引（索引序扫描，免排序）。
+func TestTaskStore_List_UsesCreatedAtIndex(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	s := NewTaskStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	for i := 0; i < 3; i++ {
+		_, err := s.Create(ctx, "n1", "cmd")
+		require.NoError(t, err)
+	}
+
+	rows, err := db.Query(`EXPLAIN QUERY PLAN
+		SELECT id FROM tasks ORDER BY created_at DESC LIMIT 10 OFFSET 0`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var plans []string
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		require.NoError(t, rows.Scan(&id, &parent, &notused, &detail))
+		plans = append(plans, detail)
+	}
+	require.NoError(t, rows.Err())
+
+	joined := strings.Join(plans, "\n")
+	assert.Contains(t, joined, "idx_tasks_created_at",
+		"查询计划应使用 created_at 索引，实际: %v", plans)
+	assert.NotContains(t, joined, "USE TEMP B-TREE FOR ORDER BY",
+		"不应有额外排序，实际: %v", plans)
+}
+
 func TestTaskStore_Delete(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()

@@ -1,7 +1,9 @@
 package monitor
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -180,4 +182,49 @@ func TestStore_ListAlerts_FilterTypeGroup(t *testing.T) {
 	got, err = s.ListAlerts(AlertFilter{Group: " , "})
 	require.NoError(t, err)
 	require.Len(t, got, 3)
+}
+
+// explainAlertQueryPlan 取查询计划 detail 行（同包白盒，便于断言索引使用）。
+func explainAlertQueryPlan(t *testing.T, s *Store, q string) []string {
+	t.Helper()
+	rows, err := s.db.Query("EXPLAIN QUERY PLAN " + q)
+	require.NoError(t, err)
+	defer rows.Close()
+	var plans []string
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		require.NoError(t, rows.Scan(&id, &parent, &notused, &detail))
+		plans = append(plans, detail)
+	}
+	require.NoError(t, rows.Err())
+	return plans
+}
+
+// TestStore_ListAlerts_StatusFilterUsesIndex 告警中心按显式状态筛选
+// （open/acked/resolved）时，alerts 长期累积 resolved 历史后会全表扫描；
+// 断言走 (status, first_seen) 索引定位。活跃视图（status != 'resolved'）
+// 保持索引扫描不退化。
+func TestStore_ListAlerts_StatusFilterUsesIndex(t *testing.T) {
+	s := newTestStore(t)
+
+	now := time.Now().Unix()
+	for i := 0; i < 5; i++ {
+		require.NoError(t, s.InsertAlert(&Alert{
+			ID: fmt.Sprintf("AL-%d", i), AlertTypeID: "OWL-MEM-001",
+			NodeID: fmt.Sprintf("n%d", i), Severity: SeverityWarning, Status: StatusOpen,
+			Message: "m", FirstSeen: now, LastSeen: now,
+		}))
+	}
+
+	orderBy := ` ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END, first_seen DESC`
+
+	plans := explainAlertQueryPlan(t, s, `SELECT id FROM alerts WHERE status = 'open'`+orderBy)
+	joined := strings.Join(plans, "\n")
+	require.Contains(t, joined, "idx_alerts_status_first_seen",
+		"显式 status 过滤应使用状态索引，实际: %v", plans)
+
+	plans = explainAlertQueryPlan(t, s, `SELECT id FROM alerts WHERE status != 'resolved'`+orderBy)
+	require.Contains(t, strings.Join(plans, "\n"), "USING INDEX",
+		"活跃视图不应退化为无索引表扫描，实际: %v", plans)
 }

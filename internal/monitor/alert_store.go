@@ -43,6 +43,10 @@ func (s *Store) ensureAlertTables() error {
 		)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_active
 			ON alerts(alert_type_id, node_id) WHERE status != 'resolved'`,
+		// 告警中心按显式状态筛选（open/acked/resolved）：resolved 历史
+		// 长期累积，无索引会全表扫描；活跃视图另有 idx_alerts_active 部分索引。
+		`CREATE INDEX IF NOT EXISTS idx_alerts_status_first_seen
+			ON alerts(status, first_seen)`,
 	}
 	for _, q := range schemas {
 		if _, err := s.db.Exec(q); err != nil {
