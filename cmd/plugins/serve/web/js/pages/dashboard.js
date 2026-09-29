@@ -18,7 +18,9 @@ export function renderDashboard(render, navigate, user, api, shell) {
         api.nodeStats(),
         api.tasks({ page: 1, page_size: 5 }),
         api.alerts({ limit: 6 }).catch(() => ({ items: [] })),
-        fetchAllNodes(),
+        // 复用共享缓存的全量节点（30s TTL + 并发去重 + 变更即失效），
+        // 不再自建串行翻页：多入口同时拉全量时只打一轮请求。
+        api.nodesAll(),
       ]);
       stats.total = statsRes.total || 0;
       stats.online = statsRes.online || 0;
@@ -30,21 +32,6 @@ export function renderDashboard(render, navigate, user, api, shell) {
     } catch {}
     renderCards();
     updateTopbar();
-  }
-
-  // fetchAllNodes 分页拉全量节点（page_size 服务端上限 100，按 meta.total 翻页）。
-  async function fetchAllNodes() {
-    const first = await api.nodes({ page: 1, page_size: 100 }).catch(() => null);
-    if (!first) return [];
-    const nodes = first.data || [];
-    const total = (first.meta && first.meta.total) || nodes.length;
-    let page = 2;
-    while (nodes.length < total && page <= 50) {
-      const res = await api.nodes({ page: page++, page_size: 100 }).catch(() => null);
-      if (!res || !res.data || !res.data.length) break;
-      nodes.push(...res.data);
-    }
-    return nodes;
   }
 
   // buildGroupStats 按分组聚合在线/离线节点数（warn 视为在线可达）。
