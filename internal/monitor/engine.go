@@ -103,19 +103,17 @@ func (e *Engine) SetAutoHealer(h *AutoHealer) {
 	e.healer = h
 }
 
-// Run 阻塞运行：立即执行一轮与清理，之后按采集间隔周期执行，
-// 清理按 CleanupScheduleFn 档位排期（每日 02:00 / 每周一 02:00 /
-// 每月 1 日 02:00，本地时区）。间隔与档位每轮重读，运行期可调。
+// Run 阻塞运行：立即执行首轮采集，之后按采集间隔周期执行；
+// 清理不在启动瞬间进行（startupCleanupDelay 后补一次，避开用户刚打开
+// 页面的高峰），之后按 CleanupScheduleFn 档位排期（每日 02:00 / 每周一
+// 02:00 / 每月 1 日 02:00，本地时区）。间隔与档位每轮重读，运行期可调。
 // ctx 取消时优雅退出。
 func (e *Engine) Run(ctx context.Context) error {
-	if err := e.CleanupOnce(); err != nil {
-		logger.Warn("监控清理任务失败", logger.WithOperation("monitor_cleanup"), logger.WithError(err))
-	}
 	_ = e.TickOnce(ctx)
 
 	tick := time.NewTimer(e.collectInterval())
 	defer tick.Stop()
-	cleanup := time.NewTimer(e.cleanupDelay())
+	cleanup := time.NewTimer(e.initialCleanupDelay())
 	defer cleanup.Stop()
 
 	for {
@@ -398,8 +396,8 @@ func (e *Engine) dispatch(ctx context.Context, events []AlertEvent, types []Aler
 // CleanupOnce 执行一次保留期清理（幂等，可按计划调度）：
 // 指标按 RetentionDaysFn（缺省静态 RetentionDays）清理；告警记录按
 // AlertRetentionDays 清理（只删已解决且解决时间超期的，未解决告警永不删除）。
-// 实际删除/DROP 过数据时追加 VACUUM，把 freelist 页归还操作系统，
-// 否则 owl.db 只涨不缩。
+// 仅在 DROP 了整月过期分区时追加 VACUUM（空间回收大头）；只删行时页留
+// 在 freelist 由后续写入复用，整库 VACUUM 会独占 owl.db、卡住 HTTP 请求。
 func (e *Engine) CleanupOnce() error {
 	retention := e.cfg.RetentionDays
 	if e.cfg.RetentionDaysFn != nil {
@@ -411,7 +409,7 @@ func (e *Engine) CleanupOnce() error {
 	if err != nil {
 		return err
 	}
-	if sum.DroppedTables > 0 || sum.DeletedRows > 0 {
+	if sum.DroppedTables > 0 {
 		if verr := e.store.Vacuum(); verr != nil {
 			return verr
 		}
@@ -452,6 +450,19 @@ func (e *Engine) cleanupSchedule() string {
 func (e *Engine) cleanupDelay() time.Duration {
 	now := e.now()
 	return nextCleanupAfter(now, e.cleanupSchedule()).Sub(now)
+}
+
+// startupCleanupDelay 启动后首次保留期清理的延后窗口：启动瞬间用户刚打开
+// 仪表盘/告警中心，清理长事务（分区 DELETE，甚至 VACUUM）会独占 owl.db
+// 拖慢首批请求，故推迟到窗口之后；与既定档位取较早者。
+const startupCleanupDelay = 5 * time.Minute
+
+// initialCleanupDelay 启动后首次清理的延迟 = min(startupCleanupDelay, 下次档位)。
+func (e *Engine) initialCleanupDelay() time.Duration {
+	if sched := e.cleanupDelay(); sched < startupCleanupDelay {
+		return sched
+	}
+	return startupCleanupDelay
 }
 
 // nextCleanupAfter 计算晚于 now 的下一次清理时刻（本地时区，02:00 低峰）：

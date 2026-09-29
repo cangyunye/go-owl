@@ -531,3 +531,41 @@ func TestAlertType_InScope(t *testing.T) {
 	require.True(t, at.InScope("n9", []string{"db"}), "分组命中")
 	require.False(t, at.InScope("n9", []string{"cache"}))
 }
+
+// TestEngine_CleanupOnce_RowDeletionDoesNotVacuum 仅删除过期行（未整月过期）
+// 时不应整库 VACUUM：freelist 页由后续写入复用，而 VACUUM 会独占整个
+// owl.db，把启动/运行期的仪表盘与告警接口全部卡住。整库 VACUUM 只在
+// DROP 过期分区（空间回收大头）时进行。
+func TestEngine_CleanupOnce_RowDeletionDoesNotVacuum(t *testing.T) {
+	eng, s := newTestEngine(t, nil, sampleOutputs())
+
+	old := time.Now().UTC().AddDate(0, 0, -40).Unix()
+	insertSamples(t, s, 20000, old)
+
+	require.NoError(t, eng.CleanupOnce())
+	require.Greater(t, pragmaInt(t, s, "PRAGMA freelist_count"), int64(0),
+		"仅删除过期行不应触发整库 VACUUM（freelist 应保留待复用）")
+}
+
+// TestEngine_CleanupOnce_DroppedPartitionVacuums 整月分区早于保留期被
+// DROP 后，仍应 VACUUM 把空间归还操作系统（空间回收的大头场景）。
+func TestEngine_CleanupOnce_DroppedPartitionVacuums(t *testing.T) {
+	eng, s := newTestEngine(t, nil, sampleOutputs())
+
+	old := time.Now().UTC().AddDate(0, -2, 0).Unix()
+	insertSamples(t, s, 1000, old)
+
+	require.NoError(t, eng.CleanupOnce())
+	require.Equal(t, int64(0), pragmaInt(t, s, "PRAGMA freelist_count"),
+		"DROP 过期分区后应 VACUUM 回收空间")
+}
+
+// TestEngine_InitialCleanupDelay 启动后的首次清理必须延后（不再立即执行）：
+// 启动瞬间正是用户首次打开仪表盘/告警中心的时刻，清理事务会拖慢首批请求。
+func TestEngine_InitialCleanupDelay(t *testing.T) {
+	eng, _ := newTestEngine(t, nil, sampleOutputs())
+
+	d := eng.initialCleanupDelay()
+	require.Greater(t, d, time.Duration(0), "首次清理不应立即执行")
+	require.LessOrEqual(t, d, startupCleanupDelay, "首次清理延后不应超过固定窗口")
+}
