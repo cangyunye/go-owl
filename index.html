@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>go-owl — 智能分布式运维工具 · 无 Agent SSH 批量运维平台</title>
+  <meta name="description" content="go-owl 是一款无 Agent 的智能 Linux 分布式运维工具：SSH 批量命令执行、YAML 剧本编排、P2P 文件传输、监控告警自愈与 AI 辅助运维，单一二进制开箱即用。">
+  <link rel="canonical" href="https://cangyunye.github.io/go-owl/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="go-owl — 智能分布式运维工具">
+  <meta property="og:description" content="无 Agent 的 SSH 批量运维平台：批量执行 · 剧本编排 · 告警自愈 · AI 运维，单一二进制开箱即用。">
+  <meta property="og:url" content="https://cangyunye.github.io/go-owl/">
+  <meta property="og:image" content="https://cangyunye.github.io/go-owl/assets/screenshots/02-dashboard.png">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ============ 导航 ============ -->
+  <header class="nav" id="top">
+    <div class="container nav-inner">
+      <a class="brand" href="#top" aria-label="go-owl home">
+        <img class="brand-logo" src="assets/favicon.svg" alt="" width="28" height="28">
+        <span class="brand-name">go-owl</span>
+      </a>
+
+      <nav class="nav-links" id="nav-links" aria-label="Primary">
+        <a href="#features" data-i18n="nav.features">特性</a>
+        <a href="#architecture" data-i18n="nav.architecture">架构</a>
+        <a href="#preview" data-i18n="nav.preview">预览</a>
+        <a href="#quickstart" data-i18n="nav.quickstart">快速开始</a>
+        <a href="#download" data-i18n="nav.download">下载</a>
+        <a href="#docs" data-i18n="nav.docs">文档</a>
+      </nav>
+
+      <div class="nav-actions">
+        <a class="github-link" href="https://github.com/cangyunye/go-owl" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        </a>
+        <button class="lang-toggle" id="lang-toggle" type="button" aria-label="Switch language">EN</button>
+        <button class="nav-burger" id="nav-burger" type="button" aria-label="Menu" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ Hero ============ -->
+  <section class="hero">
+    <div class="container hero-inner">
+      <div class="hero-copy">
+        <span class="hero-badge"><span class="dot" aria-hidden="true"></span>MIT · Open Source · <span data-release-version>v1.10.0</span></span>
+        <h1 class="hero-title">
+          <span data-i18n="hero.title1">智能分布式运维，</span><br>
+          <span class="grad" data-i18n="hero.title2">一只猫头鹰就够了</span>
+        </h1>
+        <p class="hero-desc" data-i18n="hero.desc">无 Agent 的 SSH 批量运维平台：批量命令执行、YAML 剧本编排、监控告警自愈、AI 自然语言运维 —— 单一二进制，开箱即用。</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#download">
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 2a1 1 0 0 1 1 1v7.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V3a1 1 0 0 1 1-1ZM3 16a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1Z"/></svg>
+            <span data-i18n="hero.ctaDownload">下载 <span data-release-version>v1.10.0</span></span>
+          </a>
+          <a class="btn btn-ghost" href="#quickstart" data-i18n="hero.ctaStart">5 分钟上手 →</a>
+          <a class="btn btn-ghost" href="https://github.com/cangyunye/go-owl" target="_blank" rel="noopener" data-i18n="hero.ctaGithub">GitHub 源码</a>
+        </div>
+      </div>
+
+      <div class="terminal" role="img" aria-label="go-owl terminal demo">
+        <div class="terminal-bar">
+          <span class="t-dot red" aria-hidden="true"></span>
+          <span class="t-dot yellow" aria-hidden="true"></span>
+          <span class="t-dot green" aria-hidden="true"></span>
+          <span class="t-title">owl — ssh</span>
+        </div>
+        <pre class="terminal-body" id="terminal-body" aria-hidden="true"></pre>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="metrics">
+        <div class="metric">
+          <strong data-i18n="m1.title">无 Agent</strong>
+          <span data-i18n="m1.desc">SSH 推模式，节点零安装</span>
+        </div>
+        <div class="metric">
+          <strong data-i18n="m2.title">单一二进制</strong>
+          <span data-i18n="m2.desc">纯 Go，无运行时依赖</span>
+        </div>
+        <div class="metric">
+          <strong data-i18n="m3.title">5 平台</strong>
+          <span data-i18n="m3.desc">Linux / macOS / Windows</span>
+        </div>
+        <div class="metric">
+          <strong data-i18n="m4.title">MIT 开源</strong>
+          <span data-i18n="m4.desc">自由使用与二次开发</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 特性 ============ -->
+  <section class="section" id="features">
+    <div class="container">
+      <h2 class="section-title" data-i18n="features.heading">核心特性</h2>
+      <p class="section-sub" data-i18n="features.sub">从批量执行到智能自愈，覆盖日常运维全流程</p>
+
+      <div class="feature-grid">
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">🖥️</div>
+          <h3 data-i18n="f1.title">节点管理</h3>
+          <p data-i18n="f1.desc">注册、分组、标签化管理任意数量的节点，YAML/JSON 批量导入导出，一键连通性检查。</p>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">⚡</div>
+          <h3 data-i18n="f2.title">批量执行</h3>
+          <p data-i18n="f2.desc">按分组 / 标签 / 节点筛选目标，并行执行 Shell 命令与脚本，支持异步任务与历史回溯。</p>
+          <pre class="card-code">owl exec run "uptime" --groups web</pre>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">📜</div>
+          <h3 data-i18n="f3.title">剧本编排</h3>
+          <p data-i18n="f3.desc">类 Ansible 的 YAML 剧本：pre_tasks / tasks / post_tasks、变量、条件、标签、dry-run。</p>
+          <pre class="card-code">tasks:
+  - name: restart nginx
+    command: systemctl restart nginx
+    when: ansible_os == "linux"</pre>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">📁</div>
+          <h3 data-i18n="f4.title">文件传输</h3>
+          <p data-i18n="f4.desc">上传、下载之外，还支持 P2P 自扩散与中继传输 —— 大文件在节点间接力分发。</p>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">📊</div>
+          <h3 data-i18n="f5.title">监控告警自愈</h3>
+          <p data-i18n="f5.desc">磁盘 / 内存 / 负载等指标采集，规则化告警（邮件 / Webhook），内置自动处置与危险操作审批闭环。</p>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">🤖</div>
+          <h3 data-i18n="f6.title">AI 运维助手</h3>
+          <p data-i18n="f6.desc">自然语言直达操作：执行命令、生成剧本、查询节点。支持 OpenAI / Anthropic / Qwen / DeepSeek。</p>
+          <pre class="card-code">owl ai "在所有 web 节点上执行 df -h"</pre>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">🌐</div>
+          <h3 data-i18n="f7.title">Web 控制台</h3>
+          <p data-i18n="f7.desc">owl serve 一键启动管理控制台：RBAC 四角色、浏览器内 xterm 终端、WebSocket 实时推送。</p>
+        </article>
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">⌨️</div>
+          <h3 data-i18n="f8.title">TUI 终端界面</h3>
+          <p data-i18n="f8.desc">owl tui 打开 Nodes / Exec / File / AI 四面板终端工作台，catppuccin / nord / dracula 多主题。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 架构 ============ -->
+  <section class="section section-alt" id="architecture">
+    <div class="container">
+      <h2 class="section-title" data-i18n="arch.heading">无 Agent 架构</h2>
+      <p class="section-sub" data-i18n="arch.sub">控制端主动 SSH 推送，目标节点不安装任何常驻进程</p>
+
+      <div class="arch-figure">
+        <svg viewBox="0 0 880 340" class="arch-svg" role="img" aria-label="go-owl architecture diagram">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/>
+            </marker>
+            <linearGradient id="ctrl-grad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="var(--surface-2)"/>
+              <stop offset="1" stop-color="var(--surface)"/>
+            </linearGradient>
+          </defs>
+
+          <!-- 控制端 -->
+          <g class="arch-ctrl">
+            <rect x="48" y="86" width="240" height="168" rx="14" fill="url(#ctrl-grad)" stroke="var(--accent)" stroke-opacity="0.55" stroke-width="1.5"/>
+            <text x="168" y="126" text-anchor="middle" class="svg-title" data-i18n="arch.control">控制端</text>
+            <text x="168" y="152" text-anchor="middle" class="svg-mono">owl · owl-serve</text>
+            <line x1="80" y1="170" x2="256" y2="170" stroke="var(--border)" stroke-width="1"/>
+            <text x="168" y="194" text-anchor="middle" class="svg-sub" data-i18n="arch.controlNote1">任务调度 · 剧本引擎 · 告警</text>
+            <text x="168" y="218" text-anchor="middle" class="svg-sub" data-i18n="arch.controlNote2">SQLite 本地存储 · SSH 凭据</text>
+            <text x="168" y="242" text-anchor="middle" class="svg-sub">~/.owl/owl.db</text>
+          </g>
+
+          <!-- SSH 连线 -->
+          <path class="arch-line" d="M 288 140 C 400 140, 440 78, 588 72" marker-end="url(#arrow)"/>
+          <path class="arch-line" d="M 288 170 C 420 170, 460 170, 588 170" marker-end="url(#arrow)"/>
+          <path class="arch-line" d="M 288 200 C 400 200, 440 262, 588 268" marker-end="url(#arrow)"/>
+          <rect x="384" y="128" width="112" height="26" rx="13" fill="var(--bg)" stroke="var(--border)"/>
+          <text x="440" y="145" text-anchor="middle" class="svg-chip">SSH : 22</text>
+
+          <!-- 节点 -->
+          <g class="arch-node">
+            <rect x="592" y="38" width="240" height="68" rx="12" fill="var(--surface)" stroke="var(--border)"/>
+            <circle cx="620" cy="72" r="5" fill="var(--success)"/>
+            <text x="640" y="66" class="svg-mono">node-01</text>
+            <text x="640" y="88" class="svg-sub" data-i18n="arch.nodeTag1">web 分组 · env=prod</text>
+          </g>
+          <g class="arch-node">
+            <rect x="592" y="136" width="240" height="68" rx="12" fill="var(--surface)" stroke="var(--border)"/>
+            <circle cx="620" cy="170" r="5" fill="var(--success)"/>
+            <text x="640" y="164" class="svg-mono">node-02</text>
+            <text x="640" y="186" class="svg-sub" data-i18n="arch.nodeTag2">db 分组</text>
+          </g>
+          <g class="arch-node">
+            <rect x="592" y="234" width="240" height="68" rx="12" fill="var(--surface)" stroke="var(--border)"/>
+            <circle cx="620" cy="268" r="5" fill="var(--success)"/>
+            <text x="640" y="262" class="svg-mono">node-N …</text>
+            <text x="640" y="284" class="svg-sub" data-i18n="arch.nodeTag3">cache / worker / …</text>
+          </g>
+        </svg>
+
+        <div class="arch-notes">
+          <div class="arch-note">
+            <strong data-i18n="arch.n1title">节点零安装</strong>
+            <span data-i18n="arch.n1desc">只需开放 SSH，无需 Python、无需常驻 agent，连完即走。</span>
+          </div>
+          <div class="arch-note">
+            <strong data-i18n="arch.n2title">纯 Go 单二进制</strong>
+            <span data-i18n="arch.n2desc">CGO-free 交叉编译，一个文件扔上去就能用，升级即替换。</span>
+          </div>
+          <div class="arch-note">
+            <strong data-i18n="arch.n3title">凭据仅存控制端</strong>
+            <span data-i18n="arch.n3desc">SSH 私钥与密码只保存在控制端本地，攻击面收敛到一台机器。</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 界面预览 ============ -->
+  <section class="section" id="preview">
+    <div class="container">
+      <h2 class="section-title" data-i18n="shots.heading">界面预览</h2>
+      <p class="section-sub" data-i18n="shots.sub">Web 控制台真实截图，owl serve 即刻拥有</p>
+
+      <div class="shots">
+        <div class="shot-tabs" role="tablist" aria-label="Screenshots">
+          <button role="tab" aria-selected="true" data-shot="0" data-i18n="shots.t1">仪表盘</button>
+          <button role="tab" aria-selected="false" data-shot="1" data-i18n="shots.t2">批量执行</button>
+          <button role="tab" aria-selected="false" data-shot="2" data-i18n="shots.t3">剧本编排</button>
+          <button role="tab" aria-selected="false" data-shot="3" data-i18n="shots.t4">AI 助手</button>
+          <button role="tab" aria-selected="false" data-shot="4" data-i18n="shots.t5">告警中心</button>
+          <button role="tab" aria-selected="false" data-shot="5" data-i18n="shots.t6">节点详情</button>
+        </div>
+        <div class="shot-frame">
+          <img id="shot-img" src="assets/screenshots/02-dashboard.png"
+               alt="go-owl dashboard" width="1440" height="900" loading="lazy" decoding="async">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 快速开始 ============ -->
+  <section class="section section-alt" id="quickstart">
+    <div class="container">
+      <h2 class="section-title" data-i18n="qs.heading">快速开始</h2>
+      <p class="section-sub" data-i18n="qs.sub">三步完成第一次批量运维</p>
+
+      <ol class="steps">
+        <li class="step">
+          <div class="step-no" aria-hidden="true">1</div>
+          <div class="step-body">
+            <h3 data-i18n="qs.s1title">下载并安装</h3>
+            <p data-i18n="qs.s1desc">下载对应平台的二进制（以 Linux amd64 为例，其他平台见下方下载区）：</p>
+            <pre class="codeblock"><code>curl -LO https://github.com/cangyunye/go-owl/releases/latest/download/owl-linux-amd64
+chmod +x owl-linux-amd64 && sudo mv owl-linux-amd64 /usr/local/bin/owl</code><button class="copy-btn" type="button" data-i18n="common.copy">复制</button></pre>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-no" aria-hidden="true">2</div>
+          <div class="step-body">
+            <h3 data-i18n="qs.s2title">注册第一个节点</h3>
+            <p data-i18n="qs.s2desc">只需目标的 SSH 地址与账号，节点上什么都不用装：</p>
+            <pre class="codeblock"><code>owl node add web-01 --address 192.168.1.10 --user root --groups web
+owl node check --all</code><button class="copy-btn" type="button" data-i18n="common.copy">复制</button></pre>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-no" aria-hidden="true">3</div>
+          <div class="step-body">
+            <h3 data-i18n="qs.s3title">批量执行</h3>
+            <p data-i18n="qs.s3desc">对整个分组同时执行命令，或交给 AI 一句话搞定：</p>
+            <pre class="codeblock"><code>owl exec run "uptime" --groups web
+owl ai "哪些节点磁盘使用率超过 80%？"</code><button class="copy-btn" type="button" data-i18n="common.copy">复制</button></pre>
+          </div>
+        </li>
+      </ol>
+
+      <div class="callout">
+        <strong data-i18n="qs.tipTitle">需要多人在浏览器里协作？</strong>
+        <span data-i18n="qs.tipDesc">owl serve 一键启动 Web 控制台，首次启动自动生成 admin 密码并打印在终端，仅此一次。</span>
+        <pre class="codeblock codeblock-sm"><code>owl serve --port 8080</code><button class="copy-btn" type="button" data-i18n="common.copy">复制</button></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 下载 ============ -->
+  <section class="section" id="download">
+    <div class="container">
+      <h2 class="section-title"><span data-i18n="dl.heading">下载</span> <span class="ver" data-release-version>v1.10.0</span></h2>
+      <p class="section-sub" data-i18n="dl.sub">全部二进制来自 GitHub Releases，直链下载无需注册</p>
+
+      <div class="dl-table">
+        <div class="dl-row">
+          <div class="dl-os"><span class="dl-icon" aria-hidden="true">🐧</span>Linux <span class="dl-arch">amd64</span></div>
+          <div class="dl-links">
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/owl-linux-amd64" data-i18n="dl.owl">owl（CLI + TUI）</a>
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/owl-serve-linux-amd64" data-i18n="dl.serve">owl-serve（Web 控制台）</a>
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/gscp-linux-amd64">gscp</a>
+          </div>
+        </div>
+        <div class="dl-row">
+          <div class="dl-os"><span class="dl-icon" aria-hidden="true">🐧</span>Linux <span class="dl-arch">arm64</span></div>
+          <div class="dl-links">
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/owl-linux-arm64" data-i18n="dl.owl">owl（CLI + TUI）</a>
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/owl-serve-linux-arm64" data-i18n="dl.serve">owl-serve（Web 控制台）</a>
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/gscp-linux-arm64">gscp</a>
+          </div>
+        </div>
+        <div class="dl-row">
+          <div class="dl-os"><span class="dl-icon" aria-hidden="true">🍎</span>macOS <span class="dl-arch">Intel</span></div>
+          <div class="dl-links">
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/owl-darwin-amd64" data-i18n="dl.owl">owl（CLI + TUI）</a>
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/owl-serve-darwin-amd64" data-i18n="dl.serve">owl-serve（Web 控制台）</a>
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/gscp-darwin-amd64">gscp</a>
+          </div>
+        </div>
+        <div class="dl-row">
+          <div class="dl-os"><span class="dl-icon" aria-hidden="true">🍎</span>macOS <span class="dl-arch">Apple Silicon</span></div>
+          <div class="dl-links">
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/owl-darwin-arm64" data-i18n="dl.owl">owl（CLI + TUI）</a>
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/owl-serve-darwin-arm64" data-i18n="dl.serve">owl-serve（Web 控制台）</a>
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/gscp-darwin-arm64">gscp</a>
+          </div>
+        </div>
+        <div class="dl-row">
+          <div class="dl-os"><span class="dl-icon" aria-hidden="true">🪟</span>Windows <span class="dl-arch">amd64</span></div>
+          <div class="dl-links">
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/owl-windows-amd64.exe" data-i18n="dl.owlWin">owl（CLI）</a>
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/owl-serve-windows-amd64.exe" data-i18n="dl.serve">owl-serve（Web 控制台）</a>
+            <a href="https://github.com/cangyunye/go-owl/releases/latest/download/gscp-windows-amd64.exe">gscp</a>
+          </div>
+        </div>
+      </div>
+
+      <p class="dl-more">
+        <a href="https://github.com/cangyunye/go-owl/releases" target="_blank" rel="noopener" data-i18n="dl.viewAll">查看历史版本与全部资产 →</a>
+        <span data-i18n="dl.sourceNote">偏好在源码？make build 十秒出包。</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 文档 ============ -->
+  <section class="section section-alt" id="docs">
+    <div class="container">
+      <h2 class="section-title" data-i18n="docs.heading">文档</h2>
+      <p class="section-sub" data-i18n="docs.sub">从入门到进阶，全部随仓库维护</p>
+
+      <div class="doc-grid">
+        <a class="doc-card" href="https://github.com/cangyunye/go-owl/blob/main/docs/user/QUICKSTART.md" target="_blank" rel="noopener">
+          <h3>🐣 <span data-i18n="d1.title">快速入门</span></h3>
+          <p data-i18n="d1.desc">从下载到第一条批量命令，5 分钟跑通。</p>
+        </a>
+        <a class="doc-card" href="https://github.com/cangyunye/go-owl/blob/main/docs/serve-user.md" target="_blank" rel="noopener">
+          <h3>🌐 <span data-i18n="d2.title">Web 控制台指南</span></h3>
+          <p data-i18n="d2.desc">启动、admin 密码、角色权限与告警自愈配置。</p>
+        </a>
+        <a class="doc-card" href="https://github.com/cangyunye/go-owl/blob/main/docs/user/PLAYBOOK.md" target="_blank" rel="noopener">
+          <h3>📜 <span data-i18n="d3.title">Playbook 编写指南</span></h3>
+          <p data-i18n="d3.desc">YAML 剧本语法、变量条件、模板与示例库。</p>
+        </a>
+        <a class="doc-card" href="https://github.com/cangyunye/go-owl/blob/main/docs/user/AI.md" target="_blank" rel="noopener">
+          <h3>🤖 <span data-i18n="d4.title">AI 助手配置</span></h3>
+          <p data-i18n="d4.desc">四大模型接入、自然语言运维用法与技巧。</p>
+        </a>
+        <a class="doc-card" href="https://github.com/cangyunye/go-owl/blob/main/docs/README.md" target="_blank" rel="noopener">
+          <h3>📚 <span data-i18n="d5.title">文档总索引</span></h3>
+          <p data-i18n="d5.desc">全部用户 / 设计 / 参考文档的入口。</p>
+        </a>
+        <a class="doc-card" href="https://github.com/cangyunye/go-owl/blob/main/docs/dev/ARCHITECTURE.md" target="_blank" rel="noopener">
+          <h3>🏗️ <span data-i18n="d6.title">架构与开发</span></h3>
+          <p data-i18n="d6.desc">模块划分、控制层设计与贡献指南。</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Footer ============ -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img src="assets/favicon.svg" alt="" width="22" height="22">
+        <span>go-owl</span>
+      </div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="https://github.com/cangyunye/go-owl" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/cangyunye/go-owl/issues" target="_blank" rel="noopener" data-i18n="footer.issues">问题反馈</a>
+        <a href="https://github.com/cangyunye/go-owl/releases" target="_blank" rel="noopener" data-i18n="footer.releases">版本发布</a>
+        <a href="#docs" data-i18n="footer.docs">文档</a>
+      </nav>
+      <p class="footer-copy">
+        <span>MIT License © 2026 cangyunye</span>
+        <span data-i18n="footer.made">用 🦉 守护你的每一台服务器</span>
+      </p>
+    </div>
+  </footer>
+
+  <script src="js/i18n.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
