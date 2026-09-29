@@ -32,7 +32,10 @@ func OpenStore(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("monitor: 打开指标库失败: %w", err)
 	}
-	db.SetMaxOpenConns(1) // 单写者，避免 SQLite 锁竞争
+	// WAL 支持多读 + 单写：池内保留少量并发连接，让告警中心等 HTTP 读
+	// 不被引擎采集写入/清理事务串行阻塞；写-写竞争由 DSN busy_timeout 兜底。
+	// 之前 MaxOpenConns(1) 时，一条长事务会卡住告警页的全部请求。
+	db.SetMaxOpenConns(4)
 	s := &Store{db: db}
 	if err := s.ensureTable(monthName(time.Now().Unix())); err != nil {
 		_ = db.Close()

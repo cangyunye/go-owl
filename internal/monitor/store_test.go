@@ -137,3 +137,40 @@ func TestStore_DedupOverwrite(t *testing.T) {
 
 // 编译期校验 Store 内部使用 *sql.DB 直连（测试需要访问原始连接做断言）。
 var _ = sql.ErrNoRows
+
+// TestStore_ConcurrentQueries 连接池不能是单连接：告警中心等 HTTP 读与
+// 引擎采集写入共用本 store，一条长事务占住唯一连接时，其它查询会被
+// 串行化卡死（首次打开告警页转圈）。WAL 模式支持多读 + 单写，
+// 池内应允许并发连接，写-写竞争由 busy_timeout 兜底。
+func TestStore_ConcurrentQueries(t *testing.T) {
+	s, _ := openFileStore(t)
+
+	insertSamples(t, s, 10, time.Now().Unix())
+
+	// 占住一条连接：结果集不消费、不关闭
+	held, err := s.db.Query(`SELECT node_id FROM ` + "metrics_" + monthName(time.Now().Unix()))
+	require.NoError(t, err)
+	defer held.Close()
+
+	type qResult struct {
+		n   int
+		err error
+	}
+	done := make(chan qResult, 1)
+	go func() {
+		rows, qerr := s.QuerySamples("n1", "cpu.usage", 0, 1<<62)
+		if qerr != nil {
+			done <- qResult{err: qerr}
+			return
+		}
+		done <- qResult{n: len(rows)}
+	}()
+
+	select {
+	case r := <-done:
+		require.NoError(t, r.err)
+		require.Equal(t, 10, r.n)
+	case <-time.After(2 * time.Second):
+		t.Fatal("第二条查询在长事务占用期间被阻塞：连接池仍是单连接串行")
+	}
+}
