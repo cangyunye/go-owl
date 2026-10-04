@@ -42,21 +42,25 @@ func TestPlaybooksUI_MasterDetailLayout(t *testing.T) {
 		"app.css must define the pb-layout two-column grid")
 }
 
-// 运行历史/运行详情必须放在 pb-layout 分栏之外全宽渲染：右栏分到的宽度
-// （约 560px）放不下运行详情的 meta 行 + 6 列步骤结果表，表头会竖排折行、
-// 输出列被挤成一条缝。
-func TestPlaybooksUI_RunsSectionFullWidth(t *testing.T) {
+// 运行历史必须在 pb-layout 分栏之外全宽渲染：右栏分到的宽度（约 560px）
+// 放不下运行历史的 6 列表格。运行详情则走 modal-xl 弹窗（1200px）——
+// 391a6db 起从全宽卡片改为弹窗，步骤表的任务/节点/动作/退出码才挤得开。
+func TestPlaybooksUI_RunsHistoryFullWidthAndDetailModal(t *testing.T) {
 	src := readWebFile(t, "web/js/pages/playbooks.js")
+	css := readWebFile(t, "web/css/app.css")
 
 	idxDetailCol := strings.LastIndex(src, "pb-detail-col")
 	idxRunsCard := strings.Index(src, `id="pb-runs-card"`)
-	idxRunDetail := strings.Index(src, `id="run-detail-card"`)
+	idxModal := strings.Index(src, `id="run-detail-modal"`)
 
 	assert.Contains(t, src, `id="pb-runs-card"`, "run history must be its own full-width section card")
 	assert.Greater(t, idxRunsCard, idxDetailCol,
 		"run history card must be rendered after (outside) the pb-detail-col column")
-	assert.Greater(t, idxRunDetail, idxRunsCard,
-		"run detail card must follow the history card at full width")
+	assert.Greater(t, idxModal, idxRunsCard,
+		"run detail modal must follow the history card, outside the pb-layout")
+	assert.Contains(t, src, "modal modal-xl", "run detail modal must use the modal-xl width (1200px)")
+	assert.Contains(t, src, `id="run-detail"`, "run detail modal must have the run-detail body container")
+	assert.Contains(t, css, ".modal-xl", "app.css must define the modal-xl width")
 	assert.False(t, strings.Contains(src, "右栏：详情 + 运行历史"),
 		"the right column must no longer stack the run history/detail cards")
 }
