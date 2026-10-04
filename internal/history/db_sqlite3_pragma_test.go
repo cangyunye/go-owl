@@ -70,3 +70,18 @@ func TestNewDB_PragmasApplyToEveryConnection(t *testing.T) {
 		}
 	}
 }
+
+// 回归:连接池必须封顶。modernc sqlite 每个连接约 2MB 页缓存常驻 Go 堆,
+// 不设 MaxOpenConns 时并发请求会创建任意多连接,RSS 随之无界增长且回落慢
+// (monitor 池早已设 4,见 internal/monitor/store.go)。
+func TestNewDB_PoolLimit(t *testing.T) {
+	db, err := NewDB(&Config{Enabled: true, DBPath: filepath.Join(t.TempDir(), "pool.db")})
+	if err != nil {
+		t.Fatalf("NewDB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	if got := db.Connection().Stats().MaxOpenConnections; got != 4 {
+		t.Errorf("history pool MaxOpenConnections = %d, want 4", got)
+	}
+}

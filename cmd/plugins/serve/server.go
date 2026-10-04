@@ -95,7 +95,7 @@ func (s *Server) Init() (*AdminCredentials, error) {
 	if err := ensureDBDir(s.Config.DBPath); err != nil {
 		return nil, fmt.Errorf("ensure db dir: %w", err)
 	}
-	db, err := sql.Open("sqlite", sqliteDSN(s.Config.DBPath))
+	db, err := openMainDB(s.Config.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
@@ -778,6 +778,18 @@ func sqliteDSN(dbPath string) string {
 		return dbPath
 	}
 	return dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=ON"
+}
+
+// openMainDB 打开主库并封顶连接池。modernc sqlite 每个连接约 2MB 页缓存
+// 常驻 Go 堆,不设 MaxOpenConns 时并发(WS 推送 + 前端轮询 + shell 流式
+// 落库)会创建任意多连接,RSS 无界增长;SQLite 单写,8 个读多写少足够。
+func openMainDB(dbPath string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", sqliteDSN(dbPath))
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(8)
+	return db, nil
 }
 
 func (s *Server) ResetAdmin() (*AdminCredentials, error) {

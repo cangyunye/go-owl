@@ -55,6 +55,10 @@ func NewDB(config *Config) (DBInterface, error) {
 	if err != nil {
 		return nil, err
 	}
+	// modernc sqlite 每个连接约 2MB 页缓存常驻 Go 堆,必须封顶,否则并发
+	// 查询会创建任意多连接,RSS 无界增长;与 serve/monitor 的写竞争由
+	// DSN busy_timeout 兜底(见上方 PRAGMA 注释)。
+	conn.SetMaxOpenConns(4)
 
 	db := &SQLite3{
 		conn: conn,
