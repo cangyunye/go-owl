@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -16,10 +17,18 @@ import (
 // 此后每 24h 一次。各保留期每次运行时从 settings 重读，改完即时生效：
 // - 执行日志批次：logs.executions_retention_days（默认 30，0 = 关闭）
 // - owl.db 历史表：history.retention_days（默认 90，0 = 关闭）
+//
+// 每轮清理后调用 debug.FreeOSMemory() 把堆归还 OS：GOGC=100 的稳态 RSS
+// 约为活内存的 2 倍，且 Go 归还物理内存很慢，靠定期全量 GC + scavenge
+// 把 RSS 拉回活内存附近。
 func (s *Server) startJanitor(ctx context.Context) {
 	go func() {
 		s.runExecLogsCleanupOnce("startup")
 		s.runHistoryCleanupOnce(ctx, "startup")
+		// 启动首轮全节点采集的分配峰值要几分钟才落定，等它结束后再归还
+		// 一次，启动 RSS 才能真正回到基线（立即调用会扑空）。
+		timer := time.AfterFunc(5*time.Minute, debug.FreeOSMemory)
+		defer timer.Stop()
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 		for {
@@ -29,6 +38,7 @@ func (s *Server) startJanitor(ctx context.Context) {
 			case <-ticker.C:
 				s.runExecLogsCleanupOnce("daily")
 				s.runHistoryCleanupOnce(ctx, "daily")
+				debug.FreeOSMemory()
 			}
 		}
 	}()
