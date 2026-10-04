@@ -37,10 +37,9 @@ func TestServer_ResetAdmin(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TestServer_ResetAdmin_NoDB 说明：--reset-admin 的入口（cmd/owl-serve main）
-// 会先用 os.Stat 拦截不存在的库，因此正常不会走到 ResetAdmin。
-// 若直接调用，ResetAdmin 现在自愈式补齐 schema（web_users + settings），
-// 不再因缺 settings 表而报错。
+// TestServer_ResetAdmin_NoDB 覆盖全新库上的 --reset-admin：入口不再用
+// os.Stat 拦截不存在的库，ResetAdmin 自愈式补齐 schema（web_users +
+// settings + JWT secret）后直接创建 admin 并返回新凭据。
 func TestServer_ResetAdmin_NoDB(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "owl.db")

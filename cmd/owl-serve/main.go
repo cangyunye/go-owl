@@ -51,9 +51,8 @@ func newRootCmd() *cobra.Command {
 			srv := serve.NewServer(cfg)
 
 			if resetAdmin {
-				if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-					log.Fatalf("database not found at %s, start the server first to initialize", dbPath)
-				}
+				// ResetAdmin 自愈式补齐 schema（web_users/settings/JWT secret），
+				// 全新库与缺表的旧库都能工作，无需先起一次服务做初始化。
 				creds, err := srv.ResetAdmin()
 				if err != nil {
 					log.Fatalf("reset admin: %v", err)
