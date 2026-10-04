@@ -24,6 +24,18 @@ func jsonQuote(s string) string {
 	return string(data)
 }
 
+// unwrapData 解开 handler 的统一响应包裹 {"data": {...}} 再解析。
+// 此前测试按顶层字段解析，响应统一加包裹后 path/content/warnings
+// 全部解析成零值，4 个用例假失败。
+func unwrapData(t *testing.T, body []byte, v interface{}) {
+	t.Helper()
+	var env struct {
+		Data json.RawMessage `json:"data"`
+	}
+	require.NoError(t, jsonUnmarshalHelper(body, &env))
+	require.NoError(t, jsonUnmarshalHelper(env.Data, v))
+}
+
 // 系统设置页编辑 ~/.owl/blacklist.yaml：GET 返回文件原文（保留注释）
 // 与内置默认规则；PUT 校验后原子写入并热重载共享检查器（admin）。
 
@@ -76,7 +88,7 @@ func TestBlacklistConfig_Get_DefaultsWhenNoFile(t *testing.T) {
 		Content  string `json:"content"`
 		Defaults string `json:"defaults"`
 	}
-	require.NoError(t, jsonUnmarshalHelper(w.Body.Bytes(), &resp))
+	unwrapData(t, w.Body.Bytes(), &resp)
 	assert.Equal(t, path, resp.Path)
 	assert.False(t, resp.Exists, "文件不存在时 exists=false")
 	assert.Contains(t, resp.Defaults, "rm -rf", "defaults 应渲染内置默认规则供载入")
@@ -112,7 +124,7 @@ func TestBlacklistConfig_Put_WritesReloads(t *testing.T) {
 		Exists  bool   `json:"exists"`
 		Content string `json:"content"`
 	}
-	require.NoError(t, jsonUnmarshalHelper(w2.Body.Bytes(), &resp))
+	unwrapData(t, w2.Body.Bytes(), &resp)
 	assert.True(t, resp.Exists)
 	assert.Equal(t, content, resp.Content)
 }
@@ -146,7 +158,7 @@ func TestBlacklistConfig_Put_EmptyRulesAllowedWithWarning(t *testing.T) {
 	var resp struct {
 		Warnings []string `json:"warnings"`
 	}
-	require.NoError(t, jsonUnmarshalHelper(w.Body.Bytes(), &resp))
+	unwrapData(t, w.Body.Bytes(), &resp)
 	require.NotEmpty(t, resp.Warnings, "清空规则等于关闭拦截，必须给出警告")
 }
 
@@ -161,7 +173,7 @@ func TestBlacklistConfig_Put_RegexCompileWarning(t *testing.T) {
 	var resp struct {
 		Warnings []string `json:"warnings"`
 	}
-	require.NoError(t, jsonUnmarshalHelper(w.Body.Bytes(), &resp))
+	unwrapData(t, w.Body.Bytes(), &resp)
 	found := false
 	for _, warn := range resp.Warnings {
 		if strings.Contains(warn, "a[b") && strings.Contains(warn, "字面") {
