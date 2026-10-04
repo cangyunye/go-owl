@@ -40,11 +40,22 @@ func pragmaInt(t *testing.T, s *Store, pragma string) int64 {
 	return v
 }
 
+// cutoffMonthMidSampleTS 返回必然命中 DELETE 行分支的过期采样时间戳：
+// 保留期 cutoff 所在自然月的 [月初, cutoff) 中点。Cleanup 只对整月早于
+// cutoff 月初的分区走 DROP，cutoff 月内的过期行走 DELETE。此前写死
+// "40 天前"，每月上旬会落进上上月分区被整体 DROP，依赖机制的用例
+// （freelist / dropped 数 / deleted 数）月初必然失败。
+func cutoffMonthMidSampleTS() int64 {
+	cutoff := time.Now().UTC().AddDate(0, 0, -30)
+	monthStart := time.Date(cutoff.Year(), cutoff.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return monthStart.Unix() + (cutoff.Unix()-monthStart.Unix())/2
+}
+
 // 过期数据清理后 SQLite 仅将页移入 freelist，文件不缩；Vacuum 后
 // freelist 清零、WAL 截断，空间才真正归还操作系统。
 func TestVacuum_ReclaimsFreelistAndTruncatesWAL(t *testing.T) {
 	s, dbPath := openFileStore(t)
-	old := time.Now().UTC().AddDate(0, 0, -40).Unix()
+	old := cutoffMonthMidSampleTS()
 
 	insertSamples(t, s, 20000, old)
 
@@ -78,9 +89,10 @@ func TestVacuum_ReclaimsFreelistAndTruncatesWAL(t *testing.T) {
 // 过期行计入 DeletedRows。
 func TestCleanup_SummaryCountsDroppedTablesAndRows(t *testing.T) {
 	s, _ := openFileStore(t)
-	old := time.Now().UTC().AddDate(0, 0, -40).Unix()
+	old := cutoffMonthMidSampleTS()
 
-	// 手工造一张"上上月"的旧分区表 + 当前月表各 100 行
+	// 手工造一张远古分区表（metrics_200001，必然整月过期 → DROP），
+	// cutoff 月内的过期行（→ DELETE）与当前月的保留行各 100 条
 	if err := s.ensureTable("200001"); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +107,7 @@ func TestCleanup_SummaryCountsDroppedTablesAndRows(t *testing.T) {
 		t.Fatalf("dropped %d tables, want 1 (metrics_200001)", sum.DroppedTables)
 	}
 	if sum.DeletedRows != 100 {
-		t.Fatalf("deleted %d rows, want 100 (current-month expired rows)", sum.DeletedRows)
+		t.Fatalf("deleted %d rows, want 100 (cutoff-month expired rows)", sum.DeletedRows)
 	}
 	var n int
 	if err := s.db.QueryRow(

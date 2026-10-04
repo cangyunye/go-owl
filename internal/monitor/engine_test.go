@@ -539,7 +539,8 @@ func TestAlertType_InScope(t *testing.T) {
 func TestEngine_CleanupOnce_RowDeletionDoesNotVacuum(t *testing.T) {
 	eng, s := newTestEngine(t, nil, sampleOutputs())
 
-	old := time.Now().UTC().AddDate(0, 0, -40).Unix()
+	// 造数取 cutoff 月内的时间戳，保证走 DELETE 行分支而非 DROP 分区
+	old := cutoffMonthMidSampleTS()
 	insertSamples(t, s, 20000, old)
 
 	require.NoError(t, eng.CleanupOnce())
