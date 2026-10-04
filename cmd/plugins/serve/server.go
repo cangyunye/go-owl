@@ -277,6 +277,11 @@ func (s *Server) Init() (*AdminCredentials, error) {
 }
 
 func (s *Server) setupRoutes() {
+	// 生产走 release 模式：关掉路由表 dump 与 debug 警告，gin debug 模式
+	// 只在 --dev 前端联调时有意义。
+	if !s.Config.DevMode {
+		gin.SetMode(gin.ReleaseMode)
+	}
 	s.Router = gin.New()
 	// 传输层减负：全局 gzip（跳过 WS/SSE 等流式端点）。
 	// 必须在这里注册：gin 的 Use 只作用于之后注册的路由。
@@ -456,6 +461,9 @@ func (s *Server) setupRoutes() {
 			admin.POST("/alerts/:id/bindings", s.monitorHandler.CreateAlertBinding)
 			admin.PUT("/alert-bindings/:id", s.monitorHandler.UpdateAlertBinding)
 			admin.DELETE("/alert-bindings/:id", s.monitorHandler.DeleteAlertBinding)
+
+			// pprof 性能观测（admin）：heap/profile/goroutine 等
+			registerPprofRoutes(admin)
 		}
 	}
 
