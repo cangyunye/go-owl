@@ -129,6 +129,26 @@ func TestWebExecutor_ListAlertTypes(t *testing.T) {
 	}
 }
 
+func TestWebExecutor_ListAlertTypes_SourceColumn(t *testing.T) {
+	e, ctx := webAlertExecutorSetup(t)
+	// 注入一条自定义告警类型，验证来源列区分内置/自定义
+	require.NoError(t, e.monitorStore.UpsertAlertType(owlmonitor.AlertType{
+		ID: "OWL-CUS-001", Category: "custom", Name: "自定义队列堆积",
+		DefaultSeverity: "warn", Enabled: true,
+	}))
+	res, err := e.ListAlertTypes(ctx)
+	require.NoError(t, err)
+	if !strings.Contains(res.Text, "来源") {
+		t.Errorf("alert types output should have source column:\n%s", res.Text)
+	}
+	if !strings.Contains(res.Text, "内置") {
+		t.Errorf("builtin types should be marked 内置:\n%s", res.Text)
+	}
+	if !strings.Contains(res.Text, "自定义") {
+		t.Errorf("custom type should be marked 自定义:\n%s", res.Text)
+	}
+}
+
 func TestWebExecutor_GetAlertRemedies(t *testing.T) {
 	e, ctx := webAlertExecutorSetup(t)
 	res, err := e.GetAlertRemedies(ctx, ai2.AlertRemedyParams{AlertTypeID: "OWL-DSK-001"})

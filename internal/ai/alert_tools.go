@@ -35,6 +35,7 @@ type AlertTypeRow struct {
 	DefaultSeverity string
 	Rule            string // 人类可读触发规则描述
 	Enabled         bool
+	Builtin         bool // 内置告警类型（false = 用户自定义，通常为 OWL-CUS- 前缀）
 }
 
 // RemedyRow 告警对策视图（SOP/脚本/剧本）。
@@ -182,15 +183,19 @@ func RenderAlertTypes(rows []AlertTypeRow) string {
 	}
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "共 %d 种告警类型：\n\n", len(rows))
-	sb.WriteString("| 告警码 | 类别 | 名称 | 默认级别 | 触发规则 | 启用 |\n")
-	sb.WriteString("|---|---|---|---|---|---|\n")
+	sb.WriteString("| 告警码 | 类别 | 名称 | 默认级别 | 触发规则 | 来源 | 启用 |\n")
+	sb.WriteString("|---|---|---|---|---|---|---|\n")
 	for _, r := range rows {
 		enabled := "是"
 		if !r.Enabled {
 			enabled = "否"
 		}
-		fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s |\n",
-			r.ID, r.Category, r.Name, r.DefaultSeverity, r.Rule, enabled)
+		source := "自定义"
+		if r.Builtin {
+			source = "内置"
+		}
+		fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s | %s |\n",
+			r.ID, r.Category, r.Name, r.DefaultSeverity, r.Rule, source, enabled)
 	}
 	return sb.String()
 }
@@ -242,9 +247,11 @@ func NewAlertListTool(executor Executor) *AlertListTool {
 	return &AlertListTool{executor: executor}
 }
 
-func (t *AlertListTool) Name() string        { return "alert_list" }
-func (t *AlertListTool) Description() string { return "List monitor alerts. Use this to answer questions like 'which nodes have alerts' or 'which nodes have OWL-XXX-NNN alerts'. Supports filtering by alert code, node, group, severity and status." }
-func (t *AlertListTool) Parameters() string  { return alertListParamsSchema }
+func (t *AlertListTool) Name() string { return "alert_list" }
+func (t *AlertListTool) Description() string {
+	return "List monitor alerts. Use this to answer questions like 'which nodes have alerts' or 'which nodes have OWL-XXX-NNN alerts'. Supports filtering by alert code, node, group, severity and status."
+}
+func (t *AlertListTool) Parameters() string { return alertListParamsSchema }
 
 const alertListParamsSchema = `{
 	"type": "object",
@@ -302,8 +309,14 @@ func NewAlertTypesTool(executor Executor) *AlertTypesTool {
 	return &AlertTypesTool{executor: executor}
 }
 
-func (t *AlertTypesTool) Name() string        { return "alert_types" }
-func (t *AlertTypesTool) Description() string { return "List all alert type codes (OWL-XXX-NNN) with their trigger rules. Use it to explain what an alert code means or to find the exact code for a category like disk/mem/cpu." }
+func (t *AlertTypesTool) Name() string { return "alert_types" }
+func (t *AlertTypesTool) Description() string {
+	return "List all alert type codes (OWL-XXX-NNN) with name, trigger rule and source (builtin or custom). " +
+		"Use it to explain what an alert code means, to find the exact code for a category like disk/mem/cpu, " +
+		"or when the user asks what alert IDs/types exist or how to query alert events. " +
+		"After listing, advise: built-in alert IDs are documented in the official monitoring & alerting docs; " +
+		"custom alert IDs (OWL-CUS-*) are managed in the web UI (告警中心 → 监控配置 → 告警类型)."
+}
 func (t *AlertTypesTool) Parameters() string {
 	return `{"type": "object", "properties": {}}`
 }

@@ -125,6 +125,23 @@ func TestRenderAlertTypes(t *testing.T) {
 	}
 }
 
+func TestRenderAlertTypesSourceColumn(t *testing.T) {
+	rows := []AlertTypeRow{
+		{ID: "OWL-DSK-001", Category: "disk", Name: "磁盘使用率过高", DefaultSeverity: "warn", Enabled: true, Builtin: true},
+		{ID: "OWL-CUS-1758247200", Category: "custom", Name: "自定义队列堆积", DefaultSeverity: "warn", Enabled: true},
+	}
+	out := RenderAlertTypes(rows)
+	if !strings.Contains(out, "来源") {
+		t.Errorf("RenderAlertTypes should have a source column:\n%s", out)
+	}
+	if !strings.Contains(out, "内置") {
+		t.Errorf("builtin alert type should be marked 内置:\n%s", out)
+	}
+	if !strings.Contains(out, "自定义") {
+		t.Errorf("custom alert type should be marked 自定义:\n%s", out)
+	}
+}
+
 func TestRenderRemedies(t *testing.T) {
 	typeRow := &alertTypeFixture[0]
 	remedies := []RemedyRow{
@@ -272,5 +289,15 @@ func TestAlertToolsNilExecutor(t *testing.T) {
 	tool := NewAlertListTool(nil)
 	if _, err := tool.Execute(context.Background(), map[string]interface{}{}); err == nil {
 		t.Error("expected error when executor is nil")
+	}
+}
+
+func TestAlertTypesToolDescriptionGuidesQuery(t *testing.T) {
+	desc := NewAlertTypesTool(nil).Description()
+	// 「如何查询告警事件/有哪些告警 ID」类提问应命中本工具（合并路由只看工具描述）
+	for _, want := range []string{"how to query alert", "OWL-CUS"} {
+		if !strings.Contains(desc, want) {
+			t.Errorf("alert_types description should mention %q, got %q", want, desc)
+		}
 	}
 }

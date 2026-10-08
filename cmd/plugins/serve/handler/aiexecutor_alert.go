@@ -189,6 +189,6 @@ func (e *WebExecutor) alertTypeRow(at owlmonitor.AlertType) ai2.AlertTypeRow {
 	return ai2.AlertTypeRow{
 		ID: at.ID, Category: at.Category, Name: at.Name,
 		Description: at.Description, DefaultSeverity: string(at.DefaultSeverity),
-		Rule: at.RuleDescription(), Enabled: at.Enabled,
+		Rule: at.RuleDescription(), Enabled: at.Enabled, Builtin: at.Builtin,
 	}
 }

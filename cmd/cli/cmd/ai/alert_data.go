@@ -198,6 +198,6 @@ func alertTypeRow(at owlmonitor.AlertType) ai.AlertTypeRow {
 	return ai.AlertTypeRow{
 		ID: at.ID, Category: at.Category, Name: at.Name,
 		Description: at.Description, DefaultSeverity: string(at.DefaultSeverity),
-		Rule: at.RuleDescription(), Enabled: at.Enabled,
+		Rule: at.RuleDescription(), Enabled: at.Enabled, Builtin: at.Builtin,
 	}
 }

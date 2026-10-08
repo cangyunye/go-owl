@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	aiPrompts "github.com/cangyunye/go-owl/internal/ai/prompts"
 	"github.com/cangyunye/go-owl/internal/common/model"
 )
 
@@ -116,5 +117,22 @@ func TestAlertLocalRouteWithoutLLM(t *testing.T) {
 	}
 	if !strings.Contains(resp2, "OWL-DSK-001") {
 		t.Errorf("expected remedy output via local route, got %q", resp2)
+	}
+}
+
+// TestAlertPromptQueryGuidance 「如何查询告警事件」引导：场景提示词必须携带
+// 内置/自定义告警 ID 的查阅指引（内置→官方文档、自定义→网页端监控配置），
+// 路由 few-shot 必须覆盖该问法（两段式文本路由依赖它落进 alert_list 场景）。
+func TestAlertPromptQueryGuidance(t *testing.T) {
+	prompt := aiPrompts.AlertListSystemPrompt
+	for _, want := range []string{"如何查询告警", "内置", "文档", "OWL-CUS", "监控配置"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("AlertListSystemPrompt should mention %q", want)
+		}
+	}
+	for _, shot := range []string{`"如何查询告警事件" → alert_list`, `"有哪些告警类型" → alert_list`} {
+		if !strings.Contains(aiPrompts.RouterPrompt, shot) {
+			t.Errorf("RouterPrompt missing few-shot %s", shot)
+		}
 	}
 }
