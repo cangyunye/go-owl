@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/cangyunye/go-owl/cmd/plugins/serve/model"
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
 	owlmonitor "github.com/cangyunye/go-owl/internal/monitor"
 )
@@ -17,8 +18,23 @@ func (e *WebExecutor) SetMonitorStore(st *owlmonitor.Store) {
 	e.monitorStore = st
 }
 
+// requireAlertRead AI 告警只读工具的角色门槛，与告警页面 REST RBAC 一致
+// （GET /api/v1/alerts 为 viewer 及以上）：四种合法角色放行，
+// 空角色/未知角色一律拦截，作为身份注入缺失或未来角色变更时的兜底。
+func (e *WebExecutor) requireAlertRead(ctx context.Context) error {
+	switch IdentityFromContext(ctx).Role {
+	case string(model.RoleViewer), string(model.RoleEditor), string(model.RoleOperator), string(model.RoleAdmin):
+		return nil
+	default:
+		return fmt.Errorf("权限不足: 当前角色无告警查看权限")
+	}
+}
+
 // ListAlerts 告警查询（只读，viewer 即可用；节点范围授权照常生效）。
 func (e *WebExecutor) ListAlerts(ctx context.Context, p ai2.AlertListParams) (*ai2.AlertListResult, error) {
+	if err := e.requireAlertRead(ctx); err != nil {
+		return nil, err
+	}
 	if e.monitorStore == nil {
 		return nil, fmt.Errorf("告警数据不可用：监控服务未启用")
 	}
@@ -70,6 +86,9 @@ func (e *WebExecutor) ListAlerts(ctx context.Context, p ai2.AlertListParams) (*a
 
 // ListAlertTypes 列出全部告警码及触发规则。
 func (e *WebExecutor) ListAlertTypes(ctx context.Context) (*ai2.AlertTypesResult, error) {
+	if err := e.requireAlertRead(ctx); err != nil {
+		return nil, err
+	}
 	if e.monitorStore == nil {
 		return nil, fmt.Errorf("告警数据不可用：监控服务未启用")
 	}
@@ -86,6 +105,9 @@ func (e *WebExecutor) ListAlertTypes(ctx context.Context) (*ai2.AlertTypesResult
 
 // GetAlertRemedies 查询告警码的对策（SOP/脚本/剧本 + 回滚），只读不执行。
 func (e *WebExecutor) GetAlertRemedies(ctx context.Context, p ai2.AlertRemedyParams) (*ai2.AlertRemedyResult, error) {
+	if err := e.requireAlertRead(ctx); err != nil {
+		return nil, err
+	}
 	if e.monitorStore == nil {
 		return nil, fmt.Errorf("告警数据不可用：监控服务未启用")
 	}

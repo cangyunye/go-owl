@@ -169,3 +169,35 @@ func TestWebExecutor_ListAlerts_NoMonitorStore(t *testing.T) {
 	_, err = e.ListAlerts(ctx, ai2.AlertListParams{})
 	require.Error(t, err)
 }
+
+// AI 告警工具的角色校验与告警页面 REST RBAC 一致：
+// viewer/editor/operator/admin 放行；空角色/未知角色触发权限拦截。
+func TestWebExecutor_AlertToolsRoleCheck(t *testing.T) {
+	t.Run("合法角色放行", func(t *testing.T) {
+		for _, role := range []string{"viewer", "editor", "operator", "admin"} {
+			e, _ := webAlertExecutorSetup(t)
+			ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: role})
+			_, err := e.ListAlerts(ctx, ai2.AlertListParams{})
+			require.NoError(t, err, "role %s should be allowed to list alerts", role)
+			_, err = e.ListAlertTypes(ctx)
+			require.NoError(t, err, "role %s should be allowed to list alert types", role)
+			_, err = e.GetAlertRemedies(ctx, ai2.AlertRemedyParams{AlertTypeID: "OWL-DSK-001"})
+			require.NoError(t, err, "role %s should be allowed to get remedies", role)
+		}
+	})
+	t.Run("空角色与未知角色拦截", func(t *testing.T) {
+		for _, role := range []string{"", "hacker"} {
+			e, _ := webAlertExecutorSetup(t)
+			ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: role})
+			_, err := e.ListAlerts(ctx, ai2.AlertListParams{})
+			require.Error(t, err, "role %q should be intercepted", role)
+			require.Contains(t, err.Error(), "权限不足")
+			_, err = e.ListAlertTypes(ctx)
+			require.Error(t, err, "role %q should be intercepted", role)
+			require.Contains(t, err.Error(), "权限不足")
+			_, err = e.GetAlertRemedies(ctx, ai2.AlertRemedyParams{AlertTypeID: "OWL-DSK-001"})
+			require.Error(t, err, "role %q should be intercepted", role)
+			require.Contains(t, err.Error(), "权限不足")
+		}
+	})
+}
