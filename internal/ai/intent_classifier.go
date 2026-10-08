@@ -71,9 +71,19 @@ func NewIntentClassifier() *IntentClassifier {
 			IntentAlertRemedy: {
 				"修复", "修好", "处理", "解决", "处置", "方案",
 				"remedy", "fix",
-			},
-		},
+			}},
 	}
+}
+
+// hasAlertActionWord 判断告警话题里是否含修复/处理类动作词。
+// 「未处理/没处理/尚未处理/待处理」中的"处理"是状态修饰（未解决的告警），
+// 不是修复动作，先剔除再匹配；「处理告警」「处理掉」等仍判为修复意图。
+func hasAlertActionWord(s string) bool {
+	cleaned := s
+	for _, neg := range []string{"未处理", "没处理", "没有处理", "尚未处理", "还未处理", "待处理", "未被执行"} {
+		cleaned = strings.ReplaceAll(cleaned, neg, "")
+	}
+	return containsAnyOf(cleaned, []string{"修复", "修好", "处理", "解决", "处置", "方案", "remedy", "fix"})
 }
 
 func (c *IntentClassifier) Classify(input string) *IntentResult {
@@ -108,7 +118,7 @@ func (c *IntentClassifier) Classify(input string) *IntentResult {
 	alertMentioned := containsAnyOf(lowerInput, []string{"告警", "报警", "警告", "alert", "owl"})
 	if alertMentioned {
 		scores[IntentAlertList] += 5
-		if containsAnyOf(lowerInput, []string{"修复", "修好", "处理", "解决", "处置", "方案", "remedy", "fix"}) {
+		if hasAlertActionWord(lowerInput) {
 			scores[IntentAlertRemedy] += 10
 		}
 	}
@@ -161,7 +171,8 @@ func containsAnyOf(input string, keywords []string) bool {
 	return false
 }
 
-func (c *IntentClassifier) isPathOrFileTransfer(input string) bool {	lowerInput := strings.ToLower(input)
+func (c *IntentClassifier) isPathOrFileTransfer(input string) bool {
+	lowerInput := strings.ToLower(input)
 	if strings.HasPrefix(input, "/") ||
 		strings.Contains(input, "./") ||
 		strings.Contains(lowerInput, ".tar") ||

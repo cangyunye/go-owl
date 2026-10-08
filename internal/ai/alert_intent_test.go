@@ -25,6 +25,12 @@ func TestIntentClassifierAlert(t *testing.T) {
 		{"提供 OWL-DSK-001 告警的修复方案", IntentAlertRemedy},
 		{"帮我修复OWL_SVC_001告警的机器", IntentAlertRemedy},
 		{"告警的机器帮我处理下", IntentAlertRemedy},
+		// 回归：「未处理/待处理」是状态修饰（未解决的告警），不是修复动作；
+		// 曾因关键词「处理」误判为修复意图，构造 alert_remedy 调用缺告警码而报错
+		{"列出当前所有未处理的告警事件", IntentAlertList},
+		{"列出待处理的告警", IntentAlertList},
+		{"查看未处理的告警", IntentAlertList},
+		{"处理告警", IntentAlertRemedy},
 		// 回归：不抢既有意图
 		{"列出所有节点", IntentQueryNodes},
 		{"重启 nginx 服务", IntentGeneratePlaybook},
