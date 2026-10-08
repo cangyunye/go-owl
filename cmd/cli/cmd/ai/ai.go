@@ -206,40 +206,22 @@ func progressLog(sessionID string, debug bool, step string, detail string) {
 	internalhistory.RecordAiChatGlobal(chat)
 }
 
-// streamAwareProgress 返回带流式输出的进度回调与收尾函数：
-// delta 事件直接以打字机方式写 stdout（带 AI> 前缀），其余步骤走 progressLog。
-// Send 完成后调用 finish(finalReply)：若流式已输出相同全文则仅补换行并返回 true
-// （调用方跳过重复打印）；流式内容与最终回复不一致（如文本协议中间过程）时
-// 补换行并返回 false。
-func streamAwareProgress(sessionID string, debug bool) (func(step, detail string), func(finalReply string) bool) {
-	var sb strings.Builder
-	var prefixPrinted bool
-
-	onProgress := func(step string, detail string) {
+// streamAwareProgress 返回会话进度回调：delta 增量不再逐字上屏
+// （终端 markdown 渲染只作用于完整终稿，打字机与渲染互斥），
+// route/generate/execute 等步骤照常走 progressLog。
+func streamAwareProgress(sessionID string, debug bool) func(step, detail string) {
+	return func(step, detail string) {
 		if step == "delta" {
-			if !prefixPrinted {
-				fmt.Print("\033[36mAI>\033[0m ")
-				prefixPrinted = true
-			}
-			fmt.Print(detail)
-			sb.WriteString(detail)
 			return
 		}
 		progressLog(sessionID, debug, step, detail)
 	}
+}
 
-	finish := func(finalReply string) bool {
-		if sb.Len() == 0 {
-			return false
-		}
-		if sb.String() != finalReply {
-			fmt.Println()
-			return false
-		}
-		fmt.Println()
-		return true
-	}
-	return onProgress, finish
+// printReply 渲染并输出 AI 终稿：TTY 下走终端 markdown 渲染，
+// 非 TTY（管道/tee）原样输出；统一收口为一个结尾换行。
+func printReply(s string) {
+	fmt.Println(strings.TrimRight(aiOut(renderReply(s, aiStdoutTTY)), "\n"))
 }
 
 func debugLog(debug bool, format string, args ...interface{}) {
@@ -320,7 +302,7 @@ func runAI(cmd *cobra.Command, args []string) {
 			CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		})
 
-		onProgress, finishStream := streamAwareProgress(sessionID, aiVerbose)
+		onProgress := streamAwareProgress(sessionID, aiVerbose)
 
 		// 单次（非交互）模式：写操作无法交互确认，直接拒绝并提示。
 		agent.SetConfirmGate(ai.RejectWriteOpsGate())
@@ -339,9 +321,7 @@ func runAI(cmd *cobra.Command, args []string) {
 			CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		})
 
-		if !finishStream(response) {
-			fmt.Println(response)
-		}
+		printReply(response)
 		return
 	}
 
@@ -378,7 +358,7 @@ func runAI(cmd *cobra.Command, args []string) {
 	} else {
 		fmt.Println(i18n.T("ai.chat.restored", sessionID))
 	}
-	replProgress, replFinishStream := streamAwareProgress(sessionID, aiVerbose)
+	replProgress := streamAwareProgress(sessionID, aiVerbose)
 	currentSession.OnProgress = replProgress
 	currentSession.SetDefaultConfirmGate()
 
@@ -388,7 +368,7 @@ func runAI(cmd *cobra.Command, args []string) {
 	quitRequested := false
 	resetSession := func() {
 		currentSession = session.CreateSession(sessionID, agent)
-		replProgress, replFinishStream = streamAwareProgress(sessionID, aiVerbose)
+		replProgress = streamAwareProgress(sessionID, aiVerbose)
 		currentSession.OnProgress = replProgress
 		currentSession.SetDefaultConfirmGate()
 		fmt.Println(i18n.T("ai.chat.new_session"))
@@ -429,8 +409,8 @@ func runAI(cmd *cobra.Command, args []string) {
 		response, err := currentSession.Send(ctx, input)
 		if err != nil {
 			fmt.Printf("%s", aiOut(i18n.T("ai.chat.error", err)))
-		} else if !replFinishStream(response) {
-			fmt.Printf("%s %s\n", aiOut("\033[36mAI>\033[0m"), response)
+		} else {
+			printReply(response)
 		}
 
 		msgCount := currentSession.MessageCount()
