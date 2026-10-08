@@ -538,7 +538,10 @@ func (m *mockNodeMgrForAI) GetByGroup(group string) []*model.Node {
 }
 
 func newTestAgentForRoute(responses []string) *Agent {
-	config := &Config{}
+	// 这批测试验证路由/总结/会话上下文契约,依赖工具结果走 LLM 总结循环,
+	// 关闭查询直出（直出行为由 inject_test.go 专项覆盖）。
+	direct := false
+	config := &Config{AI: AIConfig{QueryDirectReturn: &direct}}
 	mgr := &mockNodeMgrForAI{
 		nodes: []*model.Node{
 			{Name: "node1", Address: "127.0.0.1", Port: 22, Status: "online"},

@@ -27,6 +27,16 @@ type AIConfig struct {
 	// SummarizeAfterTool 工具执行后是否继续循环由 LLM 总结（默认 true；
 	// false 保留旧行为：首轮工具结果直接返回，省一次 LLM 调用）
 	SummarizeAfterTool *bool `yaml:"summarize_after_tool"`
+	// QueryDirectReturn 查询类只读工具首轮直出（默认 true）：结果直接返回用户，
+	// 不发起第二次 LLM 调用；超单页上限的结果进入分页分析（需 context_size）
+	QueryDirectReturn *bool `yaml:"query_direct_return"`
+	// ContextSize 工具结果注入 LLM 的单页大小（字节）。0 = 不限制（默认，
+	// 全量注入）；>0 时超过该值的结果按行切页逐页注入，供小上下文模型
+	// 完整分析大数据集
+	ContextSize int `yaml:"context_size"`
+	// MaxResultPages 分页注入的最大页数（0 = 默认 12）。单个结果的页数超过
+	// 该值时退回首尾截断并在回复中显式告知
+	MaxResultPages int `yaml:"max_result_pages"`
 }
 
 type PromptsConfig struct {

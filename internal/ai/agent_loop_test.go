@@ -46,6 +46,13 @@ func (m *mockToolCallingModel) GenerateTools(ctx context.Context, messages []Mes
 	return r, nil
 }
 
+// testDirectOff 返回 query_direct_return=false,供验证总结/分页/降级循环
+// 契约的测试使用（查询直出行为由 inject_test.go 专项覆盖）。
+func testDirectOff() *bool {
+	b := false
+	return &b
+}
+
 func newNativeTestAgent(config *Config, chatModel ChatModel) *Agent {
 	mgr := &mockNodeMgrForAI{
 		nodes: []*model.Node{
@@ -75,7 +82,9 @@ func TestAgentNativeToolCalling_MultiTurn(t *testing.T) {
 			textResponse("查询完成：共 1 个节点 node1，状态 online。"),
 		},
 	}
-	agent := newNativeTestAgent(&Config{}, m)
+	// 验证「工具→总结」循环契约,关闭查询直出（直出由 inject_test.go 覆盖）
+	direct := false
+	agent := newNativeTestAgent(&Config{AI: AIConfig{QueryDirectReturn: &direct}}, m)
 
 	reply, err := agent.Process(context.Background(), "列出所有节点", nil)
 	if err != nil {
@@ -105,7 +114,7 @@ func TestAgentNativeToolCalling_MultiTurn(t *testing.T) {
 func TestAgentTextProtocol_MultiTurnSummary(t *testing.T) {
 	toolCallJSON := "```json\n" + `{"tool_calls":[{"name":"query_nodes","arguments":{}}]}` + "\n```"
 	m := &mockChatModel{responses: []string{"node_list", toolCallJSON, "文本协议总结：节点正常。"}}
-	agent := newNativeTestAgent(&Config{}, m)
+	agent := newNativeTestAgent(&Config{AI: AIConfig{QueryDirectReturn: testDirectOff()}}, m)
 
 	reply, err := agent.Process(context.Background(), "列出所有节点", nil)
 	if err != nil {
@@ -146,7 +155,7 @@ func TestAgentNativeUnsupported_DowngradesToText(t *testing.T) {
 		routeResponses: []string{"node_list", toolCallJSON, "降级总结：完成。"},
 		toolErr:        ErrToolsUnsupported,
 	}
-	agent := newNativeTestAgent(&Config{}, m)
+	agent := newNativeTestAgent(&Config{AI: AIConfig{QueryDirectReturn: testDirectOff()}}, m)
 
 	reply, err := agent.Process(context.Background(), "列出所有节点", nil)
 	if err != nil {
@@ -169,6 +178,7 @@ func TestAgentMaxTurnsConfigured(t *testing.T) {
 	}
 	cfg := &Config{}
 	cfg.AI.MaxTurns = 2
+	cfg.AI.QueryDirectReturn = testDirectOff()
 	agent := newNativeTestAgent(cfg, m)
 
 	reply, err := agent.Process(context.Background(), "列出所有节点", nil)
@@ -191,6 +201,7 @@ func TestAgentNativeToolsOff(t *testing.T) {
 	}
 	cfg := &Config{}
 	cfg.AI.NativeTools = "off"
+	cfg.AI.QueryDirectReturn = testDirectOff()
 	agent := newNativeTestAgent(cfg, m)
 
 	reply, err := agent.Process(context.Background(), "列出所有节点", nil)
@@ -211,7 +222,7 @@ func TestAgentNativeToolsUnsupportedErrorSurfaces(t *testing.T) {
 		routeResponses: []string{"node_list"},
 		toolErr:        errors.New("connection refused"),
 	}
-	agent := newNativeTestAgent(&Config{}, m)
+	agent := newNativeTestAgent(&Config{AI: AIConfig{QueryDirectReturn: testDirectOff()}}, m)
 
 	_, err := agent.Process(context.Background(), "列出所有节点", nil)
 	if err == nil {
@@ -255,7 +266,7 @@ func TestAgentNativeStreamDeltaForwarding(t *testing.T) {
 		},
 	}
 	recorder := &deltaRecorder{inner: inner}
-	agent := newNativeTestAgent(&Config{}, recorder)
+	agent := newNativeTestAgent(&Config{AI: AIConfig{QueryDirectReturn: testDirectOff()}}, recorder)
 
 	var deltas []string
 	reply, err := agent.Process(context.Background(), "列出所有节点", func(step, detail string) {
@@ -299,7 +310,7 @@ func (s *streamableTextMock) GenerateStream(ctx context.Context, messages []Mess
 func TestAgentTextProtocolStreamDeltaForwarding(t *testing.T) {
 	toolCallJSON := "```json\n" + `{"tool_calls":[{"name":"query_nodes","arguments":{}}]}` + "\n```"
 	m := &mockChatModel{responses: []string{"node_list", toolCallJSON, "文本总结"}}
-	agent := newNativeTestAgent(&Config{}, &streamableTextMock{inner: m})
+	agent := newNativeTestAgent(&Config{AI: AIConfig{QueryDirectReturn: testDirectOff()}}, &streamableTextMock{inner: m})
 
 	var deltas []string
 	reply, err := agent.Process(context.Background(), "列出所有节点", func(step, detail string) {
@@ -325,7 +336,7 @@ func TestAgentRouteUncertainFallsBackToConversation(t *testing.T) {
 		"uncertain",
 		"你好！我是 owl 智能运维助手，可以帮你查询节点、执行命令、管理剧本等。",
 	}}
-	agent := newNativeTestAgent(&Config{}, m)
+	agent := newNativeTestAgent(&Config{AI: AIConfig{QueryDirectReturn: testDirectOff()}}, m)
 
 	reply, err := agent.Process(context.Background(), "你是谁", nil)
 	if err != nil {
@@ -343,7 +354,7 @@ func TestAgentRouteInvalidLabelFallsBack(t *testing.T) {
 		"这也不是有效标签",
 		"当前共有 107 个节点。",
 	}}
-	agent := newNativeTestAgent(&Config{}, m)
+	agent := newNativeTestAgent(&Config{AI: AIConfig{QueryDirectReturn: testDirectOff()}}, m)
 
 	reply, err := agent.Process(context.Background(), "随便说点什么", nil)
 	if err != nil {
@@ -362,7 +373,10 @@ func TestAgentRouteFallbackCanStillCallTools(t *testing.T) {
 		toolCallJSON,
 		"查询完成。",
 	}}
-	agent := newNativeTestAgent(&Config{}, m)
+	// 本测试验证降级模式下「路由→工具→总结」完整链路,关闭查询直出
+	// （直出会短路总结轮,该行为由 inject_test.go 专项覆盖）。
+	direct := false
+	agent := newNativeTestAgent(&Config{AI: AIConfig{QueryDirectReturn: &direct}}, m)
 
 	reply, err := agent.Process(context.Background(), "列出所有节点", nil)
 	if err != nil {

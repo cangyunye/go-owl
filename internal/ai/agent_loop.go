@@ -14,10 +14,6 @@ const defaultMaxTurns = 10
 // forceToolInstruction 原生模式下首轮模型只回文本不调工具时追加一次，强制其发起工具调用。
 const forceToolInstruction = "你必须通过工具调用完成用户请求：发起对工具的调用。不要只输出普通文本回答。"
 
-// toolResultMaxBytes 工具结果回注 LLM 的单条字节预算：超长结果按
-// 头 75% / 尾 25% 保留中间省略，避免逐轮全量重发撑爆上下文。
-const toolResultMaxBytes = 8 * 1024
-
 // truncateMiddle 按字节预算截断 s，保留头尾（错误信息多在尾部），rune 安全。
 func truncateMiddle(s string, max int) string {
 	if max <= 0 || len(s) <= max {
@@ -42,6 +38,162 @@ func truncateMiddle(s string, max int) string {
 func isRuneStart(b byte) bool { return b&0xC0 != 0x80 }
 
 func itoa(n int) string { return fmt.Sprintf("%d", n) }
+
+// pagingFallbackNotice 兜底截断时附加到回复的显式告知（模型不可改写）。
+const pagingFallbackNotice = "\n\n> ℹ️ 工具原始输出超出上下文预算,以上总结仅基于首尾片段;需要完整数据请缩小过滤条件。"
+
+// defaultMaxResultPages 单个结果分页注入的默认页数上限。
+const defaultMaxResultPages = 12
+
+// directReturnTools 查询类只读工具:executor 已产出成品表格/文本,
+// 首轮执行完直接把结果返回用户,不再发起总结用 LLM 调用。
+// 注意与 confirmRequiredTools（写操作集合）不相交;alert_* 是链式工作流
+// 工具（列表→方案→确认→执行）,直出会掐断流程,必须留在总结循环里。
+var directReturnTools = map[string]struct{}{
+	"query_nodes": {}, "query_database": {}, "node_status": {},
+	"node_ping": {}, "node_check": {},
+	"list_playbooks":         {},
+	"playbook_template_list": {}, "playbook_template_info": {}, "playbook_template_export": {},
+	"playbook_state_list": {}, "playbook_state_show": {},
+	"validate_playbook": {},
+	"history_list":      {}, "async_list": {}, "async_status": {},
+	"settings_show": {},
+}
+
+// compactForContext 把表格类文本的连续空白压缩为单空格:列对齐填充只服务
+// 人眼,进 LLM 上下文纯属体积浪费（实测 170B/行 → 69B/行）。
+func compactForContext(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = strings.Join(strings.Fields(l), " ")
+	}
+	return strings.Join(lines, "\n")
+}
+
+// splitResultPages 按行切页（行边界不截断），单行超页宽时硬切；
+// 各页重组必须无损还原原文。
+func splitResultPages(s string, pageSize int) []string {
+	if pageSize <= 0 {
+		return []string{s}
+	}
+	var pages []string
+	var cur strings.Builder
+	curLen := 0
+	flush := func() {
+		if cur.Len() > 0 {
+			pages = append(pages, cur.String())
+			cur.Reset()
+			curLen = 0
+		}
+	}
+	for _, line := range strings.Split(s, "\n") {
+		lineLen := len(line) + 1
+		if lineLen > pageSize {
+			// 单行超页宽:硬切
+			flush()
+			for len(line) > 0 {
+				n := pageSize
+				if n > len(line) {
+					n = len(line)
+				}
+				pages = append(pages, line[:n])
+				line = line[n:]
+			}
+			continue
+		}
+		if curLen+lineLen > pageSize {
+			flush()
+		}
+		cur.WriteString(line)
+		cur.WriteByte('\n')
+		curLen += lineLen
+	}
+	flush()
+	if len(pages) == 0 {
+		pages = []string{s}
+	}
+	return pages
+}
+
+// trimTrailingSpaces 裁掉每行行尾空白:等宽表格的列填充只到最后一列有值处。
+func trimTrailingSpaces(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimRight(l, " \t")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (a *Agent) queryDirectReturnEnabled() bool {
+	if a.config != nil && a.config.AI.QueryDirectReturn != nil {
+		return *a.config.AI.QueryDirectReturn
+	}
+	return true
+}
+
+// contextSize 工具结果单页大小（字节），0 = 不限制（默认全量注入）。
+func (a *Agent) contextSize() int {
+	if a.config != nil && a.config.AI.ContextSize > 0 {
+		return a.config.AI.ContextSize
+	}
+	return 0
+}
+
+func (a *Agent) maxResultPages() int {
+	if a.config != nil && a.config.AI.MaxResultPages > 0 {
+		return a.config.AI.MaxResultPages
+	}
+	return defaultMaxResultPages
+}
+
+// buildResultInjection 构造工具结果回注 LLM 的消息：
+//   - 默认（未设 context_size）：全量注入，零截断；
+//   - context_size>0 且结果超限：紧凑编码后按行切页，首页随本轮注入，
+//     其余页排入待发队列逐轮发送（分页分析，数据不丢）；
+//   - 页数超 max_result_pages：兜底退回首尾截断（truncated 置位，
+//     终稿追加显式告知）。
+func (a *Agent) buildResultInjection(call ToolCall, result string, native bool, pending *[]Message, truncated *bool) []Message {
+	wrap := func(content string) Message {
+		if native {
+			return Message{Role: "tool", ToolCallID: call.ID, Content: content}
+		}
+		return Message{Role: "user", Content: fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", content)}
+	}
+
+	pageSize := a.contextSize()
+	if pageSize <= 0 || len(result) <= pageSize {
+		return []Message{wrap(result)}
+	}
+
+	pages := splitResultPages(compactForContext(result), pageSize)
+	if len(pages) > a.maxResultPages() {
+		*truncated = true
+		return []Message{wrap(truncateMiddle(result, pageSize))}
+	}
+
+	n := len(pages)
+	first := pages[0] + fmt.Sprintf("\n[结果过大,已切分为 %d 页:当前第 1/%d 页;后续页随后发送,请逐页记录要点,收到全部页后再综合分析]", n, n)
+	var out []Message
+	out = append(out, wrap(first))
+	for i := 1; i < n; i++ {
+		out = append(out, Message{Role: "user", Content: fmt.Sprintf("[工具结果 第 %d/%d 页]\n%s", i+1, n, pages[i])})
+	}
+	// 除首页外排入待发队列，每轮模型确认后注入一页
+	*pending = append(*pending, out[1:]...)
+	return out[:1]
+}
+
+func allCallsDirect(calls []ToolCall) bool {
+	if len(calls) == 0 {
+		return false
+	}
+	for _, c := range calls {
+		if _, ok := directReturnTools[c.Name]; !ok {
+			return false
+		}
+	}
+	return true
+}
 
 // toolCallGuidance 模型未能产出工具调用时的统一指引：
 // 绝不做本地字符串猜测后执行真实命令（曾发生静默落到第一个节点）。
@@ -161,8 +313,14 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 	summarize := a.summarizeAfterTool()
 	var lastToolResult string
 	forcedRetry := false
+	// 分页注入状态：pendingPages 为待逐轮发送的后续页；pageTurns 独立于
+	// maxTurns 计数（分页轮不挤占工具轮预算）；truncatedOversize 标记
+	// 兜底截断发生，终稿需追加显式告知。
+	var pendingPages []Message
+	pageTurns := 0
+	truncatedOversize := false
 
-	for turn := 0; turn < maxTurns; turn++ {
+	for turn := 0; turn < maxTurns+pageTurns; turn++ {
 		var content string
 		var toolCalls []ToolCall
 
@@ -202,9 +360,26 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 				return toolLoopResult{messages: msgs, reply: content}, nil // 直接回答：无工具
 			}
 			if turn > 0 {
+				// 分页推进优先于终稿判定：还有未发送的页，模型的页间确认
+				// 不作为终稿，注入下一页继续。
+				if len(pendingPages) > 0 {
+					if strings.TrimSpace(content) != "" {
+						msgs = append(msgs, Message{Role: "assistant", Content: content})
+					}
+					msgs = append(msgs, pendingPages[0])
+					pendingPages = pendingPages[1:]
+					pageTurns++
+					if len(pendingPages) == 0 {
+						msgs = append(msgs, Message{Role: "user", Content: "[全部页已发送完毕] 请基于以上全部页的内容给出综合分析结论。"})
+					}
+					continue
+				}
 				reply := strings.TrimSpace(content)
 				if reply == "" && lastToolResult != "" {
 					reply = lastToolResult
+				}
+				if truncatedOversize {
+					reply += pagingFallbackNotice
 				}
 				if p.onProgress != nil {
 					p.onProgress("result", "完成")
@@ -242,6 +417,7 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 
 		var lastToolName string
 		var toolResultStr string
+		var results []string
 		for _, call := range toolCalls {
 			if p.onProgress != nil {
 				p.onProgress("execute", call.Name)
@@ -256,16 +432,23 @@ func (a *Agent) runToolLoop(ctx context.Context, chatModel ChatModel, p toolLoop
 			if err != nil {
 				result = fmt.Sprintf("Tool execution failed: %v", err)
 			}
+			results = append(results, result)
 			toolResultStr = result
 			lastToolResult = result
 			lastToolName = call.Name
-			// 回注给 LLM 的结果做预算截断；完整结果仍随 toolResultStr 返回
-			reinjected := truncateMiddle(result, toolResultMaxBytes)
-			if native {
-				msgs = append(msgs, Message{Role: "tool", ToolCallID: call.ID, Content: reinjected})
-			} else {
-				msgs = append(msgs, Message{Role: "user", Content: fmt.Sprintf("\n\n[TOOL_CALL_RESULT]\n%s\n[/TOOL_CALL_RESULT]", reinjected)})
+			// 回注：默认全量注入（零截断）；context_size 显式设置且超限时分页，
+			// 页数超上限才兜底截断。
+			msgs = append(msgs, a.buildResultInjection(call, result, native, &pendingPages, &truncatedOversize)...)
+		}
+
+		// 查询类只读工具首轮直出：结果直接返回用户，省一次总结用 LLM 调用；
+		// 结果超单页进入分页分析时（pendingPages 非空）不直出。
+		if turn == 0 && len(pendingPages) == 0 && a.queryDirectReturnEnabled() && allCallsDirect(toolCalls) {
+			debugPrint(a.debug, "查询类工具首轮直出（%d 个结果，未发起总结调用）", len(results))
+			if p.onProgress != nil {
+				p.onProgress("result", "完成")
 			}
+			return toolLoopResult{messages: msgs, reply: strings.Join(results, "\n\n"), usedTools: true}, nil
 		}
 
 		if turn > 0 && p.useToolHints && lastToolName != "" {

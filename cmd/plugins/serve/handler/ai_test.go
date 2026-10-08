@@ -1028,8 +1028,10 @@ func TestStreamChat_SSE(t *testing.T) {
 	db, h := aiTestSetup(t)
 	defer db.Close()
 
-	// 注入流式 mock：单轮直接回复
-	agent, err := ai2.NewAgent(h.executor, &ai2.Config{}, seededNodeManager(db), nil, nil, false)
+	// 注入流式 mock：单轮直接回复。该测试验证 SSE 帧契约（工具→总结循环），
+	// 关闭查询直出保持原契约（直出行为由 internal/ai/inject_test.go 覆盖）
+	direct := false
+	agent, err := ai2.NewAgent(h.executor, &ai2.Config{AI: ai2.AIConfig{QueryDirectReturn: &direct}}, seededNodeManager(db), nil, nil, false)
 	require.NoError(t, err)
 	toolCallJSON := "```json\n{\"tool_calls\":[{\"name\":\"query_nodes\",\"arguments\":{}}]}\n```"
 	agent.SetChatModel(&streamTextMock{responses: []string{"node_list", toolCallJSON, "你好，我是 owl AI。"}})

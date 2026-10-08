@@ -26,8 +26,9 @@ func TestProcessMergedRouting_SingleCall(t *testing.T) {
 	if m.toolIdx < 1 {
 		t.Fatalf("expected tool generation to happen, tool calls=%d", m.toolIdx)
 	}
-	if !strings.Contains(resp, "1 个节点") && !strings.Contains(resp, "query_nodes") {
-		t.Fatalf("unexpected reply: %q", resp)
+	// 查询类工具首轮直出：单次 LLM 调用后原始结果直接返回用户
+	if !strings.Contains(resp, "Total: 1 nodes") {
+		t.Fatalf("expected raw query result (direct return), got %q", resp)
 	}
 }
 

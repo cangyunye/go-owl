@@ -675,7 +675,7 @@ func runOwlCommand(ctx context.Context, args []string) (string, error) {
 		return "", fmt.Errorf("执行命令失败: %s", errorMsg)
 	}
 
-	output := stdout.String()
+	output := trimTrailingSpaces(stdout.String())
 	debugLogger.Debugw("命令执行成功", "output_len", len(output))
 	return output, nil
 }
@@ -976,7 +976,7 @@ func (t *QueryNodesTool) formatAsTable(nodes []*model.Node) string {
 			padRight(truncateStr(lastCheck, 20), 20)))
 	}
 	sb.WriteString(fmt.Sprintf("\nTotal: %d nodes, %d online", len(nodes), t.countOnline(nodes)))
-	return sb.String()
+	return trimTrailingSpaces(sb.String())
 }
 
 func formatLabels(labels map[string]string) string {
@@ -2094,7 +2094,7 @@ func (t *QueryDatabaseTool) formatAsTable(nodes []*model.Node) string {
 		}
 	}
 	sb.WriteString(fmt.Sprintf("\nTotal: %d nodes, %d online", len(nodes), count))
-	return sb.String()
+	return trimTrailingSpaces(sb.String())
 }
 
 func (t *QueryDatabaseTool) filterBySQL(nodes []*model.Node, query string) []*model.Node {
