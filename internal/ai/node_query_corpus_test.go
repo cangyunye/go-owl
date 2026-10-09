@@ -1,6 +1,11 @@
 package ai
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	aiPrompts "github.com/cangyunye/go-owl/internal/ai/prompts"
+)
 
 // 节点查询语料回归测试：用户报告的失效问法（列出下线/离线节点、查询xx的机器/主机）
 // 曾从未进过版本库（见 bbf5afc 删除硬编码 group 推断后无正规提取、分类器无「机器」
@@ -81,5 +86,27 @@ func TestParamExtractorNodeStatusCorpus(t *testing.T) {
 		if got, _ := params["status"].(string); got != tc.wantStatus {
 			t.Errorf("ExtractParams(%q) status = %q, want %q", tc.in, got, tc.wantStatus)
 		}
+	}
+}
+
+// TestNodeQueryCorpusPromptGuidance LLM 路径语料：合并路由下 LLM 只看工具目录与
+// 场景提示词，「机器/服务器」同义词与「下线→offline」映射必须写进引导材料。
+func TestNodeQueryCorpusPromptGuidance(t *testing.T) {
+	prompt := aiPrompts.NodeListSystemPrompt
+	for _, want := range []string{"机器", "服务器", `"查询web的机器"`, `"列出所有下线节点"`} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("NodeListSystemPrompt should mention %q", want)
+		}
+	}
+	for _, shot := range []string{`"查询web的机器" → node_list`, `"列出所有下线节点" → query_nodes`} {
+		if !strings.Contains(aiPrompts.RouterPrompt, shot) {
+			t.Errorf("RouterPrompt missing few-shot %s", shot)
+		}
+	}
+	if d := NewQueryNodesTool(nil, nil, nil).Description(); !strings.Contains(d, "下线") || !strings.Contains(d, "机器") {
+		t.Errorf("query_nodes description should carry node/status synonyms, got %q", d)
+	}
+	if d := NewQueryDatabaseTool(nil, nil).Description(); !strings.Contains(d, "下线") {
+		t.Errorf("query_database description should carry status synonyms, got %q", d)
 	}
 }

@@ -60,7 +60,9 @@ node_sample - 不支持 AI 操作
 直接输出标签，不要其他内容。
 "查询节点" → node_list
 "查看web节点" → node_list
+"查询web的机器" → node_list
 "列出所有节点" → node_list
+"列出所有下线节点" → query_nodes
 "检查所有节点状态" → node_check
 "检查huyuhui组机器状态" → node_check
 "检查node-01的SSH连接" → node_check
@@ -558,7 +560,7 @@ const NodeListSystemPrompt = `# owl-AI - 列出节点/主机
 
 ## 功能范围
 
-列出所有已注册的节点（也称为主机、服务器）。支持查询节点的各种属性，包括按标签、分组、状态等过滤。
+列出所有已注册的节点（也称为主机、服务器、机器）。支持查询节点的各种属性，包括按标签、分组、状态等过滤。
 
 ## 输出契约（严格遵守）
 
@@ -582,7 +584,7 @@ const NodeListSystemPrompt = `# owl-AI - 列出节点/主机
 |------|------|------|------|
 | group | string | 否 | 按分组过滤，如 "web"、"db" |
 | labels | object | 否 | 按标签过滤，如 {"env":"prod"} |
-| status | string | 否 | 按状态过滤: "online"、"offline"、"unknown" |
+| status | string | 否 | 按状态过滤: "online"、"offline"、"unknown"（在线=online；离线/下线/掉线/不在线=offline；未知=unknown，必须传英文值） |
 | search | string | 否 | 按节点名称模糊搜索（大小写不敏感），如 "mac" 匹配 "mac-mini-m4" |
 | format | string | 否 | 输出格式: "table"(默认)、"json"、"summary" |
 
@@ -681,6 +683,20 @@ const NodeListSystemPrompt = `# owl-AI - 列出节点/主机
 输出：
 ` + "```json" + `
 {"tool_calls":[{"name":"query_nodes","arguments":{"status":"unknown"}}]}
+` + "```" + `
+
+示例13:
+用户: "查询web的机器"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"group":"web"}}]}
+` + "```" + `
+
+示例14:
+用户: "列出所有下线节点"
+输出：
+` + "```json" + `
+{"tool_calls":[{"name":"query_nodes","arguments":{"status":"offline"}}]}
 ` + "```" + `
 
 ## 关键规则（必须遵守）
@@ -868,7 +884,7 @@ const NodeStatusSystemPrompt = `# owl-AI - 查看节点状态
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| status | string | 否 | 按状态过滤: "online"、"offline"、"unknown" |
+| status | string | 否 | 按状态过滤: "online"、"offline"、"unknown"（在线=online；离线/下线/掉线/不在线=offline；未知=unknown，必须传英文值） |
 | group | string | 否 | 按分组过滤 |
 | labels | object | 否 | 按标签过滤 |
 | search | string | 否 | 按节点名称模糊搜索（大小写不敏感），如 "mac" 匹配 "mac-mini-m4" |

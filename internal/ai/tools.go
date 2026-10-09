@@ -703,7 +703,8 @@ func (t *QueryNodesTool) Name() string {
 }
 
 func (t *QueryNodesTool) Description() string {
-	return "Query node information, support filtering by group, label, and status."
+	return "Query node information (节点/主机/服务器/机器 all mean node). Supports filtering by group, label, and status. " +
+		"Status synonyms: 在线=online, 离线/下线/掉线/不在线=offline, 未知=unknown — always pass the English value."
 }
 
 func (t *QueryNodesTool) Parameters() string {
@@ -1802,7 +1803,8 @@ func (t *QueryDatabaseTool) Name() string {
 }
 
 func (t *QueryDatabaseTool) Description() string {
-	return "Query the owl database directly. Supports SQL SELECT queries and structured filters (group/labels/status/search)."
+	return "Query the owl database directly. Supports SQL SELECT queries and structured filters (group/labels/status/search). " +
+		"Status synonyms: 在线=online, 离线/下线/掉线/不在线=offline — always pass the English value."
 }
 
 func (t *QueryDatabaseTool) Parameters() string {
