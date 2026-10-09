@@ -355,6 +355,25 @@ a:hover { color: var(--accent-hover, var(--primary-hover)); }
   border-radius: 10px;
 }
 
+/* ---- 系统设置左栏目录：纯导航项（点击滚动到对应分区） ---- */
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-nav-item .dot {
+  background: var(--muted);
+  transition: background var(--transition);
+}
+.settings-nav-item.active .dot { background: var(--accent); }
+.settings-nav-item.active .group-text { color: var(--accent); }
+/* 滚动定位时给卡片留出顶部余量 */
+#settings-ai-card,
+#settings-kv-card,
+#settings-blacklist-card,
+#settings-monitor-card,
+#settings-db-card { scroll-margin-top: 12px; }
+
 /* ---- Main Area ---- */
 .main-area {
   flex: 1;

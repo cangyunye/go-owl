@@ -813,17 +813,79 @@ function switchView(viewId, pushState) {
   updatePanelContent(viewId);
 }
 
-let settingsSections = readSettingsSections();
+// 系统配置页左栏目录：顺序须与 pages/settings.js 里卡片的 DOM 顺序一致
+const SETTINGS_NAV = [
+  { target: 'settings-ai-card', label: 'AI 供应商' },
+  { target: 'settings-kv-card', label: 'KV 配置' },
+  { target: 'settings-blacklist-card', label: '危险命令黑名单' },
+  { target: 'settings-monitor-card', label: '监控告警' },
+  { target: 'settings-db-card', label: '数据库统计' }
+];
 
-function readSettingsSections() {
-  try {
-    const s = JSON.parse(localStorage.getItem('owl-settings-sections') || '{}');
-    return { ai: s.ai !== false, kv: s.kv !== false, monitor: s.monitor !== false, db: s.db !== false };
-  } catch { return { ai: true, kv: true, monitor: true, db: true }; }
-}
+// 目录点击滚动 + 滚动联动高亮；每次重挂面板前先解绑旧监听，避免跨页累积
+let settingsNavCleanup = null;
 
-function dispatchSettingsSections() {
-  document.dispatchEvent(new CustomEvent('owl:settings-sections', { detail: { ...settingsSections } }));
+function bindSettingsNav(list) {
+  if (settingsNavCleanup) { try { settingsNavCleanup(); } catch {} settingsNavCleanup = null; }
+  const container = activeViewEl() || document.querySelector('.view-container');
+  const items = Array.from(list.querySelectorAll('.settings-nav-item'));
+  if (!items.length) return;
+  const setActive = (target) => {
+    items.forEach(it => it.classList.toggle('active', it.dataset.target === target));
+  };
+
+  // 点击后平滑滚动期间锁定高亮：末尾分区（监控/数据库）下方内容不足，
+  // 滚到底部时 scroll spy 会误判成最后一项，锁能保证高亮停在被点的那一项。
+  let clickLock = null;
+  let clickLockTimer = 0;
+
+  items.forEach(it => {
+    it.addEventListener('click', () => {
+      const el = container && container.querySelector(`#${it.dataset.target}`);
+      if (!el) return;
+      clickLock = it.dataset.target;
+      clearTimeout(clickLockTimer);
+      clickLockTimer = setTimeout(() => { clickLock = null; }, 1000);
+      setActive(clickLock);
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  if (!container) return;
+  const cards = items
+    .map(it => ({ it, el: container.querySelector(`#${it.dataset.target}`) }))
+    .filter(x => x.el);
+  if (!cards.length) return;
+
+  let raf = 0;
+  const onScroll = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      if (clickLock) { setActive(clickLock); return; }
+      // 末尾分区可能因下方内容不足而无法顶到视口顶部，触底时直接高亮最后一项
+      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 2) {
+        setActive(cards[cards.length - 1].it.dataset.target);
+        return;
+      }
+      const base = container.getBoundingClientRect().top;
+      let current = cards[0].it.dataset.target;
+      for (const c of cards) {
+        // 阈值要盖过卡片的 scroll-margin-top（12px），否则点到哪张，spy 反而回退到上一张
+        if (c.el.getBoundingClientRect().top - base <= 24) current = c.it.dataset.target;
+        else break;
+      }
+      setActive(current);
+    });
+  };
+  container.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  settingsNavCleanup = () => {
+    container.removeEventListener('scroll', onScroll);
+    if (raf) cancelAnimationFrame(raf);
+    clearTimeout(clickLockTimer);
+    clickLock = null;
+  };
 }
 
 function updatePanelContent(viewId) {
@@ -836,43 +898,12 @@ function updatePanelContent(viewId) {
     return;
   }
   if (viewId === 'settings') {
-    list.innerHTML = `
-      <li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">显示内容</li>
-      <li class="panel-item">
-        <label>
-          <input type="checkbox" class="group-check settings-sec-check" data-sec="ai" ${settingsSections.ai ? 'checked' : ''}>
-          <span class="dot" style="background:${settingsSections.ai ? 'var(--accent)' : 'var(--muted)'}"></span>
-          <span class="group-text">AI 供应商</span>
-        </label>
-      </li>
-      <li class="panel-item">
-        <label>
-          <input type="checkbox" class="group-check settings-sec-check" data-sec="kv" ${settingsSections.kv ? 'checked' : ''}>
-          <span class="dot" style="background:${settingsSections.kv ? 'var(--accent)' : 'var(--muted)'}"></span>
-          <span class="group-text">KV 配置</span>
-        </label>
-      </li>
-      <li class="panel-item">
-        <label>
-          <input type="checkbox" class="group-check settings-sec-check" data-sec="monitor" ${settingsSections.monitor ? 'checked' : ''}>
-          <span class="dot" style="background:${settingsSections.monitor ? 'var(--accent)' : 'var(--muted)'}"></span>
-          <span class="group-text">监控告警</span>
-        </label>
-      </li>
-      <li class="panel-item">
-        <label>
-          <input type="checkbox" class="group-check settings-sec-check" data-sec="db" ${settingsSections.db ? 'checked' : ''}>
-          <span class="dot" style="background:${settingsSections.db ? 'var(--accent)' : 'var(--muted)'}"></span>
-          <span class="group-text">数据库统计</span>
-        </label>
-      </li>`;
-    document.querySelectorAll('.settings-sec-check').forEach(cb => {
-      cb.addEventListener('change', () => {
-        settingsSections[cb.dataset.sec] = cb.checked;
-        localStorage.setItem('owl-settings-sections', JSON.stringify(settingsSections));
-        dispatchSettingsSections();
-      });
-    });
+    list.innerHTML = SETTINGS_NAV.map(({ target, label }) => `
+      <li class="panel-item settings-nav-item" data-target="${target}" title="${label}">
+        <span class="dot"></span>
+        <span class="group-text">${label}</span>
+      </li>`).join('');
+    bindSettingsNav(list);
     return;
   }
   list.innerHTML = '<li class="panel-item" style="cursor:default;color:var(--muted);font-size:12px">加载中…</li>';

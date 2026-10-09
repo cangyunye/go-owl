@@ -46,7 +46,7 @@ Web 控制台需要内建标签页，让多层子菜单可以同时处理。当�
 4. **每页各建 WS**：`api.connectWebSocket`（`api.js:540-574`）每次调用独立取票据、独立 3s 重连；
    后端 `WSHub`（`handler/ws.go:21-52`）**无连接上限**，每个客户端 512 条缓冲，广播发给所有人。
    N 个标签 ≈ N 条 WS + N 份重连定时器 + N 份消息 fanout。
-5. **页面状态与标签不匹配**：`owl-pb-view`/`owl-pb-lib`/`owl-settings-sections` 是 localStorage 全局偏好；
+5. **页面状态与标签不匹配**：`owl-pb-view`/`owl-pb-lib` 是 localStorage 全局偏好；
    `exec_selected_nodes`/`files_selected_nodes` 是 sessionStorage **按页**存，两个 exec 标签会互相覆盖勾选。
 
 ### 1.3 关键决策：标签内容如何隔离与保活

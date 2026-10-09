@@ -414,6 +414,10 @@ export function renderSettings(render, navigate, user, api, scope) {
 
   // ---- Render ----
   render(`
+    <div id="settings-ai-card">
+    ${buildAiConfigHtml()}
+    </div>
+
     <div id="settings-kv-card">
     <div class="card">
       <table>
@@ -566,10 +570,6 @@ export function renderSettings(render, navigate, user, api, scope) {
           <button class="btn btn-primary" id="add-setting-submit">Add</button>
         </div>
       </div>
-    </div>
-
-    <div id="settings-ai-card">
-    ${buildAiConfigHtml()}
     </div>
   `, () => {
     // ================================================================
@@ -975,28 +975,6 @@ export function renderSettings(render, navigate, user, api, scope) {
       } catch (e) { document.getElementById('add-setting-error').textContent = e.message; }
     });
 
-    // ---- Section visibility controlled by left-panel toggles ----
-    function readSections() {
-      try {
-        const s = JSON.parse(localStorage.getItem('owl-settings-sections') || '{}');
-        return { ai: s.ai !== false, kv: s.kv !== false, monitor: s.monitor !== false, db: s.db !== false };
-      } catch { return { ai: true, kv: true, monitor: true, db: true }; }
-    }
-
-    function applySections() {
-      const st = readSections();
-      const kv = document.getElementById('settings-kv-card');
-      const ai = document.getElementById('settings-ai-card');
-      const mon = document.getElementById('settings-monitor-card');
-      const db = document.getElementById('settings-db-card');
-      if (kv) kv.style.display = st.kv ? '' : 'none';
-      if (ai) ai.style.display = st.ai ? '' : 'none';
-      if (mon) mon.style.display = st.monitor ? '' : 'none';
-      if (db) db.style.display = st.db ? '' : 'none';
-    }
-
-    const onSectionsChange = () => applySections();
-    scope.resources.on(document, 'owl:settings-sections', onSectionsChange);
-    applySections();
+    // ---- 分区显隐已移除：所有分区按左栏目录顺序常驻显示 ----
   });
 }
