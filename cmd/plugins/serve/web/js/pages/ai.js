@@ -76,16 +76,25 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
   }
 
 
-  let initialSessionId = null;  // 页面加载时的默认服务端会话（新建对话时回退用）
+  let sessionKeyLoading = null;  // 进行中的会话键加载（新建对话后、发送前等待）
   async function loadSessionKey() {
     try {
       const data = await api.getSessionKey();
       sessionId = data.session_id;
-      if (!initialSessionId) initialSessionId = data.session_id;
       publicKeySpki = data.public_key_spki;
     } catch (e) {
       console.error('Failed to load session key', e);
     }
+  }
+
+  // 确保会话键就绪：sessionId 与 publicKeySpki 成对绑定（加密 API key 用当前
+  // 会话的 RSA 公钥），任一缺失都要先向服务端取新会话，发送时才不会解密失败。
+  function ensureSessionKey() {
+    if (sessionId && publicKeySpki) return Promise.resolve();
+    if (!sessionKeyLoading) {
+      sessionKeyLoading = loadSessionKey().finally(() => { sessionKeyLoading = null; });
+    }
+    return sessionKeyLoading;
   }
 
   function esc(s) { return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -195,6 +204,7 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     try {
       const currentUser = user;
       const keyData = await window.AIStorage.loadApiKey(currentUser.id || currentUser.username);
+      await ensureSessionKey();
 
       let payload = { message: text, provider: '', model: '', base_url: '', api_type: 'openai' };
 
@@ -434,7 +444,11 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
   function newConversation() {
     currentConvId = null;
     chatMessages = [];
-    sessionId = initialSessionId;  // 新对话回到默认服务端会话
+    // 旧会话可能已带上一轮历史（服务端 GetOrLoadSession 会恢复上下文），
+    // 新建对话必须换成全新服务端会话，而不是回到页面加载时的会话
+    sessionId = null;
+    publicKeySpki = null;
+    ensureSessionKey();
     const chatArea = document.getElementById('ai-chat-messages');
     if (chatArea) chatArea.style.display = 'none';
     const emptyState = document.getElementById('ai-empty-state');
