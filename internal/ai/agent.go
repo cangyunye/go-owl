@@ -1049,15 +1049,25 @@ func (a *Agent) defaultChatHandler(ctx context.Context, messages []Message) (str
 
 	nodes := a.nodeMgr.List()
 	nodeNames := make([]string, 0, len(nodes))
+	groupSet := make(map[string]bool)
 	for _, n := range nodes {
 		nodeNames = append(nodeNames, n.Name)
+		for _, g := range n.Groups {
+			if g != "" {
+				groupSet[g] = true
+			}
+		}
+	}
+	groupNames := make([]string, 0, len(groupSet))
+	for g := range groupSet {
+		groupNames = append(groupNames, g)
 	}
 
 	classifier := NewIntentClassifier()
 	intentResult := classifier.Classify(input)
 
 	formatter := NewResponseFormatter()
-	extractor := NewParamExtractor(nodeNames)
+	extractor := NewParamExtractor(nodeNames, groupNames)
 	validator := NewValidator()
 
 	if intentResult.Type == IntentUncertain || intentResult.Confidence < 20 {

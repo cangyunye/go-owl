@@ -26,7 +26,6 @@ import (
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/service"
 	"github.com/cangyunye/go-owl/cmd/plugins/serve/store"
 	ai2 "github.com/cangyunye/go-owl/internal/ai"
-	"github.com/cangyunye/go-owl/internal/control/node"
 	"github.com/cangyunye/go-owl/internal/history"
 	"github.com/cangyunye/go-owl/internal/logfile"
 	"github.com/gin-gonic/gin"
@@ -215,7 +214,7 @@ func (s *Server) Init() (*AdminCredentials, error) {
 
 	config := &ai2.Config{}
 	agent, err := ai2.NewAgent(webExecutor, config,
-		node.NewManager(node.NewInMemoryNodeStore()),
+		handler.NewDBNodeManager(db),
 		nil, nil, s.Config.AIDebugMode)
 	if err == nil {
 		agent.SetSafetyIdentity(func() string { return "web" })

@@ -7,7 +7,7 @@ import (
 )
 
 func TestParamExtractor_OwnerFilter(t *testing.T) {
-	extractor := ai.NewParamExtractor([]string{})
+	extractor := ai.NewParamExtractor([]string{}, nil)
 
 	tests := []struct {
 		name     string
@@ -72,7 +72,7 @@ func TestParamExtractor_OwnerFilter(t *testing.T) {
 }
 
 func TestExtractPersonName(t *testing.T) {
-	extractor := ai.NewParamExtractor([]string{})
+	extractor := ai.NewParamExtractor([]string{}, nil)
 
 	tests := []struct {
 		name     string
@@ -114,7 +114,7 @@ func TestExtractPersonName(t *testing.T) {
 }
 
 func TestParamExtractor_UserFilter(t *testing.T) {
-	extractor := ai.NewParamExtractor([]string{})
+	extractor := ai.NewParamExtractor([]string{}, nil)
 
 	tests := []struct {
 		name     string
@@ -153,7 +153,7 @@ func TestParamExtractor_UserFilter(t *testing.T) {
 }
 
 func TestParamExtractor_StatusFilter(t *testing.T) {
-	extractor := ai.NewParamExtractor([]string{})
+	extractor := ai.NewParamExtractor([]string{}, nil)
 
 	tests := []struct {
 		name     string

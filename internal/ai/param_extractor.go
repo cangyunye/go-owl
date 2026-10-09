@@ -38,12 +38,14 @@ var labelKeyMap = map[string]string{
 }
 
 type ParamExtractor struct {
-	nodeNames []string
+	nodeNames  []string
+	groupNames []string
 }
 
-func NewParamExtractor(nodeNames []string) *ParamExtractor {
+func NewParamExtractor(nodeNames []string, groupNames []string) *ParamExtractor {
 	return &ParamExtractor{
-		nodeNames: nodeNames,
+		nodeNames:  nodeNames,
+		groupNames: groupNames,
 	}
 }
 
@@ -174,13 +176,34 @@ func (e *ParamExtractor) findFilePath(input string) string {
 func (e *ParamExtractor) extractQueryNodesParams(input string, params map[string]interface{}) {
 	lowerInput := strings.ToLower(input)
 
-	if strings.Contains(lowerInput, "online") || strings.Contains(input, "在线") {
-		params["status"] = "online"
+	// 分组：命中宿主注入的已知分组名才提取，避免把任意词当分组。
+	// 输入命中具体节点名时视为单节点查询，不再提分组（防止 web-01 误提 web）。
+	groupHit := false
+	for _, n := range e.nodeNames {
+		if n != "" && strings.Contains(input, n) {
+			groupHit = true
+			break
+		}
 	}
-	if strings.Contains(lowerInput, "offline") || strings.Contains(input, "离线") {
+	if !groupHit {
+		for _, g := range e.groupNames {
+			if g != "" && strings.Contains(input, g) {
+				params["group"] = g
+				break
+			}
+		}
+	}
+
+	// 状态过滤：offline 分支必须在 online 之前——「不在线」「下线」「掉线」
+	// 是离线语义，若先匹配「在线」会把「不在线」误判为 online。
+	switch {
+	case strings.Contains(lowerInput, "offline") || strings.Contains(input, "离线") ||
+		strings.Contains(input, "下线") || strings.Contains(input, "掉线") ||
+		strings.Contains(input, "不在线"):
 		params["status"] = "offline"
-	}
-	if strings.Contains(input, "未知") {
+	case strings.Contains(lowerInput, "online") || strings.Contains(input, "在线"):
+		params["status"] = "online"
+	case strings.Contains(lowerInput, "unknown") || strings.Contains(input, "未知"):
 		params["status"] = "unknown"
 	}
 	if strings.Contains(lowerInput, "json") {

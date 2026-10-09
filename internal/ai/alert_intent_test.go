@@ -45,7 +45,7 @@ func TestIntentClassifierAlert(t *testing.T) {
 }
 
 func TestParamExtractorAlert(t *testing.T) {
-	e := NewParamExtractor([]string{"web-01", "db-01"})
+	e := NewParamExtractor([]string{"web-01", "db-01"}, nil)
 
 	t.Run("提取告警码与节点", func(t *testing.T) {
 		params := e.ExtractParams(IntentAlertList, "列出所有发生OWL_DSK_001警告的节点 web-01")

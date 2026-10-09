@@ -34,6 +34,8 @@ func NewIntentClassifier() *IntentClassifier {
 			IntentQueryNodes: {
 				"查询", "查看", "列出", "list", "show", "query",
 				"节点", "node", "nodes", "主机", "server", "servers",
+				// 节点的中文口语同义词（用户报告「查询xx的机器」失效后补充）
+				"机器", "服务器", "machine", "machines",
 				"有多少", "多少个", "状态", "status",
 				"有什么", "有哪些", "哪些", "什么",
 			},

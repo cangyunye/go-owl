@@ -104,7 +104,7 @@ func TestIntentDownloadNotReverse(t *testing.T) {
 }
 
 func TestFileDownloadParamExtraction(t *testing.T) {
-	ext := NewParamExtractor([]string{"web-01", "db-01"})
+	ext := NewParamExtractor([]string{"web-01", "db-01"}, nil)
 	params := ext.ExtractParams(IntentFileDownload, "把 /var/log/nginx/access.log 从 web-01 下载到本地")
 	if params["remote_file"] != "/var/log/nginx/access.log" {
 		t.Errorf("expected remote_file, got %v", params["remote_file"])
