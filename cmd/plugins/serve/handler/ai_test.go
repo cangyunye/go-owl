@@ -296,6 +296,75 @@ func TestChat_DeepSeek_Integration(t *testing.T) {
 	assert.NotContains(t, resp.Reply, "ansible")
 }
 
+// TestChat_DeepSeek_NodeQueryCorpus 用真实 DeepSeek 验证节点查询语料
+// （DEEPSEEK_API_KEY 环境变量门控，未设置时自动跳过；key 不落盘）。
+// 种子节点：web-01/db-01 在线（web/db 组）、cache-01 离线（cache 组）。
+// 断言只用「含/不含节点名」强信号——query_nodes 命中查询直出时回复即原始表格。
+func TestChat_DeepSeek_NodeQueryCorpus(t *testing.T) {
+	apiKey := os.Getenv("DEEPSEEK_API_KEY")
+	if apiKey == "" {
+		t.Skip("Skipping: DEEPSEEK_API_KEY not set")
+	}
+	model := os.Getenv("DEEPSEEK_MODEL")
+	if model == "" {
+		model = "deepseek-v4-flash"
+	}
+
+	cases := []struct {
+		name    string
+		message string
+		want    []string
+		notWant []string
+	}{
+		{"下线节点", "列出所有下线节点", []string{"cache-01"}, []string{"web-01", "db-01"}},
+		{"离线节点", "列出所有离线节点", []string{"cache-01"}, []string{"web-01", "db-01"}},
+		{"web组机器", "查询web的机器", []string{"web-01"}, []string{"db-01", "cache-01"}},
+		{"web组主机", "查询web的主机", []string{"web-01"}, []string{"db-01", "cache-01"}},
+		{"全部节点", "列出所有节点", []string{"web-01", "db-01", "cache-01"}, nil},
+		{"在线节点", "列出所有在线节点", []string{"web-01", "db-01"}, []string{"cache-01"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, h := aiTestSetup(t)
+
+			session, err := h.keyManager.CreateSession()
+			require.NoError(t, err)
+			plaintextB64 := base64.StdEncoding.EncodeToString([]byte(apiKey))
+
+			router := gin.New()
+			router.POST("/api/v1/ai/chat", h.Chat)
+
+			w := httptest.NewRecorder()
+			body, _ := json.Marshal(map[string]string{
+				"message":           tc.message,
+				"session_id":        session.SessionID,
+				"encrypted_api_key": "__plain__:" + plaintextB64,
+				"provider":          "deepseek",
+				"model":             model,
+				"base_url":          "https://api.deepseek.com",
+				"api_type":          "openai",
+			})
+			req, _ := http.NewRequest("POST", "/api/v1/ai/chat", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, 200, w.Code)
+
+			var resp struct {
+				Reply string `json:"reply"`
+			}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			for _, want := range tc.want {
+				assert.Contains(t, resp.Reply, want, "message=%q reply:\n%s", tc.message, resp.Reply)
+			}
+			for _, notWant := range tc.notWant {
+				assert.NotContains(t, resp.Reply, notWant, "message=%q reply:\n%s", tc.message, resp.Reply)
+			}
+		})
+	}
+}
+
 func TestChat_WithEncryptedKey_Success(t *testing.T) {
 	_, h := aiTestSetup(t)
 
