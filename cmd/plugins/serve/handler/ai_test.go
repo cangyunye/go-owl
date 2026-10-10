@@ -605,11 +605,60 @@ func TestGetContext_NoHistoryReturnsEmpty(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, 200, w.Code)
-	var resp map[string][]interface{}
+	var resp struct {
+		Tasks        []interface{} `json:"tasks"`
+		Transfers    []interface{} `json:"transfers"`
+		PlaybookRuns []interface{} `json:"playbook_runs"`
+		HasMore      bool          `json:"has_more"`
+	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.NotNil(t, resp["tasks"])
-	assert.NotNil(t, resp["transfers"])
-	assert.NotNil(t, resp["playbook_runs"])
+	assert.NotNil(t, resp.Tasks)
+	assert.NotNil(t, resp.Transfers)
+	assert.NotNil(t, resp.PlaybookRuns)
+}
+
+// TestGetContext_OffsetPagination 验证「对话上下文」按 offset/limit 分页：
+// 第一页取满 limit 条且 has_more=true，第二页取剩余条数且 has_more=false。
+func TestGetContext_OffsetPagination(t *testing.T) {
+	db, h := aiTestSetup(t)
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(context.Background()))
+	h.executor.History = hs
+
+	for _, id := range []string{"op-1", "op-2", "op-3"} {
+		require.NoError(t, hs.RecordOperation(context.Background(), &store.Operation{
+			TaskID: id, OpType: "command", Command: "echo " + id, Targets: []string{"n1"},
+			Status: "completed", Username: "alice", Origin: "ai",
+		}))
+	}
+
+	router := gin.New()
+	router.GET("/api/v1/ai/context", func(c *gin.Context) {
+		c.Set("user_id", "alice")
+		h.GetContext(c)
+	})
+
+	type page struct {
+		Tasks   []map[string]interface{} `json:"tasks"`
+		HasMore bool                     `json:"has_more"`
+	}
+	call := func(q string) page {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/api/v1/ai/context?"+q, nil)
+		router.ServeHTTP(w, req)
+		require.Equal(t, 200, w.Code)
+		var p page
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &p))
+		return p
+	}
+
+	first := call("offset=0&limit=2")
+	assert.Len(t, first.Tasks, 2)
+	assert.True(t, first.HasMore, "第一页取满 limit 应还有更多")
+
+	second := call("offset=2&limit=2")
+	assert.Len(t, second.Tasks, 1)
+	assert.False(t, second.HasMore, "取到末页 has_more 应为 false")
 }
 
 func TestAIDebugMode_IncludesPromptTextInAudit(t *testing.T) {

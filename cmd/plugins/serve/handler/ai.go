@@ -324,11 +324,24 @@ func (h *AIHandler) GetContext(c *gin.Context) {
 	tasks := []aiContextItem{}
 	transfers := []aiContextItem{}
 	runs := []aiContextItem{}
+	hasMore := false
 
 	if h.executor != nil && h.executor.History != nil {
+		offset := 0
+		if v, err := strconv.Atoi(c.Query("offset")); err == nil && v > 0 {
+			offset = v
+		}
+		limit := 20
+		if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 {
+			limit = v
+		}
+		if limit > 100 {
+			limit = 100
+		}
+
 		userID := c.GetString("user_id")
-		records, _, err := h.executor.History.Query(c.Request.Context(), &store.QueryOptions{
-			Origin: "ai", User: userID, Limit: 20, SummaryOnly: true,
+		records, total, err := h.executor.History.Query(c.Request.Context(), &store.QueryOptions{
+			Origin: "ai", User: userID, Limit: limit, Offset: offset, SummaryOnly: true,
 		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query ai context failed"})
@@ -358,12 +371,14 @@ func (h *AIHandler) GetContext(c *gin.Context) {
 				runs = append(runs, item)
 			}
 		}
+		hasMore = offset+len(records) < total
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"tasks":         tasks,
 		"transfers":     transfers,
 		"playbook_runs": runs,
+		"has_more":      hasMore,
 	})
 }
 
