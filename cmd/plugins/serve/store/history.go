@@ -68,12 +68,14 @@ type Record struct {
 }
 
 type QueryOptions struct {
-	TaskID    string
-	NodeID    string
-	OpType    string
-	Status    string
-	Command   string
-	User      string
+	TaskID  string
+	NodeID  string
+	OpType  string
+	Status  string
+	Command string
+	User    string
+	// Origin 操作来源精确筛选（web/ai/cli/autoheal/binding）；空表示不过滤。
+	Origin    string
 	StartTime time.Time
 	EndTime   time.Time
 	Limit     int
@@ -308,6 +310,10 @@ func (s *HistoryStore) Query(ctx context.Context, opts *QueryOptions) ([]*Record
 	if opts.User != "" {
 		where += " AND username = ?"
 		args = append(args, opts.User)
+	}
+	if opts.Origin != "" {
+		where += " AND origin = ?"
+		args = append(args, opts.Origin)
 	}
 	if !opts.StartTime.IsZero() {
 		where += " AND created_at >= ?"

@@ -98,6 +98,45 @@ func TestHistoryStore_QueryUserFilter(t *testing.T) {
 	assert.Len(t, unassigned, 4)
 }
 
+// TestHistoryStore_QueryOriginFilter 验证按操作来源筛选：
+// Origin 精确匹配（ai/web/cli...），空 Origin 不过滤。
+func TestHistoryStore_QueryOriginFilter(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	s := NewHistoryStore(db)
+	require.NoError(t, s.Init(ctx))
+
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "ai-1", OpType: "command", Command: "uptime", Status: "completed", Username: "alice", Origin: "ai"}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "ai-2", OpType: "file_transfer", Command: "transfer", Status: "completed", Username: "alice", Origin: "ai"}))
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "web-1", OpType: "command", Command: "df -h", Status: "completed", Username: "alice", Origin: "web"}))
+	// 未显式设置 Origin：RecordOperation 默认写 web
+	require.NoError(t, s.RecordOperation(ctx, &Operation{TaskID: "def-1", OpType: "command", Command: "who", Status: "completed", Username: "alice"}))
+
+	ai, total, err := s.Query(ctx, &QueryOptions{Origin: "ai"})
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, ai, 2)
+	for _, r := range ai {
+		assert.Equal(t, "ai", r.Operation.Origin)
+	}
+
+	// Origin 与 User 可组合
+	aiAlice, total, err := s.Query(ctx, &QueryOptions{Origin: "ai", User: "alice"})
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, aiAlice, 2)
+
+	none, total, err := s.Query(ctx, &QueryOptions{Origin: "cli"})
+	require.NoError(t, err)
+	assert.Equal(t, 0, total)
+	assert.Len(t, none, 0)
+
+	all, total, err := s.Query(ctx, &QueryOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, 4, total, "empty origin filter should not filter anything")
+	assert.Len(t, all, 4)
+}
+
 func TestHistoryStore_NilSafe(t *testing.T) {
 	var s *HistoryStore
 	assert.NoError(t, s.Init(context.Background()))
