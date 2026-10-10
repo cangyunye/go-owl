@@ -104,7 +104,7 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     catch { return esc(text); }
   }
 
-  scope.panel.setContent('');
+  scope.panel.setContent('<div class="ai-ctx-empty">加载中…</div>');
 
   // ---- Message DOM ----
   const pendingMsgs = [];   // 失活期间产生的消息：切回时补渲染，避免回答“消失”
@@ -249,6 +249,8 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
         chatMessages.push({ role: 'assistant', content: done.reply });
         await saveCurrentConv();
       }
+      // 本轮可能执行了 AI 操作：刷新左侧「对话上下文」
+      await loadContext();
     } catch (e) {
       hideThinking();
       resetStreamState();
@@ -699,6 +701,80 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     return SUGGESTIONS.filter((s) => (s.tools || []).every(toolAllowed));
   }
 
+  // ---- 对话上下文（左侧壳层面板）----
+  // 数据源为当前用户近期由 AI 发起的操作（operations.origin='ai'），
+  // 按 op_type 分组展示；点击跳转到对应页面。
+  const CTX_STATUS = { completed: '成功', failed: '失败', running: '进行中', cancelled: '已取消', pending: '等待中', queued: '排队中' };
+
+  function ctxStatusClass(s) {
+    if (s === 'completed') return 'ok';
+    if (s === 'failed' || s === 'cancelled') return 'bad';
+    return 'run';
+  }
+
+  function ctxTimeAgo(t) {
+    if (!t) return '';
+    const s = Math.floor((Date.now() - new Date(t).getTime()) / 1000);
+    if (isNaN(s)) return '';
+    if (s < 60) return s + '秒前';
+    if (s < 3600) return Math.floor(s / 60) + '分钟前';
+    if (s < 86400) return Math.floor(s / 3600) + '小时前';
+    return Math.floor(s / 86400) + '天前';
+  }
+
+  function ctxGroup(title, items, kind) {
+    if (!items || !items.length) return '';
+    return '<div class="ai-ctx-group">' + title + '</div>' + items.map(it => {
+      const cmd = it.command || it.op_type || '';
+      const targets = (it.targets || []).join(', ');
+      const status = CTX_STATUS[it.status] || it.status || '';
+      return '<div class="ai-ctx-item" data-kind="' + kind + '" title="' + esc(cmd) + '">' +
+        '<div class="ai-ctx-item-top">' +
+        '<span class="ai-ctx-item-cmd">' + esc(cmd) + '</span>' +
+        '<span class="ai-ctx-status ' + ctxStatusClass(it.status) + '">' + esc(status) + '</span>' +
+        '</div>' +
+        '<div class="ai-ctx-item-meta">' + (targets ? esc(targets) + ' · ' : '') + esc(ctxTimeAgo(it.created_at)) + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderContext(data) {
+    const html =
+      ctxGroup('执行', data.tasks, 'task') +
+      ctxGroup('文件传输', data.transfers, 'transfer') +
+      ctxGroup('剧本运行', data.playbook_runs, 'playbook');
+    if (!html) {
+      return '<div class="ai-ctx-empty">暂无 AI 操作记录<br>执行命令、传输文件或运行剧本后会出现在这里</div>';
+    }
+    return html;
+  }
+
+  function bindContextClicks() {
+    const host = document.getElementById('panelList');
+    if (!host) return;
+    host.querySelectorAll('.ai-ctx-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const kind = el.dataset.kind;
+        if (kind === 'transfer') navigate('/files');
+        else if (kind === 'playbook') navigate('/playbooks');
+        else navigate('/history');
+      });
+    });
+  }
+
+  // 拉取并渲染对话上下文；失活（面板已摘）时跳过，切回由 onResume 补。
+  async function loadContext() {
+    if (scope.paused) return;
+    try {
+      const data = await api.getAiContext();
+      if (scope.paused) return;
+      scope.panel.setContent(renderContext(data || {}));
+      bindContextClicks();
+    } catch (e) {
+      if (!scope.paused) scope.panel.setContent('<div class="ai-ctx-empty">上下文加载失败</div>');
+    }
+  }
+
   // ---- Render ----
   await loadPermissions();
 
@@ -783,17 +859,18 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
       </div>
     </div>
   `, () => {
-    // Hide shell panel and toggle for AI full-width layout
+    // 「对话上下文」用壳层左侧面板承载：确保可见（含保活切回），并拉取当前用户的 AI 操作记录
     const sidePanel = document.getElementById('sidePanel');
     const panelToggle = document.getElementById('panelToggle');
     const viewContainer = document.querySelector('.view-container');
-    if (sidePanel) sidePanel.style.display = 'none';
-    if (panelToggle) panelToggle.style.display = 'none';
+    if (sidePanel) { sidePanel.style.display = ''; sidePanel.classList.remove('collapsed'); }
+    if (panelToggle) { panelToggle.style.display = ''; panelToggle.classList.remove('collapsed'); }
     if (viewContainer) viewContainer.style.padding = '0';
 
     // Init
     loadSessionKey();
     loadHistory();
+    loadContext();
 
     // Restore messages if we have a current conversation
     const emptyState = document.getElementById('ai-empty-state');
@@ -856,6 +933,7 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     scope.onResume(() => {
       pendingMsgs.splice(0).forEach(x => addMsg(x.cls, x.html));
       if (streamText) { ensureStreamBubble(); renderStreamBubble(); }
+      loadContext();
     });
 
     return () => slash.destroy();

@@ -893,8 +893,9 @@ function updatePanelContent(viewId) {
   if (!list) return;
   const P = PANEL_TITLES[viewId] || '导航';
   shell.setPanelTitle(P);
-  // alerts 页面板（分组过滤）由 renderAlerts 自治渲染，此处不得覆盖
-  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes' || viewId === 'exec' || viewId === 'playbooks' || viewId === 'files' || viewId === 'users' || viewId === 'alerts') {
+  // alerts 页面板（分组过滤）由 renderAlerts 自治渲染，此处不得覆盖；
+  // ai 页「对话上下文」由 renderAI 自治渲染（异步拉取后 setContent），同样不得覆盖。
+  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes' || viewId === 'exec' || viewId === 'playbooks' || viewId === 'files' || viewId === 'users' || viewId === 'alerts' || viewId === 'ai') {
     return;
   }
   if (viewId === 'settings') {
