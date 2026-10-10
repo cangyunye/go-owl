@@ -3395,11 +3395,8 @@ html[data-theme="light-sky"] .ai-json-preview pre {
 .ai-ctx-item {
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background 0.12s;
   margin-bottom: 2px;
 }
-.ai-ctx-item:hover { background: var(--surface-2); }
 .ai-ctx-item-top {
   display: flex;
   align-items: center;

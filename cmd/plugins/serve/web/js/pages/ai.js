@@ -722,13 +722,13 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     return Math.floor(s / 86400) + '天前';
   }
 
-  function ctxGroup(title, items, kind) {
+  function ctxGroup(title, items) {
     if (!items || !items.length) return '';
     return '<div class="ai-ctx-group">' + title + '</div>' + items.map(it => {
       const cmd = it.command || it.op_type || '';
       const targets = (it.targets || []).join(', ');
       const status = CTX_STATUS[it.status] || it.status || '';
-      return '<div class="ai-ctx-item" data-kind="' + kind + '" title="' + esc(cmd) + '">' +
+      return '<div class="ai-ctx-item" title="' + esc(cmd) + '">' +
         '<div class="ai-ctx-item-top">' +
         '<span class="ai-ctx-item-cmd">' + esc(cmd) + '</span>' +
         '<span class="ai-ctx-status ' + ctxStatusClass(it.status) + '">' + esc(status) + '</span>' +
@@ -740,26 +740,13 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
 
   function renderContext(data) {
     const html =
-      ctxGroup('执行', data.tasks, 'task') +
-      ctxGroup('文件传输', data.transfers, 'transfer') +
-      ctxGroup('剧本运行', data.playbook_runs, 'playbook');
+      ctxGroup('执行', data.tasks) +
+      ctxGroup('文件传输', data.transfers) +
+      ctxGroup('剧本运行', data.playbook_runs);
     if (!html) {
       return '<div class="ai-ctx-empty">暂无 AI 操作记录<br>执行命令、传输文件或运行剧本后会出现在这里</div>';
     }
     return html;
-  }
-
-  function bindContextClicks() {
-    const host = document.getElementById('ai-ctx-body');
-    if (!host) return;
-    host.querySelectorAll('.ai-ctx-item').forEach(el => {
-      el.addEventListener('click', () => {
-        const kind = el.dataset.kind;
-        if (kind === 'transfer') navigate('/files');
-        else if (kind === 'playbook') navigate('/playbooks');
-        else navigate('/history');
-      });
-    });
   }
 
   function setContextContent(html) {
@@ -767,14 +754,13 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     if (body) body.innerHTML = html;
   }
 
-  // 拉取并渲染对话上下文；失活（容器已摘）时跳过，切回由 onResume 补。
+  // 拉取并渲染对话上下文（纯展示，不跳转）；失活（容器已摘）时跳过，切回由 onResume 补。
   async function loadContext() {
     if (scope.paused) return;
     try {
       const data = await api.getAiContext();
       if (scope.paused) return;
       setContextContent(renderContext(data || {}));
-      bindContextClicks();
     } catch (e) {
       if (!scope.paused) setContextContent('<div class="ai-ctx-empty">上下文加载失败</div>');
     }
