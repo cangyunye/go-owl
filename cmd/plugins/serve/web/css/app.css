@@ -3340,7 +3340,7 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   cursor: pointer;
   font-size: var(--fs-md);
   line-height: 1;
-  display: none;
+  display: grid;
   place-items: center;
   flex-shrink: 0;
   transition: all 0.12s;
@@ -3351,13 +3351,39 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   color: #fff;
   opacity: 1;
 }
-.ai-conv-item:hover .ai-conv-item-delete { display: grid; }
+.ai-conv-item:hover .ai-conv-item-delete { opacity: 1; }
 .ai-conv-empty {
   text-align: center;
   padding: 32px 16px;
   color: var(--muted);
   font-size: var(--fs-sm);
   line-height: 1.6;
+}
+/* 会话搜索框 */
+.ai-conv-search {
+  padding: 8px 10px 2px;
+  flex-shrink: 0;
+}
+.ai-conv-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font: var(--fs-xs)/1.4 var(--font-body);
+  outline: none;
+}
+.ai-conv-search input:focus { border-color: var(--accent); }
+.ai-conv-search input::placeholder { color: var(--muted); opacity: 0.6; }
+/* 无限滚动哨兵 */
+.ai-conv-sentinel,
+.ai-ctx-sentinel {
+  text-align: center;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
 }
 
 /* ---- 对话上下文（AI 左栏，位于「会话」下方）---- */

@@ -30,3 +30,32 @@ func TestWebUIAINewConversation_FreshServerSession(t *testing.T) {
 	assert.Contains(t, body, "sessionId = null",
 		"newConversation must drop the stale session id before the new one arrives")
 }
+
+// 会话列表的搜索 / 无限滚动 / 常驻删除，以及对话上下文分页的静态断言：
+// 这些能力依赖 IndexedDB 全量取回 + IntersectionObserver 哨兵 + 后端 has_more，
+// 缺一即静默失效（列表卡在首屏、搜索无效、删按钮触屏不可见）。
+func TestWebUIAIConvSearchAndInfiniteScroll(t *testing.T) {
+	storage := readWebLF(t, "web/js/storage.js")
+	ai := readWebLF(t, "web/js/pages/ai.js")
+	api := readWebLF(t, "web/js/api.js")
+	css := readWebLF(t, "web/css/app.css")
+
+	assert.Contains(t, storage, "getAllConversations",
+		"storage.js must expose getAllConversations for client-side search/pagination")
+
+	assert.Contains(t, ai, "ai-conv-search", "ai.js must wire the conversation search box")
+	assert.Contains(t, ai, "ai-conv-sentinel", "ai.js must render an infinite-scroll sentinel for conversations")
+	assert.Contains(t, ai, "ai-ctx-sentinel", "ai.js must render an infinite-scroll sentinel for context")
+	assert.Contains(t, ai, "IntersectionObserver", "ai.js must use IntersectionObserver for lazy loading")
+	assert.Contains(t, ai, "convMatches", "ai.js must filter conversations by title + body")
+	assert.Contains(t, ai, "has_more", "ai.js must honor the backend has_more flag for context paging")
+
+	assert.Contains(t, api, "/ai/context?offset=", "api.getAiContext must pass offset/limit")
+
+	assert.Contains(t, css, ".ai-conv-search", "css must style the conversation search box")
+	assert.Contains(t, css, ".ai-conv-sentinel", "css must style the conversation sentinel")
+	// 删除按钮常驻（不再依赖 :hover，触屏可用）
+	deleteBlock := css[strings.Index(css, ".ai-conv-item-delete {"):]
+	deleteBlock = deleteBlock[:strings.Index(deleteBlock, "}")]
+	assert.Contains(t, deleteBlock, "display: grid", "delete button must be always visible, not hover-only")
+}

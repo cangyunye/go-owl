@@ -45,7 +45,7 @@ func TestAIJS_PassesUserIdToStorage(t *testing.T) {
 
 	assert.True(t, strings.Contains(src, "saveConversation(conv, userId)"),
 		"ai.js must persist conversations with the current user id")
-	assert.True(t, strings.Contains(src, "getConversations(userId, 50, 0)"),
+	assert.True(t, strings.Contains(src, "getAllConversations(userId)"),
 		"ai.js must load conversations filtered by the current user id")
 	assert.True(t, strings.Contains(src, "userId + '::'"),
 		"ai.js must namespace new conversation ids by user to avoid cross-user collisions")

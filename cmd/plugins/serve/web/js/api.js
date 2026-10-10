@@ -422,7 +422,7 @@ export const api = {
     if (!done) throw new Error('stream ended without done');
     return done;
   },
-  getAiContext: () => request('GET', '/ai/context'),
+  getAiContext: (offset = 0, limit = 20) => request('GET', `/ai/context?offset=${offset}&limit=${limit}`),
   listAISessions: (host = 'cli') => request('GET', `/ai/sessions?host=${encodeURIComponent(host)}`),
   importAISession: (sessionId, host = 'cli') => request('POST', '/ai/sessions/import', { session_id: sessionId, host }),
   listAIApprovals: (status = 'pending') => request('GET', `/ai/approvals?status=${encodeURIComponent(status)}`),

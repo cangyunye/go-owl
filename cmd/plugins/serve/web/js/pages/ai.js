@@ -7,6 +7,13 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
   let currentConvId = null;
   let isProcessing = false;
 
+  // 会话列表：全量内存态 + 搜索 + 无限滚动
+  const CONV_PAGE = 30;
+  let allConvs = [];       // 当前用户全部会话（倒序）
+  let convQuery = '';      // 搜索词（匹配标题 + 正文）
+  let convShown = 0;       // 当前已渲染条数
+  let convObserver = null;
+
   // 会话归属用户命名空间：IndexedDB 历史与会话 id 均按当前登录用户隔离，
   // 避免同一浏览器下不同用户互相看到对方的 AI 对话。
   const userId = user?.id || user?.username || 'default';
@@ -250,7 +257,7 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
         await saveCurrentConv();
       }
       // 本轮可能执行了 AI 操作：刷新左侧「对话上下文」
-      await loadContext();
+      await loadContext(true);
     } catch (e) {
       hideThinking();
       resetStreamState();
@@ -367,59 +374,99 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     }
   }
 
+  function convTitle(c) {
+    const m = c.messages && c.messages[0];
+    return (m && m.content) ? m.content : '(空)';
+  }
+
+  // 搜索匹配：标题（首条消息）或任一消息正文，忽略大小写。
+  function convMatches(c, q) {
+    if (convTitle(c).toLowerCase().includes(q)) return true;
+    return (c.messages || []).some(m => String(m.content || '').toLowerCase().includes(q));
+  }
+
+  function convFiltered() {
+    const q = convQuery.trim().toLowerCase();
+    return q ? allConvs.filter(c => convMatches(c, q)) : allConvs;
+  }
+
+  function convItemHTML(c) {
+    const first = convTitle(c);
+    const active = c.id === currentConvId ? ' active' : '';
+    const date = new Date(c.createdAt);
+    const label = date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    return '<div class="ai-conv-item' + active + '" data-id="' + esc(c.id) + '">' +
+      '<div class="ai-conv-item-content">' +
+      '<div class="ai-conv-item-title">' + esc(first.slice(0, 30)) + '</div>' +
+      '<div class="ai-conv-item-time">' + label + '</div>' +
+      '</div>' +
+      '<button class="ai-conv-item-delete" data-id="' + esc(c.id) + '" title="删除会话" aria-label="删除会话">✕</button>' +
+      '</div>';
+  }
+
+  // 渲染首屏 + 底部哨兵；搜索/新建/删除后调用（滚动位置重置到顶）。
+  function renderConvList() {
+    const list = document.getElementById('ai-conv-list');
+    if (!list) return;
+    const items = convFiltered();
+    convShown = Math.min(CONV_PAGE, items.length);
+    if (items.length === 0) {
+      list.innerHTML = '<div class="ai-conv-empty">' + (convQuery.trim() ? '没有匹配的会话' : '暂无历史会话') + '</div>';
+      if (convObserver) { convObserver.disconnect(); convObserver = null; }
+      return;
+    }
+    list.innerHTML = items.slice(0, convShown).map(convItemHTML).join('') +
+      (convShown < items.length ? '<div class="ai-conv-sentinel" id="ai-conv-sentinel">加载更多…</div>' : '');
+    observeConvSentinel();
+  }
+
+  // 追加下一页：插到哨兵前，保留滚动位置（不整表重渲染）。
+  function appendConvPage() {
+    const sentinel = document.getElementById('ai-conv-sentinel');
+    if (!sentinel) return;
+    const items = convFiltered();
+    const next = Math.min(convShown + CONV_PAGE, items.length);
+    if (next <= convShown) return;
+    sentinel.insertAdjacentHTML('beforebegin', items.slice(convShown, next).map(convItemHTML).join(''));
+    convShown = next;
+    if (convShown >= items.length) {
+      if (convObserver) { convObserver.disconnect(); convObserver = null; }
+      sentinel.remove();
+    }
+  }
+
+  function observeConvSentinel() {
+    if (convObserver) { convObserver.disconnect(); convObserver = null; }
+    const sentinel = document.getElementById('ai-conv-sentinel');
+    const root = document.getElementById('ai-conv-list');
+    if (!sentinel || !root || typeof IntersectionObserver === 'undefined') return;
+    convObserver = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) appendConvPage();
+    }, { root, rootMargin: '80px' });
+    convObserver.observe(sentinel);
+  }
+
+  // 拉取该用户全部会话并渲染首屏（新建/导入/删除后调用）。
   async function loadHistory() {
     const list = document.getElementById('ai-conv-list');
     if (!list) return;
     try {
-      const convs = await window.AIStorage.getConversations(userId, 50, 0);
-      if (convs.length === 0) {
-        list.innerHTML = '<div class="ai-conv-empty">暂无历史会话</div>';
-        return;
-      }
-      list.innerHTML = convs.map(c => {
-        const first = c.messages && c.messages.length > 0 ? c.messages[0].content : '(空)';
-        const active = c.id === currentConvId ? ' active' : '';
-        const date = new Date(c.createdAt);
-        const label = date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        return '<div class="ai-conv-item' + active + '" data-id="' + c.id + '">' +
-          '<div class="ai-conv-item-content">' +
-          '<div class="ai-conv-item-title">' + esc(first.slice(0, 30)) + '</div>' +
-          '<div class="ai-conv-item-time">' + label + '</div>' +
-          '</div>' +
-          '<button class="ai-conv-item-delete" data-id="' + c.id + '" title="删除会话" aria-label="删除会话">✕</button>' +
-          '</div>';
-      }).join('');
-      list.querySelectorAll('.ai-conv-item').forEach(el => {
-        el.addEventListener('click', (e) => {
-          if (e.target.closest('.ai-conv-item-delete')) return;
-          loadConversationById(el.dataset.id, convs);
-        });
-      });
-      list.querySelectorAll('.ai-conv-item-delete').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          deleteConversation(btn.dataset.id, convs);
-        });
-      });
+      allConvs = await window.AIStorage.getAllConversations(userId);
     } catch {
-      list.innerHTML = '<div class="ai-conv-empty">暂无历史会话</div>';
+      allConvs = [];
     }
+    if (scope.paused) return;
+    renderConvList();
   }
 
-  async function loadConversationById(id, convs) {
-    // If convs not provided, fetch fresh
-    let list;
-    if (!convs) {
-      try { convs = await window.AIStorage.getConversations(userId, 50, 0); } catch { return; }
-    }
-    const conv = convs.find(c => c.id === id);
+  function loadConversationById(id) {
+    const conv = allConvs.find(c => c.id === id);
     if (!conv) return;
     currentConvId = conv.id;
     chatMessages = conv.messages || [];
     // 恢复该会话绑定的服务端会话 ID：切换历史会话即续聊同一上下文
     if (conv.sessionId) sessionId = conv.sessionId;
     renderMessages();
-    // highlight active
     document.querySelectorAll('.ai-conv-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
   }
 
@@ -506,14 +553,15 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
   }
 
 
-  async function deleteConversation(id, convs) {
+  async function deleteConversation(id) {
     try {
       await window.AIStorage.deleteConversation(id);
     } catch {}
+    allConvs = allConvs.filter(c => c.id !== id);
     if (id === currentConvId) {
       newConversation();
     }
-    loadHistory();
+    renderConvList();
   }
 
   function navChips(intent) {
@@ -701,10 +749,16 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     return SUGGESTIONS.filter((s) => (s.tools || []).every(toolAllowed));
   }
 
-  // ---- 对话上下文（左侧壳层面板）----
-  // 数据源为当前用户近期由 AI 发起的操作（operations.origin='ai'），
-  // 按 op_type 分组展示；点击跳转到对应页面。
+  // ---- 对话上下文（AI 左栏）----
+  // 数据源为当前用户由 AI 发起的操作（operations.origin='ai'），按 op_type 分组展示；
+  // 后端按 offset/limit 分页，滚动到底自动加载更早的操作（纯展示，不跳转）。
   const CTX_STATUS = { completed: '成功', failed: '失败', running: '进行中', cancelled: '已取消', pending: '等待中', queued: '排队中' };
+  const CTX_PAGE = 20;
+  let ctxData = { tasks: [], transfers: [], playbook_runs: [] };
+  let ctxOffset = 0;
+  let ctxHasMore = true;
+  let ctxLoading = false;
+  let ctxObserver = null;
 
   function ctxStatusClass(s) {
     if (s === 'completed') return 'ok';
@@ -722,31 +776,53 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     return Math.floor(s / 86400) + '天前';
   }
 
-  function ctxGroup(title, items) {
-    if (!items || !items.length) return '';
-    return '<div class="ai-ctx-group">' + title + '</div>' + items.map(it => {
-      const cmd = it.command || it.op_type || '';
-      const targets = (it.targets || []).join(', ');
-      const status = CTX_STATUS[it.status] || it.status || '';
-      return '<div class="ai-ctx-item" title="' + esc(cmd) + '">' +
-        '<div class="ai-ctx-item-top">' +
-        '<span class="ai-ctx-item-cmd">' + esc(cmd) + '</span>' +
-        '<span class="ai-ctx-status ' + ctxStatusClass(it.status) + '">' + esc(status) + '</span>' +
-        '</div>' +
-        '<div class="ai-ctx-item-meta">' + (targets ? esc(targets) + ' · ' : '') + esc(ctxTimeAgo(it.created_at)) + '</div>' +
-        '</div>';
-    }).join('');
+  function ctxItemHTML(it) {
+    const cmd = it.command || it.op_type || '';
+    const targets = (it.targets || []).join(', ');
+    const status = CTX_STATUS[it.status] || it.status || '';
+    return '<div class="ai-ctx-item" title="' + esc(cmd) + '">' +
+      '<div class="ai-ctx-item-top">' +
+      '<span class="ai-ctx-item-cmd">' + esc(cmd) + '</span>' +
+      '<span class="ai-ctx-status ' + ctxStatusClass(it.status) + '">' + esc(status) + '</span>' +
+      '</div>' +
+      '<div class="ai-ctx-item-meta">' + (targets ? esc(targets) + ' · ' : '') + esc(ctxTimeAgo(it.created_at)) + '</div>' +
+      '</div>';
   }
 
-  function renderContext(data) {
-    const html =
-      ctxGroup('执行', data.tasks) +
-      ctxGroup('文件传输', data.transfers) +
-      ctxGroup('剧本运行', data.playbook_runs);
-    if (!html) {
-      return '<div class="ai-ctx-empty">暂无 AI 操作记录<br>执行命令、传输文件或运行剧本后会出现在这里</div>';
+  function ctxGroupHTML(title, items) {
+    if (!items || !items.length) return '';
+    return '<div class="ai-ctx-group">' + title + '</div>' + items.map(ctxItemHTML).join('');
+  }
+
+  // 分组视图整表重渲染；追加分页时保留滚动位置，避免加载下一页时跳回顶部。
+  function renderContextList(keepScroll) {
+    const body = document.getElementById('ai-ctx-body');
+    if (!body) return;
+    const prevTop = body.scrollTop;
+    const total = ctxData.tasks.length + ctxData.transfers.length + ctxData.playbook_runs.length;
+    if (total === 0) {
+      body.innerHTML = '<div class="ai-ctx-empty">暂无 AI 操作记录<br>执行命令、传输文件或运行剧本后会出现在这里</div>';
+      if (ctxObserver) { ctxObserver.disconnect(); ctxObserver = null; }
+      return;
     }
-    return html;
+    body.innerHTML =
+      ctxGroupHTML('执行', ctxData.tasks) +
+      ctxGroupHTML('文件传输', ctxData.transfers) +
+      ctxGroupHTML('剧本运行', ctxData.playbook_runs) +
+      (ctxHasMore ? '<div class="ai-ctx-sentinel" id="ai-ctx-sentinel">加载更多…</div>' : '');
+    if (keepScroll) body.scrollTop = prevTop;
+    observeCtxSentinel();
+  }
+
+  function observeCtxSentinel() {
+    if (ctxObserver) { ctxObserver.disconnect(); ctxObserver = null; }
+    const sentinel = document.getElementById('ai-ctx-sentinel');
+    const root = document.getElementById('ai-ctx-body');
+    if (!sentinel || !root || typeof IntersectionObserver === 'undefined') return;
+    ctxObserver = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) loadContext(false);
+    }, { root, rootMargin: '80px' });
+    ctxObserver.observe(sentinel);
   }
 
   function setContextContent(html) {
@@ -754,15 +830,33 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     if (body) body.innerHTML = html;
   }
 
-  // 拉取并渲染对话上下文（纯展示，不跳转）；失活（容器已摘）时跳过，切回由 onResume 补。
-  async function loadContext() {
+  // 拉取一页并渲染；reset=true 从头开始（挂载/回复后/切回），否则追加下一页。
+  async function loadContext(reset) {
     if (scope.paused) return;
+    if (reset) {
+      ctxData = { tasks: [], transfers: [], playbook_runs: [] };
+      ctxOffset = 0;
+      ctxHasMore = true;
+    }
+    if (!ctxHasMore || ctxLoading) return;
+    ctxLoading = true;
     try {
-      const data = await api.getAiContext();
+      const data = await api.getAiContext(ctxOffset, CTX_PAGE);
       if (scope.paused) return;
-      setContextContent(renderContext(data || {}));
+      const tasks = data.tasks || [];
+      const transfers = data.transfers || [];
+      const runs = data.playbook_runs || [];
+      ctxData.tasks.push(...tasks);
+      ctxData.transfers.push(...transfers);
+      ctxData.playbook_runs.push(...runs);
+      const got = tasks.length + transfers.length + runs.length;
+      ctxOffset += got;
+      ctxHasMore = !!data.has_more && got > 0;
+      renderContextList(!reset);
     } catch (e) {
       if (!scope.paused) setContextContent('<div class="ai-ctx-empty">上下文加载失败</div>');
+    } finally {
+      ctxLoading = false;
     }
   }
 
@@ -779,6 +873,9 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
         <button class="ai-new-conv-btn" id="ai-new-conv-btn">＋ 新建对话</button>
         <button class="ai-new-conv-btn" id="ai-import-cli-btn" style="margin-top:6px;opacity:.75">⤵ 导入 CLI 会话</button>
         <button class="ai-new-conv-btn" id="ai-approvals-btn" style="margin-top:6px;opacity:.85">🛡 待审批</button>
+        <div class="ai-conv-search">
+          <input type="search" id="ai-conv-search" placeholder="搜索会话（标题/正文）" aria-label="搜索会话" autocomplete="off">
+        </div>
         <div class="ai-conv-list" id="ai-conv-list">
           <div class="ai-conv-empty">暂无历史会话</div>
         </div>
@@ -881,10 +978,36 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
       });
     }
 
+    // 会话搜索：输入即过滤（标题 + 正文）
+    const convSearch = document.getElementById('ai-conv-search');
+    if (convSearch) {
+      convSearch.addEventListener('input', () => {
+        convQuery = convSearch.value || '';
+        renderConvList();
+      });
+    }
+
+    // 会话列表事件委托：点条目载入会话，点 ✕ 删除（追加分页后无需重新绑定）
+    const convList = document.getElementById('ai-conv-list');
+    if (convList) {
+      convList.addEventListener('click', (e) => {
+        const del = e.target.closest('.ai-conv-item-delete');
+        if (del) { e.stopPropagation(); deleteConversation(del.dataset.id); return; }
+        const item = e.target.closest('.ai-conv-item');
+        if (item) loadConversationById(item.dataset.id);
+      });
+    }
+
+    // 无限滚动观察者随页面释放
+    scope.resources.onDispose(() => {
+      if (convObserver) { convObserver.disconnect(); convObserver = null; }
+      if (ctxObserver) { ctxObserver.disconnect(); ctxObserver = null; }
+    });
+
     // Init
     loadSessionKey();
     loadHistory();
-    loadContext();
+    loadContext(true);
 
     // Restore messages if we have a current conversation
     const emptyState = document.getElementById('ai-empty-state');
@@ -947,7 +1070,7 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     scope.onResume(() => {
       pendingMsgs.splice(0).forEach(x => addMsg(x.cls, x.html));
       if (streamText) { ensureStreamBubble(); renderStreamBubble(); }
-      loadContext();
+      loadContext(true);
     });
 
     return () => slash.destroy();

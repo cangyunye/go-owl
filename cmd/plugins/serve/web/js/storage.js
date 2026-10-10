@@ -67,6 +67,11 @@ const AIStorage = {
     });
   },
 
+  // 一次取回该用户全部会话（按创建时间倒序）；列表在其上做搜索与分页渲染。
+  async getAllConversations(userId) {
+    return this.getConversations(userId, Number.MAX_SAFE_INTEGER, 0);
+  },
+
   // API Key in localStorage (encrypted)
   async saveApiKey(userId, apiKey, provider, model, baseUrl, apiFormat) {
     const packet = await CryptoWallet.encryptLocal({ apiKey, provider, model, baseUrl, apiFormat }, userId);
