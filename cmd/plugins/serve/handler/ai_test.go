@@ -529,6 +529,89 @@ func TestGetContext(t *testing.T) {
 	assert.NotNil(t, resp.PlaybookRuns)
 }
 
+// TestGetContext_ReturnsRecentAIOperations 验证「对话上下文」面板数据源：
+// 只返回当前用户由 AI（origin=ai）发起的操作，并按 op_type 分组为
+// tasks / transfers / playbook_runs；web 来源与他人记录不出现。
+func TestGetContext_ReturnsRecentAIOperations(t *testing.T) {
+	db, h := aiTestSetup(t)
+
+	hs := store.NewHistoryStore(db)
+	require.NoError(t, hs.Init(context.Background()))
+	h.executor.History = hs
+
+	seed := []*store.Operation{
+		{TaskID: "ai-cmd", OpType: "command", Command: "uptime", Targets: []string{"n1"}, Status: "completed", Username: "alice", Origin: "ai"},
+		{TaskID: "ai-script", OpType: "script", Command: "script: setup.sh", Targets: []string{"n1"}, Status: "failed", Username: "alice", Origin: "ai"},
+		{TaskID: "ai-xfer", OpType: "file_transfer", Command: "transfer a -> /tmp", Targets: []string{"n1"}, Status: "completed", Username: "alice", Origin: "ai"},
+		{TaskID: "ai-pb", OpType: "playbook", Command: "deploy", Targets: []string{"n1"}, Status: "completed", Username: "alice", Origin: "ai"},
+		{TaskID: "web-cmd", OpType: "command", Command: "rm -rf", Targets: []string{"n1"}, Status: "completed", Username: "alice", Origin: "web"},
+		{TaskID: "bob-ai", OpType: "command", Command: "whoami", Targets: []string{"n1"}, Status: "completed", Username: "bob", Origin: "ai"},
+	}
+	for _, op := range seed {
+		require.NoError(t, hs.RecordOperation(context.Background(), op))
+	}
+
+	router := gin.New()
+	router.GET("/api/v1/ai/context", func(c *gin.Context) {
+		c.Set("user_id", "alice")
+		h.GetContext(c)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/ai/context", nil)
+	router.ServeHTTP(w, req)
+	require.Equal(t, 200, w.Code)
+
+	var resp struct {
+		Tasks []struct {
+			TaskID  string   `json:"task_id"`
+			OpType  string   `json:"op_type"`
+			Command string   `json:"command"`
+			Status  string   `json:"status"`
+			Targets []string `json:"targets"`
+		} `json:"tasks"`
+		Transfers    []map[string]interface{} `json:"transfers"`
+		PlaybookRuns []map[string]interface{} `json:"playbook_runs"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	// command + script 归入 tasks
+	taskIDs := map[string]bool{}
+	for _, it := range resp.Tasks {
+		taskIDs[it.TaskID] = true
+		assert.Equal(t, []string{"n1"}, it.Targets)
+	}
+	assert.True(t, taskIDs["ai-cmd"], "AI 命令应出现在 tasks")
+	assert.True(t, taskIDs["ai-script"], "AI 脚本应出现在 tasks")
+	assert.False(t, taskIDs["web-cmd"], "web 来源不应出现在 AI 上下文")
+	assert.False(t, taskIDs["bob-ai"], "他人记录不应出现在当前用户上下文")
+
+	require.Len(t, resp.Transfers, 1)
+	assert.Equal(t, "ai-xfer", resp.Transfers[0]["task_id"])
+	require.Len(t, resp.PlaybookRuns, 1)
+	assert.Equal(t, "ai-pb", resp.PlaybookRuns[0]["task_id"])
+	assert.Equal(t, "deploy", resp.PlaybookRuns[0]["command"])
+}
+
+// 没有 History（executor 未接历史库）时 GetContext 仍应返回空数组而非报错。
+func TestGetContext_NoHistoryReturnsEmpty(t *testing.T) {
+	_, h := aiTestSetup(t)
+	h.executor.History = nil
+
+	router := gin.New()
+	router.GET("/api/v1/ai/context", h.GetContext)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/ai/context", nil)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, 200, w.Code)
+	var resp map[string][]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.NotNil(t, resp["tasks"])
+	assert.NotNil(t, resp["transfers"])
+	assert.NotNil(t, resp["playbook_runs"])
+}
+
 func TestAIDebugMode_IncludesPromptTextInAudit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -386,3 +386,37 @@ func TestWebExecutor_RunPlaybook_OfflineThroughV2Engine(t *testing.T) {
 	assert.Contains(t, res.Text, "Say hello", "步骤名应来自 ansible 单键任务名")
 	assert.Contains(t, res.Text, "exit=0", "步骤应携带底层退出码")
 }
+
+// AI 触发的剧本运行应在 operations 表留下 origin=ai 的 playbook 记录，
+// 供「对话上下文」面板与 web/告警来源的剧本运行区分。
+func TestWebExecutor_RunPlaybook_RecordsAIOperation(t *testing.T) {
+	e := aiExecutorSetupOffline(t)
+	ctx := WithIdentity(context.Background(), ExecIdentity{Username: "tester", Role: "admin"})
+
+	pbDir := t.TempDir()
+	pbFile := filepath.Join(pbDir, "ai-ctx.yaml")
+	pbYAML := "name: ai-ctx\ntasks:\n  - Say hi:\n      command: echo HI\n"
+	require.NoError(t, os.WriteFile(pbFile, []byte(pbYAML), 0644))
+	require.NoError(t, e.playbookStore.Upsert(ctx, &model.Playbook{
+		ID: "ai-ctx", Name: "ai-ctx", FilePath: pbFile, FileExists: true, TasksCount: 1,
+	}))
+
+	e.PlaybookHandler = NewPlaybookHandler(e.db, e.playbookStore, e.playbookRunStore, e.nodeStore, nil)
+	e.PlaybookHandler.History = e.History
+	e.PlaybookHandler.sshRunner = &fakeSSHRunner{user: "root", results: map[string]fakeExecResult{
+		"echo HI": {output: "HI"},
+	}}
+
+	res, err := e.RunPlaybook(ctx, ai2.RunPlaybookParams{Name: "ai-ctx", Nodes: []string{"n1"}})
+	require.NoError(t, err)
+	require.Contains(t, res.Text, "completed")
+
+	ops, total, err := e.History.Query(ctx, &store.QueryOptions{Origin: "ai", OpType: "playbook"})
+	require.NoError(t, err)
+	require.Equal(t, 1, total, "AI 剧本运行应写入一条 origin=ai 的 playbook 操作")
+	require.Len(t, ops, 1)
+	assert.Equal(t, "tester", ops[0].Operation.Username)
+	assert.Contains(t, ops[0].Operation.Command, "ai-ctx")
+	assert.Equal(t, []string{"n1"}, ops[0].Operation.Targets)
+	assert.NotEmpty(t, ops[0].Operation.Status)
+}

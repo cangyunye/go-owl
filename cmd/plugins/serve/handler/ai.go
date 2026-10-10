@@ -304,11 +304,66 @@ func (h *AIHandler) Test(c *gin.Context) {
 	})
 }
 
+// aiContextItem 「对话上下文」面板的单项：operations 表的统一投影。
+type aiContextItem struct {
+	ID        int64     `json:"id"`
+	TaskID    string    `json:"task_id"`
+	OpType    string    `json:"op_type"`
+	Command   string    `json:"command"`
+	Targets   []string  `json:"targets"`
+	Status    string    `json:"status"`
+	Username  string    `json:"username,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// GetContext 返回「对话上下文」面板数据：当前用户近期由 AI 发起的操作。
+// 数据源为 operations 表（origin='ai'），按 op_type 分组：
+// command/script → tasks，file_transfer → transfers，playbook → playbook_runs。
+// 现有执行记录无 session 关联，故按用户级近期（最新 20 条）聚合。
 func (h *AIHandler) GetContext(c *gin.Context) {
+	tasks := []aiContextItem{}
+	transfers := []aiContextItem{}
+	runs := []aiContextItem{}
+
+	if h.executor != nil && h.executor.History != nil {
+		userID := c.GetString("user_id")
+		records, _, err := h.executor.History.Query(c.Request.Context(), &store.QueryOptions{
+			Origin: "ai", User: userID, Limit: 20, SummaryOnly: true,
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "query ai context failed"})
+			return
+		}
+		for _, r := range records {
+			op := r.Operation
+			if op == nil {
+				continue
+			}
+			item := aiContextItem{
+				ID:        op.ID,
+				TaskID:    op.TaskID,
+				OpType:    op.OpType,
+				Command:   op.Command,
+				Targets:   op.Targets,
+				Status:    op.Status,
+				Username:  op.Username,
+				CreatedAt: op.CreatedAt,
+			}
+			switch op.OpType {
+			case "command", "script":
+				tasks = append(tasks, item)
+			case "file_transfer":
+				transfers = append(transfers, item)
+			case "playbook":
+				runs = append(runs, item)
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"tasks":         []interface{}{},
-		"transfers":     []interface{}{},
-		"playbook_runs": []interface{}{},
+		"tasks":         tasks,
+		"transfers":     transfers,
+		"playbook_runs": runs,
 	})
 }
 

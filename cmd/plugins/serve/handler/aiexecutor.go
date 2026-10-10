@@ -550,7 +550,22 @@ func (e *WebExecutor) RunPlaybook(ctx context.Context, params ai2.RunPlaybookPar
 		return nil, fmt.Errorf("create playbook run: %w", err)
 	}
 
+	// 记录 origin=ai 的 operation，供「对话上下文」面板识别 AI 发起的剧本运行
+	// （playbook_runs 表本身无 user/origin 列，web/告警运行默认写 web）。
+	recordOp := func(status string) {
+		if e.History == nil {
+			return
+		}
+		e.History.RecordOperation(ctx, &store.Operation{
+			TaskID: run.ID, OpType: "playbook", Command: pb.Name,
+			Targets: nodeIDs, Status: status, PlaybookPath: pb.FilePath,
+			Username: IdentityFromContext(ctx).Username, Origin: "ai",
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+
 	if e.PlaybookHandler == nil {
+		recordOp(string(run.Status))
 		return &ai2.RunPlaybookResult{Text: fmt.Sprintf("剧本运行已创建 (ID: %s)，但执行器未就绪", run.ID)}, nil
 	}
 	// V2 引擎同步执行：ctx 贯穿（超时/取消真实生效）、任务解析经 pbexec
@@ -559,8 +574,10 @@ func (e *WebExecutor) RunPlaybook(ctx context.Context, params ai2.RunPlaybookPar
 
 	finished, err := e.playbookRunStore.Get(ctx, run.ID)
 	if err != nil {
+		recordOp(string(run.Status))
 		return &ai2.RunPlaybookResult{Text: fmt.Sprintf("剧本运行已创建 (ID: %s)", run.ID)}, nil
 	}
+	recordOp(string(finished.Status))
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("剧本 '%s' 执行完成，状态: %s\n", pb.Name, finished.Status))
