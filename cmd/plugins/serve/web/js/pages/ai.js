@@ -7,11 +7,12 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
   let currentConvId = null;
   let isProcessing = false;
 
-  // 会话列表：全量内存态 + 搜索 + 无限滚动
+  // 会话列表：游标分页取数器 + 搜索 + 无限滚动
   const CONV_PAGE = 30;
-  let allConvs = [];       // 当前用户全部会话（倒序）
-  let convQuery = '';      // 搜索词（匹配标题 + 正文）
-  let convShown = 0;       // 当前已渲染条数
+  let convQuery = '';       // 搜索词（匹配标题 + 正文）
+  let convFetcher = null;   // () => Promise<{ items, done }> 取下一页
+  let convDone = true;      // 没有更早的页了
+  let convLoading = false;  // 取数中（防重入）
   let convObserver = null;
 
   // 会话归属用户命名空间：IndexedDB 历史与会话 id 均按当前登录用户隔离，
@@ -379,17 +380,6 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     return (m && m.content) ? m.content : '(空)';
   }
 
-  // 搜索匹配：标题（首条消息）或任一消息正文，忽略大小写。
-  function convMatches(c, q) {
-    if (convTitle(c).toLowerCase().includes(q)) return true;
-    return (c.messages || []).some(m => String(m.content || '').toLowerCase().includes(q));
-  }
-
-  function convFiltered() {
-    const q = convQuery.trim().toLowerCase();
-    return q ? allConvs.filter(c => convMatches(c, q)) : allConvs;
-  }
-
   function convItemHTML(c) {
     const first = convTitle(c);
     const active = c.id === currentConvId ? ' active' : '';
@@ -404,35 +394,49 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
       '</div>';
   }
 
-  // 渲染首屏 + 底部哨兵；搜索/新建/删除后调用（滚动位置重置到顶）。
-  function renderConvList() {
+  // 依据当前搜索态构造「下一页」取数器：
+  // 无搜索走复合索引游标分页（只读一页，不加载全部）；搜索走一次全量扫描后本地切片。
+  async function buildConvFetcher() {
+    const q = convQuery.trim();
+    if (q) {
+      const all = await window.AIStorage.searchConversations(userId, q);
+      let i = 0;
+      return async () => {
+        const items = all.slice(i, i + CONV_PAGE);
+        i += items.length;
+        return { items, done: i >= all.length };
+      };
+    }
+    let cursor = null;
+    return async () => {
+      const page = await window.AIStorage.getConversationsPage(userId, CONV_PAGE, cursor);
+      cursor = page.nextCursor;
+      return { items: page.items, done: !page.nextCursor };
+    };
+  }
+
+  function appendConvItemsHTML(items) {
+    const list = document.getElementById('ai-conv-list');
+    if (!list || !items.length) return;
+    const sentinel = document.getElementById('ai-conv-sentinel');
+    const html = items.map(convItemHTML).join('');
+    if (sentinel) sentinel.insertAdjacentHTML('beforebegin', html);
+    else list.insertAdjacentHTML('beforeend', html);
+  }
+
+  function updateConvSentinel() {
     const list = document.getElementById('ai-conv-list');
     if (!list) return;
-    const items = convFiltered();
-    convShown = Math.min(CONV_PAGE, items.length);
-    if (items.length === 0) {
-      list.innerHTML = '<div class="ai-conv-empty">' + (convQuery.trim() ? '没有匹配的会话' : '暂无历史会话') + '</div>';
+    const sentinel = document.getElementById('ai-conv-sentinel');
+    if (convDone) {
+      if (sentinel) sentinel.remove();
       if (convObserver) { convObserver.disconnect(); convObserver = null; }
       return;
     }
-    list.innerHTML = items.slice(0, convShown).map(convItemHTML).join('') +
-      (convShown < items.length ? '<div class="ai-conv-sentinel" id="ai-conv-sentinel">加载更多…</div>' : '');
-    observeConvSentinel();
-  }
-
-  // 追加下一页：插到哨兵前，保留滚动位置（不整表重渲染）。
-  function appendConvPage() {
-    const sentinel = document.getElementById('ai-conv-sentinel');
-    if (!sentinel) return;
-    const items = convFiltered();
-    const next = Math.min(convShown + CONV_PAGE, items.length);
-    if (next <= convShown) return;
-    sentinel.insertAdjacentHTML('beforebegin', items.slice(convShown, next).map(convItemHTML).join(''));
-    convShown = next;
-    if (convShown >= items.length) {
-      if (convObserver) { convObserver.disconnect(); convObserver = null; }
-      sentinel.remove();
+    if (!sentinel) {
+      list.insertAdjacentHTML('beforeend', '<div class="ai-conv-sentinel" id="ai-conv-sentinel">加载更多…</div>');
     }
+    observeConvSentinel();
   }
 
   function observeConvSentinel() {
@@ -441,26 +445,49 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     const root = document.getElementById('ai-conv-list');
     if (!sentinel || !root || typeof IntersectionObserver === 'undefined') return;
     convObserver = new IntersectionObserver((entries) => {
-      if (entries.some(e => e.isIntersecting)) appendConvPage();
+      if (entries.some(e => e.isIntersecting)) loadConvPage(false);
     }, { root, rootMargin: '80px' });
     convObserver.observe(sentinel);
   }
 
-  // 拉取该用户全部会话并渲染首屏（新建/导入/删除后调用）。
-  async function loadHistory() {
+  // 取一页并追加；first=true 时重置取数器并清空重渲染（搜索/新建/删除后调用）。
+  async function loadConvPage(first) {
     const list = document.getElementById('ai-conv-list');
-    if (!list) return;
+    if (!list || convLoading) return;
+    if (!first && convDone) return;
+    convLoading = true;
     try {
-      allConvs = await window.AIStorage.getAllConversations(userId);
-    } catch {
-      allConvs = [];
+      if (first) {
+        list.innerHTML = '';
+        convDone = false;
+        convFetcher = await buildConvFetcher();
+        if (scope.paused) return;
+      }
+      if (!convFetcher) return;
+      const { items, done } = await convFetcher();
+      if (scope.paused) return;
+      if (first && items.length === 0) {
+        list.innerHTML = '<div class="ai-conv-empty">' + (convQuery.trim() ? '没有匹配的会话' : '暂无历史会话') + '</div>';
+        convDone = true;
+        updateConvSentinel();
+        return;
+      }
+      appendConvItemsHTML(items);
+      convDone = done || items.length === 0;
+      updateConvSentinel();
+    } catch (e) {
+      if (first) list.innerHTML = '<div class="ai-conv-empty">暂无历史会话</div>';
+    } finally {
+      convLoading = false;
     }
-    if (scope.paused) return;
-    renderConvList();
   }
 
-  function loadConversationById(id) {
-    const conv = allConvs.find(c => c.id === id);
+  // 新建/导入/删除后重载首页（保持与 saveCurrentConv 等调用点的既有名）。
+  function loadHistory() { return loadConvPage(true); }
+
+  async function loadConversationById(id) {
+    let conv = null;
+    try { conv = await window.AIStorage.getConversation(id); } catch {}
     if (!conv) return;
     currentConvId = conv.id;
     chatMessages = conv.messages || [];
@@ -557,11 +584,10 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     try {
       await window.AIStorage.deleteConversation(id);
     } catch {}
-    allConvs = allConvs.filter(c => c.id !== id);
     if (id === currentConvId) {
       newConversation();
     }
-    renderConvList();
+    loadConvPage(true);
   }
 
   function navChips(intent) {
@@ -983,7 +1009,7 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     if (convSearch) {
       convSearch.addEventListener('input', () => {
         convQuery = convSearch.value || '';
-        renderConvList();
+        loadConvPage(true);
       });
     }
 
@@ -996,6 +1022,20 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
         const item = e.target.closest('.ai-conv-item');
         if (item) loadConversationById(item.dataset.id);
       });
+    }
+
+    // 触底加载：IntersectionObserver 之外再挂一个 scroll 兜底
+    // （文档不可见时 IO 不投递通知，scroll 事件仍会触发）。
+    if (convList) {
+      scope.resources.on(convList, 'scroll', () => {
+        if (convList.scrollTop + convList.clientHeight >= convList.scrollHeight - 80) loadConvPage(false);
+      }, { passive: true });
+    }
+    const ctxBody = document.getElementById('ai-ctx-body');
+    if (ctxBody) {
+      scope.resources.on(ctxBody, 'scroll', () => {
+        if (ctxBody.scrollTop + ctxBody.clientHeight >= ctxBody.scrollHeight - 80) loadContext(false);
+      }, { passive: true });
     }
 
     // 无限滚动观察者随页面释放

@@ -30,10 +30,12 @@ func TestFilesJS_UploadButton_SingleClickTriggersTransfer(t *testing.T) {
 func TestAIStorage_ConversationsScopedPerUser(t *testing.T) {
 	src := readWebFile(t, "web/js/storage.js")
 
-	assert.True(t, strings.Contains(src, "DB_VERSION: 2"),
-		"storage.js must bump DB version to add the user_id index")
-	assert.True(t, strings.Contains(src, "createIndex('user_id'"),
-		"storage.js must create a user_id index on conversations")
+	assert.True(t, strings.Contains(src, "DB_VERSION: 3"),
+		"storage.js must bump DB version to add the compound index")
+	assert.True(t, strings.Contains(src, "ensure('user_id', 'userId')"),
+		"storage.js must ensure a user_id index on conversations")
+	assert.True(t, strings.Contains(src, "ensure('user_created', ['userId', 'createdAt'])"),
+		"storage.js must create the [userId, createdAt] compound index")
 	assert.True(t, strings.Contains(src, "conv.userId = userId"),
 		"storage.js must stamp the owner on saved conversations")
 	assert.True(t, strings.Contains(src, "IDBKeyRange.only(userId)"),
@@ -45,7 +47,7 @@ func TestAIJS_PassesUserIdToStorage(t *testing.T) {
 
 	assert.True(t, strings.Contains(src, "saveConversation(conv, userId)"),
 		"ai.js must persist conversations with the current user id")
-	assert.True(t, strings.Contains(src, "getAllConversations(userId)"),
+	assert.True(t, strings.Contains(src, "getConversationsPage(userId"),
 		"ai.js must load conversations filtered by the current user id")
 	assert.True(t, strings.Contains(src, "userId + '::'"),
 		"ai.js must namespace new conversation ids by user to avoid cross-user collisions")

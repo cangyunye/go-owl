@@ -40,14 +40,21 @@ func TestWebUIAIConvSearchAndInfiniteScroll(t *testing.T) {
 	api := readWebLF(t, "web/js/api.js")
 	css := readWebLF(t, "web/css/app.css")
 
-	assert.Contains(t, storage, "getAllConversations",
-		"storage.js must expose getAllConversations for client-side search/pagination")
+	assert.Contains(t, storage, "getConversationsPage",
+		"storage.js must expose cursor pagination via compound index")
+	assert.Contains(t, storage, "user_created",
+		"storage.js must define the [userId, createdAt] compound index")
+	assert.Contains(t, storage, "searchConversations",
+		"storage.js must expose title+body search")
 
+	assert.Contains(t, ai, "getConversationsPage(userId",
+		"ai.js must page conversations by user via the compound index (no full load)")
+	assert.Contains(t, ai, "searchConversations",
+		"ai.js must search conversations by title + body")
 	assert.Contains(t, ai, "ai-conv-search", "ai.js must wire the conversation search box")
 	assert.Contains(t, ai, "ai-conv-sentinel", "ai.js must render an infinite-scroll sentinel for conversations")
 	assert.Contains(t, ai, "ai-ctx-sentinel", "ai.js must render an infinite-scroll sentinel for context")
 	assert.Contains(t, ai, "IntersectionObserver", "ai.js must use IntersectionObserver for lazy loading")
-	assert.Contains(t, ai, "convMatches", "ai.js must filter conversations by title + body")
 	assert.Contains(t, ai, "has_more", "ai.js must honor the backend has_more flag for context paging")
 
 	assert.Contains(t, api, "/ai/context?offset=", "api.getAiContext must pass offset/limit")
