@@ -104,7 +104,7 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     catch { return esc(text); }
   }
 
-  scope.panel.setContent('<div class="ai-ctx-empty">加载中…</div>');
+  scope.panel.setContent('');
 
   // ---- Message DOM ----
   const pendingMsgs = [];   // 失活期间产生的消息：切回时补渲染，避免回答“消失”
@@ -750,7 +750,7 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
   }
 
   function bindContextClicks() {
-    const host = document.getElementById('panelList');
+    const host = document.getElementById('ai-ctx-body');
     if (!host) return;
     host.querySelectorAll('.ai-ctx-item').forEach(el => {
       el.addEventListener('click', () => {
@@ -762,16 +762,21 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
     });
   }
 
-  // 拉取并渲染对话上下文；失活（面板已摘）时跳过，切回由 onResume 补。
+  function setContextContent(html) {
+    const body = document.getElementById('ai-ctx-body');
+    if (body) body.innerHTML = html;
+  }
+
+  // 拉取并渲染对话上下文；失活（容器已摘）时跳过，切回由 onResume 补。
   async function loadContext() {
     if (scope.paused) return;
     try {
       const data = await api.getAiContext();
       if (scope.paused) return;
-      scope.panel.setContent(renderContext(data || {}));
+      setContextContent(renderContext(data || {}));
       bindContextClicks();
     } catch (e) {
-      if (!scope.paused) scope.panel.setContent('<div class="ai-ctx-empty">上下文加载失败</div>');
+      if (!scope.paused) setContextContent('<div class="ai-ctx-empty">上下文加载失败</div>');
     }
   }
 
@@ -779,8 +784,8 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
   await loadPermissions();
 
   render(`
-    <div class="ai-layout" data-ai-theme="moonlight">
-      <!-- Left Sidebar: Conversation list -->
+    <div class="ai-layout ai-right-collapsed" data-ai-theme="moonlight">
+      <!-- Left Sidebar: Conversation list + AI operation context -->
       <div class="ai-sidebar-left">
         <div class="ai-sidebar-header">
           <span class="ai-sidebar-header-title">会话</span>
@@ -790,6 +795,14 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
         <button class="ai-new-conv-btn" id="ai-approvals-btn" style="margin-top:6px;opacity:.85">🛡 待审批</button>
         <div class="ai-conv-list" id="ai-conv-list">
           <div class="ai-conv-empty">暂无历史会话</div>
+        </div>
+        <div class="ai-ctx-section">
+          <div class="ai-ctx-section-header">
+            <span class="ai-sidebar-header-title">对话上下文</span>
+          </div>
+          <div class="ai-ctx-body" id="ai-ctx-body">
+            <div class="ai-ctx-empty">加载中…</div>
+          </div>
         </div>
       </div>
 
@@ -805,6 +818,10 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
             <span class="ai-status-text">已就绪</span>
           </div>
           <div class="ai-header-right">
+            <button class="ai-header-btn" id="ai-toggle-scripts" title="话术列表" aria-label="话术列表" aria-pressed="false">
+              <svg width="15" height="15" aria-hidden="true"><use href="#icon-scroll"/></svg>
+              <span>话术</span>
+            </button>
           </div>
         </div>
 
@@ -859,13 +876,24 @@ export async function renderAI(render, navigate, user, api, shell, scope) {
       </div>
     </div>
   `, () => {
-    // 「对话上下文」用壳层左侧面板承载：确保可见（含保活切回），并拉取当前用户的 AI 操作记录
+    // AI 页自带完整三栏布局，「对话上下文」并入其左栏；
+    // 壳层公共面板在此页隐藏，把宽度让给聊天区（保活切回时由 app.js 同步隐藏）。
     const sidePanel = document.getElementById('sidePanel');
     const panelToggle = document.getElementById('panelToggle');
     const viewContainer = document.querySelector('.view-container');
-    if (sidePanel) { sidePanel.style.display = ''; sidePanel.classList.remove('collapsed'); }
-    if (panelToggle) { panelToggle.style.display = ''; panelToggle.classList.remove('collapsed'); }
+    if (sidePanel) sidePanel.style.display = 'none';
+    if (panelToggle) panelToggle.style.display = 'none';
     if (viewContainer) viewContainer.style.padding = '0';
+
+    // 右栏「话术列表」默认收起，点顶栏按钮切换
+    const aiLayout = document.querySelector('.ai-layout');
+    const scriptsToggle = document.getElementById('ai-toggle-scripts');
+    if (aiLayout && scriptsToggle) {
+      scriptsToggle.addEventListener('click', () => {
+        const collapsed = aiLayout.classList.toggle('ai-right-collapsed');
+        scriptsToggle.setAttribute('aria-pressed', String(!collapsed));
+      });
+    }
 
     // Init
     loadSessionKey();

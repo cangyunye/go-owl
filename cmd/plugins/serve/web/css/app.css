@@ -3233,6 +3233,7 @@ html[data-theme="light-sky"] .ai-json-preview pre {
 .ai-layout {
   display: flex;
   height: 100%;
+  width: 100%;
   max-width: 1440px;
   margin: 0 auto;
   background: var(--surface);
@@ -3359,7 +3360,31 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   line-height: 1.6;
 }
 
-/* ---- 对话上下文（壳层左侧面板）---- */
+/* ---- 对话上下文（AI 左栏，位于「会话」下方）---- */
+.ai-ctx-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+.ai-ctx-section-header {
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ai-ctx-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px;
+}
+.ai-ctx-body::-webkit-scrollbar { width: 4px; }
+.ai-ctx-body::-webkit-scrollbar-track { background: transparent; }
+.ai-ctx-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 .ai-ctx-group {
   padding: 10px 10px 4px;
   font: 600 var(--fs-xs)/1 var(--font-display);
@@ -3426,6 +3451,8 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   background: var(--surface);
   overflow: hidden;
 }
+/* 默认收起右栏，把宽度让给聊天区；顶栏「话术」按钮切换 */
+.ai-layout.ai-right-collapsed .ai-sidebar-right { display: none; }
 .ai-sidebar-right-header {
   padding: 14px 14px 10px;
   border-bottom: 1px solid var(--border);
@@ -3534,6 +3561,25 @@ html[data-theme="light-sky"] .ai-json-preview pre {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.ai-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font: var(--fs-xs)/1 var(--font-body);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.ai-header-btn:hover { color: var(--fg); background: var(--surface-2); border-color: var(--accent); }
+.ai-header-btn[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: color-mix(in oklch, var(--accent) 40%, transparent);
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
 }
 
 /* ---- Status indicator ---- */

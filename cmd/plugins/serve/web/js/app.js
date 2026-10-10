@@ -235,6 +235,7 @@ function mountActiveTab() {
   syncNavActive(tab.view);
   shell.setViewTitle(tab.title || VIEW_TITLES[tab.view] || tab.view);
   shell.setPanelTitle(PANEL_TITLES[tab.view] || '导航');
+  syncPanelVisibility(tab.view);
   kept.scope.resume();
 }
 
@@ -738,6 +739,31 @@ function logout() {
   navigate('/login');
 }
 
+// 面板可见性随页面：AI 页自带三栏布局（并把「对话上下文」并入其左栏），
+// 隐藏壳层公共面板把宽度让给聊天区；其余页面恢复显示。
+// switchView（导航挂载）与 mountActiveTab（保活切回）共用——否则保活切回
+// 只重设标题、面板会带着空内容"漏"回来（AI 页曾经的空面板现象）。
+function syncPanelVisibility(viewId) {
+  const sidePanel = document.getElementById('sidePanel');
+  const toggle = document.getElementById('panelToggle');
+  const vc = document.querySelector('.view-container');
+  if (viewId === 'ai') {
+    if (sidePanel) sidePanel.style.display = 'none';
+    if (toggle) toggle.style.display = 'none';
+    if (vc) vc.style.padding = '0';
+    return;
+  }
+  if (sidePanel) {
+    sidePanel.style.display = '';
+    sidePanel.classList.remove('collapsed');
+  }
+  if (toggle) {
+    toggle.style.display = '';
+    toggle.classList.remove('collapsed');
+  }
+  if (vc) vc.style.padding = '';
+}
+
 function switchView(viewId, pushState) {
   currentViewId = viewId;
   const scope = beginPage(viewId);
@@ -749,22 +775,9 @@ function switchView(viewId, pushState) {
   shell.setPanelTitle(PANEL_TITLES[viewId] || '导航');
 
   // Hide AI's context panel if leaving AI view
-  if (viewId !== 'ai') {
-    const agentCtx = document.getElementById('agentContextPanel');
-    if (agentCtx) agentCtx.remove();
-    const sidePanel = document.getElementById('sidePanel');
-    if (sidePanel) {
-      sidePanel.style.display = '';
-      sidePanel.classList.remove('collapsed');
-      const toggle = document.getElementById('panelToggle');
-      if (toggle) {
-        toggle.style.display = '';
-        toggle.classList.remove('collapsed');
-      }
-      const vc = document.querySelector('.view-container');
-      if (vc) vc.style.padding = '';
-    }
-  }
+  const agentCtx = document.getElementById('agentContextPanel');
+  if (agentCtx) agentCtx.remove();
+  syncPanelVisibility(viewId);
 
   // Route to the view
   const path = viewId === 'dashboard' ? '/' : '/' + viewId;
@@ -893,9 +906,8 @@ function updatePanelContent(viewId) {
   if (!list) return;
   const P = PANEL_TITLES[viewId] || '导航';
   shell.setPanelTitle(P);
-  // alerts 页面板（分组过滤）由 renderAlerts 自治渲染，此处不得覆盖；
-  // ai 页「对话上下文」由 renderAI 自治渲染（异步拉取后 setContent），同样不得覆盖。
-  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes' || viewId === 'exec' || viewId === 'playbooks' || viewId === 'files' || viewId === 'users' || viewId === 'alerts' || viewId === 'ai') {
+  // alerts 页面板（分组过滤）由 renderAlerts 自治渲染，此处不得覆盖
+  if (viewId === 'history' || viewId === 'dashboard' || viewId === 'nodes' || viewId === 'exec' || viewId === 'playbooks' || viewId === 'files' || viewId === 'users' || viewId === 'alerts') {
     return;
   }
   if (viewId === 'settings') {
