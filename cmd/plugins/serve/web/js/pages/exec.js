@@ -618,6 +618,45 @@ export function renderExec(render, navigate, user, api, shell, scope) {
     } catch (e) { alert('删除失败: ' + (e.message || e)); }
   }
 
+  async function exportShortcuts() {
+    try {
+      await api.exportShortcuts();
+    } catch (e) { alert('导出失败: ' + (e.message || e)); }
+  }
+
+  function importShortcutsPick() {
+    document.getElementById('import-shortcut-file').click();
+  }
+
+  async function importShortcutsFile(file) {
+    if (!file) return;
+    let entries;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      entries = Array.isArray(parsed) ? parsed : parsed.shortcuts;
+    } catch { alert('导入失败：文件不是合法的 JSON 快捷命令导出文件'); return; }
+    if (!Array.isArray(entries) || entries.length === 0) {
+      alert('导入失败：文件里没有快捷命令条目');
+      return;
+    }
+    const items = entries
+      .filter(s => s && typeof s.name === 'string' && typeof s.command === 'string')
+      .map(s => ({ name: s.name, command: s.command }));
+    if (items.length === 0) {
+      alert('导入失败：文件里没有有效的快捷命令条目（需要 name/command 字段）');
+      return;
+    }
+    try {
+      const res = await api.importShortcuts({ shortcuts: items });
+      const parts = [`新增 ${res.created || 0} 条`];
+      if (res.skipped) parts.push(`跳过同名 ${res.skipped} 条`);
+      if (res.failed) parts.push(`失败 ${res.failed} 条`);
+      alert(`导入完成：${parts.join('，')}`);
+      loadShortcuts();
+    } catch (e) { alert('导入失败: ' + (e.message || e)); }
+  }
+
   function buildExecPayload() {
     const nodeIDs = Array.from(selectedNodes);
     const cmd = document.getElementById('cmd-input').value.trim();
@@ -850,7 +889,10 @@ export function renderExec(render, navigate, user, api, shell, scope) {
           <div class="shortcut-bar">
             <span class="shortcut-bar-title">快捷命令</span>
             <div class="shortcut-chips" id="shortcut-chips"></div>
+            <button class="btn btn-ghost btn-sm" id="import-shortcut-btn" title="导入快捷命令（JSON，同名跳过）">导入</button>
+            <button class="btn btn-ghost btn-sm" id="export-shortcut-btn" title="导出快捷命令为 JSON 文件">导出</button>
             <button class="btn btn-ghost btn-sm" id="add-shortcut-btn" title="新增快捷命令">＋</button>
+            <input type="file" id="import-shortcut-file" accept=".json,application/json" style="display:none">
           </div>
           <div class="editor-header">
             <div class="seg">
@@ -1169,6 +1211,13 @@ free -m</textarea>
     document.getElementById('clear-selection-btn').addEventListener('click', clearSelection);
 
     document.getElementById('add-shortcut-btn').addEventListener('click', () => openShortcutModal(null));
+    document.getElementById('export-shortcut-btn').addEventListener('click', exportShortcuts);
+    document.getElementById('import-shortcut-btn').addEventListener('click', importShortcutsPick);
+    document.getElementById('import-shortcut-file').addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      e.target.value = '';
+      importShortcutsFile(f);
+    });
     document.getElementById('shortcut-save').addEventListener('click', saveShortcut);
     document.getElementById('shortcut-cancel').addEventListener('click', () => document.getElementById('shortcut-modal').classList.remove('open'));
     document.getElementById('shortcut-modal').addEventListener('click', e => {

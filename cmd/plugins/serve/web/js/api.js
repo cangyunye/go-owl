@@ -148,6 +148,12 @@ export const api = {
   reorderShortcuts: (orderedIds) =>
     request('PUT', '/shortcuts/reorder', { ordered_ids: orderedIds }),
 
+  exportShortcuts: () =>
+    downloadFile('/shortcuts/export', 'owl-shortcuts.json'),
+
+  importShortcuts: (data) =>
+    request('POST', '/shortcuts/import', data),
+
   searchNodes: (q) =>
     request('GET', `/nodes/search?q=${encodeURIComponent(q)}`),
 
