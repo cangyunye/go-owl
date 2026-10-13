@@ -632,6 +632,7 @@ export function renderNodes(render, navigate, user, api, shell, scope) {
   loadNodes();
 
   render(`
+    <div class="nodes-view">
     <div class="filter-bar">
       <div class="input" style="position:relative;padding-left:32px;width:240px">
         <svg width="14" height="14" aria-hidden="true" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)"><use href="#icon-search"/></svg>
@@ -657,7 +658,7 @@ export function renderNodes(render, navigate, user, api, shell, scope) {
       <button class="btn btn-ghost btn-sm" id="clearSelection">取消选择</button>
     </div>
 
-    <div class="card" style="overflow:auto">
+    <div class="card">
       <table class="data-table">
         <thead>
           <tr>
@@ -677,7 +678,7 @@ export function renderNodes(render, navigate, user, api, shell, scope) {
       </table>
     </div>
 
-    <div style="display:flex;justify-content:center;gap:6px;padding:4px 0">
+    <div class="nodes-pager" style="display:flex;justify-content:center;gap:6px;padding:4px 0">
       <button class="btn btn-ghost btn-sm" id="prev-btn" disabled>‹</button>
       <span style="font-size:12px;color:var(--muted);padding:0 8px" id="page-info">加载中…</span>
       <button class="btn btn-ghost btn-sm" id="next-btn">›</button>
@@ -856,6 +857,7 @@ export function renderNodes(render, navigate, user, api, shell, scope) {
           <button class="btn btn-primary" id="import-submit">导入</button>
         </div>
       </div>
+    </div>
     </div>
   `, () => {
     if (canWrite) {

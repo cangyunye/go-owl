@@ -123,7 +123,7 @@ export function renderFiles(render, navigate, user, api, shell, scope) {
   }
 
   scope.panel.setContent(`
-    <div class="panel-node-selector" style="display:flex;flex-direction:column;height:100%">
+    <div class="panel-node-selector">
       <div class="panel-search">
         <input type="text" id="panel-node-search" placeholder="搜索节点名称或地址..." spellcheck="false">
       </div>

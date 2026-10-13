@@ -313,6 +313,11 @@ a:hover { color: var(--accent-hover, var(--primary-hover)); }
   overflow-y: auto;
   padding: 6px 8px;
   list-style: none;
+  /* 壳层面板(#panelList)与每标签面板是同名类嵌套两层：都为 flex 列，
+     内层靠自身 flex:1 撑满外层，页面内容再以 flex 填充内层——
+     避免 height:100% 在滚动容器里解析不可靠的问题 */
+  display: flex;
+  flex-direction: column;
 }
 .panel-item {
   padding: 7px 10px;
@@ -2065,6 +2070,29 @@ tr:hover td { background: var(--surface-2); }
   color: var(--muted);
   text-align: center;
 }
+/* 节点选择面板（执行/文件传输页）：选择器在内层面板里 flex 撑满可视高度
+   ——节点列表 .panel-node-list 自身 flex:1 滚动，分页钉在面板底部，
+   少于一页时留白到底，适配不同分辨率。 */
+.panel-node-selector {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 节点管理页：筛选/表格/分页组成满高列——表格卡片吃满剩余高度
+   （行少时留白到底、行多时卡片内滚动），分页始终钉在页面最底部 */
+.nodes-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.nodes-view > .card { flex: 1; min-height: 0; overflow: auto; }
+.nodes-view > .filter-bar,
+.nodes-view > .batch-bar,
+.nodes-view > .nodes-pager { flex-shrink: 0; }
 .panel-search {
   padding: 0 0 6px;
 }
