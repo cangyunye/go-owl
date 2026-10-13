@@ -2200,6 +2200,40 @@ tr:hover td { background: var(--surface-2); }
 }
 .exec-input:focus { border-color: var(--accent); }
 .exec-input:disabled { opacity: 0.4; cursor: not-allowed; }
+/* 文件选择控件：原生"选择文件"按钮各浏览器观感不一，统一成 exec-input/btn 风格；
+   并限制宽度，避免满行把同行的勾选项挤到下一行 */
+input[type="file"].exec-input {
+  flex: 1 1 240px;
+  min-width: 200px;
+  max-width: 340px;
+  padding: 3px 6px;
+  color: var(--muted);
+}
+input[type="file"].exec-input::file-selector-button {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font-size: var(--fs-xs);
+  padding: 3px 10px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+input[type="file"].exec-input::file-selector-button:hover {
+  border-color: var(--accent-dim);
+}
+/* 脚本区的勾选项在 flex 容器内会被块化（.force-check 的 flex 样式只作用于
+   .adv-option-group），勾选框与文字会上下断行，这里统一成行内 flex */
+#script-options .force-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+#script-options .force-check input { accent-color: var(--accent); }
 
 /* Mode toggle buttons (parallel/serial) */
 .mode-btn {
