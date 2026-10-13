@@ -95,6 +95,15 @@ func (c *Checker) Check(user, command string) *CheckResult {
 
 	lines := splitCommand(command)
 
+	// 注释行不会被执行（脚本模式会对全文逐行扫描），先剔除避免误报
+	active := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if trimmed := strings.TrimSpace(line); trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			active = append(active, line)
+		}
+	}
+	lines = active
+
 	for _, rule := range rules {
 		if rule.user != user && rule.user != "*" {
 			continue

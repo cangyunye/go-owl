@@ -246,6 +246,25 @@ func TestCheck_CaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestCheck_CommentLinesSkipped(t *testing.T) {
+	checker := NewChecker(&Config{Rules: DefaultRules()})
+	// 注释行不会被执行；脚本模式会对全文逐行扫描，
+	// 被注释掉的危险命令与 shebang 不应触发确认。
+	script := "#!/bin/bash\n# sudo rm -rf /tmp\ndf -h"
+	if result := checker.Check("root", script); result.Blocked {
+		t.Fatalf("注释行不应触发黑名单: %+v", result.Matches)
+	}
+}
+
+func TestCheck_CommentThenActiveLineStillBlocked(t *testing.T) {
+	checker := NewChecker(&Config{Rules: DefaultRules()})
+	// 跳过注释行不能把真实命令行一起放过。
+	script := "# backup script\nrm -rf /tmp/data"
+	if result := checker.Check("root", script); !result.Blocked {
+		t.Fatal("注释行之后的真实危险命令仍应命中黑名单")
+	}
+}
+
 func TestCheck_RegexPatterns(t *testing.T) {
 	checker := NewChecker(&Config{Rules: DefaultRules()})
 	// 默认规则里的 chown .*:[0-9]+ 与 service .* stop 是正则写法，
