@@ -307,7 +307,9 @@ func (s *Server) setupRoutes() {
 
 		// 快捷命令:所有已登录用户可管理自己的(个人数据)
 		auth.GET("/shortcuts", s.shortcutHandler.List)
+		auth.GET("/shortcuts/export", s.shortcutHandler.Export)
 		auth.POST("/shortcuts", s.shortcutHandler.Create)
+		auth.POST("/shortcuts/import", s.shortcutHandler.Import)
 		auth.PUT("/shortcuts/reorder", s.shortcutHandler.Reorder)
 		auth.PUT("/shortcuts/:id", s.shortcutHandler.Update)
 		auth.DELETE("/shortcuts/:id", s.shortcutHandler.Delete)
