@@ -712,7 +712,24 @@ export function renderExec(render, navigate, user, api, shell, scope) {
 
     try {
       const payload = buildExecPayload();
-      const res = await api.execAdvanced(payload);
+      let res;
+      try {
+        res = await api.execAdvanced(payload);
+      } catch (e) {
+        if (e.status !== 403 || !e.body || !e.body.blocked) throw e;
+        // 命中危险命令黑名单：列出命中明细，确认后带 danger_confirmed 重发放行
+        const matches = e.body.matches || [];
+        const detail = matches.slice(0, 10)
+          .map(m => `· [${m.node}] ${m.line}\n  规则: ${m.pattern}`)
+          .join('\n');
+        const more = matches.length > 10 ? `\n… 等共 ${matches.length} 条命中` : '';
+        if (!confirm(`⚠️ 以下内容命中危险命令黑名单：\n\n${detail}${more}\n\n确认仍要执行吗？`)) {
+          appendTerminal('✗ 已取消（命中危险命令黑名单）', 'err');
+          return;
+        }
+        payload.danger_confirmed = true;
+        res = await api.execAdvanced(payload);
+      }
 
       const tasks = res.tasks || [];
       if (payload.detached && tasks.length) {
