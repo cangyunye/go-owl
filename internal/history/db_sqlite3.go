@@ -49,7 +49,10 @@ func NewDB(config *Config) (DBInterface, error) {
 	// (2026-09-10 并发演练实测 CLI 写失败率 ~14%)。
 	dsn := dbPath
 	if !strings.Contains(dbPath, "?") {
-		dsn += "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=ON"
+		// busy_timeout 15s：与 owl-serve 并发时（janitor 历史清理等长事务
+		// 偶发占用写锁），CLI/TUI 写操作先排队等待；超时后由上层
+		// NodeStoreDB 对 SQLITE_BUSY 做有限重试并给出可行动的提示。
+		dsn += "?_journal_mode=WAL&_busy_timeout=15000&_synchronous=NORMAL&_foreign_keys=ON"
 	}
 	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {

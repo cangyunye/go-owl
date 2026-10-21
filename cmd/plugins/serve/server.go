@@ -782,11 +782,13 @@ func reconcileOrphanedTasks(ctx context.Context, tasks *store.TaskStore, history
 // sqliteDSN 在 DSN 中注入 PRAGMA,确保连接池的每个连接都带上
 // WAL / busy_timeout。仅靠启动时 Exec PRAGMA 只作用于单个池化连接,
 // 并发写(shell 流式落库)时其他连接会立即报 "database is locked"。
+// busy_timeout 15s：janitor 历史清理等偶发长事务期间，用户写操作先
+// 排队而不是立即失败；超时后由上层按 SQLITE_BUSY 再重试。
 func sqliteDSN(dbPath string) string {
 	if strings.Contains(dbPath, "?") {
 		return dbPath
 	}
-	return dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=ON"
+	return dbPath + "?_journal_mode=WAL&_busy_timeout=15000&_synchronous=NORMAL&_foreign_keys=ON"
 }
 
 // openMainDB 打开主库并封顶连接池。modernc sqlite 每个连接约 2MB 页缓存

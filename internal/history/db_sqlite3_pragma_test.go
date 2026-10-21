@@ -60,8 +60,8 @@ func TestNewDB_PragmasApplyToEveryConnection(t *testing.T) {
 		}
 		if busy, err := queryPragma(c, "PRAGMA busy_timeout"); err != nil {
 			t.Fatalf("conn %d busy_timeout: %v", i, err)
-		} else if busy != "5000" {
-			t.Errorf("conn %d busy_timeout = %q, want 5000", i, busy)
+		} else if busy != "15000" {
+			t.Errorf("conn %d busy_timeout = %q, want 15000", i, busy)
 		}
 		if fk, err := queryPragma(c, "PRAGMA foreign_keys"); err != nil {
 			t.Fatalf("conn %d foreign_keys: %v", i, err)
