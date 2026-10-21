@@ -143,13 +143,34 @@ type Service struct {
 	cancel context.CancelFunc
 }
 
-// Setup 初始化监控服务：复用 serve 的 owl.db 文件（WAL 并发安全），
-// 内置节点目标源与 SSH 采集器。不启动后台循环（由 Start 控制）。
+// Setup 初始化监控服务：指标与告警落独立的 metrics 库（由 owl.db 路径
+// 推导，WAL 并发安全），节点目标仍从主库读取，内置 SSH 采集器。
+// 不启动后台循环（由 Start 控制）。
 func Setup(dbPath string, db *sql.DB, webURL string) (*Service, error) {
 	store, err := owlmonitor.OpenStore(dbPath)
 	if err != nil {
 		return nil, err
 	}
+
+	// 旧版布局迁移：指标/告警原先内嵌在 owl.db（按月分区 + 全表扫描清理），
+	// 数百节点时会把主库撑到几十 GB 且清理长事务拖垮业务写。拆库后主库里
+	// 的 metrics_* 分区表成为死数据（可再生的监控采样），启动时自动清除；
+	// 释放的空间由管理员在设置页执行一次 VACUUM 归还操作系统。
+	if dropped, err := owlmonitor.DropLegacyMetricTables(db); err != nil {
+		logger.Warn("清理 owl.db 遗留指标分区表失败",
+			logger.WithOperation("monitor_migrate"), logger.WithError(err))
+	} else if dropped > 0 {
+		logger.Info("已清理 owl.db 遗留指标分区表",
+			logger.WithOperation("monitor_migrate"),
+			logger.WithField("dropped_tables", dropped),
+			logger.WithField("hint", "主库空间可在设置页执行 VACUUM 回收"))
+	}
+
+	// 告警分组筛选跨库解析：nodes 在主库，metrics 库的告警查询按分组先
+	// 解析出命中节点 ID（解析失败退化为不过滤，与拆库前容错一致）
+	store.SetNodeGroupResolver(func(groups []string) ([]string, error) {
+		return owlmonitor.NodeIDsByGroups(db, groups)
+	})
 
 	source := NewNodesTargetSource(db)
 	collector := owlmonitor.NewCollector(owlmonitor.NewSSHExecerFactory())

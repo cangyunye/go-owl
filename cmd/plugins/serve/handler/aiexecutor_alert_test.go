@@ -39,6 +39,11 @@ func webAlertExecutorSetup(t *testing.T) (*WebExecutor, context.Context) {
 		('n2', 'db-01', '10.0.0.2', 'online', '["db"]')`)
 	require.NoError(t, err)
 
+	// 拆库后 nodes 在主库：告警分组筛选与生产装配一致，注入跨库解析器
+	st.SetNodeGroupResolver(func(groups []string) ([]string, error) {
+		return owlmonitor.NodeIDsByGroups(db, groups)
+	})
+
 	now := time.Now().Unix()
 	for _, a := range []*owlmonitor.Alert{
 		{ID: "AL-1", AlertTypeID: "OWL-DSK-001", NodeID: "n1", Severity: owlmonitor.SeverityWarning,

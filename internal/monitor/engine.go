@@ -165,6 +165,7 @@ func (e *Engine) TickOnce(ctx context.Context) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var errs []error
+	var all []Sample
 
 	for _, t := range targets {
 		wg.Add(1)
@@ -176,19 +177,32 @@ func (e *Engine) TickOnce(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			}
-			if err := e.collectNode(ctx, t, types); err != nil {
-				mu.Lock()
+			samples, err := e.collectNode(ctx, t, types)
+			mu.Lock()
+			defer mu.Unlock()
+			all = append(all, samples...)
+			if err != nil {
 				errs = append(errs, err)
-				mu.Unlock()
 			}
 		}(t)
 	}
 	wg.Wait()
+
+	// 一轮聚合一次入库：此前每节点一个事务，数百节点时每分钟数百次写锁
+	// 争抢；聚合后每轮只有 1~2 个（按天分表）写事务，业务侧写操作不再
+	// 频繁撞 SQLITE_BUSY。
+	if len(all) > 0 {
+		if err := e.store.InsertSamples(all); err != nil {
+			errs = append(errs, fmt.Errorf("monitor: 指标入库失败: %w", err))
+		}
+	}
 	return errors.Join(errs...)
 }
 
-// collectNode 单节点：采集 → 失联判定 → 入库 → 规则评估 → 通知。
-func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) error {
+// collectNode 单节点：采集 → 失联判定 → 规则评估 → 通知。
+// 返回该节点本轮全部采样（含合成网卡速率与自定义检查），由 TickOnce
+// 聚合后统一入库；采集失败且无任何指标时视为失联，返回 nil + err。
+func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) ([]Sample, error) {
 	samples, err := e.collector.Collect(ctx, &t)
 
 	if err != nil && len(samples) == 0 {
@@ -196,10 +210,10 @@ func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) e
 		e.clearCounters(t.ID)
 		events, merr := e.manager.MarkCollectFail(t.ID)
 		if merr != nil {
-			return merr
+			return nil, merr
 		}
 		e.dispatch(ctx, events, types, t)
-		return err
+		return nil, err
 	}
 
 	// 采集成功（含部分成功）
@@ -210,11 +224,11 @@ func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) e
 	}
 	events, merr := e.manager.MarkCollectOK(t.ID)
 	if merr != nil {
-		return merr
+		return nil, merr
 	}
 	e.dispatch(ctx, events, types, t)
 
-	// 合成网卡速率并入库
+	// 合成网卡速率
 	all := e.computeNetRates(t.ID, samples)
 
 	// 触发范围过滤：scope_nodes/scope_groups 限定规则只对指定节点/分组生效
@@ -225,17 +239,13 @@ func (e *Engine) collectNode(ctx context.Context, t Target, types []AlertType) e
 		all = append(all, custom...)
 	}
 
-	if err := e.store.InsertSamples(all); err != nil {
-		return fmt.Errorf("monitor: 指标入库失败(node=%s): %w", t.ID, err)
-	}
-
-	// 规则评估 → 告警生命周期
+	// 规则评估 → 告警生命周期（评估吃的是本轮采样，先于批量入库无碍）
 	events, merr = e.manager.Tick(t.ID, all, scoped)
 	if merr != nil {
-		return merr
+		return all, merr
 	}
 	e.dispatch(ctx, events, types, t)
-	return nil
+	return all, nil
 }
 
 // filterTypesForTarget 按触发范围过滤告警类型：scope_nodes/scope_groups
@@ -394,11 +404,13 @@ func (e *Engine) dispatch(ctx context.Context, events []AlertEvent, types []Aler
 }
 
 // CleanupOnce 执行一次保留期清理（幂等，可按计划调度）：
-// 指标按 RetentionDaysFn（缺省静态 RetentionDays）清理；告警记录按
-// AlertRetentionDays 清理（只删已解决且解决时间超期的，未解决告警永不删除）。
-// 仅在 DROP 了整月过期分区时追加 VACUUM（空间回收大头）；只删行时页留
-// 在 freelist 由后续写入复用，整库 VACUUM 会独占 owl.db、卡住 HTTP 请求。
+// 指标按 RetentionDaysFn（缺省静态 RetentionDays）清理——按天分区，过期
+// 整天分区直接 DROP；告警记录按 AlertRetentionDays 清理（只删已解决且
+// 解决时间超期的，未解决告警永不删除）。
+// 仅在 DROP 过期分区时追加 VACUUM（空间回收大头）；VACUUM 作用于独立的
+// metrics 库，不阻塞 owl.db 的业务写入。清理成功也记录耗时日志。
 func (e *Engine) CleanupOnce() error {
+	started := time.Now()
 	retention := e.cfg.RetentionDays
 	if e.cfg.RetentionDaysFn != nil {
 		if d := e.cfg.RetentionDaysFn(); d > 0 {
@@ -410,15 +422,34 @@ func (e *Engine) CleanupOnce() error {
 		return err
 	}
 	if sum.DroppedTables > 0 {
+		vacuumStarted := time.Now()
 		if verr := e.store.Vacuum(); verr != nil {
 			return verr
 		}
+		logger.Info("监控指标库空间回收完成",
+			logger.WithOperation("monitor_cleanup"),
+			logger.WithField("dropped_tables", sum.DroppedTables),
+			logger.WithField("vacuum_elapsed", time.Since(vacuumStarted).Round(time.Millisecond)))
 	}
+	// 清理成功也要留痕：此前成功时完全静默，长事务期间业务写撞
+	// SQLITE_BUSY 时无从对账。
+	logger.Info("监控数据清理完成",
+		logger.WithOperation("monitor_cleanup"),
+		logger.WithField("retention_days", retention),
+		logger.WithField("dropped_tables", sum.DroppedTables),
+		logger.WithField("elapsed", time.Since(started).Round(time.Millisecond)))
 	if e.cfg.AlertRetentionDays == nil {
 		return nil
 	}
 	if days := e.cfg.AlertRetentionDays(); days > 0 {
-		return e.store.CleanupAlerts(days)
+		alertStarted := time.Now()
+		if err := e.store.CleanupAlerts(days); err != nil {
+			return err
+		}
+		logger.Info("告警记录清理完成",
+			logger.WithOperation("monitor_cleanup"),
+			logger.WithField("retention_days", days),
+			logger.WithField("elapsed", time.Since(alertStarted).Round(time.Millisecond)))
 	}
 	return nil
 }

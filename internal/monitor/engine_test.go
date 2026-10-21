@@ -532,23 +532,21 @@ func TestAlertType_InScope(t *testing.T) {
 	require.False(t, at.InScope("n9", []string{"cache"}))
 }
 
-// TestEngine_CleanupOnce_RowDeletionDoesNotVacuum 仅删除过期行（未整月过期）
-// 时不应整库 VACUUM：freelist 页由后续写入复用，而 VACUUM 会独占整个
-// owl.db，把启动/运行期的仪表盘与告警接口全部卡住。整库 VACUUM 只在
-// DROP 过期分区（空间回收大头）时进行。
-func TestEngine_CleanupOnce_RowDeletionDoesNotVacuum(t *testing.T) {
+// TestEngine_CleanupOnce_CurrentDataDoesNotDrop 没有过期分区（只有当天
+// 数据）时不应触发 DROP / VACUUM：清理是幂等空转，空间回收只在真正
+// DROP 过期分区后进行。
+func TestEngine_CleanupOnce_CurrentDataDoesNotDrop(t *testing.T) {
 	eng, s := newTestEngine(t, nil, sampleOutputs())
 
-	// 造数取 cutoff 月内的时间戳，保证走 DELETE 行分支而非 DROP 分区
-	old := cutoffMonthMidSampleTS()
-	insertSamples(t, s, 20000, old)
+	// 全部是当天的数据，保留期内，清理无表可删
+	insertSamples(t, s, 20000, time.Now().Unix())
 
 	require.NoError(t, eng.CleanupOnce())
-	require.Greater(t, pragmaInt(t, s, "PRAGMA freelist_count"), int64(0),
-		"仅删除过期行不应触发整库 VACUUM（freelist 应保留待复用）")
+	require.Equal(t, int64(0), pragmaInt(t, s, "PRAGMA freelist_count"),
+		"无过期分区不应触发 VACUUM（freelist 应保持为空）")
 }
 
-// TestEngine_CleanupOnce_DroppedPartitionVacuums 整月分区早于保留期被
+// TestEngine_CleanupOnce_DroppedPartitionVacuums 整天分区早于保留期被
 // DROP 后，仍应 VACUUM 把空间归还操作系统（空间回收的大头场景）。
 func TestEngine_CleanupOnce_DroppedPartitionVacuums(t *testing.T) {
 	eng, s := newTestEngine(t, nil, sampleOutputs())

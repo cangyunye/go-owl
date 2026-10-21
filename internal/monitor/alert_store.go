@@ -335,16 +335,83 @@ func (s *Store) alertFilterSQL(f AlertFilter) (string, []any) {
 		}
 		query += `)`
 	}
-	if groups := splitGroups(f.Group); len(groups) > 0 && s.hasNodesTable() {
-		// 分组筛选：nodes.groups 为 JSON 数组，取与 nodes 页一致的 LIKE 匹配
-		query += ` AND node_id IN (SELECT id FROM nodes WHERE 1=0`
-		for _, g := range groups {
-			query += ` OR groups LIKE ?`
-			args = append(args, `%"`+g+`"%`)
+	if groups := splitGroups(f.Group); len(groups) > 0 {
+		// 分组筛选需要 nodes 表；指标/告警拆到独立 metrics 库后，nodes 在
+		// 主库，经注入的解析器先解析出命中节点 ID 再按 IN 过滤；解析器
+		// 未注入（单测/内嵌布局）时回退同库子查询，查询失败则退化为不过滤
+		// （与拆库前 hasNodesTable 的容错一致）。
+		if ids, ok := s.matchNodeIDsByGroups(groups); ok {
+			if len(ids) == 0 {
+				query += ` AND 1=0`
+			} else {
+				query += ` AND node_id IN (`
+				for i, id := range ids {
+					if i > 0 {
+						query += `,`
+					}
+					query += `?`
+					args = append(args, id)
+				}
+				query += `)`
+			}
+		} else if s.hasNodesTable() {
+			// nodes.groups 为 JSON 数组，取与 nodes 页一致的 LIKE 匹配
+			query += ` AND node_id IN (SELECT id FROM nodes WHERE 1=0`
+			for _, g := range groups {
+				query += ` OR groups LIKE ?`
+				args = append(args, `%"`+g+`"%`)
+			}
+			query += `)`
 		}
-		query += `)`
 	}
 	return query, args
+}
+
+// SetNodeGroupResolver 注入"分组 → 命中节点 ID 列表"的解析器。
+// serve 装配时基于主库 nodes 表实现；指标库拆分后告警筛选跨库取节点分组。
+func (s *Store) SetNodeGroupResolver(fn func(groups []string) ([]string, error)) {
+	s.nodeGroups = fn
+}
+
+// matchNodeIDsByGroups 经注入的解析器解析分组命中的节点 ID。
+// ok=false 表示无法解析（未注入或查询失败），调用方回退/退化。
+func (s *Store) matchNodeIDsByGroups(groups []string) ([]string, bool) {
+	if s.nodeGroups == nil {
+		return nil, false
+	}
+	ids, err := s.nodeGroups(groups)
+	if err != nil {
+		return nil, false
+	}
+	return ids, true
+}
+
+// NodeIDsByGroups 查询 nodes 表中 groups（JSON 数组）命中任一分组的节点 ID。
+// 与 nodes 页的 LIKE 匹配语义一致；供 serve 把主库装配为告警分组解析器。
+func NodeIDsByGroups(db *sql.DB, groups []string) ([]string, error) {
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	query := `SELECT DISTINCT id FROM nodes WHERE 1=0`
+	args := make([]any, 0, len(groups))
+	for _, g := range groups {
+		query += ` OR groups LIKE ?`
+		args = append(args, `%"`+g+`"%`)
+	}
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // splitGroups 拆分逗号分隔分组并去掉空白项。
