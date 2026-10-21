@@ -36,9 +36,10 @@ export function renderSettings(render, navigate, user, api, scope) {
 
   async function loadSettings() {
     try {
-      const [res, disk] = await Promise.all([
+      const [res, disk, stats] = await Promise.all([
         api.settings(),
-        api.staging.disk().catch(() => null)
+        api.staging.disk().catch(() => null),
+        api.nodeStats().catch(() => null)
       ]);
       const rows = (res.data || []).filter(s => !s.key.startsWith('monitor.'));
       Object.keys(KNOWN_SETTINGS).forEach(key => {
@@ -49,15 +50,22 @@ export function renderSettings(render, navigate, user, api, scope) {
       });
       rows.sort((a, b) => a.key.localeCompare(b.key));
       renderTable(rows);
-      fillMonitorCard(res.data || []);
+      fillMonitorCard(res.data || [], stats && stats.total);
     } catch { renderTable([]); }
   }
 
   // ---- 监控告警设置卡片 ----
-  function fillMonitorCard(all) {
+  // 写入量估算常量：默认采集命令表在典型 Linux 节点上每轮约 20~35 条指标
+  // （load 3 + cores 1 + mem/swap 2 + ss 2 + journal 2 + 磁盘/网卡随挂载点
+  // 与接口数浮动），取中值 25；SQLite 每行实测约 56B，含碎片按 60B 估算。
+  const EST_METRICS_PER_NODE = 25;
+  const EST_BYTES_PER_ROW = 60;
+
+  function fillMonitorCard(all, nodeTotal) {
     const get = (key) => { const hit = all.find(s => s.key === key); return hit ? hit.value : ''; };
+    // 默认不启用：仅当设置里显式为 true 时勾选（与服务端 readMonitorEnabled 对齐）
     const enabled = get('monitor.enabled');
-    document.getElementById('mon-enabled').checked = enabled === '' || enabled.toLowerCase() !== 'false';
+    document.getElementById('mon-enabled').checked = enabled.trim().toLowerCase() === 'true';
     document.getElementById('mon-window').value = get('monitor.collect_window');
     document.getElementById('mon-escalate').value = get('monitor.escalate_after_minutes') || '60';
     document.getElementById('mon-realert').value = get('monitor.realert_window_minutes') || '1440';
@@ -65,6 +73,34 @@ export function renderSettings(render, navigate, user, api, scope) {
     document.getElementById('mon-data-retention').value = get('monitor.retention_days') || '30';
     document.getElementById('mon-cleanup-schedule').value = get('monitor.cleanup_schedule') || 'daily';
     document.getElementById('mon-interval').value = get('monitor.interval_seconds') || '60';
+    const estNodes = document.getElementById('mon-est-nodes');
+    if (estNodes && nodeTotal > 0) estNodes.value = nodeTotal;
+    updateMonitorEstimate();
+  }
+
+  // 写入量估算：节点数 × 每轮指标数 × 每天轮数 → 每天/保留期内的行数与体积。
+  // 指标存放在独立的 metrics 库，过期数据按整天分区 DROP 回收，不影响
+  // owl.db 的业务写入；但磁盘占用本身仍是真实成本，启用前请先评估。
+  function updateMonitorEstimate() {
+    const el = document.getElementById('mon-estimate');
+    if (!el) return;
+    const nodes = parseInt(document.getElementById('mon-est-nodes')?.value, 10) || 0;
+    const interval = parseInt(document.getElementById('mon-interval')?.value, 10) || 60;
+    const retention = parseInt(document.getElementById('mon-data-retention')?.value, 10) || 30;
+    if (nodes <= 0) {
+      el.textContent = '填写节点数后自动估算写入量（采集间隔/保留天数取上方设置）';
+      el.style.color = '';
+      return;
+    }
+    const roundsPerDay = 86400 / Math.max(interval, 10);
+    const rowsPerDay = nodes * EST_METRICS_PER_NODE * roundsPerDay;
+    const bytesPerDay = rowsPerDay * EST_BYTES_PER_ROW;
+    const steadyBytes = bytesPerDay * Math.max(retention, 1);
+    const wan = (n) => n >= 10000 ? (n / 10000).toFixed(1) + ' 万' : String(Math.round(n));
+    el.textContent = `按 ${nodes} 台 × 约${EST_METRICS_PER_NODE}项/轮 × 每 ${interval}s 采集：`
+      + `每天写入约 ${wan(rowsPerDay)} 行（${fmtBytes(bytesPerDay)}/天），`
+      + `保留 ${retention} 天后指标库稳态约 ${fmtBytes(steadyBytes)}（独立 metrics 库，过期按天整表回收）`;
+    el.style.color = steadyBytes > 10 * 1024 * 1024 * 1024 ? 'var(--warning, #e6a23c)' : '';
   }
 
   async function saveMonitorCard() {
@@ -466,9 +502,19 @@ export function renderSettings(render, navigate, user, api, scope) {
               <label class="switch"><input type="checkbox" id="mon-enabled"><span class="track"></span></label>
               <div>
                 <div class="field-label" style="color:var(--fg)">启用监控采集</div>
-                <div class="field-hint">关闭后暂停全部节点的采集与告警评估，恢复开启自动继续</div>
+                <div class="field-hint">默认关闭。开启后指标写入独立的 metrics 库（不影响业务库），但采集是持续写入型负载——节点多、间隔短时写入量可观，请先用下方「写入量估算」评估磁盘占用</div>
               </div>
             </div>
+          </div>
+          <div class="field field-wide">
+            <span class="field-label">写入量估算</span>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px">节点数
+                <input id="mon-est-nodes" type="number" min="1" step="1" placeholder="如 500" style="width:90px">
+              </label>
+              <span class="field-hint" style="margin:0">（采集间隔 / 保留天数取上方两项，修改后自动重算）</span>
+            </div>
+            <div class="field-hint" id="mon-estimate">填写节点数后自动估算写入量（采集间隔/保留天数取上方设置）</div>
           </div>
           <div class="field">
             <span class="field-label">采集时段</span>
@@ -928,6 +974,10 @@ export function renderSettings(render, navigate, user, api, scope) {
 
     // ---- KV Settings Modal Logic ----
     document.getElementById('mon-save').addEventListener('click', saveMonitorCard);
+    // 写入量估算：节点数 / 采集间隔 / 保留天数任一变化即时重算
+    ['mon-est-nodes', 'mon-interval', 'mon-data-retention'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', updateMonitorEstimate);
+    });
     document.getElementById('db-vacuum-btn').addEventListener('click', () => {
       if (confirm('立即执行 VACUUM 空间回收？大库可能需要数十秒，期间数据库写入短暂排队。')) vacuumDb();
     });
