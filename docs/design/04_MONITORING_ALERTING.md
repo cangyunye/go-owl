@@ -126,13 +126,21 @@ SSH 连接失败（超时/认证失败/网络不可达）→ 记录 `node.ssh_un
 
 单节点采集失败不中断整体轮询；失败计入该节点 `last_collect_error`，连续失败 N 次（默认 3）触发失联告警。
 
-## 5. 存储设计（SQLite，30 天保留）
+## 5. 存储设计（独立 metrics 库，SQLite，30 天保留）
 
-### 5.1 指标表（按月分区）
+> 2026-10 修订：指标/告警等监控表从 owl.db 拆到独立的 `<主库>.metrics.db`
+> （如 `~/.owl/owl.db` → `~/.owl/owl.metrics.db`），分区从按月改为**按天**。
+> 缘由：500 节点 × 60s 采集约 2000 万行/天，按月分区 + `DELETE WHERE ts < ?`
+> 全表扫描（无 ts 索引）会持写锁 1~2 分钟，整月过期后的 VACUUM 更是数分钟，
+> 曾把同库的节点/用户/历史写入全部拖到 SQLITE_BUSY（Web/TUI 保存失败）。
+> 旧主库里遗留的 `metrics_*` 分区表在服务启动时自动 DROP（死数据，可再生），
+> 主库回收的空间可在设置页执行一次 VACUUM 归还操作系统。
+
+### 5.1 指标表（按天分区）
 
 ```sql
--- 动态指标：metrics_YYYYMM，每月一张表
-CREATE TABLE IF NOT EXISTS metrics_<YYYYMM> (
+-- 动态指标：metrics_YYYYMMDD，每天一张表；表名即日期，过期整天 DROP
+CREATE TABLE IF NOT EXISTS metrics_<YYYYMMDD> (
   node_id TEXT NOT NULL,
   metric  TEXT NOT NULL,
   ts      INTEGER NOT NULL,      -- unix 秒
@@ -141,11 +149,23 @@ CREATE TABLE IF NOT EXISTS metrics_<YYYYMM> (
 ) WITHOUT ROWID;
 ```
 
-- 写入：`INSERT OR REPLACE`，**批量事务**（每批 5000 行），WAL 模式
-- 300 节点 × 60 指标 × 60s ≈ 18,000 行/分钟（300 行/秒），modernc SQLite 完全可承受
-- 空间估算：30 天 ≈ 2,600 万行 ≈ 1.5~2 GB（不含磁盘指标时更低），可接受
+- 写入：`INSERT OR REPLACE`，**每轮聚合一次入库**（引擎先并发采集、
+  TickOnce 统一落库；此前每节点一个事务，500 台时每分钟数百次写锁争抢），
+  WAL 模式
+- 建表缓存：每张天分区只在首次写入时 `CREATE TABLE IF NOT EXISTS` 一次
+  （并发 DDL 的 schema 锁冲突会绕过 busy_timeout 立即 SQLITE_BUSY，
+  曾导致每轮随机丢 1~2 台节点的指标）
+- 空间估算（设置页监控卡片有交互式计算器）：
+  行数/天 ≈ 节点数 × ~25 指标 × 86400/间隔秒；每行 ≈ 60B。
+  例：500 台 × 60s ≈ 1800 万行/天 ≈ 1 GB/天；保留 30 天稳态 ≈ 30 GB。
+  **采集是持续写入型负载，monitor.enabled 默认关闭**，启用前先估算。
 
 ### 5.2 告警与配置表
+
+告警类型/告警实例/对策/通知渠道/处置执行等监控表与指标同库（metrics 库）。
+节点分组等业务数据仍在主库；告警的分组筛选经装配时注入的跨库解析器
+（`Store.SetNodeGroupResolver` → 主库 `NodeIDsByGroups`）先解析命中节点 ID
+再按 `IN` 过滤，解析失败退化为不过滤。
 
 ```sql
 CREATE TABLE alert_types (            -- 告警类型注册表（告警 ID 的载体）
@@ -208,22 +228,26 @@ CREATE TABLE notify_channels (        -- 通知渠道
 
 ### 5.3 定期清理与空间回收
 
-- serve 启动时立即执行一次，此后按清理计划排期（settings 表 `monitor.cleanup_schedule`，
-  `daily` = 每日 02:00 / `weekly` = 每周一 02:00 / `monthly` = 每月 1 日 02:00，本地时区）
+- serve 启动后延迟 5 分钟执行一次（避开用户刚打开页面的高峰），此后按清理
+  计划排期（settings 表 `monitor.cleanup_schedule`，`daily` = 每日 02:00 /
+  `weekly` = 每周一 02:00 / `monthly` = 每月 1 日 02:00，本地时区）
 - 指标保留天数经 `monitor.retention_days` 运行期可调（默认 30，1..3650）；
   采集间隔（写入频率）经 `monitor.interval_seconds` 运行期可调（默认 60s，10..86400）
-- 逻辑：`DELETE FROM metrics_<本月/上月> WHERE ts < now-Nd`；**DROP 早于保留期的整张分区表**；同时清理 `alerts` 中 `resolved_at < now-Nd` 的记录
-- DELETE/DROP 只把页移入 freelist，**owl.db 文件并不会缩小**；实际回收过数据时
-  追加 `VACUUM` + `PRAGMA wal_checkpoint(TRUNCATE)` 把空间归还操作系统；
-  管理员亦可在设置页「数据库」卡片查看各表行数/占用并手动回收
-  （`GET /api/v1/db/stats`、`POST /api/v1/db/vacuum`）
-- 与 `history.Cleanup` 互不干扰，各管各的表
+- 逻辑：**整天过期 → `DROP TABLE metrics_<YYYYMMDD>`**（毫秒级，无扫描）；
+  同时清理 `alerts` 中已解决且超期的记录。清理与 VACUUM 均只作用于
+  metrics 库，成功/失败都记耗时日志（`monitor_cleanup`）
+- DROP 只把页移入 freelist，**文件并不会缩小**；DROP 过发生数据时追加
+  `VACUUM` + `PRAGMA wal_checkpoint(TRUNCATE)` 把空间归还操作系统；
+  管理员亦可在设置页「数据库」卡片查看占用并手动回收
+  （`GET /api/v1/db/stats`、`POST /api/v1/db/vacuum`，操作对象为各自库文件）
+- 与 `history.Cleanup`（owl.db）互不干扰，各管各的库
 
 ### 5.4 为什么不引入独立时序库（决策记录）
 
-300 节点规模下 SQLite + WAL + 批量写入 + 按月分区即可满足吞吐与查询；独立时序库（bbolt 自研、
-VictoriaMetrics 单机、Prometheus tsdb 嵌入）均增加部署/维护成本。将来若需 PromQL 或规模破千，
-`internal/monitor/store.go` 已隔离存储层，可平移到 VictoriaMetrics，无需改规则/告警引擎。
+数百节点规模下 SQLite + WAL + 按天分区即可满足吞吐与查询；独立时序库（bbolt 自研、
+VictoriaMetrics 单机、Prometheus tsdb 嵌入）均增加部署/维护成本。metrics 库物理上
+已与业务库分离，将来若需 PromQL 或规模破千，`internal/monitor/store.go` 已隔离
+存储层，可平移到 VictoriaMetrics，无需改规则/告警引擎。
 
 ## 6. 告警规则与告警 ID
 
