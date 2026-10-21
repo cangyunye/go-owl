@@ -493,18 +493,21 @@ func writeSilenceUntil(db *sql.DB, until int64) error {
 	return nil
 }
 
-// readMonitorEnabled 读取监控总开关（monitor.enabled）。未设置 = 开启；
-// "false"/"0"/"no"/"off"（大小写不敏感）= 关闭。
+// readMonitorEnabled 读取监控总开关（monitor.enabled）。
+// 未设置 = **关闭**：采集是持续写入型负载，节点规模大时指标量可观
+// （500 台 × 60s 间隔约 2000 万行/天），是否启用应由管理员显式决定，
+// 并在设置页评估写入量后再打开。
+// 仅 "true"/"1"/"yes"/"on"（大小写不敏感）= 开启，其余一律关闭。
 func readMonitorEnabled(db *sql.DB) bool {
 	var v string
 	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'monitor.enabled'`).Scan(&v); err != nil {
-		return true
+		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "false", "0", "no", "off":
-		return false
-	default:
+	case "true", "1", "yes", "on":
 		return true
+	default:
+		return false
 	}
 }
 

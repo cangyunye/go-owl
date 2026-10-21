@@ -99,3 +99,20 @@ func TestEngineConfigFuncs_ReadFromSettings(t *testing.T) {
 	setSetting(t, db, "monitor.cleanup_schedule", "weekly")
 	assert.Equal(t, "weekly", cfg.CleanupScheduleFn())
 }
+
+// 监控总开关：未设置 = **关闭**（采集是持续写入型负载，是否启用应由
+// 管理员显式决定）；仅明确的 true/1/yes/on 视为开启，其余一律关闭。
+func TestReadMonitorEnabled(t *testing.T) {
+	db := settingsDB(t)
+	assert.False(t, readMonitorEnabled(db), "未设置时默认不启用采集")
+
+	for _, v := range []string{"true", "TRUE", " 1 ", "yes", "on"} {
+		setSetting(t, db, "monitor.enabled", v)
+		assert.True(t, readMonitorEnabled(db), "value=%q 应视为开启", v)
+	}
+
+	for _, v := range []string{"false", "0", "no", "off", "", "banana"} {
+		setSetting(t, db, "monitor.enabled", v)
+		assert.False(t, readMonitorEnabled(db), "value=%q 应视为关闭", v)
+	}
+}
