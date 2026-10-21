@@ -255,29 +255,69 @@ func (s *NodeStoreDB) Add(node *NodeInfo) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(
-		`INSERT INTO nodes (id, name, address, port, user, password, ssh_key, status, groups, labels, proxy_jump, created_at, updated_at, last_check_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		node.ID, node.Name, node.Address, node.Port,
-		node.User, encPw, encKey, node.Status,
-		string(groupsJSON), string(labelsJSON), node.ProxyJump,
-		node.CreatedAt, node.UpdatedAt, lastCheckAt,
-	)
-	return err
+	return retryOnBusy(func() error {
+		_, err := s.db.Exec(
+			`INSERT INTO nodes (id, name, address, port, user, password, ssh_key, status, groups, labels, proxy_jump, created_at, updated_at, last_check_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			node.ID, node.Name, node.Address, node.Port,
+			node.User, encPw, encKey, node.Status,
+			string(groupsJSON), string(labelsJSON), node.ProxyJump,
+			node.CreatedAt, node.UpdatedAt, lastCheckAt,
+		)
+		return err
+	})
 }
 
 func (s *NodeStoreDB) Remove(id string) error {
-	result, err := s.db.Exec(`DELETE FROM nodes WHERE id = ?`, id)
-	if err != nil {
-		return err
+	err := retryOnBusy(func() error {
+		result, err := s.db.Exec(`DELETE FROM nodes WHERE id = ?`, id)
+		if err != nil {
+			return err
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rowsAffected == 0 {
+			return errNodeNotFound(id)
+		}
+		return nil
+	})
+	return err
+}
+
+// errNodeNotFound 供 Remove/Update 复用的"节点不存在"错误。
+func errNodeNotFound(id string) error {
+	return fmt.Errorf("node not found: %s", id)
+}
+
+// isBusyError 识别 SQLite 写锁冲突（modernc 驱动的错误文本含
+// "database is locked (5) (SQLITE_BUSY)"）。
+func isBusyError(err error) bool {
+	if err == nil {
+		return false
 	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
+	msg := err.Error()
+	return strings.Contains(msg, "SQLITE_BUSY") || strings.Contains(msg, "database is locked")
+}
+
+// retryOnBusy 对撞上 SQLite 写锁的写操作做有限次退避重试。
+// busy_timeout（DSN 15s）只等待一次，owl-serve 清理/VACUUM 等长事务
+// 期间仍可能超时；这里再补两次退避，仍失败则给出用户能行动的提示，
+// 而不是裸的 "database is locked (5)"。
+func retryOnBusy(op func() error) error {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(300*(1<<(attempt-1))) * time.Millisecond)
+		}
+		if err = op(); !isBusyError(err) {
+			return err
+		}
 	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("node not found: %s", id)
+	if isBusyError(err) {
+		return fmt.Errorf("数据库被其它进程占用（owl-serve 可能正在清理，请稍后重试）: %w", err)
 	}
-	return nil
+	return err
 }
 
 func (s *NodeStoreDB) Update(node *NodeInfo) error {
@@ -300,27 +340,33 @@ func (s *NodeStoreDB) Update(node *NodeInfo) error {
 	if err != nil {
 		return err
 	}
-	result, err := s.db.Exec(
-		`UPDATE nodes SET name=?, address=?, port=?, user=?, password=?, ssh_key=?, status=?, groups=?, labels=?, proxy_jump=?, updated_at=?, last_check_at=? WHERE id=?`,
-		node.Name, node.Address, node.Port,
-		node.User, encPw, encKey, node.Status,
-		string(groupsJSON), string(labelsJSON), node.ProxyJump,
-		node.UpdatedAt, lastCheckAt, node.ID,
-	)
-	if err != nil {
-		return err
-	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("node not found: %s", node.ID)
-	}
-	return nil
+	return retryOnBusy(func() error {
+		result, err := s.db.Exec(
+			`UPDATE nodes SET name=?, address=?, port=?, user=?, password=?, ssh_key=?, status=?, groups=?, labels=?, proxy_jump=?, updated_at=?, last_check_at=? WHERE id=?`,
+			node.Name, node.Address, node.Port,
+			node.User, encPw, encKey, node.Status,
+			string(groupsJSON), string(labelsJSON), node.ProxyJump,
+			node.UpdatedAt, lastCheckAt, node.ID,
+		)
+		if err != nil {
+			return err
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rowsAffected == 0 {
+			return errNodeNotFound(node.ID)
+		}
+		return nil
+	})
 }
 
 func (s *NodeStoreDB) BulkUpsert(nodes []*NodeInfo) error {
+	return retryOnBusy(func() error { return s.bulkUpsertOnce(nodes) })
+}
+
+func (s *NodeStoreDB) bulkUpsertOnce(nodes []*NodeInfo) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
